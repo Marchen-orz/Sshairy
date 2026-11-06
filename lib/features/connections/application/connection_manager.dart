@@ -191,6 +191,7 @@ class TransportLease {
 
   /// Completes when the transport is lost.
   Future<void> get done => _transport.done;
+  bool get lost => _transport.isClosed;
 
   Future<ShellChannel> openShell({required int cols, required int rows}) => _use().openShell(cols: cols, rows: rows);
 

@@ -209,4 +209,142 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get newConnection => 'New connection';
+
+  @override
+  String get appearance => 'Appearance';
+
+  @override
+  String get terminal => 'Terminal';
+
+  @override
+  String get connection => 'Connection';
+
+  @override
+  String get dataSecurity => 'Data & security';
+
+  @override
+  String get about => 'About';
+
+  @override
+  String get cursorShape => 'Cursor';
+
+  @override
+  String get cursorBlock => 'Block';
+
+  @override
+  String get cursorUnderline => 'Underline';
+
+  @override
+  String get cursorBar => 'Bar';
+
+  @override
+  String get scrollback => 'Scrollback lines';
+
+  @override
+  String get copyOnSelect => 'Copy on select';
+
+  @override
+  String get rightClick => 'Right click';
+
+  @override
+  String get rightClickMenu => 'Menu';
+
+  @override
+  String get confirmPaste => 'Confirm multi-line paste';
+
+  @override
+  String get connectTimeout => 'Connect timeout';
+
+  @override
+  String get keepAlive => 'Keepalive';
+
+  @override
+  String get idleTtl => 'Keep idle connections';
+
+  @override
+  String get autoReconnect => 'Reconnect automatically';
+
+  @override
+  String get off => 'Off';
+
+  @override
+  String seconds(int n) {
+    return '$n s';
+  }
+
+  @override
+  String get appliesNextConnection => 'Applies to new connections';
+
+  @override
+  String get appliesNewSessions => 'Applies to new sessions';
+
+  @override
+  String get trustedKeys => 'Trusted host keys';
+
+  @override
+  String get none => 'None';
+
+  @override
+  String get remove => 'Remove';
+
+  @override
+  String get version => 'Version';
+
+  @override
+  String get dataDir => 'Data folder';
+
+  @override
+  String get open => 'Open';
+
+  @override
+  String get find => 'Find';
+
+  @override
+  String matchCount(int current, int total) {
+    return '$current/$total';
+  }
+
+  @override
+  String get noResults => 'No results';
+
+  @override
+  String get previous => 'Previous';
+
+  @override
+  String get next => 'Next';
+
+  @override
+  String get caseSensitive => 'Match case';
+
+  @override
+  String get regex => 'Regular expression';
+
+  @override
+  String get copy => 'Copy';
+
+  @override
+  String get selectAll => 'Select all';
+
+  @override
+  String get clearScreen => 'Clear';
+
+  @override
+  String get openLink => 'Open link';
+
+  @override
+  String get copyLink => 'Copy link';
+
+  @override
+  String get rename => 'Rename';
+
+  @override
+  String get duplicate => 'Duplicate';
+
+  @override
+  String reconnectingIn(int n) {
+    return 'Reconnecting in $n s';
+  }
+
+  @override
+  String get stop => 'Stop';
 }

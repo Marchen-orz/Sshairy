@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/side_drawer.dart';
+import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
@@ -65,6 +66,38 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     return KeyEventResult.ignored;
   }
 
+  void _splitAt(WorkspaceTab tab, Leaf leaf, SplitAxis axis) {
+    _workspace.focusPane(tab.id, leaf.pane);
+    _workspace.split(axis);
+  }
+
+  Future<void> _rename(WorkspaceTab tab, String current) async {
+    final title = await showDialog<String>(
+      context: context,
+      builder: (_) => TextPromptDialog(title: AppLocalizations.of(context).rename, initial: current),
+    );
+    if (title != null) _workspace.rename(tab.id, title);
+  }
+
+  Future<void> _tabMenu(WorkspaceTab tab, String name, Offset p) async {
+    final l = AppLocalizations.of(context);
+    PopupMenuItem<VoidCallback> item(String label, IconData icon, VoidCallback run) => PopupMenuItem(
+          value: run,
+          height: 36,
+          child: Row(children: [Icon(icon, size: 16), const SizedBox(width: Space.md), Text(label)]),
+        );
+    final run = await showMenu<VoidCallback>(
+      context: context,
+      position: RelativeRect.fromLTRB(p.dx, p.dy, p.dx, p.dy),
+      items: [
+        item(l.rename, Icons.edit_outlined, () => _rename(tab, name)),
+        item(l.duplicate, Icons.copy_all_outlined, () => _workspace.duplicate(tab.id)),
+        item(l.close, Icons.close, () => _workspace.closeTab(tab.id)),
+      ],
+    );
+    run?.call();
+  }
+
   void _refocus(TabId tabId, PaneId pane) {
     final focused = ref.read(workspaceProvider).tabs.where((t) => t.id == tabId).firstOrNull?.layout.focused;
     if (focused == null || focused == pane) return;
@@ -84,7 +117,6 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     final l = AppLocalizations.of(context);
     final state = ref.watch(workspaceProvider);
     final sessions = ref.watch(terminalSessionsProvider);
-    final fontSize = ref.watch(settingsProvider.select((s) => s.fontSize));
     final scheme = Theme.of(context).colorScheme;
     final live = {for (final t in state.tabs) ...t.layout.leaves.map((l) => l.pane)};
     _paneKeys.removeWhere((pane, _) => !live.contains(pane));
@@ -124,10 +156,15 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   color: scheme.surfaceContainerLowest,
                   child: TerminalPane(
                     session,
-                    fontSize: fontSize,
                     active: state.active == tab.id && focused,
                     onKeyEvent: _onKey,
                     focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),
+                    actions: [
+                      PaneAction(l.splitRight, Icons.vertical_split_outlined, () => _splitAt(tab, leaf, SplitAxis.horizontal)),
+                      PaneAction(l.splitDown, Icons.horizontal_split_outlined, () => _splitAt(tab, leaf, SplitAxis.vertical)),
+                      PaneAction(l.duplicate, Icons.copy_all_outlined, () => _workspace.duplicate(tab.id)),
+                      PaneAction(l.closePane, Icons.close, () => _workspace.closePane(tab.id, leaf.pane)),
+                    ],
                   ),
                 ),
               ),
@@ -165,6 +202,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                       itemBuilder: (context, i) {
                         final tab = state.tabs[i];
                         final session = sessions[tab.layout.focusedLeaf.session];
+                        final all = [for (final l in tab.layout.leaves) ?sessions[l.session]];
                         final count = tab.layout.leaves.length;
                         return ReorderableDragStartListener(
                           key: ValueKey(tab.id),
@@ -172,14 +210,19 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                           child: session == null
                               ? const SizedBox.shrink()
                               : ListenableBuilder(
-                                  listenable: session,
-                                  builder: (context, _) => _Tab(
-                                    selected: state.active == tab.id,
-                                    onTap: () => _workspace.activate(tab.id),
-                                    leading: SessionStatusIcon(session.status),
-                                    title: count > 1 ? '${session.host.title} · $count' : session.host.title,
-                                    onClose: () => _workspace.closeTab(tab.id),
-                                  ),
+                                  listenable: Listenable.merge(all),
+                                  builder: (context, _) {
+                                    final name = tab.title ?? session.host.title;
+                                    return _Tab(
+                                      selected: state.active == tab.id,
+                                      onTap: () => _workspace.activate(tab.id),
+                                      onDoubleTap: () => _rename(tab, name),
+                                      onSecondaryTap: (p) => _tabMenu(tab, name, p),
+                                      leading: SessionStatusIcon(session.status, unread: all.any((s) => s.unread)),
+                                      title: count > 1 ? '$name · $count' : name,
+                                      onClose: () => _workspace.closeTab(tab.id),
+                                    );
+                                  },
                                 ),
                         );
                       },
@@ -251,15 +294,25 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 }
 
 class SessionStatusIcon extends StatelessWidget {
-  const SessionStatusIcon(this.status, {super.key});
+  const SessionStatusIcon(this.status, {super.key, this.unread = false});
 
   final SessionStatus status;
+
+  /// New output in a tab nobody is looking at: the dot gets a ring.
+  final bool unread;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return switch (status) {
       SessionStatus.connecting => const SizedBox.square(dimension: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+      SessionStatus.connected when unread => Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: scheme.primary, width: 2)),
+          alignment: Alignment.center,
+          child: Icon(Icons.circle, size: 4, color: scheme.primary),
+        ),
       SessionStatus.connected => Icon(Icons.circle, size: 8, color: scheme.primary),
       SessionStatus.idle => Icon(Icons.circle_outlined, size: 8, color: scheme.onSurfaceVariant),
       SessionStatus.failed || SessionStatus.disconnected => Icon(Icons.link_off, size: 14, color: scheme.error),
@@ -319,10 +372,20 @@ class _PaneHeader extends StatelessWidget {
 }
 
 class _Tab extends StatelessWidget {
-  const _Tab({required this.selected, required this.onTap, required this.leading, required this.title, this.onClose});
+  const _Tab({
+    required this.selected,
+    required this.onTap,
+    required this.leading,
+    required this.title,
+    this.onClose,
+    this.onDoubleTap,
+    this.onSecondaryTap,
+  });
 
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
+  final void Function(Offset globalPosition)? onSecondaryTap;
   final Widget leading;
   final String title;
   final VoidCallback? onClose;
@@ -342,6 +405,8 @@ class _Tab extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
+            onDoubleTap: onDoubleTap,
+            onSecondaryTapUp: onSecondaryTap == null ? null : (d) => onSecondaryTap!(d.globalPosition),
             child: ConstrainedBox(
               constraints: const BoxConstraints(minWidth: 96, maxWidth: 220),
               child: SizedBox(

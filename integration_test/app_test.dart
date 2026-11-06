@@ -117,14 +117,16 @@ extension on WidgetTester {
     }, seconds: 5).catchError((Object e) => fail('$e: cursor $cursor, IME $ime (null means the window has no focus)'));
   }
 
-  Future<void> closeTabByKeyboard() async {
+  Future<void> ctrlShift(LogicalKeyboardKey key) async {
     await sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-    await sendKeyEvent(LogicalKeyboardKey.keyW);
+    await sendKeyEvent(key);
     await sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await pump();
   }
+
+  Future<void> closeTabByKeyboard() => ctrlShift(LogicalKeyboardKey.keyW);
 
   Future<void> palette(String query) async {
     await sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -204,10 +206,27 @@ void main() {
     await t.tapAndPump(inDialog(find.text('Cancel')));
     await t.untilFound(find.text('Host key rejected'));
     await t.closeTabByKeyboard();
+
+    // Removing the record from settings means the next connection asks again.
+    await t.tapAndPump(find.byTooltip('Settings'));
+    await t.scrollUntilVisible(
+      find.byTooltip('Remove'),
+      300,
+      scrollable: find.descendant(of: find.byType(SettingsPanel), matching: find.byType(Scrollable)).first,
+    );
+    final record = find.descendant(of: find.byType(SettingsPanel), matching: find.textContaining(address));
+    expect(record, findsOneWidget);
+    await t.shot('settings-trust');
+    await t.tapAndPump(find.byTooltip('Remove'));
+    expect(record, findsNothing);
+    expect(find.text('None'), findsOneWidget);
+    final left = jsonDecode(await trust.readAsString()) as Map<String, dynamic>;
+    expect((left['keys'] as Map<String, dynamic>), isEmpty);
   });
 
-  testWidgets('terminal: runs commands, reports size, reconnects, survives tab changes', (t) async {
+  testWidgets('terminal: runs commands, searches, reconnects, survives tab changes', (t) async {
     t.testTextInput.register();
+    await File('${dir.path}/settings.json').writeAsString('{"locale":"en","autoReconnect":true}');
     await t.startApp(dir);
 
     await t.quickConnect();
@@ -273,6 +292,28 @@ void main() {
     await t.until('pasted lines ran', () => term.buffer.getText().contains('pasted-4'));
     await t.untilPrompt();
 
+    await t.ctrlShift(LogicalKeyboardKey.keyF);
+    await t.untilFound(find.widgetWithText(TextField, 'Find'));
+    await t.enterText(find.widgetWithText(TextField, 'Find'), 'pasted-');
+    await t.pump();
+    // Both echoed command lines and both results: the newest is current.
+    final count = find.textContaining(RegExp(r'^\d+/\d+$'));
+    await t.untilFound(count);
+    final total = int.parse(t.widget<Text>(count).data!.split('/').last);
+    expect(total, greaterThanOrEqualTo(4));
+    expect(t.widget<Text>(count).data, '$total/$total');
+    await t.testTextInput.receiveAction(TextInputAction.done);
+    await t.pump();
+    expect(t.widget<Text>(count).data, '${total - 1}/$total', reason: 'Enter goes to the match above');
+    await t.enterText(find.widgetWithText(TextField, 'Find'), 'no-such-text-sshairy');
+    await t.pump();
+    expect(find.text('No results'), findsOneWidget);
+    await t.shot('search');
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pump();
+    expect(find.text('No results'), findsNothing);
+    await t.expectShellAlive(3);
+
     await t.run('exit');
     await t.untilFound(find.text('Disconnected'));
     await t.shot('disconnected');
@@ -282,6 +323,15 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('Disconnected'), findsNothing);
     expect(t.terminal, same(term));
+
+    // Ending our own sshd session drops the transport; with auto-reconnect on, the pane dials again by itself.
+    await t.run(r'kill $PPID');
+    await t.untilFound(find.textContaining('Reconnecting in'));
+    await t.shot('reconnecting');
+    await t.answerPassword(password);
+    await t.untilPrompt();
+    expect(t.terminal, same(term));
+    await t.expectShellAlive(4);
 
     await t.tapAndPump(find.text('Hosts'));
     await t.quickConnect();
@@ -410,6 +460,19 @@ void main() {
     await t.answerPassword(password);
     await t.untilPrompt();
     await t.expectShellAlive(5);
+
+    await t.tap(find.text('sshairy-ws').hitTestable(), buttons: kSecondaryButton);
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tapAndPump(find.text('Rename'));
+    await t.enterText(inDialog(find.byType(TextField)), 'prod');
+    await t.tapAndPump(inDialog(find.text('Save')));
+    expect(find.text('prod'), findsOneWidget);
+    await t.palette('Duplicate');
+    await t.until('two tabs', () => t.workspace.tabs.length == 2);
+    await t.untilPrompt();
+    expect(find.byType(AlertDialog), findsNothing, reason: 'the copy shares the connection');
+    await t.shot('tabs');
+    await t.closeTabByKeyboard();
 
     await t.palette('Theme: Dark');
     await t.until('dark theme', () => Theme.of(t.element(find.byType(WorkspacePage))).brightness == Brightness.dark);

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../foundation/ids.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
+import '../../settings/api.dart';
 import '../adapters/terminal_session.dart';
 
 final terminalSessionsProvider =
@@ -26,7 +27,14 @@ class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
 
   /// [id] lets a restored layout name its sessions before they exist.
   TerminalSession open(Host host, {SessionId? id, bool autoConnect = true}) {
-    final session = TerminalSession(id ?? SessionId(newId()), host, ref.read(connectionManagerProvider), autoConnect: autoConnect);
+    final session = TerminalSession(
+      id ?? SessionId(newId()),
+      host,
+      ref.read(connectionManagerProvider),
+      autoConnect: autoConnect,
+      scrollback: ref.read(settingsProvider).get(SettingKeys.scrollback),
+      autoReconnect: () => ref.read(settingsProvider).get(SettingKeys.autoReconnect),
+    );
     _owned[session.id] = session;
     state = {...state, session.id: session};
     return session;

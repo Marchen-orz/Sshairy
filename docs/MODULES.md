@@ -75,7 +75,7 @@ SSH bytes → 有界入口队列 → 增量解码/VT 解析 → terminal model �
 
 多标签创建/关闭/排序/重命名/复制；复制新 shell 可复用 transport，不复制正在运行的进程。状态点区分连接中、在线、掉线、有新输出。断开有原地重连入口，不把旧缓冲重新送到服务器。
 
-复制粘贴、Ctrl+Shift+F 搜索、字号调整、URL 打开；右键默认菜单，右键粘贴可配置；多行或包含控制字符的粘贴预览。支持 bracketed paste，发送一次完整 IME commit，不默认逐字符 workaround。
+复制粘贴、Ctrl+Shift+F 搜索（从最新输出开始，Enter 向上、Shift+Enter 向下，可区分大小写和正则）、字号调整、URL 打开（Ctrl+单击或右键菜单，只开 http/https，参数直接交给系统程序、不经 shell）；右键默认菜单，右键粘贴可配置；多行或包含控制字符的粘贴预览。支持 bracketed paste，发送一次完整 IME commit，不默认逐字符 workaround。
 
 中文、全角标点、emoji、组合字符、CJK 宽度、选区、光标位置必须实测。OSC 52 远端写剪贴板默认禁用；OSC 7 只更新有来源的 cwd 状态，不当指令执行。无法获得 cwd 时显示未知，不向正在 vim 的 shell 注入 pwd。
 
@@ -146,6 +146,8 @@ AI 使用片段执行仍经过 command 策略，不能用 snippet.run 绕过审�
 ## 7. settings 与应用外壳（M1）
 
 SettingDefinition 统一记录 key/type/default/range/effect/applyMode/agentExposure；不是所有设置都自动生成界面。简单值可通用表单，密钥、快捷键和代理等复杂流程用专门组件。
+
+实现为 `SettingDef`（`lib/features/settings/settings.dart`）：`settings.patch` 的 schema 和校验都由它生成，全部成功才写入；agent 来源看不到也改不了 `agentExposed: false` 的项（渲染器、粘贴确认）。其他 feature 的分区（如信任记录）通过 `SettingsSection` 在 composition 注入，settings 不反向 import 它们。
 
 | 分区 | 首期设置与行为 |
 |---|---|

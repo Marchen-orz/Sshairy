@@ -481,6 +481,270 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New connection'**
   String get newConnection;
+
+  /// No description provided for @appearance.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get appearance;
+
+  /// No description provided for @terminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal'**
+  String get terminal;
+
+  /// No description provided for @connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection'**
+  String get connection;
+
+  /// No description provided for @dataSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Data & security'**
+  String get dataSecurity;
+
+  /// No description provided for @about.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get about;
+
+  /// No description provided for @cursorShape.
+  ///
+  /// In en, this message translates to:
+  /// **'Cursor'**
+  String get cursorShape;
+
+  /// No description provided for @cursorBlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get cursorBlock;
+
+  /// No description provided for @cursorUnderline.
+  ///
+  /// In en, this message translates to:
+  /// **'Underline'**
+  String get cursorUnderline;
+
+  /// No description provided for @cursorBar.
+  ///
+  /// In en, this message translates to:
+  /// **'Bar'**
+  String get cursorBar;
+
+  /// No description provided for @scrollback.
+  ///
+  /// In en, this message translates to:
+  /// **'Scrollback lines'**
+  String get scrollback;
+
+  /// No description provided for @copyOnSelect.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy on select'**
+  String get copyOnSelect;
+
+  /// No description provided for @rightClick.
+  ///
+  /// In en, this message translates to:
+  /// **'Right click'**
+  String get rightClick;
+
+  /// No description provided for @rightClickMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Menu'**
+  String get rightClickMenu;
+
+  /// No description provided for @confirmPaste.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm multi-line paste'**
+  String get confirmPaste;
+
+  /// No description provided for @connectTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect timeout'**
+  String get connectTimeout;
+
+  /// No description provided for @keepAlive.
+  ///
+  /// In en, this message translates to:
+  /// **'Keepalive'**
+  String get keepAlive;
+
+  /// No description provided for @idleTtl.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep idle connections'**
+  String get idleTtl;
+
+  /// No description provided for @autoReconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnect automatically'**
+  String get autoReconnect;
+
+  /// No description provided for @off.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get off;
+
+  /// No description provided for @seconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} s'**
+  String seconds(int n);
+
+  /// No description provided for @appliesNextConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to new connections'**
+  String get appliesNextConnection;
+
+  /// No description provided for @appliesNewSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to new sessions'**
+  String get appliesNewSessions;
+
+  /// No description provided for @trustedKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Trusted host keys'**
+  String get trustedKeys;
+
+  /// No description provided for @none.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get none;
+
+  /// No description provided for @remove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get remove;
+
+  /// No description provided for @version.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get version;
+
+  /// No description provided for @dataDir.
+  ///
+  /// In en, this message translates to:
+  /// **'Data folder'**
+  String get dataDir;
+
+  /// No description provided for @open.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get open;
+
+  /// No description provided for @find.
+  ///
+  /// In en, this message translates to:
+  /// **'Find'**
+  String get find;
+
+  /// No description provided for @matchCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{current}/{total}'**
+  String matchCount(int current, int total);
+
+  /// No description provided for @noResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No results'**
+  String get noResults;
+
+  /// No description provided for @previous.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous'**
+  String get previous;
+
+  /// No description provided for @next.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get next;
+
+  /// No description provided for @caseSensitive.
+  ///
+  /// In en, this message translates to:
+  /// **'Match case'**
+  String get caseSensitive;
+
+  /// No description provided for @regex.
+  ///
+  /// In en, this message translates to:
+  /// **'Regular expression'**
+  String get regex;
+
+  /// No description provided for @copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get copy;
+
+  /// No description provided for @selectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get selectAll;
+
+  /// No description provided for @clearScreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get clearScreen;
+
+  /// No description provided for @openLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link'**
+  String get openLink;
+
+  /// No description provided for @copyLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get copyLink;
+
+  /// No description provided for @rename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get rename;
+
+  /// No description provided for @duplicate.
+  ///
+  /// In en, this message translates to:
+  /// **'Duplicate'**
+  String get duplicate;
+
+  /// No description provided for @reconnectingIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting in {n} s'**
+  String reconnectingIn(int n);
+
+  /// No description provided for @stop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get stop;
 }
 
 class _AppLocalizationsDelegate

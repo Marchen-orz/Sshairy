@@ -8,45 +8,24 @@ import '../capabilities/api.dart';
 import 'presentation/settings_panel.dart';
 import 'settings.dart';
 
-/// The renderer is left out: it is a platform choice, not something to change from a palette or an agent.
+/// Both read and write through [SettingKeys]; an agent only sees and changes settings marked as exposed.
 List<Capability> settingsCapabilities(Ref ref) => [
-      FunctionCapability('settings.get', Effect.query, (_, _) async {
+      FunctionCapability('settings.get', Effect.query, (_, c) async {
         final s = ref.read(settingsProvider);
-        return Ok({'themeMode': s.themeMode.name, 'accent': s.accent.name, 'fontSize': s.fontSize, 'locale': s.locale});
+        return Ok({
+          for (final d in SettingKeys.all)
+            if (c.origin != Origin.agent || d.agentExposed) d.key: d.encode(s.get(d)),
+        });
       }),
       FunctionCapability(
         'settings.patch',
         Effect.localChange,
         inputSchema: {
           'type': 'object',
-          'properties': {
-            'themeMode': {'type': 'string', 'enum': ThemeMode.values.map((m) => m.name).toList()},
-            'accent': {'type': 'string', 'enum': Accent.values.map((a) => a.name).toList()},
-            'fontSize': {'type': 'number', 'minimum': Settings.minFontSize, 'maximum': Settings.maxFontSize},
-            'locale': {
-              'type': ['string', 'null'],
-              'enum': ['zh', 'en', null],
-            },
-          },
+          'additionalProperties': false,
+          'properties': {for (final d in SettingKeys.all) d.key: d.schema},
         },
-        (a, _) async {
-          final themeMode = a.optional<String>('themeMode');
-          final accent = a.optional<String>('accent');
-          final mode = themeMode == null ? null : ThemeMode.values.asNameMap()[themeMode];
-          final color = accent == null ? null : Accent.values.asNameMap()[accent];
-          if ((themeMode != null && mode == null) || (accent != null && color == null)) {
-            return const Err(AppError('invalidArgument'));
-          }
-          final locale = a.optional<String>('locale');
-          if (locale != null && !const ['zh', 'en'].contains(locale)) return const Err(AppError('invalidArgument'));
-          await ref.read(settingsProvider.notifier).update(
-                themeMode: mode,
-                accent: color,
-                fontSize: a.optional<num>('fontSize')?.toDouble(),
-                locale: a.has('locale') ? () => locale : null,
-              );
-          return const Ok(null);
-        },
+        (a, c) => ref.read(settingsProvider.notifier).patch(a.raw, exposedOnly: c.origin == Origin.agent),
       ),
     ];
 

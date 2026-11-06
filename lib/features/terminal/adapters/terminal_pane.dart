@@ -1,0 +1,367 @@
+part of 'terminal_session.dart';
+
+/// An entry the owner adds to the pane's context menu, such as splitting.
+class PaneAction {
+  const PaneAction(this.label, this.icon, this.run);
+
+  final String label;
+  final IconData icon;
+  final VoidCallback run;
+}
+
+class TerminalPane extends ConsumerStatefulWidget {
+  const TerminalPane(
+    this.session, {
+    super.key,
+    required this.active,
+    this.onKeyEvent,
+    this.focusNode,
+    this.actions = const [],
+  });
+
+  final TerminalSession session;
+  final bool active;
+
+  /// Sees keys before the terminal does, so application shortcuts are not sent to the shell.
+  final FocusOnKeyEventCallback? onKeyEvent;
+
+  /// Lets the owner move focus between panes; the pane makes its own when none is given.
+  final FocusNode? focusNode;
+  final List<PaneAction> actions;
+
+  @override
+  ConsumerState<TerminalPane> createState() => _TerminalPaneState();
+}
+
+class _TerminalPaneState extends ConsumerState<TerminalPane> {
+  late final FocusNode _focus = widget.focusNode ?? FocusNode();
+  final _controller = TerminalController();
+  final _view = GlobalKey<TerminalViewState>();
+  final _scroll = ScrollController();
+  Rect? _imeRect;
+  var _imeRectScheduled = false;
+  var _searching = false;
+
+  TerminalSession get _session => widget.session;
+  Terminal get _terminal => _session._terminal;
+
+  @override
+  void initState() {
+    super.initState();
+    _session.addListener(_focusWhenConnected);
+    _terminal.addListener(_scheduleImeRect);
+    _focus.addListener(_scheduleImeRect);
+    _markViewed();
+    // A pane can be rebuilt (moved into a split, a tab restored): only a session that never ran dials by itself.
+    if (_session.status == SessionStatus.idle && _session.autoConnect) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _connect();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(TerminalPane old) {
+    super.didUpdateWidget(old);
+    _scheduleImeRect();
+    if (widget.active != old.active) _markViewed();
+    if (widget.active && !old.active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.active && !_searching) _focus.requestFocus();
+      });
+    }
+  }
+
+  /// Clearing the unread mark rebuilds the tab bar, so it waits until this build is over.
+  void _markViewed() => WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _session.viewed = widget.active;
+      });
+
+  Future<void> _connect() => _session.connect(DialogPrompts(context));
+
+  void _focusWhenConnected() {
+    if (widget.active && !_searching && _session.status == SessionStatus.connected) _focus.requestFocus();
+  }
+
+  /// xterm2 never sends the composing rect, so Windows puts the IME candidate window at the window corner.
+  /// Its editable transform is the identity, so the cursor's global rect is what the engine expects.
+  void _scheduleImeRect() {
+    if (_imeRectScheduled) return;
+    _imeRectScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _imeRectScheduled = false;
+      final view = _view.currentState;
+      if (!mounted || view == null || !_focus.hasFocus) return;
+      final rect = view.globalCursorRect;
+      if (rect == _imeRect) return;
+      _imeRect = rect;
+      SystemChannels.textInput.invokeMethod<void>('TextInput.setMarkedTextRect', {
+        'x': rect.left,
+        'y': rect.top,
+        'width': rect.width,
+        'height': rect.height,
+      });
+      final scale = View.of(context).devicePixelRatio;
+      ImeCaret.moveTo(Rect.fromLTRB(rect.left * scale, rect.top * scale, rect.right * scale, rect.bottom * scale));
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
+  void dispose() {
+    _terminal.removeListener(_scheduleImeRect);
+    _session.removeListener(_focusWhenConnected);
+    _session.viewed = false;
+    _controller.dispose();
+    _scroll.dispose();
+    if (widget.focusNode == null) _focus.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final keys = HardwareKeyboard.instance;
+    if (event is KeyDownEvent && keys.isControlPressed && keys.isShiftPressed && !keys.isAltPressed) {
+      if (event.logicalKey == LogicalKeyboardKey.keyF) {
+        setState(() => _searching = true);
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.keyC) {
+        _copy();
+        return KeyEventResult.handled;
+      }
+    }
+    // xterm2 copies on Ctrl+C while text is selected; docs/UI.md §6 always passes it to the shell.
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyC &&
+        keys.isControlPressed &&
+        !keys.isShiftPressed &&
+        !keys.isAltPressed) {
+      _controller.clearSelection();
+    }
+    return widget.onKeyEvent?.call(node, event) ?? KeyEventResult.ignored;
+  }
+
+  String? get _selectedText {
+    final range = _controller.selection;
+    return range == null ? null : _terminal.buffer.getText(range);
+  }
+
+  Future<void> _copy() async {
+    final text = _selectedText;
+    if (text != null && text.isNotEmpty) await Clipboard.setData(ClipboardData(text: text));
+  }
+
+  Future<void> _paste() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    if (text == null || text.isEmpty || !mounted) return;
+    if (text.contains('\n') && ref.read(settingsProvider).get(SettingKeys.confirmPaste) && !await _confirmPaste(text)) {
+      return;
+    }
+    _terminal.paste(text);
+  }
+
+  Future<bool> _confirmPaste(String text) async {
+    final l = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: SizedBox(
+          width: 520,
+          height: 240,
+          child: SingleChildScrollView(child: SelectableText(text, style: const TextStyle(fontFamily: 'Consolas'))),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+          FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: Text(l.paste)),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  void _selectAll() {
+    final buffer = _terminal.buffer;
+    _controller.setSelection(
+      buffer.createAnchorFromOffset(const CellOffset(0, 0)),
+      buffer.createAnchorFromOffset(CellOffset(_terminal.viewWidth, buffer.height - 1)),
+    );
+  }
+
+  /// The http(s) link under [cell], joining soft-wrapped rows so a long link is found whole.
+  String? _linkAt(CellOffset cell) {
+    final lines = _terminal.buffer.lines;
+    if (cell.y < 0 || cell.y >= lines.length) return null;
+    var first = cell.y, last = cell.y;
+    while (first > 0 && lines[first].isWrapped) {
+      first--;
+    }
+    while (last + 1 < lines.length && lines[last + 1].isWrapped) {
+      last++;
+    }
+    final text = StringBuffer();
+    int? index;
+    for (var y = first; y <= last; y++) {
+      final line = lines[y];
+      for (var x = 0; x < line.length; x++) {
+        if (y == cell.y && x == cell.x) index = text.length;
+        if (line.getWidth(x) == 0) continue;
+        final cp = line.getCodePoint(x);
+        text.write(String.fromCharCode(cp == 0 ? 0x20 : cp));
+      }
+    }
+    return index == null ? null : linkAt(text.toString(), index);
+  }
+
+  void _onTapUp(TapUpDetails _, CellOffset cell) {
+    if (!HardwareKeyboard.instance.isControlPressed && !HardwareKeyboard.instance.isMetaPressed) return;
+    final link = _linkAt(cell);
+    if (link != null) openExternal(link);
+  }
+
+  Future<void> _onSecondaryTapUp(TapUpDetails details, CellOffset cell) async {
+    if (ref.read(settingsProvider).get(SettingKeys.rightClick) == RightClick.paste) return _paste();
+    final l = AppLocalizations.of(context);
+    final link = _linkAt(cell);
+    final hasSelection = _selectedText?.isNotEmpty ?? false;
+    PopupMenuItem<VoidCallback> item(String label, IconData icon, VoidCallback run, {bool enabled = true}) =>
+        PopupMenuItem(
+          value: run,
+          enabled: enabled,
+          height: 36,
+          child: Row(children: [Icon(icon, size: 16), const SizedBox(width: Space.md), Text(label)]),
+        );
+    final p = details.globalPosition;
+    final run = await showMenu<VoidCallback>(
+      context: context,
+      position: RelativeRect.fromLTRB(p.dx, p.dy, p.dx, p.dy),
+      items: [
+        if (link != null) ...[
+          item(l.openLink, Icons.open_in_new, () => openExternal(link)),
+          item(l.copyLink, Icons.link, () => Clipboard.setData(ClipboardData(text: link))),
+          const PopupMenuDivider(),
+        ],
+        item(l.copy, Icons.copy_outlined, _copy, enabled: hasSelection),
+        item(l.paste, Icons.content_paste_outlined, _paste),
+        item(l.selectAll, Icons.select_all, _selectAll),
+        item(l.find, Icons.search, () => setState(() => _searching = true)),
+        item(l.clearScreen, Icons.clear_all, _terminal.clear),
+        if (widget.actions.isNotEmpty) const PopupMenuDivider(),
+        for (final a in widget.actions) item(a.label, a.icon, a.run),
+      ],
+    );
+    run?.call();
+  }
+
+  void _closeSearch() {
+    setState(() => _searching = false);
+    _controller.clearSearchHighlights();
+    _focus.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final settings = ref.watch(settingsProvider);
+    final copyOnSelect = settings.get(SettingKeys.copyOnSelect);
+    return ListenableBuilder(
+      listenable: _session,
+      builder: (context, _) => Stack(children: [
+        Positioned.fill(
+          child: Listener(
+            onPointerUp: copyOnSelect ? (_) => _copy() : null,
+            child: TerminalView(
+              _terminal,
+              key: _view,
+              focusNode: _focus,
+              controller: _controller,
+              scrollController: _scroll,
+              onKeyEvent: _onKey,
+              padding: const EdgeInsets.all(Space.sm),
+              theme: _terminalTheme(TerminalPalette.of(Theme.of(context))),
+              cursorType: switch (settings.get(SettingKeys.cursorShape)) {
+                CursorShape.block => TerminalCursorType.block,
+                CursorShape.underline => TerminalCursorType.underline,
+                CursorShape.bar => TerminalCursorType.verticalBar,
+              },
+              onPaste: _paste,
+              onTapUp: _onTapUp,
+              onSecondaryTapUp: _onSecondaryTapUp,
+              textStyle: TerminalStyle(
+                fontSize: settings.fontSize,
+                fontFamily: 'Cascadia Mono',
+                fontFamilyFallback: const [
+                  'Consolas', 'Menlo', 'DejaVu Sans Mono', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC',
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (_searching)
+          Positioned(
+            top: Space.sm,
+            right: Space.lg,
+            child: _SearchBar(
+              terminal: _terminal,
+              controller: _controller,
+              reveal: _reveal,
+              onClose: _closeSearch,
+            ),
+          ),
+        if (_session.status != SessionStatus.connected)
+          Center(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Space.lg),
+                child: switch (_session) {
+                  TerminalSession(status: SessionStatus.connecting) => Row(mainAxisSize: MainAxisSize.min, children: [
+                      const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(width: Space.md),
+                      Text(l.connecting),
+                    ]),
+                  TerminalSession(reconnectIn: final n?) => Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_message(l, _session)),
+                      const SizedBox(height: Space.sm),
+                      Text(l.reconnectingIn(n)),
+                      const SizedBox(height: Space.md),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        TextButton(onPressed: _session.stopReconnect, child: Text(l.stop)),
+                        const SizedBox(width: Space.sm),
+                        FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
+                      ]),
+                    ]),
+                  _ => Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_session.status == SessionStatus.idle ? _session.host.target : _message(l, _session)),
+                      const SizedBox(height: Space.md),
+                      FilledButton(
+                        autofocus: true,
+                        onPressed: _connect,
+                        child: Text(_session.status == SessionStatus.idle ? l.connect : l.retry),
+                      ),
+                    ]),
+                },
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  /// Scrolls so buffer row [y] sits in the middle of the view.
+  void _reveal(int y) {
+    final view = _view.currentState;
+    if (view == null || !_scroll.hasClients) return;
+    final line = view.renderTerminal.lineHeight;
+    final position = _scroll.position;
+    final target = y * line - position.viewportDimension / 2 + line / 2;
+    _scroll.jumpTo(target.clamp(position.minScrollExtent, position.maxScrollExtent));
+  }
+
+  String _message(AppLocalizations l, TerminalSession s) => switch (s.error?.kind) {
+        null => l.disconnected,
+        ConnectFailure.network => l.errConnect(s.error!.detail),
+        ConnectFailure.auth => l.errAuth,
+        ConnectFailure.hostKeyRejected => l.errHostKeyRejected,
+        ConnectFailure.keyFile => l.errKeyFile(s.error!.detail),
+        ConnectFailure.cancelled => l.errCancelled,
+      };
+}

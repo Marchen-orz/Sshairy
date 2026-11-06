@@ -208,4 +208,142 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get newConnection => '新建连接';
+
+  @override
+  String get appearance => '外观';
+
+  @override
+  String get terminal => '终端';
+
+  @override
+  String get connection => '连接';
+
+  @override
+  String get dataSecurity => '数据与安全';
+
+  @override
+  String get about => '关于';
+
+  @override
+  String get cursorShape => '光标';
+
+  @override
+  String get cursorBlock => '方块';
+
+  @override
+  String get cursorUnderline => '下划线';
+
+  @override
+  String get cursorBar => '竖线';
+
+  @override
+  String get scrollback => '回滚行数';
+
+  @override
+  String get copyOnSelect => '选中即复制';
+
+  @override
+  String get rightClick => '右键';
+
+  @override
+  String get rightClickMenu => '菜单';
+
+  @override
+  String get confirmPaste => '多行粘贴前确认';
+
+  @override
+  String get connectTimeout => '连接超时';
+
+  @override
+  String get keepAlive => '保活间隔';
+
+  @override
+  String get idleTtl => '空闲连接保留';
+
+  @override
+  String get autoReconnect => '自动重连';
+
+  @override
+  String get off => '关闭';
+
+  @override
+  String seconds(int n) {
+    return '$n 秒';
+  }
+
+  @override
+  String get appliesNextConnection => '新连接生效';
+
+  @override
+  String get appliesNewSessions => '新会话生效';
+
+  @override
+  String get trustedKeys => '已信任的主机密钥';
+
+  @override
+  String get none => '无';
+
+  @override
+  String get remove => '移除';
+
+  @override
+  String get version => '版本';
+
+  @override
+  String get dataDir => '数据目录';
+
+  @override
+  String get open => '打开';
+
+  @override
+  String get find => '查找';
+
+  @override
+  String matchCount(int current, int total) {
+    return '$current/$total';
+  }
+
+  @override
+  String get noResults => '无结果';
+
+  @override
+  String get previous => '上一个';
+
+  @override
+  String get next => '下一个';
+
+  @override
+  String get caseSensitive => '区分大小写';
+
+  @override
+  String get regex => '正则表达式';
+
+  @override
+  String get copy => '复制';
+
+  @override
+  String get selectAll => '全选';
+
+  @override
+  String get clearScreen => '清屏';
+
+  @override
+  String get openLink => '打开链接';
+
+  @override
+  String get copyLink => '复制链接';
+
+  @override
+  String get rename => '重命名';
+
+  @override
+  String get duplicate => '复制标签';
+
+  @override
+  String reconnectingIn(int n) {
+    return '$n 秒后重连';
+  }
+
+  @override
+  String get stop => '停止';
 }

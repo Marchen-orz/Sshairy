@@ -81,4 +81,32 @@ void main() {
     final sessions = second.read(terminalSessionsProvider);
     expect(state.tabs.single.layout.leaves.map((l) => sessions[l.session]!.host.label), ['two', 'two']);
   });
+
+  test('a renamed tab keeps its name across a restart; a blank name goes back to the host', () async {
+    final first = container();
+    final host = first.read(hostsProvider).firstWhere((h) => h.label == 'one');
+    final ws = first.read(workspaceProvider.notifier);
+    ws.openHost(host);
+    final id = first.read(workspaceProvider).tabs.single.id;
+    ws.rename(id, '  prod  ');
+    final copy = ws.duplicate(id);
+    expect(copy, isNotNull);
+    final tabs = first.read(workspaceProvider).tabs;
+    expect(tabs.map((t) => t.title), ['prod', null]);
+    expect(first.read(workspaceProvider).active, copy);
+    final sessions = first.read(terminalSessionsProvider);
+    expect(sessions[tabs[1].layout.focusedLeaf.session]!.host.id, host.id);
+    await ws.saved;
+    first.dispose();
+
+    final second = container();
+    addTearDown(second.dispose);
+    final restored = second.read(workspaceProvider).tabs;
+    expect(restored.first.title, 'prod');
+    final ws2 = second.read(workspaceProvider.notifier);
+    addTearDown(() => ws2.saved);
+    ws2.rename(restored.first.id, ' ');
+    expect(second.read(workspaceProvider).tabs.first.title, isNull);
+    await Future<void>.delayed(Duration.zero);
+  });
 }

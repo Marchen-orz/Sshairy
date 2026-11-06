@@ -66,6 +66,9 @@ class Args {
 
   final Map<String, Object?> _map;
 
+  /// For handlers that validate the whole object themselves.
+  Map<String, Object?> get raw => Map.unmodifiable(_map);
+
   bool has(String key) => _map.containsKey(key);
 
   T require<T>(String key) {

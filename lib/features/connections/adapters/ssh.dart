@@ -84,10 +84,13 @@ class _SshTransport implements Transport {
 /// Dials and authenticates SSH transports for [ConnectionManager]. The host key is checked by [HostTrustService]
 /// before any credential is sent.
 class SshDialer {
-  SshDialer(this._trust, this._secrets);
+  SshDialer(this._trust, this._secrets, this._options);
 
   final HostTrustService _trust;
   final SecretStore _secrets;
+
+  /// Read at each dial, so a changed setting applies to the next connection.
+  final ({Duration timeout, Duration? keepAlive}) Function() _options;
 
   Future<Transport> dial(Host host, ConnectPrompts prompts, CancellationToken cancel) async {
     final remember = <String, Secret>{};
@@ -109,9 +112,10 @@ class SshDialer {
       return a.value.reveal();
     }
 
+    final options = _options();
     final SSHSocket socket;
     try {
-      socket = await SSHSocket.connect(host.address, host.port, timeout: const Duration(seconds: 20));
+      socket = await SSHSocket.connect(host.address, host.port, timeout: options.timeout);
     } on Object catch (e) {
       throw ConnectError(ConnectFailure.network, '$e');
     }
@@ -123,7 +127,7 @@ class SshDialer {
       socket,
       username: host.username,
       identities: identities,
-      keepAliveInterval: const Duration(seconds: 30),
+      keepAliveInterval: options.keepAlive,
       onVerifyHostKey: (type, fp) async {
         final ok = await _trust.verify(host.address, host.port, type, utf8.decode(fp), prompts);
         rejected = !ok;

@@ -8,10 +8,15 @@ import '../../terminal/api.dart';
 import '../domain/layout.dart';
 
 class WorkspaceTab {
-  const WorkspaceTab(this.id, this.layout);
+  const WorkspaceTab(this.id, this.layout, {this.title});
 
   final TabId id;
   final Layout layout;
+
+  /// Set by the user; null shows the host's name.
+  final String? title;
+
+  WorkspaceTab withLayout(Layout layout) => WorkspaceTab(id, layout, title: title);
 }
 
 class WorkspaceState {
@@ -53,6 +58,25 @@ class Workspace extends Notifier<WorkspaceState> {
     final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
     _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));
     return tab.id;
+  }
+
+  /// A new tab with a fresh shell on the same host as [id]'s focused pane; the running process is not copied.
+  TabId? duplicate(TabId id) {
+    final tab = _tab(id);
+    final s = tab == null ? null : session(tab.layout.focusedLeaf.session);
+    return s == null ? null : openHost(s.host);
+  }
+
+  /// An empty or blank [title] goes back to the host's name.
+  void rename(TabId id, String? title) {
+    final t = title?.trim();
+    _set(WorkspaceState(
+      tabs: [
+        for (final tab in state.tabs)
+          tab.id == id ? WorkspaceTab(id, tab.layout, title: t == null || t.isEmpty ? null : t) : tab,
+      ],
+      active: state.active,
+    ));
   }
 
   void showVault() => _set(WorkspaceState(tabs: state.tabs));
@@ -139,7 +163,7 @@ class Workspace extends Notifier<WorkspaceState> {
   WorkspaceTab? _tab(TabId id) => state.tabs.where((t) => t.id == id).firstOrNull;
 
   void _replace(TabId id, Layout layout) => _set(WorkspaceState(
-        tabs: [for (final t in state.tabs) t.id == id ? WorkspaceTab(id, layout) : t],
+        tabs: [for (final t in state.tabs) t.id == id ? t.withLayout(layout) : t],
         active: state.active,
       ));
 
@@ -162,6 +186,7 @@ class Workspace extends Notifier<WorkspaceState> {
           {
             'layout': t.layout.toJson(),
             'hosts': {for (final l in t.layout.leaves) l.session.value: sessions[l.session]!.host.id.value},
+            if (t.title != null) 'title': t.title,
           },
       ],
       if (active >= 0) 'active': active,
@@ -189,7 +214,7 @@ class Workspace extends Notifier<WorkspaceState> {
           pending[id] = host!;
           restored = _rebind(restored, old, id);
         }
-        tabs.add(WorkspaceTab(TabId(newId()), restored));
+        tabs.add(WorkspaceTab(TabId(newId()), restored, title: t['title'] as String?));
         if (json?['active'] == i) active = tabs.last.id;
       } on Object {
         continue;
