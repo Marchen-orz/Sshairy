@@ -84,11 +84,16 @@ class TerminalPane extends StatefulWidget {
 class _TerminalPaneState extends State<TerminalPane> {
   final _focus = FocusNode();
   final _controller = TerminalController();
+  final _view = GlobalKey<TerminalViewState>();
+  Rect? _imeRect;
+  var _imeRectScheduled = false;
 
   @override
   void initState() {
     super.initState();
     widget.session.addListener(_focusWhenConnected);
+    widget.session._terminal.addListener(_scheduleImeRect);
+    _focus.addListener(_scheduleImeRect);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _connect();
     });
@@ -97,6 +102,7 @@ class _TerminalPaneState extends State<TerminalPane> {
   @override
   void didUpdateWidget(TerminalPane old) {
     super.didUpdateWidget(old);
+    _scheduleImeRect();
     if (widget.active && !old.active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.active) _focus.requestFocus();
@@ -110,8 +116,31 @@ class _TerminalPaneState extends State<TerminalPane> {
     if (widget.active && widget.session.status == SessionStatus.connected) _focus.requestFocus();
   }
 
+  /// xterm2 never sends the composing rect, so Windows puts the IME candidate window at the window corner.
+  /// Its editable transform is the identity, so the cursor's global rect is what the engine expects.
+  void _scheduleImeRect() {
+    if (_imeRectScheduled) return;
+    _imeRectScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _imeRectScheduled = false;
+      final view = _view.currentState;
+      if (!mounted || view == null || !_focus.hasFocus) return;
+      final rect = view.globalCursorRect;
+      if (rect == _imeRect) return;
+      _imeRect = rect;
+      SystemChannels.textInput.invokeMethod<void>('TextInput.setMarkedTextRect', {
+        'x': rect.left,
+        'y': rect.top,
+        'width': rect.width,
+        'height': rect.height,
+      });
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
   @override
   void dispose() {
+    widget.session._terminal.removeListener(_scheduleImeRect);
     widget.session.removeListener(_focusWhenConnected);
     _controller.dispose();
     _focus.dispose();
@@ -167,6 +196,7 @@ class _TerminalPaneState extends State<TerminalPane> {
         Positioned.fill(
           child: TerminalView(
             session._terminal,
+            key: _view,
             focusNode: _focus,
             controller: _controller,
             onKeyEvent: _onKey,
