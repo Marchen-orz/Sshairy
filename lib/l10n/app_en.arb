@@ -54,5 +54,7 @@
   "paste": "Paste",
   "noMatches": "No matching hosts",
   "more": "More",
+  "renderer": "Renderer",
+  "restartToApply": "Takes effect after restart",
   "newConnection": "New connection"
 }

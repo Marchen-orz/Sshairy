@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:sshairy/features/credentials/api.dart';
+import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/terminal/adapters/ime_caret.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/main.dart';
@@ -51,7 +52,10 @@ extension on WidgetTester {
       key: boundary,
       child: ProviderScope(
         key: UniqueKey(),
-        overrides: [dataDirProvider.overrideWithValue(dir.path)],
+        overrides: [
+          dataDirProvider.overrideWithValue(dir.path),
+          runningRendererProvider.overrideWithValue(Renderer.skia),
+        ],
         child: const SshairyApp(),
       ),
     ));
@@ -343,6 +347,12 @@ void main() {
     await t.tapAndPump(find.text('Dark'));
     expect(Theme.of(t.element(find.text('Theme'))).brightness, Brightness.dark);
     await t.shot('settings-dark');
+    await t.tapAndPump(find.text('Impeller'));
+    expect(find.text('Takes effect after restart'), findsOneWidget);
+    await t.shot('settings-renderer');
+    await t.tapAndPump(find.text('Skia'));
+    expect(find.text('Takes effect after restart'), findsNothing);
+    await t.tapAndPump(find.text('Impeller'));
     await t.tapAndPump(find.text('中文'));
     expect(find.text('主题'), findsOneWidget);
     await t.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -353,5 +363,6 @@ void main() {
     await t.until('settings saved', () => file.readAsStringSync().contains('"zh"'));
     final saved = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
     expect(saved['themeMode'], 'dark');
+    expect(saved['renderer'], 'impeller');
   });
 }

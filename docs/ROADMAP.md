@@ -49,10 +49,10 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 实验 | 结果 | 结论 |
 |---|---|---|
 | E-03 背压 | 暂停读取后服务器停在 3136 KiB，恢复后 28 MiB 收全（`tool/m0_probe.dart`） | 通过；dartssh2 可用，应用层流控留给 T-03 |
-| E-04 中文输入法 | 未开始 | 待作者用百度输入法亲测 |
+| E-04 中文输入法 | 候选框跟随光标：作者用百度输入法确认正常（1944056），集成测试检查 IME 位置 | 选词、退格、标点等其余项未单独确认 |
 | E-08 主机密钥 | 回调延迟 3 秒确认正常，rekey 期间不断流；拒绝后未发送认证数据，库报 `SSHAuthAbortError`；指纹与 OpenSSH 一致。应用内拒绝后不弹密码框、不写信任记录，密钥变化时不提供“仅本次” | 通过 |
 | E-05 多会话内存 | 未开始 | |
-| E-12 启动与帧耗时 | 未开始 | |
+| E-12 启动与帧耗时 | 空闲内存已测（TESTING §6）：Impeller 下 240–300 MB，大头是渲染缓冲 | 改为默认 Skia（ADR-11），Release 空闲约 90–140 MB；启动和帧耗时未测 |
 | E-01、E-02 顺带检查 | 未开始 | |
 
 ## M1 SSH 可用版
@@ -150,3 +150,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-05 | Claude Opus 5.5 | 按用户意见收窄 M0（ADR-09）：E-09、E-10、E-11 移到 M1 开始时，E-06、E-07 移到 M2 开始时，E-01、E-02 改为顺带检查 | 同上 |
 | 2026-11-06 | Claude Opus 5.5 | 按用户决定只在真实环境测试（ADR-10）：TESTING 重写，取消 Docker、fixture、CI 矩阵和三端门槛 | 服务器按 TESTING §2 使用，需要连接时向用户要凭证 |
 | 2026-11-06 | Claude Opus 5.5 | 第一版可运行：主机库、标签工作区、设置、i18n、单元测试和真实服务器集成测试；E-03、E-08 通过 | 先看“第一版的简化”；集成测试的用法在 `integration_test/app_test.dart` 开头，凭据只走环境变量；E-04 等作者结果 |
+| 2026-11-06 | Claude Opus 5.5 | 查明内存大头是 Impeller 的渲染缓冲；Windows 默认 Skia，设置里可切 Impeller（ADR-11），runner 启动前读 settings.json | 多会话内存（E-05、P-01）仍未测；升级 Flutter 时复测两种渲染器 |

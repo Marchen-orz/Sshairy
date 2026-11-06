@@ -123,6 +123,7 @@ UI 可以通过 typed façade 调用同一用例；命令面板和 AI 经 Capabi
 | 状态与装配 | Riverpod | 使用实施时兼容稳定版；不叠加 get_it/另一套全局状态框架 |
 | SSH/SFTP | dartssh2 候选 | 验证多轮 KI、加密密钥、host verifier、rekey、取消、转发与背压 |
 | Terminal | xterm2 候选 | 验证中文 IME、重排、宽字符、搜索、buffer API、性能；不能等同 xterm.js |
+| 渲染（Windows） | Skia 默认，设置里可切 Impeller | runner 启动前读设置，重启生效；升级 Flutter 时复测两者内存，Skia 被移除时重新评估 ADR-11 |
 | 持久化 | 小配置 JSON、任务快照/有界日志 | 单写入者、版本迁移、备份恢复；规模增长后再评估 SQLite |
 | 密钥存储 | flutter_secure_storage 候选 | 在实际使用的平台上验证，禁止明文降级；见 SECURITY |
 | 窗口/文件 | window_manager、系统文件选择器候选 | 原生拖动、缩放、DPI、键盘可访问性先通过验证 |
@@ -145,5 +146,6 @@ UI 可以通过 typed façade 调用同一用例；命令面板和 AI 经 Capabi
 | ADR-08 | 源码复杂度不等于浪费 | 流控、原子发布、取消、迁移均有真实失败场景；只删未选功能 |
 | ADR-09 | M0 只验证终端方案 | 信任库的基础能力，只测集成风险和未证实行为；SFTP、凭据、窗口等到用到时验证，失败代价可控 |
 | ADR-10 | 只在作者真实环境测试 | 开源自用，不做兼容性保障；Windows + 作者的 Ubuntu 服务器为准，其他平台未验证不阻塞；不建 Docker、fixture、CI 矩阵。安全规则不因此放宽 |
+| ADR-11 | Windows 默认 Skia 渲染 | 空白 Flutter 应用开 Impeller 就占 244 MB，最大化后 430 MB，主要是核显共享内存里的渲染缓冲；Skia 下 97/131 MB（TESTING §6）。界面以文字和平面控件为主，Impeller 预编译着色器的好处用不上。保留切换，作为 Skia 出问题或被移除时的退路 |
 
 新增决策在此记录，详细实现只放对应专题，避免多个文件维护不同默认值。

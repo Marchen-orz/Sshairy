@@ -149,7 +149,7 @@ SettingDefinition 统一记录 key/type/default/range/effect/applyMode/agentExpo
 
 | 分区 | 首期设置与行为 |
 |---|---|
-| 外观 | system/light/dark、强调色、界面字号与缩放；即时预览，可取消 |
+| 外观 | system/light/dark、强调色、界面字号与缩放；即时预览，可取消。Windows 渲染器 Skia/Impeller（ADR-11），重启生效 |
 | 终端 | 字体/字号（初值 14 logical px）、光标、回滚、选中复制（默认关）、右键行为、粘贴确认 |
 | 连接 | 超时、保活、idle TTL、自动重连；标明下次连接生效 |
 | 文件 | 并发、隐藏文件、默认外部程序；覆盖默认询问；自动上传默认关 |

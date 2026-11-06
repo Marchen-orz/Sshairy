@@ -168,5 +168,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get more => '更多';
 
   @override
+  String get renderer => '渲染器';
+
+  @override
+  String get restartToApply => '重启后生效';
+
+  @override
   String get newConnection => '新建连接';
 }

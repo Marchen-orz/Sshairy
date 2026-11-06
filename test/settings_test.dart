@@ -5,15 +5,17 @@ import 'package:sshairy/foundation/secret.dart';
 
 void main() {
   test('Settings falls back on bad values', () {
-    final s = Settings.fromJson({'themeMode': 'neon', 'fontSize': 999, 'locale': 'fr'});
+    final s = Settings.fromJson({'themeMode': 'neon', 'fontSize': 999, 'locale': 'fr', 'renderer': 'vulkan'});
     expect(s.themeMode, ThemeMode.system);
     expect(s.fontSize, Settings.maxFontSize);
     expect(s.locale, isNull);
+    expect(s.renderer, Renderer.skia);
   });
 
   test('Settings survives a JSON round trip', () {
-    const s = Settings(themeMode: ThemeMode.dark, fontSize: 16, locale: 'zh');
+    const s = Settings(themeMode: ThemeMode.dark, fontSize: 16, locale: 'zh', renderer: Renderer.impeller);
     final copy = Settings.fromJson(s.toJson());
+    expect(copy.renderer, Renderer.impeller);
     expect(copy.themeMode, ThemeMode.dark);
     expect(copy.fontSize, 16);
     expect(copy.locale, 'zh');

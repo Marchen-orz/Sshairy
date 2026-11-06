@@ -169,5 +169,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get more => 'More';
 
   @override
+  String get renderer => 'Renderer';
+
+  @override
+  String get restartToApply => 'Takes effect after restart';
+
+  @override
   String get newConnection => 'New connection';
 }

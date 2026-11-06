@@ -9,12 +9,17 @@ import 'features/workspace/api.dart';
 import 'foundation/data_dir.dart';
 import 'l10n/app_localizations.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);
+  final renderer = Renderer.values.asNameMap()[
+      args.firstWhere((a) => a.startsWith('--renderer='), orElse: () => '').replaceFirst('--renderer=', '')];
   runApp(ProviderScope(
-    overrides: [dataDirProvider.overrideWithValue(dir.path)],
+    overrides: [
+      dataDirProvider.overrideWithValue(dir.path),
+      runningRendererProvider.overrideWithValue(renderer),
+    ],
     child: const SshairyApp(),
   ));
 }

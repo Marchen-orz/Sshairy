@@ -50,5 +50,7 @@
   "paste": "粘贴",
   "noMatches": "没有匹配的主机",
   "more": "更多",
+  "renderer": "渲染器",
+  "restartToApply": "重启后生效",
   "newConnection": "新建连接"
 }

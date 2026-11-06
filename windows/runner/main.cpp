@@ -1,9 +1,31 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <shlobj.h>
 #include <windows.h>
+
+#include <fstream>
+#include <regex>
+#include <sstream>
 
 #include "flutter_window.h"
 #include "utils.h"
+
+// Skia by default (docs/DESIGN.md ADR-11). The engine takes the renderer only at startup, so this reads
+// the settings file the app writes. The path is what path_provider derives from Runner.rc
+// (CompanyName\ProductName under the roaming app data folder).
+static bool UseImpeller() {
+  wchar_t *app_data = nullptr;
+  if (FAILED(::SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &app_data))) {
+    ::CoTaskMemFree(app_data);
+    return false;
+  }
+  std::wstring path = std::wstring(app_data) + L"\\dev.sshairy\\sshairy\\settings.json";
+  ::CoTaskMemFree(app_data);
+  std::ifstream file(path);
+  std::stringstream text;
+  text << file.rdbuf();
+  return std::regex_search(text.str(), std::regex(R"("renderer"\s*:\s*"impeller")"));
+}
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -19,8 +41,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   flutter::DartProject project(L"data");
 
+  bool impeller = UseImpeller();
+  project.set_impeller_switch(impeller ? flutter::ImpellerSwitch::Enabled
+                                       : flutter::ImpellerSwitch::Disabled);
+
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
+  command_line_arguments.push_back(impeller ? "--renderer=impeller"
+                                            : "--renderer=skia");
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 

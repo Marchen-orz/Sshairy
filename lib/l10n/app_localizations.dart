@@ -398,6 +398,18 @@ abstract class AppLocalizations {
   /// **'More'**
   String get more;
 
+  /// No description provided for @renderer.
+  ///
+  /// In en, this message translates to:
+  /// **'Renderer'**
+  String get renderer;
+
+  /// No description provided for @restartToApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Takes effect after restart'**
+  String get restartToApply;
+
   /// No description provided for @newConnection.
   ///
   /// In en, this message translates to:

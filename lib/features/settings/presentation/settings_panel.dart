@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,6 +15,7 @@ class SettingsPanel extends ConsumerWidget {
     final l = AppLocalizations.of(context);
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
+    final running = ref.watch(runningRendererProvider);
     Widget field(String label, Widget child) => Padding(
           padding: const EdgeInsets.only(bottom: Space.xl),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -65,6 +68,25 @@ class SettingsPanel extends ConsumerWidget {
           SizedBox(width: Space.xxl, child: Text('${settings.fontSize.round()}', textAlign: TextAlign.end)),
         ]),
       ),
+      if (Platform.isWindows)
+        field(
+          l.renderer,
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SegmentedButton<Renderer>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: Renderer.skia, label: Text('Skia')),
+                ButtonSegment(value: Renderer.impeller, label: Text('Impeller')),
+              ],
+              selected: {settings.renderer},
+              onSelectionChanged: (s) => notifier.update(renderer: s.single),
+            ),
+            if (running != null && running != settings.renderer) ...[
+              const SizedBox(height: Space.sm),
+              Text(l.restartToApply, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ]),
+        ),
     ]);
   }
 }
