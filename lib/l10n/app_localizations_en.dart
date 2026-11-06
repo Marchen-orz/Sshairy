@@ -190,5 +190,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accentOrange => 'Orange';
 
   @override
+  String get commandPalette => 'Command palette';
+
+  @override
+  String get paletteHint => 'Hosts, sessions, actions';
+
+  @override
+  String get split => 'Split';
+
+  @override
+  String get splitRight => 'Split right';
+
+  @override
+  String get splitDown => 'Split down';
+
+  @override
+  String get closePane => 'Close pane';
+
+  @override
   String get newConnection => 'New connection';
 }

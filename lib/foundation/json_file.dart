@@ -21,6 +21,9 @@ class JsonFile {
     }
   }
 
+  /// Completes once every write issued so far has landed.
+  Future<void> get idle => _pending;
+
   Future<void> write(Map<String, dynamic> data) {
     final next = _pending.then((_) async {
       final tmp = File('$path.tmp');

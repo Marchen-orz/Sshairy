@@ -12,9 +12,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/settings/api.dart';
+import 'package:sshairy/features/workspace/api.dart';
 import 'package:sshairy/features/terminal/adapters/ime_caret.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/main.dart';
@@ -56,6 +58,7 @@ extension on WidgetTester {
         overrides: [
           dataDirProvider.overrideWithValue(dir.path),
           runningRendererProvider.overrideWithValue(Renderer.skia),
+          ...appOverrides(),
         ],
         child: const SshairyApp(),
       ),
@@ -122,6 +125,25 @@ extension on WidgetTester {
     await sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await pump();
   }
+
+  Future<void> palette(String query) async {
+    await sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await sendKeyEvent(LogicalKeyboardKey.keyP);
+    await sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await untilFound(find.byType(Dialog));
+    await enterText(find.descendant(of: find.byType(Dialog), matching: find.byType(TextField)), query);
+    await pump();
+    await testTextInput.receiveAction(TextInputAction.done);
+    await pump(const Duration(milliseconds: 300));
+  }
+
+  WorkspaceState get workspace =>
+      ProviderScope.containerOf(element(find.byType(WorkspacePage))).read(workspaceProvider);
+
+  List<Terminal> get visibleTerminals =>
+      [for (final v in widgetList<TerminalView>(find.byType(TerminalView).hitTestable())) v.terminal];
 
   Future<void> shot(String name) async {
     if (shots == null) return;
@@ -338,6 +360,60 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     expect(await secrets.read(ref), isNull);
+  });
+
+  testWidgets('workspace: palette, split panes, restore after restart', (t) async {
+    t.testTextInput.register();
+    final [user, host] = target.split('@');
+    await File('${dir.path}/hosts.json').writeAsString(jsonEncode({
+      'schemaVersion': 1,
+      'hosts': [
+        {'id': 'wshost', 'label': 'sshairy-ws', 'address': host, 'port': 22, 'username': user, 'auth': 'password'},
+      ],
+    }));
+    await t.startApp(dir);
+
+    await t.palette('sshairy-ws');
+    await t.untilFound(find.text('Unknown host'));
+    await t.tapAndPump(inDialog(find.text('Trust')));
+    await t.answerPassword(password);
+    await t.untilPrompt();
+
+    await t.palette('Split right');
+    await t.answerPassword(password);
+    await t.until('two panes', () => t.visibleTerminals.length == 2);
+    final [left, right] = t.visibleTerminals;
+    await t.until('right prompt', () => right.buffer.getText().trim().endsWith(r'$'));
+    expect(t.workspace.activeTab!.layout.focused, t.workspace.activeTab!.layout.leaves.last.pane);
+    right.textInput('echo right-\$((3*5))');
+    await t.sendKeyEvent(LogicalKeyboardKey.enter);
+    await t.until('right pane ran it', () => right.buffer.getText().contains('right-15'));
+    expect(left.buffer.getText(), isNot(contains('right-15')));
+    await t.shot('split');
+
+    await t.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await t.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await t.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await t.pump();
+    expect(t.workspace.activeTab!.layout.focused, t.workspace.activeTab!.layout.leaves.first.pane);
+    await t.closeTabByKeyboard();
+    await t.until('one pane left', () => t.visibleTerminals.length == 1);
+    expect(t.visibleTerminals.single, same(right));
+
+    // Saved hosts come back as tabs that wait for the user.
+    await t.until('workspace saved', () => File('${dir.path}/workspace.json').readAsStringSync().contains('wshost'));
+    await t.startApp(dir);
+    await t.untilFound(find.widgetWithText(FilledButton, 'Connect'));
+    expect(find.byType(AlertDialog), findsNothing, reason: 'a restored tab must not dial by itself');
+    await t.shot('restored');
+    await t.tapAndPump(find.widgetWithText(FilledButton, 'Connect'));
+    await t.answerPassword(password);
+    await t.untilPrompt();
+    await t.expectShellAlive(5);
+
+    await t.palette('Theme: Dark');
+    await t.until('dark theme', () => Theme.of(t.element(find.byType(WorkspacePage))).brightness == Brightness.dark);
+    await t.closeTabByKeyboard();
   });
 
   testWidgets('settings: theme, font size and language apply and persist', (t) async {

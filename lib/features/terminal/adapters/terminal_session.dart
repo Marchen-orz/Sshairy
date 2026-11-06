@@ -6,26 +6,33 @@ import 'package:xterm2/xterm.dart';
 
 import '../../../design/terminal_palette.dart';
 import '../../../design/theme.dart';
+import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import 'ime_caret.dart';
 
-enum SessionStatus { connecting, connected, failed, disconnected }
+/// [idle] has never connected; a restored tab waits there until the user connects.
+enum SessionStatus { idle, connecting, connected, failed, disconnected }
 
 /// Owns the shell and terminal model; panes only display it, so hiding a tab never closes the shell.
 class TerminalSession extends ChangeNotifier {
-  TerminalSession(this.host, this._connector);
+  TerminalSession(this.id, this.host, this._connector, {this.autoConnect = true});
 
+  final SessionId id;
   final Host host;
+
+  /// False for restored tabs: the first view shows a connect button instead of dialling (docs/MODULES.md §3).
+  final bool autoConnect;
   final Connector _connector;
   final _terminal = Terminal(maxLines: 2000);
-  SessionStatus status = SessionStatus.connecting;
+  SessionStatus status = SessionStatus.idle;
   ConnectError? error;
   SshShell? _shell;
   var _closed = false;
 
   Future<void> connect(ConnectPrompts prompts) async {
+    if (_closed || status == SessionStatus.connecting || status == SessionStatus.connected) return;
     status = SessionStatus.connecting;
     error = null;
     notifyListeners();
@@ -70,7 +77,7 @@ class TerminalSession extends ChangeNotifier {
 }
 
 class TerminalPane extends StatefulWidget {
-  const TerminalPane(this.session, {super.key, required this.fontSize, required this.active, this.onKeyEvent});
+  const TerminalPane(this.session, {super.key, required this.fontSize, required this.active, this.onKeyEvent, this.focusNode});
 
   final TerminalSession session;
   final double fontSize;
@@ -79,12 +86,15 @@ class TerminalPane extends StatefulWidget {
   /// Sees keys before the terminal does, so application shortcuts are not sent to the shell.
   final FocusOnKeyEventCallback? onKeyEvent;
 
+  /// Lets the owner move focus between panes; the pane makes its own when none is given.
+  final FocusNode? focusNode;
+
   @override
   State<TerminalPane> createState() => _TerminalPaneState();
 }
 
 class _TerminalPaneState extends State<TerminalPane> {
-  final _focus = FocusNode();
+  late final FocusNode _focus = widget.focusNode ?? FocusNode();
   final _controller = TerminalController();
   final _view = GlobalKey<TerminalViewState>();
   Rect? _imeRect;
@@ -96,9 +106,12 @@ class _TerminalPaneState extends State<TerminalPane> {
     widget.session.addListener(_focusWhenConnected);
     widget.session._terminal.addListener(_scheduleImeRect);
     _focus.addListener(_scheduleImeRect);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _connect();
-    });
+    // A pane can be rebuilt (moved into a split, a tab restored): only a session that never ran dials by itself.
+    if (widget.session.status == SessionStatus.idle && widget.session.autoConnect) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _connect();
+      });
+    }
   }
 
   @override
@@ -147,7 +160,7 @@ class _TerminalPaneState extends State<TerminalPane> {
     widget.session._terminal.removeListener(_scheduleImeRect);
     widget.session.removeListener(_focusWhenConnected);
     _controller.dispose();
-    _focus.dispose();
+    if (widget.focusNode == null) _focus.dispose();
     super.dispose();
   }
 
@@ -228,9 +241,13 @@ class _TerminalPaneState extends State<TerminalPane> {
                         Text(l.connecting),
                       ])
                     : Column(mainAxisSize: MainAxisSize.min, children: [
-                        Text(_message(l, session)),
+                        Text(session.status == SessionStatus.idle ? session.host.target : _message(l, session)),
                         const SizedBox(height: Space.md),
-                        FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
+                        FilledButton(
+                          autofocus: true,
+                          onPressed: _connect,
+                          child: Text(session.status == SessionStatus.idle ? l.connect : l.retry),
+                        ),
                       ]),
               ),
             ),

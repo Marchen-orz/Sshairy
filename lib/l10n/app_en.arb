@@ -61,5 +61,11 @@
   "accentGreen": "Green",
   "accentViolet": "Violet",
   "accentOrange": "Orange",
+  "commandPalette": "Command palette",
+  "paletteHint": "Hosts, sessions, actions",
+  "split": "Split",
+  "splitRight": "Split right",
+  "splitDown": "Split down",
+  "closePane": "Close pane",
   "newConnection": "New connection"
 }

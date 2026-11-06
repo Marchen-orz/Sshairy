@@ -1,3 +1,5 @@
+import '../../../foundation/ids.dart';
+
 enum AuthKind { password, key }
 
 /// Saved connection target. Secrets are never fields; they are looked up by [passwordRef]/[passphraseRef].
@@ -12,20 +14,21 @@ class Host {
     this.keyPath,
   });
 
-  final String id, label, address, username;
+  final HostId id;
+  final String label, address, username;
   final int port;
   final AuthKind auth;
   final String? keyPath;
 
   /// Quick-connect hosts are not saved, so nothing about them is remembered.
-  bool get transient => id.isEmpty;
+  bool get transient => id.value.isEmpty;
   String get title => label.isEmpty ? address : label;
   String get target => port == 22 ? '$username@$address' : '$username@$address:$port';
-  String get passwordRef => 'host/$id/password';
-  String get passphraseRef => 'host/$id/passphrase';
+  String get passwordRef => 'host/${id.value}/password';
+  String get passphraseRef => 'host/${id.value}/passphrase';
 
   factory Host.fromJson(Map<String, dynamic> j) => Host(
-        id: j['id'] as String,
+        id: HostId(j['id'] as String),
         label: j['label'] as String? ?? '',
         address: j['address'] as String,
         port: j['port'] as int? ?? 22,
@@ -35,7 +38,7 @@ class Host {
       );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
+        'id': id.value,
         'label': label,
         'address': address,
         'port': port,
@@ -67,5 +70,5 @@ Host? parseQuickConnect(String input) {
   port ??= 22;
   if (port < 1 || port > 65535) return null;
   final address = m[2]!.startsWith('[') ? m[2]!.substring(1, m[2]!.length - 1) : m[2]!;
-  return Host(id: '', label: '', address: address, port: port, username: m[1]!);
+  return Host(id: const HostId(''), label: '', address: address, port: port, username: m[1]!);
 }

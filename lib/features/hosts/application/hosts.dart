@@ -1,8 +1,8 @@
-import 'dart:math';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/data_dir.dart';
+import '../../../foundation/ids.dart' as ids;
+import '../../../foundation/ids.dart' show HostId;
 import '../../../foundation/json_file.dart';
 import '../../credentials/api.dart';
 import '../domain/host.dart';
@@ -18,7 +18,9 @@ class HostsNotifier extends Notifier<List<Host>> {
     return [for (final j in list) Host.fromJson(j as Map<String, dynamic>)];
   }
 
-  static String newId() => List.generate(12, (_) => Random.secure().nextInt(36).toRadixString(36)).join();
+  static HostId newId() => HostId(ids.newId());
+
+  Host? byId(HostId id) => state.where((h) => h.id == id).firstOrNull;
 
   Future<void> save(Host host) {
     final i = state.indexWhere((h) => h.id == host.id);

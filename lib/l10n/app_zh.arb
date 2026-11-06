@@ -57,5 +57,11 @@
   "accentGreen": "绿",
   "accentViolet": "紫",
   "accentOrange": "橙",
+  "commandPalette": "命令面板",
+  "paletteHint": "主机、会话、操作",
+  "split": "分屏",
+  "splitRight": "向右分屏",
+  "splitDown": "向下分屏",
+  "closePane": "关闭窗格",
   "newConnection": "新建连接"
 }

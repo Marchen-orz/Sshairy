@@ -8,10 +8,10 @@
 |---|---|
 | 阶段 | M0 进行中；第一版可运行 |
 | 工具链 | Flutter 3.47.9 stable（c197ca5199）、Dart 3.13.7、Visual Studio C++ 工具 |
-| 已实际运行 | `integration_test/app_test.dart` 在 Windows 11 上连 Ubuntu 24.04 服务器，四个流程全过；Release 版能启动 |
+| 已实际运行 | `integration_test/app_test.dart` 在 Windows 11 上连 Ubuntu 24.04 服务器，五个流程全过；Release 版能启动 |
 | 下一步 | 作者亲测 E-04；补 E-05、E-12、E-01、E-02 和 P-01、P-02 |
 
-第一版已实际运行的范围（不代表对应 M1 项完成，所以下面没有勾选）：快速连接、主机增删改、主机密钥未知/拒绝/变化、密码输入与记住、错误密码、多标签、关闭标签不影响其他会话、断线后重连、Ctrl+C（含有选区时）、多行粘贴确认、主题/语言/字号。
+第一版已实际运行的范围（不代表对应 M1 项完成，所以下面没有勾选）：快速连接、主机增删改、主机密钥未知/拒绝/变化、密码输入与记住、错误密码、多标签、关闭标签不影响其他会话、断线后重连、Ctrl+C（含有选区时）、多行粘贴确认、主题/语言/字号/主题色、命令面板打开主机与执行动作、同主机分屏、Alt+方向键切换焦点、关闭分屏、重启后恢复为未连接标签。
 
 未测：私钥和加密私钥登录、keyboard-interactive、网络异常断线（只测了 `exit`）、窗口缩放时的远端尺寸更新、大量输出时的界面卡顿。
 
@@ -26,12 +26,12 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 
 作者决定先做能运行的第一版，基本功能可用后再补齐。下列偏离 DESIGN、MODULES、CLAUDE.md 的地方是有意的：
 
-- 不做 Capability 目录、CapabilityDispatcher 和命令面板，UI 直接调用 notifier；M1 加入能力目录时迁移。
+- Capability 目录只有 host.list/create/update/delete、session.open/close、workspace.split/focus、settings.get/patch；还没有 session.reconnect、revision、审批和审计。界面按钮仍直接调用 notifier，命令面板经 dispatcher。
 - 主机密钥校验在 `Connector` 内用 `TrustStore` 完成，还没有独立的 HostTrustService；SFTP、转发、跳板出现前要抽出来。
 - 每个 shell 独占一个 transport，没有连接池和租约；没有 foundation 的 Result、取消和脱敏日志。
 - 终端输出同步解析，应用层没有流控；E-03 只证明库支持背压，T-03 仍未做。
 - 主机只有名称、地址、端口、用户名和认证方式，没有分组和继承；密码在首次连接时输入并可选记住，表单里没有密码字段。
-- 使用系统原生标题栏，工作区只有标签，没有左侧导航和分屏。
+- 使用系统原生标题栏，没有左侧导航。分屏每个窗格新开一个 transport，等 ConnectionManager 后复用。
 
 ## M0 技术验证
 
@@ -151,3 +151,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | Claude Opus 5.5 | 按用户决定只在真实环境测试（ADR-10）：TESTING 重写，取消 Docker、fixture、CI 矩阵和三端门槛 | 服务器按 TESTING §2 使用，需要连接时向用户要凭证 |
 | 2026-11-06 | Claude Opus 5.5 | 第一版可运行：主机库、标签工作区、设置、i18n、单元测试和真实服务器集成测试；E-03、E-08 通过 | 先看“第一版的简化”；集成测试的用法在 `integration_test/app_test.dart` 开头，凭据只走环境变量；E-04 等作者结果 |
 | 2026-11-06 | Claude Opus 5.5 | 查明内存大头是 Impeller 的渲染缓冲；Windows 默认 Skia，设置里可切 Impeller（ADR-11），runner 启动前读 settings.json | 多会话内存（E-05、P-01）仍未测；升级 Flutter 时复测两种渲染器 |
+| 2026-11-06 | Claude Opus 5.5 | 蓝色默认主题色与可选色、终端配色随明暗、应用图标；foundation 的 ID/Result/取消；Capability 目录、dispatcher、命令面板（Ctrl+Shift+P）；分屏树、窗格焦点、布局与当前标签恢复 | 窗格焦点以布局为准，对话框还回的焦点会被送回；workspace.json 在 Provider 构建后才建会话（Riverpod 不允许构建中改别的 provider） |

@@ -189,5 +189,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get accentOrange => '橙';
 
   @override
+  String get commandPalette => '命令面板';
+
+  @override
+  String get paletteHint => '主机、会话、操作';
+
+  @override
+  String get split => '分屏';
+
+  @override
+  String get splitRight => '向右分屏';
+
+  @override
+  String get splitDown => '向下分屏';
+
+  @override
+  String get closePane => '关闭窗格';
+
+  @override
   String get newConnection => '新建连接';
 }

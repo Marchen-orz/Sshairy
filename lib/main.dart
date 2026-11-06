@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app/composition.dart';
 import 'design/theme.dart';
 import 'features/settings/api.dart';
 import 'features/workspace/api.dart';
@@ -19,6 +20,7 @@ Future<void> main(List<String> args) async {
     overrides: [
       dataDirProvider.overrideWithValue(dir.path),
       runningRendererProvider.overrideWithValue(renderer),
+      ...appOverrides(),
     ],
     child: const SshairyApp(),
   ));

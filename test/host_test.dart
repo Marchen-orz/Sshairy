@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/hosts/domain/host.dart';
+import 'package:sshairy/foundation/ids.dart';
 
 void main() {
   group('parseQuickConnect', () {
@@ -23,7 +24,7 @@ void main() {
   });
 
   test('Host survives a JSON round trip', () {
-    const host = Host(id: 'x', label: 'web', address: 'h', port: 2222, username: 'u', auth: AuthKind.key, keyPath: '~/k');
+    const host = Host(id: HostId('x'), label: 'web', address: 'h', port: 2222, username: 'u', auth: AuthKind.key, keyPath: '~/k');
     final copy = Host.fromJson(host.toJson());
     expect(copy.toJson(), host.toJson());
     expect(copy.passwordRef, 'host/x/password');

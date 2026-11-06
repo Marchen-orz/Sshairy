@@ -440,6 +440,42 @@ abstract class AppLocalizations {
   /// **'Orange'**
   String get accentOrange;
 
+  /// No description provided for @commandPalette.
+  ///
+  /// In en, this message translates to:
+  /// **'Command palette'**
+  String get commandPalette;
+
+  /// No description provided for @paletteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hosts, sessions, actions'**
+  String get paletteHint;
+
+  /// No description provided for @split.
+  ///
+  /// In en, this message translates to:
+  /// **'Split'**
+  String get split;
+
+  /// No description provided for @splitRight.
+  ///
+  /// In en, this message translates to:
+  /// **'Split right'**
+  String get splitRight;
+
+  /// No description provided for @splitDown.
+  ///
+  /// In en, this message translates to:
+  /// **'Split down'**
+  String get splitDown;
+
+  /// No description provided for @closePane.
+  ///
+  /// In en, this message translates to:
+  /// **'Close pane'**
+  String get closePane;
+
   /// No description provided for @newConnection.
   ///
   /// In en, this message translates to:
