@@ -34,7 +34,9 @@ v0.2。M0–M5 定义以 DESIGN 为准。标明的默认值是 sshairy 的初始
 
 M3 路由字段：`jumpHostId` 指向另一台已保存主机作跳板，链由各主机的跳板依次串起；`proxy`（SOCKS5 或 HTTP CONNECT 的地址、端口、用户名）只在该主机是链的第一跳时使用，口令在代理要求时询问，可记住在安全存储 `host/<id>/proxy`；`legacy` 只为这一台主机追加 SHA-1 密钥交换与主机密钥签名、CBC 加密和 hmac-sha1，不影响链上其他主机。
 
-SSH config 导入（M3）：读 `~/.ssh/config` 或指定文件，Include 最多 4 层、共 32 个文件，输入总量最多 1 MiB；相对 Include 路径以所选文件的目录为基准。只取 Host/HostName/User/Port/IdentityFile/ProxyJump，按 OpenSSH 首个匹配值生效；通配 Host 可提供默认值，但不成为主机。Match 区块不应用，其他关键字和不能对应的 ProxyJump 列入报告；需要 ProxyCommand 或未解析跳板的草稿不可导入，避免静默改成直连。先生成草稿：与已有主机同地址同用户的“已存在”默认不选；选择目标时连同必要的新跳板一起选择，确认后一次写入。ProxyJump 按别名、地址匹配导入草稿或已有主机；多跳需要不同上游时复制跳板配置为新草稿，不修改已有主机。
+SSH config 导入（M3）：读 `~/.ssh/config` 或指定文件，Include 最多 4 层、共 32 个文件，输入总量最多 1 MiB；相对 Include 路径以所选文件的目录为基准。只取 Host/HostName/User/Port/IdentityFile/ProxyJump，按 OpenSSH 首个匹配值生效；通配 Host 可提供默认值，但不成为主机。Match 区块不应用，其他关键字和不能对应的 ProxyJump 列入报告；需要 ProxyCommand 或未解析跳板的草稿不可导入，避免静默改成直连。先生成草稿：与已有主机同地址同用户且同路由的“已存在”默认不选；同端点但跳板链不同的不当作已存在，另立草稿；选择目标时连同必要的新跳板一起选择，确认后一次 revision 校验写入。ProxyJump 按别名、地址匹配导入草稿或已有主机；多跳需要不同上游时复制跳板配置为新草稿，不修改已有主机。
+
+当前实现（验证状态见 ROADMAP）：`hosts/domain/ssh_config.dart` 解析、`import_plan.dart` 出草稿、`adapters/ssh_config_files.dart` 做有界 Include 展开（file_selector 选文件）、`application/ssh_config_import.dart` 提供 pick/preview/commit，`presentation/ssh_config_import_panel.dart` 为主机库右侧抽屉，入口在主机库工具栏。IdentityFile 只在绝对路径或 `~` 展开后有效，相对路径按主目录解释，与密钥库无联动——导入的主机带 `keyPath`，密钥仍按现有流程导入。设计文档 `docs/SSH_CONFIG_IMPORT.md`。
 
 主机保存与导入共用结构校验；代理地址、类型或用户名变化时先删除旧代理口令，再提交新配置，避免将旧口令发送给新代理。
 
@@ -145,10 +147,11 @@ running → pausing → paused → preparing（M3 增量）
 - 本机和远端共用 `FileSystem` 接口（`lib/foundation/file_system.dart`）：远端由 `TransportLease.openFiles()` 开一个 SFTP channel，本机用 dart:io。路径按各自语法拼接，远端一律 POSIX。
 - 主机库旁固定的 SFTP 页是左右双栏，每栏可选本机或任一主机；终端标签可打开右侧文件面板（同一组件的单栏，跟随焦点 pane 的主机）。拖到另一栏、发送到另一侧、OS 拖入、选择文件上传都进同一队列。没有每主机书签；所有者/组取自 SFTP longname，没有就留空。
 - TransferManager 持有任务。每台主机的传输共用一个与浏览分开的 SFTP channel；全局并发取设置（默认 3），每主机 2；单文件 32 KiB 请求、最多 16 个在途。30s 没有进展判为停滞并失败。
-- 写到目标旁的隐藏文件 `.名称.随机.part`（排他创建），写完 stat 核对长度再发布。目标不存在时 rename；dartssh2 在服务器支持 posix-rename 时 rename 会覆盖，所以先确认目标不存在，两步之间有竞态窗口。替换只在服务器支持 `posix-rename@openssh.com` 时进行，发布前再 stat 目标，大小或修改时间变了就放弃；不支持时保留原文件并报错。本机替换用 File.rename。
+- 单文件暂停与续传（`docs/TRANSFER_RESUME.md`）：running → pausing → paused；暂停停读源、等写入收束后 stat `.part` 记稳定长度，只记 settled checkpoint。续传前重新 stat 源（类型/大小/修改时间变了报 sourceChanged），`.part` 必须是本任务 ID 派生的同目录文件且长度与 checkpoint 一致，否则 partInvalid；从偏移读源、只向已存在的 `.part` 追加，最后沿用原子发布与替换基线检查。取消、移除、从头重试先清理本任务拥有的 `.part`，清理失败保留记录并显示路径（leftoverPart）。暂停/中断任务保留目标锁，不占并发与 SSH 租约；正常退出时单文件停在 paused（重启后为 interrupted，可手动恢复），目录不暂停也不续传。SFTP 续传的哈希一致性等真实服务器验证见 ROADMAP F-04。
+- 写到目标旁的隐藏文件 `.名称.随机.part`（排他创建），写完 stat 核对长度再发布；可暂停的单文件改用 `.名称.任务ID.part`，重启后能再找到。目标不存在时 rename；dartssh2 在服务器支持 posix-rename 时 rename 会覆盖，所以先确认目标不存在，两步之间有竞态窗口。替换只在服务器支持 `posix-rename@openssh.com` 时进行，发布前再 stat 目标，大小或修改时间变了就放弃；不支持时保留原文件并报错。本机替换用 File.rename。
 - 冲突：跳过、保留两者（`名称 (1).ext`）、替换、取消；目录另有合并。“应用于全部”只作用于同一批次的同类冲突。目录扫描深度 32、条目 20000 上限，不跟随符号链接（跳过并计数）。
 - 删除目录逐项走 SFTP，确认框写明条目数；不拼 `rm -rf`。
-- transfers.json 只存白名单字段；重启时未完成的任务变为 interrupted，可从头重试；终态保留 200 个/30 天。
+- transfers.json 只存白名单字段；重启时未完成的任务变为 interrupted，带 settled checkpoint 的可恢复续传，其余可从头重试；终态保留 200 个/30 天，带 checkpoint 的记录不因清空或裁剪被悄悄丢弃。
 - 外部编辑：下载到数据目录 `edits/<id>/`，用系统默认程序打开，监视该目录（防抖 500 ms）。默认手动上传，可为单个编辑开自动上传。上传前比对下载时记下的远端大小与修改时间，不一致时让用户选覆盖、另存副本或取消。edits.json 记着未上传的稿，重启后还能上传。
 - 关窗经 ShutdownCoordinator：有进行中的传输或未上传的编辑时先询问。
 
@@ -164,9 +167,11 @@ running → pausing → paused → preparing（M3 增量）
 - 撤销远端监听超时应显示 stopFailed/状态未知；若必须断 transport，先说明关联会话影响，再执行用户选择。
 - 手动 stop 取消重连意图；自动重连沿用 connections 的有界策略。端口占用、权限不足、服务端拒绝转发分别提示。
 
-计划实现（尚未落地，当前只有领域模型）：规则存 forwards.json。运行中的规则持有一个 purpose 为 forward 的租约，与终端、SFTP 共用连接；本地与动态监听用 dart:io，远端监听用 tcpip-forward，停止时等服务器确认取消，确认不了显示为失败。绑定地址默认 127.0.0.1，填其他地址时表单和列表都标出“对外开放”。动态转发是只支持 CONNECT、无认证的 SOCKS5 服务器（域名、IPv4、IPv6）。autoStart 在应用启动时启动；autoReconnect 只在连接断开时按 1/2/4/8/16 s 重试 5 次，认证失败、主机密钥问题和手动停止不重试。
+已实现（代码与单元测试在位，未经真实 SSH 服务器与真实套接字验证）：规则存 forwards.json，当前没有 revision 字段。运行中的规则持有一个 purpose 为 forward 的租约，与终端、SFTP 共用连接，关闭终端不影响转发；本地与动态监听走 `ForwardRuntime`（dart:io 只在 `adapters/`），远端监听用 tcpip-forward，停止时等服务器确认取消，确认不了显示为 stopFailed。绑定地址默认 127.0.0.1，填其他地址时表单和列表都标出“对外开放”，保存前必须确认（已保存且地址未变的规则不再询问）。动态转发是只支持 CONNECT、无认证的 SOCKS5 服务器（域名、IPv4、IPv6）。`autoStart` 由 `Forwards.autoStart()` 在应用启动时调用一次；`autoReconnect` 只在连接断开时按 1/2/4/8/16 s 重试 5 次，手动停止、认证失败和主机密钥问题不重试。
 
-计划约束：每条规则最多接收 128 个并发连接（包括握手和拨号中的连接）；SOCKS5 握手及本机目标 TCP 拨号最多等待 15 s。错误发生在单个转发连接时只关闭该连接，规则继续监听并保留最近错误。停止确认失败时保留转发租约与失败状态，禁止直接重新启动或删除规则；只有确认解除监听或 SSH transport 已断开后才释放租约。
+约束：每条规则最多接收 128 个并发连接（包括握手和拨号中的连接），超出的直接关闭并记 limit；SOCKS5 握手及本机目标 TCP 拨号最多等待 15 s。错误发生在单个转发连接时只关闭该连接，规则继续监听并保留最近错误。停止确认失败时保留转发租约与失败状态，禁止直接重新启动、编辑或删除规则；只有确认解除监听或 SSH transport 已断开后才释放租约，断开后再次停止即可收尾。转发能力（forward.list/save/delete/start/stop）均不向 AI 开放（`agentExposed` 为 false）。
+
+待接线与待验证：工作区入口、命令面板条目、应用退出时的 `shutdown()`、启动时的 `autoStart()` 由主线接入；真实服务器上的 L/R/D 通路、端口冲突、断线重连与 UI 行为尚未验证。已运行的测试仅有 `test/forwarding_test.dart`（SOCKS5 解析、relay 半关闭与挂断、租约与状态生命周期、重连、128 上限、暴露确认与持久化）。
 
 验收：R-01 L/R/D 正反向通路；R-02 stop/重连/共享资源；R-03 loopback 与端口冲突。
 

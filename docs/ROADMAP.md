@@ -30,7 +30,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - ConnectionManager 在拨号前解析不可变的完整跳板链，池 key 包含每跳主机 ID、端点、用户名、认证方式、密钥引用、代理和算法策略；还没有凭据/信任 revision。停泊时长、连接超时和保活取自设置。没有脱敏日志。
 - 终端输出同步解析，应用层没有流控；E-03 只证明库支持背压，T-03 仍未做。
 - 主机有分组路径、标签、置顶和最近连接，没有 Group 对象、继承和 Identity；密码在首次连接时输入并可选记住，表单里没有密码字段。
-- 使用系统原生标题栏，没有左侧导航。
+- 左侧导航尚未完整实现；Windows 正按用户新要求改为自绘标题栏（ADR-12），详见 CORRECTION。
 
 ## M0 技术验证
 
@@ -63,8 +63,8 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] foundation：ID、Result、AppError、取消、脱敏日志
 - [ ] design：tokens、Light/Dark、基础组件、i18n（zh、en）
 - [ ] 窗口外壳与标签栏（E-11 结果决定标题栏方案）
-- [ ] 配置存储：单写队列、revision、迁移、备份（D-01）：单写队列、读回验证、快照（最近 10 份、5 分钟间隔、50 MiB）和损坏文件用快照恢复有单元测试（`test/json_file_test.dart`）；revision、迁移框架、恢复界面和多实例防护未做，见 SECURITY §4“当前实现”
-- [ ] ShutdownCoordinator：有传输或未上传的编辑时先确认（`app/shutdown.dart`），集成测试经 `handleRequestAppExit` 确认对话框和“取消”；点窗口关闭按钮是否走到这里未亲测
+- [ ] 配置存储：单写队列、revision、迁移、备份（D-01）：单写队列、读回验证、revision/expectedRevision、损坏与未来版本的类型化错误和写保护、快照（最近 10 份、5 分钟间隔、50 MiB）、损坏文件经校验快照恢复有单元测试（`test/json_file_test.dart`）；各配置文件的领域校验回调已接入，启动时读取失败显示保留原文件的修复页（`lib/app/configuration.dart`）。迁移框架、恢复界面和多实例防护未做，见 SECURITY §4“当前实现”
+- [ ] ShutdownCoordinator：有传输或未上传的编辑时先确认（`app/shutdown.dart`），集成测试经 `handleRequestAppExit` 确认对话框和“取消”；点窗口关闭按钮是否走到这里未亲测：活动转发也计入确认；停止或保存失败时提供重试/返回/仍要退出，不冒充已完成（`test/app_lifecycle_test.dart`）；取消退出后队列恢复接收新任务
 
 主机与凭据：
 - [ ] 主机、分组、身份、继承解析（H-01）
@@ -110,12 +110,13 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [x] 分屏树与焦点（W-01）：`test/layout_test.dart`
 - [x] 布局恢复（W-02 的 M3 部分）：workspace.json 只存布局、主机 ID 和标签名；重启后恢复为未连接，不自己拨号；`test/workspace_test.dart` 通过，服务器集成测试 `workspace: palette, split panes, restore after restart` 此前通过，之后的改动没有重跑
 - [ ] 跳板链、SOCKS5/HTTP 代理、legacy 按主机启用（C-01、C-04 的 M3 部分）：路由已实现；`integration_test/routes_test.dart` 在 Windows/Ubuntu 通过双跳（服务器自身 loopback）、每跳校验、共享跳板、direct-tcpip 和远端转发取消；循环/缺失/链上限/改跳板后不复用与 RSA 信任别名有单元测试。代理和 legacy 没有对应真实环境，未验证
-- [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）
+- [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）：L/R/D、SOCKS5、规则面板、暴露确认、退出收束和单元测试（`test/forwarding_test.dart`，模拟通道）已实现并接入工具栏与命令面板；真实服务器上的通路、端口冲突和界面行为未验证
+- [ ] Windows 无系统顶栏的自绘窗口（ADR-12）：原生保留缩放/DPI/Snap 语义，Flutter 绘制标签行与窗口按钮，关闭经统一退出协调；组件与命中区有单元测试（`test/desktop_window_test.dart`），原生 C++ 已编译通过；拖动、Snap、DPI 切换与真实 WM_CLOSE 取消未在运行中的窗口亲测；macOS/Linux 仍用系统外框
 - [x] 片段：搜索与增删改、持久化、插入/运行、命令面板入口；Windows 无连接界面集成通过，受控插入与 shell 生命周期用模拟通道验证，真实 SSH 片段发送未测
-- [ ] SSH config 导入：draft 预览与未支持项报告
+- [ ] SSH config 导入：draft 预览与未支持项报告：解析、计划（跳板依赖、已存在与冲突分类）和 revision 校验提交有单元测试（`test/ssh_config_test.dart`）；文件选择器、Include 展开和抽屉界面未在真实窗口运行
 - [x] known_hosts 导入：解析、哈希匹配（对照 `ssh-keygen -H` 的输出）、冲突不覆盖、串行落盘和预览对话框有单元/组件测试；文件选择器和真实窗口未运行
 - [ ] 密钥生成：Ed25519，ssh-keygen 能读出同样的公钥和指纹；登录未测
-- [ ] 暂停与断点续传（F-04）
+- [ ] 暂停与断点续传（F-04）：单文件暂停/续传、checkpoint 持久化与重启恢复、源与 `.part` 校验、取消/重试清理、目标锁有单元测试（`test/files_test.dart`，全部走本机文件系统）；传输面板的暂停/继续按钮和 `transfer.pause`/`transfer.resume` 能力已接线。真实服务器上的 SFTP 续传、哈希一致性与大文件暂停未验证
 - [ ] 10 GB 传输（P-03）
 - [x] README 写明已测环境和无保障声明
 - [ ] 确定 LICENSE；审计依赖、字体、图标许可
@@ -159,3 +160,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | 开发助手 | 片段搜索、增删改、串行持久化与命令面板入口；与剪贴板共用受控插入，运行/控制字符确认绑定原 shell。Windows 无连接 CRUD/重启恢复集成通过，79 项单元测试通过，flutter analyze 无问题，imports ok | 真实 SSH 片段发送未测；SSH config、known_hosts 导入与转发规则管理继续实施 |
 | 2026-11-06 | 开发助手 | Windows 本地打包（Release、ZIP、101 个依赖许可证清单、SHA256，已核对 ZIP 内容）；片段确认窗口随取消、断线、关闭而关闭；`tool/check_imports.dart` 增加 feature 循环依赖与 `package:sshairy/` 绕过检测 | 包未签名；许可证未定，不宣称 MIT。其他平台未打包 |
 | 2026-11-06 | 开发助手 | known_hosts 导入（预览、冲突报告、哈希名只匹配已保存主机）；HostTrustService 的信任、遗忘、导入改为串行并先落盘后发布。110 项单元测试通过，flutter analyze 无问题，imports ok | 文件选择器与窗口里的导入流程未实际运行；`@revoked` 只计数 |
+| 2026-11-06 | 开发助手 | 纠偏（capability 登记移到 app/、凭据 API 收窄、池键加 securityRevision、JsonFile 保护、统一退出、启动配置门）；SSH config 导入（解析、计划、提交，9 项单元测试）；转发规则面板；片段编辑改抽屉。F-04 单文件暂停/续传（checkpoint、恢复校验、清理、目标锁，`test/files_test.dart`）。200 项单元测试通过，analyze 与 imports 干净 | 无边框窗口（ADR-12）、新图标、冰蓝配色已实现但未在真实窗口亲测；暂停/续传未经真实服务器验证（SFTP 侧 `append` 已实现，本机 `FileMode.append` 修正过截断问题）；全部未提交 |
