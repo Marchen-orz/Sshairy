@@ -276,15 +276,15 @@ void main() {
     await t.run('exit');
     await t.untilFound(find.text('Disconnected'));
     await t.shot('disconnected');
+    // Leaving the shell only closes the channel; the connection is parked, so reconnecting needs no password.
     await t.tapAndPump(find.text('Reconnect'));
-    await t.answerPassword(password);
     await t.untilPrompt();
+    expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('Disconnected'), findsNothing);
     expect(t.terminal, same(term));
 
     await t.tapAndPump(find.text('Hosts'));
     await t.quickConnect();
-    await t.answerPassword(password);
     await t.until('second tab', () => !identical(t.terminal, term));
     final second = t.terminal;
     await t.untilPrompt();
@@ -380,8 +380,8 @@ void main() {
     await t.untilPrompt();
 
     await t.palette('Split right');
-    await t.answerPassword(password);
     await t.until('two panes', () => t.visibleTerminals.length == 2);
+    expect(find.byType(AlertDialog), findsNothing, reason: 'the split shares the first connection');
     final [left, right] = t.visibleTerminals;
     await t.until('right prompt', () => right.buffer.getText().trim().endsWith(r'$'));
     expect(t.workspace.activeTab!.layout.focused, t.workspace.activeTab!.layout.leaves.last.pane);

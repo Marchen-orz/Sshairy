@@ -17,18 +17,19 @@ enum SessionStatus { idle, connecting, connected, failed, disconnected }
 
 /// Owns the shell and terminal model; panes only display it, so hiding a tab never closes the shell.
 class TerminalSession extends ChangeNotifier {
-  TerminalSession(this.id, this.host, this._connector, {this.autoConnect = true});
+  TerminalSession(this.id, this.host, this._connections, {this.autoConnect = true});
 
   final SessionId id;
   final Host host;
 
   /// False for restored tabs: the first view shows a connect button instead of dialling (docs/MODULES.md §3).
   final bool autoConnect;
-  final Connector _connector;
+  final ConnectionManager _connections;
   final _terminal = Terminal(maxLines: 2000);
   SessionStatus status = SessionStatus.idle;
   ConnectError? error;
-  SshShell? _shell;
+  ShellChannel? _shell;
+  TransportLease? _lease;
   var _closed = false;
 
   Future<void> connect(ConnectPrompts prompts) async {
@@ -37,7 +38,12 @@ class TerminalSession extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final shell = await _connector.open(host, prompts, cols: _terminal.viewWidth, rows: _terminal.viewHeight);
+      final (lease, shell) = await _connections.open(
+        host,
+        prompts,
+        (lease) => lease.openShell(cols: _terminal.viewWidth, rows: _terminal.viewHeight),
+      );
+      _lease = lease;
       if (_closed) return shell.close();
       _shell = shell;
       _terminal.onOutput = (data) => shell.write(utf8.encode(data));
@@ -48,7 +54,7 @@ class TerminalSession extends ChangeNotifier {
         stream.cast<List<int>>().transform(const Utf8Decoder(allowMalformed: true)).listen(_terminal.write);
       }
       _set(SessionStatus.connected);
-      await shell.done.catchError((_) {});
+      await Future.any([shell.done, lease.done]).catchError((_) {});
       _set(SessionStatus.disconnected);
     } on ConnectError catch (e) {
       error = e;
@@ -59,7 +65,10 @@ class TerminalSession extends ChangeNotifier {
     } finally {
       _terminal.onOutput = null;
       _terminal.onResize = null;
+      _shell?.close();
       _shell = null;
+      _lease?.release();
+      _lease = null;
     }
   }
 
@@ -72,6 +81,7 @@ class TerminalSession extends ChangeNotifier {
   void close() {
     _closed = true;
     _shell?.close();
+    _lease?.release();
     dispose();
   }
 }

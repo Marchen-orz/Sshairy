@@ -27,11 +27,10 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 作者决定先做能运行的第一版，基本功能可用后再补齐。下列偏离 DESIGN、MODULES、CLAUDE.md 的地方是有意的：
 
 - Capability 目录只有 host.list/create/update/delete、session.open/close、workspace.split/focus、settings.get/patch；还没有 session.reconnect、revision、审批和审计。界面按钮仍直接调用 notifier，命令面板经 dispatcher。
-- 主机密钥校验在 `Connector` 内用 `TrustStore` 完成，还没有独立的 HostTrustService；SFTP、转发、跳板出现前要抽出来。
-- 每个 shell 独占一个 transport，没有连接池和租约；没有 foundation 的 Result、取消和脱敏日志。
+- ConnectionManager 的池 key 是主机 ID、端点、用户名、认证方式和密钥路径，还没有 ResolvedConnectionSpec 和凭据/信任 revision；停泊固定 60s，设置项未接上。没有脱敏日志。
 - 终端输出同步解析，应用层没有流控；E-03 只证明库支持背压，T-03 仍未做。
 - 主机只有名称、地址、端口、用户名和认证方式，没有分组和继承；密码在首次连接时输入并可选记住，表单里没有密码字段。
-- 使用系统原生标题栏，没有左侧导航。分屏每个窗格新开一个 transport，等 ConnectionManager 后复用。
+- 使用系统原生标题栏，没有左侧导航。
 
 ## M0 技术验证
 
@@ -75,9 +74,9 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] 密钥导入、引用与加密私钥（H-04）
 
 连接：
-- [ ] HostTrustService、trust 数据、确认对话框（C-01）
+- [ ] HostTrustService、trust 数据、确认对话框（C-01）：已独立为 HostTrustService，所有拨号经它校验
 - [ ] 认证状态机、多因子、取消（C-02）
-- [ ] ConnectionManager：池、合并拨号、租约、停泊（C-03）
+- [ ] ConnectionManager：池、合并拨号、租约、停泊（C-03）：分屏和断开后重连复用连接已在服务器上确认；60s 停泊和不同用户不复用只有单元测试
 - [ ] 保活、断线、手动与可选自动重连（C-04）
 
 终端与外壳：
@@ -108,7 +107,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 
 ## M3 桌面主力版
 
-- [ ] 分屏树与焦点（W-01）
+- [x] 分屏树与焦点（W-01）：`test/layout_test.dart`
 - [ ] 布局恢复（W-02 的 M3 部分）
 - [ ] 跳板链、SOCKS5/HTTP 代理、legacy 按主机启用（C-01、C-04 的 M3 部分）
 - [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）
@@ -152,3 +151,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | Claude Opus 5.5 | 第一版可运行：主机库、标签工作区、设置、i18n、单元测试和真实服务器集成测试；E-03、E-08 通过 | 先看“第一版的简化”；集成测试的用法在 `integration_test/app_test.dart` 开头，凭据只走环境变量；E-04 等作者结果 |
 | 2026-11-06 | Claude Opus 5.5 | 查明内存大头是 Impeller 的渲染缓冲；Windows 默认 Skia，设置里可切 Impeller（ADR-11），runner 启动前读 settings.json | 多会话内存（E-05、P-01）仍未测；升级 Flutter 时复测两种渲染器 |
 | 2026-11-06 | Claude Opus 5.5 | 蓝色默认主题色与可选色、终端配色随明暗、应用图标；foundation 的 ID/Result/取消；Capability 目录、dispatcher、命令面板（Ctrl+Shift+P）；分屏树、窗格焦点、布局与当前标签恢复 | 窗格焦点以布局为准，对话框还回的焦点会被送回；workspace.json 在 Provider 构建后才建会话（Riverpod 不允许构建中改别的 provider） |
+| 2026-11-06 | Claude Opus 5.5 | ConnectionManager（池、合并拨号、租约、停泊、复用失败重建一次）与 HostTrustService；终端经租约开 shell | 退出 shell 后 60s 内重连和同主机新标签不再要密码；集成测试已按此修改 |

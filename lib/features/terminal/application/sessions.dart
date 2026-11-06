@@ -26,7 +26,7 @@ class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
 
   /// [id] lets a restored layout name its sessions before they exist.
   TerminalSession open(Host host, {SessionId? id, bool autoConnect = true}) {
-    final session = TerminalSession(id ?? SessionId(newId()), host, ref.read(connectorProvider), autoConnect: autoConnect);
+    final session = TerminalSession(id ?? SessionId(newId()), host, ref.read(connectionManagerProvider), autoConnect: autoConnect);
     _owned[session.id] = session;
     state = {...state, session.id: session};
     return session;
