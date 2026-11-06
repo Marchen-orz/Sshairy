@@ -179,7 +179,7 @@ class Settings {
 final settingsProvider = NotifierProvider<SettingsNotifier, Settings>(SettingsNotifier.new);
 
 class SettingsNotifier extends Notifier<Settings> {
-  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/settings.json');
+  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/settings.json', backups: true);
 
   @override
   Settings build() => Settings.fromJson(_file.read() ?? const {});

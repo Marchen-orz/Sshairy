@@ -15,6 +15,7 @@ final hostsProvider = NotifierProvider<HostsNotifier, List<Host>>(
 class HostsNotifier extends Notifier<List<Host>> {
   late final JsonFile _file = JsonFile(
     '${ref.read(dataDirProvider)}/hosts.json',
+    backups: true,
   );
 
   @override

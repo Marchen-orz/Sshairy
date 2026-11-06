@@ -15,7 +15,7 @@ class TrustImportResult {
 /// The single place host keys are judged; every path that dials (shell, SFTP, forwards, jump hops) asks it
 /// before authenticating (docs/SECURITY.md). A changed key is blocked unless the user replaces it.
 class HostTrustService {
-  HostTrustService(String dir) : _file = JsonFile('$dir/trust.json') {
+  HostTrustService(String dir) : _file = JsonFile('$dir/trust.json', backups: true) {
     final saved = _file.read()?['keys'] as Map<String, dynamic>? ?? const {};
     _keys = KnownKeys({for (final e in saved.entries) e.key: (e.value as Map<String, dynamic>).cast<String, String>()});
   }

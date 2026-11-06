@@ -63,7 +63,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] foundation：ID、Result、AppError、取消、脱敏日志
 - [ ] design：tokens、Light/Dark、基础组件、i18n（zh、en）
 - [ ] 窗口外壳与标签栏（E-11 结果决定标题栏方案）
-- [ ] 配置存储：单写队列、revision、迁移、备份（D-01）
+- [ ] 配置存储：单写队列、revision、迁移、备份（D-01）：单写队列、读回验证、快照（最近 10 份、5 分钟间隔、50 MiB）和损坏文件用快照恢复有单元测试（`test/json_file_test.dart`）；revision、迁移框架、恢复界面和多实例防护未做，见 SECURITY §4“当前实现”
 - [ ] ShutdownCoordinator：有传输或未上传的编辑时先确认（`app/shutdown.dart`），集成测试经 `handleRequestAppExit` 确认对话框和“取消”；点窗口关闭按钮是否走到这里未亲测
 
 主机与凭据：
@@ -108,7 +108,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 ## M3 桌面主力版
 
 - [x] 分屏树与焦点（W-01）：`test/layout_test.dart`
-- [ ] 布局恢复（W-02 的 M3 部分）
+- [x] 布局恢复（W-02 的 M3 部分）：workspace.json 只存布局、主机 ID 和标签名；重启后恢复为未连接，不自己拨号；`test/workspace_test.dart` 通过，服务器集成测试 `workspace: palette, split panes, restore after restart` 此前通过，之后的改动没有重跑
 - [ ] 跳板链、SOCKS5/HTTP 代理、legacy 按主机启用（C-01、C-04 的 M3 部分）：路由已实现；`integration_test/routes_test.dart` 在 Windows/Ubuntu 通过双跳（服务器自身 loopback）、每跳校验、共享跳板、direct-tcpip 和远端转发取消；循环/缺失/链上限/改跳板后不复用与 RSA 信任别名有单元测试。代理和 legacy 没有对应真实环境，未验证
 - [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）
 - [x] 片段：搜索与增删改、持久化、插入/运行、命令面板入口；Windows 无连接界面集成通过，受控插入与 shell 生命周期用模拟通道验证，真实 SSH 片段发送未测

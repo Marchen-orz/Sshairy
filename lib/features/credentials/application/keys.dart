@@ -17,7 +17,7 @@ final keysProvider = NotifierProvider<KeysNotifier, List<SshKey>>(KeysNotifier.n
 
 /// Private keys in the secure store, their metadata in keys.json (docs/SECURITY.md §2).
 class KeysNotifier extends Notifier<List<SshKey>> {
-  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/keys.json');
+  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/keys.json', backups: true);
   SecretStore get _secrets => ref.read(secretStoreProvider);
 
   @override

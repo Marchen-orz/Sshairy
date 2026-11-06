@@ -14,7 +14,7 @@ final snippetInsertionProvider = Provider<InsertSnippet>(
 final snippetsProvider = NotifierProvider<Snippets, List<Snippet>>(Snippets.new);
 
 class Snippets extends Notifier<List<Snippet>> {
-  late final _file = JsonFile('${ref.read(dataDirProvider)}/snippets.json');
+  late final _file = JsonFile('${ref.read(dataDirProvider)}/snippets.json', backups: true);
   Future<void> _pending = Future.value();
 
   @override
