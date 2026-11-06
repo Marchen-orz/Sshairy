@@ -33,6 +33,12 @@ class FakeTransport implements Transport {
   Future<FileSystem> openFiles() => throw UnimplementedError();
 
   @override
+  Future<Tunnel> connectTo(String host, int port) => throw UnimplementedError();
+
+  @override
+  Future<RemoteListener> listen(String host, int port) => throw UnimplementedError();
+
+  @override
   void close() {
     if (!_done.isCompleted) _done.complete();
   }

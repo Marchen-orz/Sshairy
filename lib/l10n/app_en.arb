@@ -244,5 +244,20 @@
   "editsUnsaved": "{count, plural, =1{1 edit not uploaded} other{{count} edits not uploaded}}",
   "@editsUnsaved": {"placeholders": {"count": {"type": "int"}}},
   "quitNote": "Transfers in progress are cancelled. Edits that were not uploaded stay and can be uploaded next time.",
-  "quit": "Quit"
+  "quit": "Quit",
+  "proxyPassword": "Proxy password",
+  "errProxyAuth": "Proxy authentication failed. Check the username and password.",
+  "errRouteLoop": "The jump host chain contains a loop.",
+  "errRouteMissing": "A jump host no longer exists. Edit the connection route.",
+  "errRouteTooLong": "A connection route can contain at most 8 hosts.",
+  "errRouteInvalid": "The connection route is invalid.",
+  "route": "Connection route",
+  "jumpHost": "Jump host",
+  "directConnection": "Direct",
+  "proxy": "Proxy",
+  "proxyAddress": "Proxy address",
+  "proxyUser": "Proxy username (optional)",
+  "legacyAlgorithms": "Legacy algorithms",
+  "legacyAlgorithmsHint": "Allow SHA-1 and CBC only for this host when a legacy server requires them.",
+  "errHostSave": "Could not save this host. Check access to the data directory and secure storage."
 }

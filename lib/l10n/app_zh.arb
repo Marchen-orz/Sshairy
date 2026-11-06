@@ -220,5 +220,20 @@
   "transfersRunning": "{count} 个传输进行中",
   "editsUnsaved": "{count} 个编辑未上传",
   "quitNote": "进行中的传输会被取消；未上传的编辑会保留，下次仍可上传。",
-  "quit": "退出"
+  "quit": "退出",
+  "proxyPassword": "代理密码",
+  "errProxyAuth": "代理认证失败，请检查用户名和密码。",
+  "errRouteLoop": "跳板链存在循环。",
+  "errRouteMissing": "跳板主机已不存在，请修改连接路由。",
+  "errRouteTooLong": "连接路由最多包含 8 台主机。",
+  "errRouteInvalid": "连接路由无效。",
+  "route": "连接路由",
+  "jumpHost": "跳板主机",
+  "directConnection": "直连",
+  "proxy": "代理",
+  "proxyAddress": "代理地址",
+  "proxyUser": "代理用户名（可选）",
+  "legacyAlgorithms": "旧版算法",
+  "legacyAlgorithmsHint": "仅当旧服务器需要时，为此主机允许 SHA-1 和 CBC。",
+  "errHostSave": "无法保存主机，请检查数据目录和安全存储的访问权限。"
 }

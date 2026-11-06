@@ -27,7 +27,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 作者决定先做能运行的第一版，基本功能可用后再补齐。下列偏离 DESIGN、MODULES、CLAUDE.md 的地方是有意的：
 
 - Capability 目录有 host.list/create/update/delete、session.open/close/reconnect、workspace.split/focus（可带 view: files）/renameTab/duplicateTab、settings.get/patch（schema 由 SettingDef 生成）、file.list/stat/mkdir/rename/delete、transfer.list/enqueue/cancel/retry（都不开放给 AI）；还没有 revision、审批和审计。界面按钮仍直接调用 notifier，命令面板经 dispatcher。
-- ConnectionManager 的池 key 是主机 ID、端点、用户名、认证方式和密钥路径，还没有 ResolvedConnectionSpec 和凭据/信任 revision；停泊时长、连接超时和保活取自设置。没有脱敏日志。
+- ConnectionManager 在拨号前解析不可变的完整跳板链，池 key 包含每跳主机 ID、端点、用户名、认证方式、密钥引用、代理和算法策略；还没有凭据/信任 revision。停泊时长、连接超时和保活取自设置。没有脱敏日志。
 - 终端输出同步解析，应用层没有流控；E-03 只证明库支持背压，T-03 仍未做。
 - 主机有分组路径、标签、置顶和最近连接，没有 Group 对象、继承和 Identity；密码在首次连接时输入并可选记住，表单里没有密码字段。
 - 使用系统原生标题栏，没有左侧导航。
@@ -109,7 +109,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 
 - [x] 分屏树与焦点（W-01）：`test/layout_test.dart`
 - [ ] 布局恢复（W-02 的 M3 部分）
-- [ ] 跳板链、SOCKS5/HTTP 代理、legacy 按主机启用（C-01、C-04 的 M3 部分）
+- [ ] 跳板链、SOCKS5/HTTP 代理、legacy 按主机启用（C-01、C-04 的 M3 部分）：路由已实现；`integration_test/routes_test.dart` 在 Windows/Ubuntu 通过双跳（服务器自身 loopback）、每跳校验、共享跳板、direct-tcpip 和远端转发取消；循环/缺失/链上限/改跳板后不复用与 RSA 信任别名有单元测试。代理和 legacy 没有对应真实环境，未验证
 - [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）
 - [ ] 片段
 - [ ] SSH config 导入：draft 预览与未支持项报告
@@ -155,3 +155,5 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | Claude Opus 5.5 | 终端搜索、链接、右键菜单、选中复制、光标形状；自动重连（1/2/4/8/16s）；标签重命名、复制、未读标记；SettingDef 设置定义与分区化设置页；信任记录管理 | 未读标记要在帧后改（构建中通知会断言）；对话框里的 TextEditingController 由对话框自己持有（`design/text_prompt.dart`） |
 | 2026-11-06 | Claude Opus 5.5 | 主机分组路径、标签、置顶、最近连接、网格/列表、排序；密钥库（导入、生成、复制公钥、按主机引用）；host.* 能力加分组/标签/置顶/keyId，新增 key.list、key.generate | dartssh2 现在也允许出现在 `credentials/adapters`（解析和生成密钥）；单元测试用系统 ssh-keygen 作格式参照，没有时跳过 |
 | 2026-11-06 | Claude Opus 5.5 | M2 主体：foundation 的 FileSystem（SFTP 与本机两个实现）、FileSystems 每主机共享一条 SFTP、双栏 SFTP 页和终端侧栏、TransferManager（.part 发布、冲突、目录、看门狗、历史）、外部编辑、file.*/transfer.* 能力、设置里的文件分区、关窗确认 | 集成测试的文件流程只在 `~/sshairy-test/` 内，结束时删除；传输结束会刷新正在显示目标目录的栏；dartssh2 的 rename 在服务器支持 posix-rename 时会覆盖，所以 SftpFileSystem.rename 先 stat 目标 |
+
+| 2026-11-06 | 开发助手 | M3 路由：完整跳板链快照与池键、SOCKS5/HTTP CONNECT 适配、按主机 legacy、RSA 信任别名；主机变更串行且落盘后发布，置顶/最近时间不覆盖新配置或复活已删主机。70 项单元测试通过，flutter analyze 无问题，imports ok；此前 Windows/Ubuntu 双跳与远端转发取消集成通过 | 代理/legacy 无真实环境，未验证；转发只有领域模型，片段和导入未实现；打包脚本未运行。配置 revision/备份仍欠缺 |

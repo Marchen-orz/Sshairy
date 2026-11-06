@@ -9,12 +9,15 @@ class HostKeyPrompt {
   final KeyCheck check;
 }
 
-enum SecretKind { password, passphrase, challenge }
+enum SecretKind { password, passphrase, challenge, proxyPassword }
 
 class SecretRequest {
-  const SecretRequest(this.kind, {this.text = '', this.echo = false, this.canRemember = false});
+  const SecretRequest(this.kind, {this.text = '', this.echo = false, this.canRemember = false, this.target = ''});
   final SecretKind kind;
   final String text;
+
+  /// Who is asking, such as `user@host`; with jump hosts and proxies one attempt asks several.
+  final String target;
   final bool echo, canRemember;
 }
 
@@ -30,7 +33,13 @@ abstract interface class ConnectPrompts {
   Future<SecretAnswer?> secret(SecretRequest request);
 }
 
-enum ConnectFailure { network, auth, hostKeyRejected, keyFile, cancelled }
+enum ConnectFailure { network, auth, hostKeyRejected, keyFile, cancelled, route }
+
+/// [ConnectError.detail] for [ConnectFailure.auth] when the proxy, not the server, refused.
+const proxyAuthDetail = 'proxy';
+
+/// [ConnectError.detail] values for [ConnectFailure.route].
+const routeLoop = 'loop', routeMissing = 'missing', routeTooLong = 'tooLong';
 
 class ConnectError implements Exception {
   const ConnectError(this.kind, [this.detail = '']);

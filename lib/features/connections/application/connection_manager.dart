@@ -1,14 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
+import '../../../foundation/ids.dart';
 import '../../hosts/api.dart';
 import '../domain/known_keys.dart';
 import '../domain/prompts.dart';
 import '../domain/transport.dart';
+import 'route.dart';
 
 /// Dials and authenticates one transport. [cancel] fires when nobody waits for it any more.
 typedef Dial = Future<Transport> Function(Host host, ConnectPrompts prompts, CancellationToken cancel);
+
+typedef RouteDial = Future<Transport> Function(List<Host> route, ConnectPrompts prompts, CancellationToken cancel);
 
 enum LeasePurpose { terminal, files, forward, exec }
 
@@ -16,20 +21,35 @@ enum LeasePurpose { terminal, files, forward, exec }
 /// docs/MODULES.md §2). Concurrent acquires join one dial; a transport without leases is parked for [park],
 /// then closed.
 class ConnectionManager {
-  ConnectionManager(this._dial, {this.park = const Duration(seconds: 60)});
+  ConnectionManager(Dial dial, {this.park = const Duration(seconds: 60)})
+    : _dial = ((route, prompts, cancel) => dial(route.first, prompts, cancel)),
+      _hostById = null;
 
-  final Dial _dial;
+  ConnectionManager.routed(this._dial, this._hostById, {this.park = const Duration(seconds: 60)});
+
+  final RouteDial _dial;
+  final Host? Function(HostId)? _hostById;
   Duration park;
   final _pool = <String, _Entry>{};
   final _detached = <_Entry>{};
   var _closed = false;
 
   /// What must match for two users to share a transport. Holds references, never secrets.
-  static String keyOf(Host h) =>
-      [h.id.value, KnownKeys.endpoint(h.address, h.port), h.username, h.auth.name, h.keyId ?? h.keyPath ?? ''].join('\u0000');
+  static String keyOf(Host h) => jsonEncode([
+    h.id.value,
+    KnownKeys.endpoint(h.address, h.port),
+    h.username,
+    h.auth.name,
+    h.keyId ?? h.keyPath ?? '',
+    h.jumpHostId?.value,
+    h.proxy?.toJson(),
+    h.legacy,
+  ]);
 
   /// Hosts that currently have a live or dialling transport.
-  Set<Host> get hosts => {for (final e in [..._pool.values, ..._detached]) e.host};
+  Set<Host> get hosts => {
+    for (final e in [..._pool.values, ..._detached]) e.host,
+  };
 
   /// One waiter cancelling only stops its own wait; the dial goes on while anyone else still waits.
   Future<TransportLease> acquire(
@@ -37,16 +57,24 @@ class ConnectionManager {
     ConnectPrompts prompts, {
     LeasePurpose purpose = LeasePurpose.terminal,
     CancellationToken? cancel,
+  }) async => acquireRoute(resolveRoute(host, _hostById ?? (_) => null), prompts, purpose: purpose, cancel: cancel);
+
+  /// Internal routing entry point: a snapshot already checked by resolveRoute.
+  Future<TransportLease> acquireRoute(
+    List<Host> route,
+    ConnectPrompts prompts, {
+    LeasePurpose purpose = LeasePurpose.forward,
+    CancellationToken? cancel,
   }) async {
-    if (_closed) throw const ConnectError(ConnectFailure.cancelled);
-    final key = keyOf(host);
+    if (_closed || (cancel?.isCancelled ?? false)) throw const ConnectError(ConnectFailure.cancelled);
+    final key = jsonEncode(route.map(keyOf).toList());
     var entry = _pool[key];
     if (entry != null && (entry.transport?.isClosed ?? false)) {
       _forget(entry);
       entry = null;
     }
     final reused = entry?.transport != null;
-    entry ??= _start(key, host, prompts);
+    entry ??= _start(key, route, prompts);
     entry.waiters++;
     entry.parkTimer?.cancel();
     try {
@@ -78,7 +106,7 @@ class ConnectionManager {
     LeasePurpose purpose = LeasePurpose.terminal,
     CancellationToken? cancel,
   }) async {
-    for (var attempt = 0;; attempt++) {
+    for (var attempt = 0; ; attempt++) {
       final lease = await acquire(host, prompts, purpose: purpose, cancel: cancel);
       try {
         return (lease, await channel(lease));
@@ -96,7 +124,7 @@ class ConnectionManager {
   /// Closes every transport to [host], with whatever runs on it.
   void disconnect(Host host) {
     for (final e in [..._pool.values, ..._detached]) {
-      if (e.host.id == host.id && keyOf(e.host) == keyOf(host)) _close(e);
+      if (e.host.id == host.id) _close(e);
     }
   }
 
@@ -107,10 +135,10 @@ class ConnectionManager {
     }
   }
 
-  _Entry _start(String key, Host host, ConnectPrompts prompts) {
-    final entry = _Entry(key, host);
+  _Entry _start(String key, List<Host> route, ConnectPrompts prompts) {
+    final entry = _Entry(key, route.first);
     _pool[key] = entry;
-    entry.ready = _dial(host, prompts, entry.dialCancel).then((t) {
+    entry.ready = _dial(route, prompts, entry.dialCancel).then((t) {
       if (entry.dialCancel.isCancelled || _closed) {
         t.close();
         throw const ConnectError(ConnectFailure.cancelled);
@@ -200,6 +228,10 @@ class TransportLease {
 
   /// The caller closes the file system before releasing the lease.
   Future<FileSystem> openFiles() => _use().openFiles();
+
+  Future<Tunnel> connectTo(String host, int port) => _use().connectTo(host, port);
+
+  Future<RemoteListener> listen(String host, int port) => _use().listen(host, port);
 
   void release() {
     if (_released) return;

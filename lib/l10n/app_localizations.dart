@@ -1423,6 +1423,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Quit'**
   String get quit;
+
+  /// No description provided for @proxyPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy password'**
+  String get proxyPassword;
+
+  /// No description provided for @errProxyAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy authentication failed. Check the username and password.'**
+  String get errProxyAuth;
+
+  /// No description provided for @errRouteLoop.
+  ///
+  /// In en, this message translates to:
+  /// **'The jump host chain contains a loop.'**
+  String get errRouteLoop;
+
+  /// No description provided for @errRouteMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'A jump host no longer exists. Edit the connection route.'**
+  String get errRouteMissing;
+
+  /// No description provided for @errRouteTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'A connection route can contain at most 8 hosts.'**
+  String get errRouteTooLong;
+
+  /// No description provided for @errRouteInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The connection route is invalid.'**
+  String get errRouteInvalid;
+
+  /// No description provided for @route.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection route'**
+  String get route;
+
+  /// No description provided for @jumpHost.
+  ///
+  /// In en, this message translates to:
+  /// **'Jump host'**
+  String get jumpHost;
+
+  /// No description provided for @directConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct'**
+  String get directConnection;
+
+  /// No description provided for @proxy.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy'**
+  String get proxy;
+
+  /// No description provided for @proxyAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy address'**
+  String get proxyAddress;
+
+  /// No description provided for @proxyUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy username (optional)'**
+  String get proxyUser;
+
+  /// No description provided for @legacyAlgorithms.
+  ///
+  /// In en, this message translates to:
+  /// **'Legacy algorithms'**
+  String get legacyAlgorithms;
+
+  /// No description provided for @legacyAlgorithmsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow SHA-1 and CBC only for this host when a legacy server requires them.'**
+  String get legacyAlgorithmsHint;
+
+  /// No description provided for @errHostSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save this host. Check access to the data directory and secure storage.'**
+  String get errHostSave;
 }
 
 class _AppLocalizationsDelegate

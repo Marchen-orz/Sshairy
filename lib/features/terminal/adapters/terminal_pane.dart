@@ -356,12 +356,6 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     _scroll.jumpTo(target.clamp(position.minScrollExtent, position.maxScrollExtent));
   }
 
-  String _message(AppLocalizations l, TerminalSession s) => switch (s.error?.kind) {
-        null => l.disconnected,
-        ConnectFailure.network => l.errConnect(s.error!.detail),
-        ConnectFailure.auth => l.errAuth,
-        ConnectFailure.hostKeyRejected => l.errHostKeyRejected,
-        ConnectFailure.keyFile => l.errKeyFile(s.error!.detail),
-        ConnectFailure.cancelled => l.errCancelled,
-      };
+  String _message(AppLocalizations l, TerminalSession s) =>
+      s.error == null ? l.disconnected : connectErrorText(l, s.error);
 }

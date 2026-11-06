@@ -736,4 +736,54 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quit => 'Quit';
+
+  @override
+  String get proxyPassword => 'Proxy password';
+
+  @override
+  String get errProxyAuth =>
+      'Proxy authentication failed. Check the username and password.';
+
+  @override
+  String get errRouteLoop => 'The jump host chain contains a loop.';
+
+  @override
+  String get errRouteMissing =>
+      'A jump host no longer exists. Edit the connection route.';
+
+  @override
+  String get errRouteTooLong =>
+      'A connection route can contain at most 8 hosts.';
+
+  @override
+  String get errRouteInvalid => 'The connection route is invalid.';
+
+  @override
+  String get route => 'Connection route';
+
+  @override
+  String get jumpHost => 'Jump host';
+
+  @override
+  String get directConnection => 'Direct';
+
+  @override
+  String get proxy => 'Proxy';
+
+  @override
+  String get proxyAddress => 'Proxy address';
+
+  @override
+  String get proxyUser => 'Proxy username (optional)';
+
+  @override
+  String get legacyAlgorithms => 'Legacy algorithms';
+
+  @override
+  String get legacyAlgorithmsHint =>
+      'Allow SHA-1 and CBC only for this host when a legacy server requires them.';
+
+  @override
+  String get errHostSave =>
+      'Could not save this host. Check access to the data directory and secure storage.';
 }

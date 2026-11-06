@@ -28,12 +28,22 @@ class KnownKeys {
 
   KeyCheck check(String endpoint, String type, String fingerprint) {
     final saved = entries[endpoint] ?? const {};
-    final match = saved[type];
-    if (match == fingerprint) return const KeyTrusted();
-    if (match != null) return KeyChanged(match);
+    final matches = saved.entries.where((e) => keyType(e.key) == keyType(type));
+    for (final match in matches) {
+      if (match.value != fingerprint) return KeyChanged(match.value);
+    }
+    if (matches.isNotEmpty) return const KeyTrusted();
     return KeyUnknown(saved);
   }
 
-  void trust(String endpoint, String type, String fingerprint) =>
-      (entries[endpoint] ??= {})[type] = fingerprint;
+  static String keyType(String type) => switch (type) {
+    'rsa-sha2-256' || 'rsa-sha2-512' => 'ssh-rsa',
+    _ => type,
+  };
+
+  void trust(String endpoint, String type, String fingerprint) {
+    final keys = entries[endpoint] ??= {};
+    keys.removeWhere((key, _) => keyType(key) == keyType(type));
+    keys[keyType(type)] = fingerprint;
+  }
 }

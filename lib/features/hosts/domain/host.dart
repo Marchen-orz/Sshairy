@@ -2,6 +2,30 @@ import '../../../foundation/ids.dart';
 
 enum AuthKind { password, key }
 
+enum ProxyKind { socks5, http }
+
+/// How the first hop reaches its server. The password is asked for when the proxy wants one.
+class Proxy {
+  const Proxy(this.kind, this.address, this.port, {this.username = ''});
+
+  final ProxyKind kind;
+  final String address, username;
+  final int port;
+
+  /// Identifies the route for connection sharing; never holds the password.
+  String get key => '${kind.name}://$username@$address:$port';
+
+  factory Proxy.fromJson(Map<String, dynamic> j) => Proxy(
+        ProxyKind.values.asNameMap()[j['kind']] ?? ProxyKind.socks5,
+        j['address'] as String,
+        j['port'] as int,
+        username: j['username'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'kind': kind.name, 'address': address, 'port': port, if (username.isNotEmpty) 'username': username};
+}
+
 /// Saved connection target. Secrets are never fields; they are looked up by [passwordRef]/[passphraseRef], and an
 /// imported key by [keyId].
 class Host {
@@ -18,6 +42,9 @@ class Host {
     this.tags = const [],
     this.pinned = false,
     this.lastUsed,
+    this.jumpHostId,
+    this.proxy,
+    this.legacy = false,
   });
 
   final HostId id;
@@ -37,12 +64,22 @@ class Host {
   final bool pinned;
   final DateTime? lastUsed;
 
+  /// A saved host this one is reached through; that host may have a jump host of its own.
+  final HostId? jumpHostId;
+
+  /// Used only when this host is the first hop.
+  final Proxy? proxy;
+
+  /// Allows SHA-1 key exchange and host key signatures and CBC ciphers, for this host only.
+  final bool legacy;
+
   /// Quick-connect hosts are not saved, so nothing about them is remembered.
   bool get transient => id.value.isEmpty;
   String get title => label.isEmpty ? address : label;
   String get target => port == 22 ? '$username@$address' : '$username@$address:$port';
   String get passwordRef => 'host/${id.value}/password';
   String get passphraseRef => 'host/${id.value}/passphrase';
+  String get proxyRef => 'host/${id.value}/proxy';
 
   Host copyWith({bool? pinned, DateTime? lastUsed, String? group, HostId? id, String? label}) => Host(
         id: id ?? this.id,
@@ -57,6 +94,9 @@ class Host {
         tags: tags,
         pinned: pinned ?? this.pinned,
         lastUsed: lastUsed ?? this.lastUsed,
+        jumpHostId: jumpHostId,
+        proxy: proxy,
+        legacy: legacy,
       );
 
   factory Host.fromJson(Map<String, dynamic> j) => Host(
@@ -72,6 +112,12 @@ class Host {
         tags: [for (final t in j['tags'] as List<dynamic>? ?? const []) if (t is String) t],
         pinned: j['pinned'] as bool? ?? false,
         lastUsed: DateTime.tryParse(j['lastUsed'] as String? ?? ''),
+        jumpHostId: switch (j['jumpHostId']) {
+          final String id when id.isNotEmpty => HostId(id),
+          _ => null,
+        },
+        proxy: j['proxy'] is Map<String, dynamic> ? Proxy.fromJson(j['proxy'] as Map<String, dynamic>) : null,
+        legacy: j['legacy'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -87,6 +133,9 @@ class Host {
         if (tags.isNotEmpty) 'tags': tags,
         if (pinned) 'pinned': true,
         if (lastUsed != null) 'lastUsed': lastUsed!.toUtc().toIso8601String(),
+        if (jumpHostId != null) 'jumpHostId': jumpHostId!.value,
+        if (proxy != null) 'proxy': proxy!.toJson(),
+        if (legacy) 'legacy': true,
       };
 }
 

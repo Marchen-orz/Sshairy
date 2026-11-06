@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../../../foundation/file_system.dart';
@@ -16,6 +17,13 @@ abstract interface class Transport {
   /// Runs [command] without a terminal and collects at most [limit] bytes of each stream.
   Future<ExecResult> exec(String command, {int limit});
 
+  /// A TCP connection from the server to [host]:[port] (direct-tcpip): local and dynamic forwards, jump hops.
+  Future<Tunnel> connectTo(String host, int port);
+
+  /// Asks the server to listen on [host]:[port] and hand each connection over (tcpip-forward); port 0 lets the
+  /// server pick. Throws [ConnectError] when the server refuses.
+  Future<RemoteListener> listen(String host, int port);
+
   void close();
 }
 
@@ -26,6 +34,29 @@ abstract interface class ShellChannel {
   void write(Uint8List data);
   void resize(int cols, int rows);
   void close();
+}
+
+/// A byte stream carried in an SSH channel.
+abstract interface class Tunnel {
+  Stream<Uint8List> get stream;
+  StreamSink<List<int>> get sink;
+  Future<void> get done;
+
+  /// Ends our side; data still in flight from the other side may arrive.
+  Future<void> close();
+  Future<void> flush();
+  void destroy();
+}
+
+/// A port the server listens on for us.
+abstract interface class RemoteListener {
+  /// The port the server bound, which differs from the request when that was 0.
+  int get port;
+  Stream<Tunnel> get connections;
+
+  /// True once the server confirmed it stopped listening; false when it refused or the connection is gone, so
+  /// the port may still be open.
+  Future<bool> close();
 }
 
 class ExecResult {

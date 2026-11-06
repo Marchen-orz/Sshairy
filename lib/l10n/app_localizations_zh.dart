@@ -719,4 +719,49 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quit => '退出';
+
+  @override
+  String get proxyPassword => '代理密码';
+
+  @override
+  String get errProxyAuth => '代理认证失败，请检查用户名和密码。';
+
+  @override
+  String get errRouteLoop => '跳板链存在循环。';
+
+  @override
+  String get errRouteMissing => '跳板主机已不存在，请修改连接路由。';
+
+  @override
+  String get errRouteTooLong => '连接路由最多包含 8 台主机。';
+
+  @override
+  String get errRouteInvalid => '连接路由无效。';
+
+  @override
+  String get route => '连接路由';
+
+  @override
+  String get jumpHost => '跳板主机';
+
+  @override
+  String get directConnection => '直连';
+
+  @override
+  String get proxy => '代理';
+
+  @override
+  String get proxyAddress => '代理地址';
+
+  @override
+  String get proxyUser => '代理用户名（可选）';
+
+  @override
+  String get legacyAlgorithms => '旧版算法';
+
+  @override
+  String get legacyAlgorithmsHint => '仅当旧服务器需要时，为此主机允许 SHA-1 和 CBC。';
+
+  @override
+  String get errHostSave => '无法保存主机，请检查数据目录和安全存储的访问权限。';
 }

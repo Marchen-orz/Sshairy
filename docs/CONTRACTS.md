@@ -19,7 +19,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | ConnectionResolver | HostId → 不可变 ResolvedConnectionSpec；包含 route/auth/trust revision |
 | CredentialAccess | 按 SecretRef 按需取凭据；UI 和 AI 不得拿全库映射 |
 | ConnectionManager | acquire(spec, purpose, cancellation) → TransportLease；release 幂等 |
-| TransportLease | openShell / exec / openFiles（SFTP，返回 foundation 的 FileSystem）/ forwarding；不泄露 dartssh2 类型 |
+| TransportLease | openShell / exec / openFiles（SFTP，返回 foundation 的 FileSystem）/ connectTo（direct-tcpip，返回 Tunnel，用于本地与动态转发和跳板）/ listen（tcpip-forward，返回 RemoteListener）；不泄露 dartssh2 类型 |
 | TerminalSessionManager | open / reconnect / close / readSnapshot；保留模型独立于视图 |
 | TerminalIo | 有序 bytes、writeInput、resize、close；数据路径不 JSON 化 |
 | TransferManager | enqueue / cancel / retry / watch；任务不由 SftpPane 持有 |

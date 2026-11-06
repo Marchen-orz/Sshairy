@@ -17,10 +17,12 @@ class HostTrustService {
   Map<String, Map<String, String>> get entries => {for (final e in _keys.entries.entries) e.key: {...e.value}};
 
   Future<bool> verify(String address, int port, String type, String fingerprint, ConnectPrompts prompts) async {
+    type = KnownKeys.keyType(type);
     final endpoint = KnownKeys.endpoint(address, port);
     final check = _keys.check(endpoint, type, fingerprint);
     if (check is KeyTrusted) return true;
     final choice = await prompts.hostKey(HostKeyPrompt(endpoint, type, fingerprint, check));
+    if (check is KeyChanged && choice != TrustChoice.save) return false;
     if (choice == TrustChoice.save) await _trust(endpoint, type, fingerprint);
     return choice != TrustChoice.reject;
   }

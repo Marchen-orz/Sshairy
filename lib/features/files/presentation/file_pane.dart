@@ -520,14 +520,6 @@ class FilePaneSend {
   }
 }
 
-String connectErrorText(AppLocalizations l, ConnectError? e) => switch (e?.kind) {
-      ConnectFailure.auth => l.errAuth,
-      ConnectFailure.hostKeyRejected => l.errHostKeyRejected,
-      ConnectFailure.keyFile => l.errKeyFile(e!.detail),
-      ConnectFailure.cancelled => l.errCancelled,
-      _ => l.errConnect(e?.detail ?? ''),
-    };
-
 class _Columns {
   const _Columns({required this.modified, required this.size, required this.mode});
   final bool modified, size, mode;
