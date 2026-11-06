@@ -434,4 +434,306 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get dissolveGroup => 'Dissolve group';
+
+  @override
+  String get sftp => 'SFTP';
+
+  @override
+  String get files => 'Files';
+
+  @override
+  String get thisComputer => 'This computer';
+
+  @override
+  String get back => 'Back';
+
+  @override
+  String get forward => 'Forward';
+
+  @override
+  String get up => 'Up';
+
+  @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get filter => 'Filter';
+
+  @override
+  String get editPath => 'Edit path';
+
+  @override
+  String get newFolder => 'New folder';
+
+  @override
+  String get hiddenFiles => 'Hidden files';
+
+  @override
+  String get uploadFiles => 'Upload files…';
+
+  @override
+  String get downloadTo => 'Download to…';
+
+  @override
+  String get sendToOther => 'Send to the other side';
+
+  @override
+  String get editFile => 'Edit';
+
+  @override
+  String get copyPath => 'Copy path';
+
+  @override
+  String get permissions => 'Permissions';
+
+  @override
+  String get colName => 'Name';
+
+  @override
+  String get colModified => 'Modified';
+
+  @override
+  String get colSize => 'Size';
+
+  @override
+  String get colOwner => 'Owner';
+
+  @override
+  String get emptyFolder => 'Empty';
+
+  @override
+  String deleteOne(String name) {
+    return 'Delete \"$name\"?';
+  }
+
+  @override
+  String deleteTree(String name, int count) {
+    return 'Delete \"$name\" and the $count items in it?';
+  }
+
+  @override
+  String deleteMany(int count) {
+    return 'Delete $count items?';
+  }
+
+  @override
+  String get permOwner => 'Owner';
+
+  @override
+  String get permGroup => 'Group';
+
+  @override
+  String get permOthers => 'Others';
+
+  @override
+  String get permRead => 'Read';
+
+  @override
+  String get permWrite => 'Write';
+
+  @override
+  String get permExecute => 'Execute';
+
+  @override
+  String get transfers => 'Transfers';
+
+  @override
+  String get clearFinished => 'Clear finished';
+
+  @override
+  String get tsQueued => 'Queued';
+
+  @override
+  String get tsWaiting => 'Waiting for your choice';
+
+  @override
+  String get tsCompleted => 'Done';
+
+  @override
+  String get tsFailed => 'Failed';
+
+  @override
+  String get tsCancelled => 'Cancelled';
+
+  @override
+  String get tsInterrupted => 'Interrupted';
+
+  @override
+  String get tsScanning => 'Scanning';
+
+  @override
+  String get tsVerifying => 'Verifying';
+
+  @override
+  String get tsPublishing => 'Finishing';
+
+  @override
+  String skippedCount(int count) {
+    return '$count skipped';
+  }
+
+  @override
+  String filesCount(int done, int total) {
+    return '$done/$total files';
+  }
+
+  @override
+  String conflictFile(String name) {
+    return '\"$name\" already exists';
+  }
+
+  @override
+  String conflictDir(String name) {
+    return 'Folder \"$name\" already exists';
+  }
+
+  @override
+  String conflictType(String name) {
+    return '\"$name\" already exists as another type';
+  }
+
+  @override
+  String get existingItem => 'Existing';
+
+  @override
+  String get incomingItem => 'Incoming';
+
+  @override
+  String get replace => 'Replace';
+
+  @override
+  String get merge => 'Merge';
+
+  @override
+  String get keepBoth => 'Keep both';
+
+  @override
+  String get skip => 'Skip';
+
+  @override
+  String get applyToAll => 'Same for the rest of this batch';
+
+  @override
+  String get upload => 'Upload';
+
+  @override
+  String get autoUpload => 'Upload on save';
+
+  @override
+  String get finishEdit => 'Done editing';
+
+  @override
+  String discardEdit(String name) {
+    return '\"$name\" has changes that were not uploaded. Discard them?';
+  }
+
+  @override
+  String get discard => 'Discard';
+
+  @override
+  String get editConflict => 'Changed on the server since it was downloaded';
+
+  @override
+  String get overwrite => 'Overwrite';
+
+  @override
+  String get uploadAsCopy => 'Upload as a copy';
+
+  @override
+  String get redownload => 'Download again';
+
+  @override
+  String get esModified => 'Not uploaded';
+
+  @override
+  String get esUploading => 'Uploading';
+
+  @override
+  String get esClean => 'Up to date';
+
+  @override
+  String get errFsNotFound => 'Not found';
+
+  @override
+  String get errFsPermission => 'Permission denied';
+
+  @override
+  String get errFsExists => 'Already exists';
+
+  @override
+  String get errFsUnsupported => 'Not supported by the server';
+
+  @override
+  String get errFsLost => 'Connection lost';
+
+  @override
+  String get errFsFailed => 'The operation failed';
+
+  @override
+  String get errBadName => 'Not a valid name';
+
+  @override
+  String get errSizeMismatch => 'Size check failed; nothing was published';
+
+  @override
+  String get errTargetChanged =>
+      'The target changed meanwhile and was left alone';
+
+  @override
+  String get errReplaceUnsupported =>
+      'This server cannot replace files safely; the original was kept';
+
+  @override
+  String get errSourceMissing => 'The source is gone';
+
+  @override
+  String errTooMany(int count) {
+    return 'More than $count items';
+  }
+
+  @override
+  String errTooDeep(int count) {
+    return 'Nested deeper than $count levels';
+  }
+
+  @override
+  String get errStalled => 'No progress for 30 seconds';
+
+  @override
+  String get errNotRegular => 'Not a regular file';
+
+  @override
+  String get errTooLarge => 'Over 64 MB; download it instead';
+
+  @override
+  String get transferConcurrency => 'Simultaneous transfers';
+
+  @override
+  String transfersRunning(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count transfers in progress',
+      one: '1 transfer in progress',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String editsUnsaved(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count edits not uploaded',
+      one: '1 edit not uploaded',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get quitNote =>
+      'Transfers in progress are cancelled. Edits that were not uploaded stay and can be uploaded next time.';
+
+  @override
+  String get quit => 'Quit';
 }

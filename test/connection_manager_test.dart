@@ -3,10 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/connections/api.dart';
-import 'package:sshairy/features/connections/domain/prompts.dart';
 import 'package:sshairy/features/connections/domain/transport.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/foundation/cancellation.dart';
+import 'package:sshairy/foundation/file_system.dart';
 import 'package:sshairy/foundation/ids.dart';
 
 class FakeTransport implements Transport {
@@ -28,6 +28,9 @@ class FakeTransport implements Transport {
 
   @override
   Future<ExecResult> exec(String command, {int limit = 0}) async => ExecResult(Uint8List(0), Uint8List(0), 0);
+
+  @override
+  Future<FileSystem> openFiles() => throw UnimplementedError();
 
   @override
   void close() {

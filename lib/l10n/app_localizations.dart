@@ -901,6 +901,528 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dissolve group'**
   String get dissolveGroup;
+
+  /// No description provided for @sftp.
+  ///
+  /// In en, this message translates to:
+  /// **'SFTP'**
+  String get sftp;
+
+  /// No description provided for @files.
+  ///
+  /// In en, this message translates to:
+  /// **'Files'**
+  String get files;
+
+  /// No description provided for @thisComputer.
+  ///
+  /// In en, this message translates to:
+  /// **'This computer'**
+  String get thisComputer;
+
+  /// No description provided for @back.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get back;
+
+  /// No description provided for @forward.
+  ///
+  /// In en, this message translates to:
+  /// **'Forward'**
+  String get forward;
+
+  /// No description provided for @up.
+  ///
+  /// In en, this message translates to:
+  /// **'Up'**
+  String get up;
+
+  /// No description provided for @refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get refresh;
+
+  /// No description provided for @filter.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter'**
+  String get filter;
+
+  /// No description provided for @editPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit path'**
+  String get editPath;
+
+  /// No description provided for @newFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'New folder'**
+  String get newFolder;
+
+  /// No description provided for @hiddenFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden files'**
+  String get hiddenFiles;
+
+  /// No description provided for @uploadFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload files…'**
+  String get uploadFiles;
+
+  /// No description provided for @downloadTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Download to…'**
+  String get downloadTo;
+
+  /// No description provided for @sendToOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to the other side'**
+  String get sendToOther;
+
+  /// No description provided for @editFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get editFile;
+
+  /// No description provided for @copyPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy path'**
+  String get copyPath;
+
+  /// No description provided for @permissions.
+  ///
+  /// In en, this message translates to:
+  /// **'Permissions'**
+  String get permissions;
+
+  /// No description provided for @colName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get colName;
+
+  /// No description provided for @colModified.
+  ///
+  /// In en, this message translates to:
+  /// **'Modified'**
+  String get colModified;
+
+  /// No description provided for @colSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Size'**
+  String get colSize;
+
+  /// No description provided for @colOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner'**
+  String get colOwner;
+
+  /// No description provided for @emptyFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Empty'**
+  String get emptyFolder;
+
+  /// No description provided for @deleteOne.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{name}\"?'**
+  String deleteOne(String name);
+
+  /// No description provided for @deleteTree.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{name}\" and the {count} items in it?'**
+  String deleteTree(String name, int count);
+
+  /// No description provided for @deleteMany.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {count} items?'**
+  String deleteMany(int count);
+
+  /// No description provided for @permOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner'**
+  String get permOwner;
+
+  /// No description provided for @permGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Group'**
+  String get permGroup;
+
+  /// No description provided for @permOthers.
+  ///
+  /// In en, this message translates to:
+  /// **'Others'**
+  String get permOthers;
+
+  /// No description provided for @permRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Read'**
+  String get permRead;
+
+  /// No description provided for @permWrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Write'**
+  String get permWrite;
+
+  /// No description provided for @permExecute.
+  ///
+  /// In en, this message translates to:
+  /// **'Execute'**
+  String get permExecute;
+
+  /// No description provided for @transfers.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfers'**
+  String get transfers;
+
+  /// No description provided for @clearFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear finished'**
+  String get clearFinished;
+
+  /// No description provided for @tsQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued'**
+  String get tsQueued;
+
+  /// No description provided for @tsWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for your choice'**
+  String get tsWaiting;
+
+  /// No description provided for @tsCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get tsCompleted;
+
+  /// No description provided for @tsFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get tsFailed;
+
+  /// No description provided for @tsCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get tsCancelled;
+
+  /// No description provided for @tsInterrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'Interrupted'**
+  String get tsInterrupted;
+
+  /// No description provided for @tsScanning.
+  ///
+  /// In en, this message translates to:
+  /// **'Scanning'**
+  String get tsScanning;
+
+  /// No description provided for @tsVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Verifying'**
+  String get tsVerifying;
+
+  /// No description provided for @tsPublishing.
+  ///
+  /// In en, this message translates to:
+  /// **'Finishing'**
+  String get tsPublishing;
+
+  /// No description provided for @skippedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} skipped'**
+  String skippedCount(int count);
+
+  /// No description provided for @filesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{done}/{total} files'**
+  String filesCount(int done, int total);
+
+  /// No description provided for @conflictFile.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{name}\" already exists'**
+  String conflictFile(String name);
+
+  /// No description provided for @conflictDir.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder \"{name}\" already exists'**
+  String conflictDir(String name);
+
+  /// No description provided for @conflictType.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{name}\" already exists as another type'**
+  String conflictType(String name);
+
+  /// No description provided for @existingItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Existing'**
+  String get existingItem;
+
+  /// No description provided for @incomingItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming'**
+  String get incomingItem;
+
+  /// No description provided for @replace.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace'**
+  String get replace;
+
+  /// No description provided for @merge.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge'**
+  String get merge;
+
+  /// No description provided for @keepBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep both'**
+  String get keepBoth;
+
+  /// No description provided for @skip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get skip;
+
+  /// No description provided for @applyToAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Same for the rest of this batch'**
+  String get applyToAll;
+
+  /// No description provided for @upload.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload'**
+  String get upload;
+
+  /// No description provided for @autoUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload on save'**
+  String get autoUpload;
+
+  /// No description provided for @finishEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Done editing'**
+  String get finishEdit;
+
+  /// No description provided for @discardEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{name}\" has changes that were not uploaded. Discard them?'**
+  String discardEdit(String name);
+
+  /// No description provided for @discard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get discard;
+
+  /// No description provided for @editConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Changed on the server since it was downloaded'**
+  String get editConflict;
+
+  /// No description provided for @overwrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Overwrite'**
+  String get overwrite;
+
+  /// No description provided for @uploadAsCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload as a copy'**
+  String get uploadAsCopy;
+
+  /// No description provided for @redownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download again'**
+  String get redownload;
+
+  /// No description provided for @esModified.
+  ///
+  /// In en, this message translates to:
+  /// **'Not uploaded'**
+  String get esModified;
+
+  /// No description provided for @esUploading.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading'**
+  String get esUploading;
+
+  /// No description provided for @esClean.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date'**
+  String get esClean;
+
+  /// No description provided for @errFsNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Not found'**
+  String get errFsNotFound;
+
+  /// No description provided for @errFsPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Permission denied'**
+  String get errFsPermission;
+
+  /// No description provided for @errFsExists.
+  ///
+  /// In en, this message translates to:
+  /// **'Already exists'**
+  String get errFsExists;
+
+  /// No description provided for @errFsUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not supported by the server'**
+  String get errFsUnsupported;
+
+  /// No description provided for @errFsLost.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection lost'**
+  String get errFsLost;
+
+  /// No description provided for @errFsFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The operation failed'**
+  String get errFsFailed;
+
+  /// No description provided for @errBadName.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a valid name'**
+  String get errBadName;
+
+  /// No description provided for @errSizeMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Size check failed; nothing was published'**
+  String get errSizeMismatch;
+
+  /// No description provided for @errTargetChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The target changed meanwhile and was left alone'**
+  String get errTargetChanged;
+
+  /// No description provided for @errReplaceUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'This server cannot replace files safely; the original was kept'**
+  String get errReplaceUnsupported;
+
+  /// No description provided for @errSourceMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'The source is gone'**
+  String get errSourceMissing;
+
+  /// No description provided for @errTooMany.
+  ///
+  /// In en, this message translates to:
+  /// **'More than {count} items'**
+  String errTooMany(int count);
+
+  /// No description provided for @errTooDeep.
+  ///
+  /// In en, this message translates to:
+  /// **'Nested deeper than {count} levels'**
+  String errTooDeep(int count);
+
+  /// No description provided for @errStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'No progress for 30 seconds'**
+  String get errStalled;
+
+  /// No description provided for @errNotRegular.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a regular file'**
+  String get errNotRegular;
+
+  /// No description provided for @errTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Over 64 MB; download it instead'**
+  String get errTooLarge;
+
+  /// No description provided for @transferConcurrency.
+  ///
+  /// In en, this message translates to:
+  /// **'Simultaneous transfers'**
+  String get transferConcurrency;
+
+  /// No description provided for @transfersRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 transfer in progress} other{{count} transfers in progress}}'**
+  String transfersRunning(int count);
+
+  /// No description provided for @editsUnsaved.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 edit not uploaded} other{{count} edits not uploaded}}'**
+  String editsUnsaved(int count);
+
+  /// No description provided for @quitNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfers in progress are cancelled. Edits that were not uploaded stay and can be uploaded next time.'**
+  String get quitNote;
+
+  /// No description provided for @quit.
+  ///
+  /// In en, this message translates to:
+  /// **'Quit'**
+  String get quit;
 }
 
 class _AppLocalizationsDelegate

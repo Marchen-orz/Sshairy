@@ -146,6 +146,18 @@ class SettingsPanel extends ConsumerWidget {
         _Field(l.idleTtl, seconds(SettingKeys.idleTtl, const [0, 30, 60, 120, 300], zeroIsOff: true)),
         _Field(l.autoReconnect, toggle(SettingKeys.autoReconnect)),
       ]),
+      _Section(l.files, [
+        _Field(l.hiddenFiles, toggle(SettingKeys.showHidden)),
+        _Field(
+          l.transferConcurrency,
+          _Choice<int>(
+            value: settings.get(SettingKeys.transferConcurrency),
+            choices: const [1, 2, 3, 4, 6, 8],
+            label: (n) => '$n',
+            onChanged: (v) => notifier.set(SettingKeys.transferConcurrency, v),
+          ),
+        ),
+      ]),
       for (final s in extra) _Section(s.title(l), [s.build(context)]),
       _Section(l.about, [
         _Field(l.version, Text(appVersion, style: theme.textTheme.bodyMedium)),

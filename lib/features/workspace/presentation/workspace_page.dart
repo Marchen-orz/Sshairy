@@ -8,6 +8,7 @@ import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../capabilities/api.dart';
+import '../../files/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../../terminal/api.dart';
@@ -27,6 +28,19 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   final _paneKeys = <PaneId, GlobalKey>{};
   final _paneFocus = <PaneId, FocusNode>{};
   var _overlayOpen = false;
+
+  /// Tabs showing the files panel beside their terminals.
+  final _sideFiles = <TabId>{};
+
+  /// The SFTP page connects nothing until first shown, then stays alive like a tab.
+  var _filesBuilt = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Queued transfers and edits ask from whichever page is showing.
+    ref.read(transfersProvider.notifier).ui = DialogTransferUi(context);
+  }
 
   Workspace get _workspace => ref.read(workspaceProvider.notifier);
 
@@ -125,6 +139,9 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
       node.dispose();
       return true;
     });
+    _sideFiles.removeWhere((id) => !state.tabs.any((t) => t.id == id));
+    final vault = state.active == null && !state.files;
+    _filesBuilt |= state.files;
 
     Widget leaf(WorkspaceTab tab, Leaf leaf) {
       final session = sessions[leaf.session];
@@ -184,10 +201,16 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             color: scheme.surfaceContainerLow,
             child: Row(children: [
               _Tab(
-                selected: state.active == null,
+                selected: vault,
                 onTap: _workspace.showVault,
                 leading: const Icon(Icons.dns_outlined, size: 16),
                 title: l.hosts,
+              ),
+              _Tab(
+                selected: state.files,
+                onTap: _workspace.showFiles,
+                leading: const Icon(Icons.folder_copy_outlined, size: 16),
+                title: l.sftp,
               ),
               Expanded(
                 child: Row(children: [
@@ -235,6 +258,14 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   ),
                 ]),
               ),
+              if (state.activeTab case final tab?)
+                IconButton(
+                  tooltip: l.files,
+                  isSelected: _sideFiles.contains(tab.id),
+                  onPressed: () => setState(() => _sideFiles.contains(tab.id) ? _sideFiles.remove(tab.id) : _sideFiles.add(tab.id)),
+                  icon: const Icon(Icons.folder_outlined, size: 18),
+                  selectedIcon: const Icon(Icons.folder, size: 18),
+                ),
               if (state.activeTab != null)
                 PopupMenuButton<SplitAxis>(
                   tooltip: l.split,
@@ -245,6 +276,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     PopupMenuItem(value: SplitAxis.vertical, child: Text(l.splitDown)),
                   ],
                 ),
+              const TransfersButton(),
               IconButton(
                 tooltip: l.commandPalette,
                 onPressed: _openPalette,
@@ -263,12 +295,21 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             child: Stack(fit: StackFit.expand, children: [
               Visibility.maintain(
                 key: const ValueKey('vault'),
-                visible: state.active == null,
+                visible: vault,
                 child: ExcludeFocus(
-                  excluding: state.active != null,
-                  child: VaultPage(active: state.active == null, onConnect: _workspace.openHost),
+                  excluding: !vault,
+                  child: VaultPage(active: vault, onConnect: _workspace.openHost),
                 ),
               ),
+              if (_filesBuilt)
+                Visibility.maintain(
+                  key: const ValueKey('files'),
+                  visible: state.files,
+                  child: IgnorePointer(
+                    ignoring: !state.files,
+                    child: ExcludeFocus(excluding: !state.files, child: const FilesPage()),
+                  ),
+                ),
               for (final tab in state.tabs)
                 Visibility.maintain(
                   key: ValueKey(tab.id),
@@ -277,11 +318,19 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     ignoring: state.active != tab.id,
                     child: ExcludeFocus(
                       excluding: state.active != tab.id,
-                      child: LayoutView(
-                        root: tab.layout.root,
-                        leaf: (l) => leaf(tab, l),
-                        onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
-                      ),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Expanded(
+                          child: LayoutView(
+                            root: tab.layout.root,
+                            leaf: (l) => leaf(tab, l),
+                            onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
+                          ),
+                        ),
+                        if (_sideFiles.contains(tab.id) ? sessions[tab.layout.focusedLeaf.session] : null case final s?) ...[
+                          const VerticalDivider(width: 1),
+                          SizedBox(width: 360, child: SideFilesPanel(host: s.host)),
+                        ],
+                      ]),
                     ),
                   ),
                 ),

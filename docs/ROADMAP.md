@@ -6,10 +6,10 @@
 
 | 项 | 状态 |
 |---|---|
-| 阶段 | M0 进行中；第一版可运行 |
+| 阶段 | M0 进行中；第一版可运行；M2 文件工作流已有主体 |
 | 工具链 | Flutter 3.47.9 stable（c197ca5199）、Dart 3.13.7、Visual Studio C++ 工具 |
-| 已实际运行 | `integration_test/app_test.dart` 在 Windows 11 上连 Ubuntu 24.04 服务器，五个流程全过（含终端搜索、断线自动重连、标签重命名和复制、删除信任记录）；Release 版能启动 |
-| 下一步 | 作者亲测 E-04；补 E-05、E-12、E-01、E-02 和 P-01、P-02 |
+| 已实际运行 | `integration_test/app_test.dart` 在 Windows 11 上连 Ubuntu 24.04 服务器，七个流程全过（含终端搜索、断线自动重连、标签重命名和复制、删除信任记录、SFTP 与传输）；Release 版能启动 |
+| 下一步 | M3；作者亲测 E-04、外部编辑（F-05）、OS 拖入和关窗确认；补 E-05、E-06、E-12、E-01、E-02 和 P-01、P-02 |
 
 第一版已实际运行的范围（不代表对应 M1 项完成，所以下面没有勾选）：快速连接、主机增删改、主机密钥未知/拒绝/变化、密码输入与记住、错误密码、多标签、关闭标签不影响其他会话、断线后重连、Ctrl+C（含有选区时）、多行粘贴确认、主题/语言/字号/主题色、命令面板打开主机与执行动作、同主机分屏、Alt+方向键切换焦点、关闭分屏、重启后恢复为未连接标签、终端搜索（计数、上下跳转、无结果）、服务端结束会话后自动重连、标签右键重命名、命令面板复制标签（共享连接不再要密码）、设置里删除信任记录。
 
@@ -26,7 +26,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 
 作者决定先做能运行的第一版，基本功能可用后再补齐。下列偏离 DESIGN、MODULES、CLAUDE.md 的地方是有意的：
 
-- Capability 目录有 host.list/create/update/delete、session.open/close/reconnect、workspace.split/focus/renameTab/duplicateTab、settings.get/patch（schema 由 SettingDef 生成）；还没有 revision、审批和审计。界面按钮仍直接调用 notifier，命令面板经 dispatcher。
+- Capability 目录有 host.list/create/update/delete、session.open/close/reconnect、workspace.split/focus（可带 view: files）/renameTab/duplicateTab、settings.get/patch（schema 由 SettingDef 生成）、file.list/stat/mkdir/rename/delete、transfer.list/enqueue/cancel/retry（都不开放给 AI）；还没有 revision、审批和审计。界面按钮仍直接调用 notifier，命令面板经 dispatcher。
 - ConnectionManager 的池 key 是主机 ID、端点、用户名、认证方式和密钥路径，还没有 ResolvedConnectionSpec 和凭据/信任 revision；停泊时长、连接超时和保活取自设置。没有脱敏日志。
 - 终端输出同步解析，应用层没有流控；E-03 只证明库支持背压，T-03 仍未做。
 - 主机有分组路径、标签、置顶和最近连接，没有 Group 对象、继承和 Identity；密码在首次连接时输入并可选记住，表单里没有密码字段。
@@ -64,7 +64,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] design：tokens、Light/Dark、基础组件、i18n（zh、en）
 - [ ] 窗口外壳与标签栏（E-11 结果决定标题栏方案）
 - [ ] 配置存储：单写队列、revision、迁移、备份（D-01）
-- [ ] ShutdownCoordinator
+- [ ] ShutdownCoordinator：有传输或未上传的编辑时先确认（`app/shutdown.dart`），集成测试经 `handleRequestAppExit` 确认对话框和“取消”；点窗口关闭按钮是否走到这里未亲测
 
 主机与凭据：
 - [ ] 主机、分组、身份、继承解析（H-01）
@@ -92,17 +92,17 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 ## M2 文件工作流
 
 开始时：
-- [ ] E-06、E-07 结果写入此处，据此确定并发和 channel 策略
+- [ ] E-06、E-07 结果写入此处，据此确定并发和 channel 策略：E-07 通过（上传中取消，终端照常、远端不留 `.part`）；E-06 未做，大小待作者定。当前策略见 MODULES §4“当前实现”
 
 功能：
-- [ ] SFTP 浏览：单栏与双栏共用组件、键盘操作（F-01）
-- [ ] 文件操作：新建、重命名、删除、chmod（F-01）
-- [ ] TransferManager：队列、并发、进度、取消、从头重试（F-03）
-- [ ] .part 发布、大小校验、冲突处理（F-02）
-- [ ] 目录传输：扫描上限、逐项冲突
-- [ ] OS 拖入上传
-- [ ] 外部编辑：临时副本、watcher、冲突、恢复（F-05）
-- [ ] 传输历史
+- [ ] SFTP 浏览：单栏与双栏共用组件、键盘操作（F-01）：终端侧栏和双栏页、中文和带空格的名字、Enter/F2/Delete 已在服务器上确认；方向键、按名跳转、Ctrl+A 未测
+- [x] 文件操作：新建、重命名、删除、chmod（F-01）：集成测试在服务器上逐项核对，删除指向目录的符号链接只删链接
+- [ ] TransferManager：队列、并发、进度、取消、从头重试（F-03）：进度和取消在服务器上确认；并发上限和重试只有单元测试；“关闭面板不取消任务”未测
+- [x] .part 发布、大小校验、冲突处理（F-02）：上传下载哈希一致、取消不留 `.part`、同名“保留两者”在服务器上确认；替换、合并、跳过和“本批都这样”只有单元测试
+- [ ] 目录传输：扫描上限、逐项冲突：下载含中文名的目录在服务器上确认；上限和逐项冲突只有单元测试
+- [ ] OS 拖入上传：已实现（desktop_drop），未测
+- [ ] 外部编辑：临时副本、watcher、冲突、恢复（F-05）：已实现，未运行；需要作者用自己的编辑器试
+- [ ] 传输历史：保存、重启后进行中的变为“已中断”、200 条/30 天裁剪只有单元测试
 - [ ] P-01a/c/e/f、P-03 记录
 
 ## M3 桌面主力版
@@ -154,3 +154,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | Claude Opus 5.5 | ConnectionManager（池、合并拨号、租约、停泊、复用失败重建一次）与 HostTrustService；终端经租约开 shell | 退出 shell 后 60s 内重连和同主机新标签不再要密码；集成测试已按此修改 |
 | 2026-11-06 | Claude Opus 5.5 | 终端搜索、链接、右键菜单、选中复制、光标形状；自动重连（1/2/4/8/16s）；标签重命名、复制、未读标记；SettingDef 设置定义与分区化设置页；信任记录管理 | 未读标记要在帧后改（构建中通知会断言）；对话框里的 TextEditingController 由对话框自己持有（`design/text_prompt.dart`） |
 | 2026-11-06 | Claude Opus 5.5 | 主机分组路径、标签、置顶、最近连接、网格/列表、排序；密钥库（导入、生成、复制公钥、按主机引用）；host.* 能力加分组/标签/置顶/keyId，新增 key.list、key.generate | dartssh2 现在也允许出现在 `credentials/adapters`（解析和生成密钥）；单元测试用系统 ssh-keygen 作格式参照，没有时跳过 |
+| 2026-11-06 | Claude Opus 5.5 | M2 主体：foundation 的 FileSystem（SFTP 与本机两个实现）、FileSystems 每主机共享一条 SFTP、双栏 SFTP 页和终端侧栏、TransferManager（.part 发布、冲突、目录、看门狗、历史）、外部编辑、file.*/transfer.* 能力、设置里的文件分区、关窗确认 | 集成测试的文件流程只在 `~/sshairy-test/` 内，结束时删除；传输结束会刷新正在显示目标目录的栏；dartssh2 的 rename 在服务器支持 posix-rename 时会覆盖，所以 SftpFileSystem.rename 先 stat 目标 |

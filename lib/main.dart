@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app/composition.dart';
+import 'app/shutdown.dart';
 import 'design/theme.dart';
 import 'features/settings/api.dart';
 import 'features/workspace/api.dart';
@@ -46,7 +47,7 @@ class SshairyApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      home: const WorkspacePage(),
+      home: const ShutdownGuard(child: WorkspacePage()),
     );
   }
 }

@@ -11,6 +11,8 @@ extension type const TabId(String value) {}
 
 extension type const OperationId(String value) {}
 
+extension type const TransferId(String value) {}
+
 final _random = Random.secure();
 
 /// 12 random base-36 characters.

@@ -3,8 +3,10 @@
 // Optional: SSHAIRY_TEST_SHOTS=<dir> saves screenshots there.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -15,11 +17,16 @@ import 'package:integration_test/integration_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
+import 'package:sshairy/features/files/api.dart';
+import 'package:sshairy/features/files/domain/transfer.dart';
+import 'package:sshairy/features/files/presentation/file_pane.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/workspace/api.dart';
 import 'package:sshairy/features/terminal/adapters/ime_caret.dart';
 import 'package:sshairy/foundation/data_dir.dart';
+import 'package:sshairy/foundation/file_system.dart';
+import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/main.dart';
 import 'package:xterm2/xterm.dart';
 
@@ -144,6 +151,66 @@ extension on WidgetTester {
 
   WorkspaceState get workspace =>
       ProviderScope.containerOf(element(find.byType(WorkspacePage))).read(workspaceProvider);
+
+  ProviderContainer get container => ProviderScope.containerOf(element(find.byType(WorkspacePage)));
+
+  List<Transfer> get transfers => container.read(transfersProvider);
+
+  Future<void> untilTransfers(int completed) => until(
+        '$completed transfers done',
+        () {
+          final failed = transfers.where((x) => x.state == TransferState.failed);
+          if (failed.isNotEmpty) fail('transfer failed: ${failed.first.error} ${failed.first.detail}');
+          return transfers.where((x) => x.state == TransferState.completed).length == completed;
+        },
+        seconds: 120,
+      );
+
+  Future<void> atTerminal(TabId tab) async {
+    container.read(workspaceProvider.notifier).activate(tab);
+    await untilPrompt();
+    await tapAndPump(find.byType(TerminalView).hitTestable().first);
+  }
+
+  /// The visible file panes, left to right.
+  Finder pane(int i) => find.byType(FilePane).at(i);
+
+  Finder rowFinder(int i, String name) => find.descendant(of: pane(i), matching: find.text(name));
+
+  FileEntry entry(int i, String name) => widget<FilePane>(pane(i)).browser.entries.firstWhere((e) => e.name == name);
+
+  Future<void> untilRow(int i, String name) => untilFound(rowFinder(i, name));
+
+  /// Ready, after a password prompt when the files channel needed a connection of its own.
+  Future<void> untilReady(int i) async {
+    bool ready() => find.byType(FilePane).evaluate().length > i && widget<FilePane>(pane(i)).browser.ready;
+    await until('pane $i ready or asking', () => ready() || find.byType(AlertDialog).evaluate().isNotEmpty);
+    if (!ready()) await answerPassword(password);
+    await until('pane $i ready', ready);
+  }
+
+  Future<void> openRow(int i, String name) async {
+    await untilRow(i, name);
+    await tapAndPump(rowFinder(i, name));
+    await sendKeyEvent(LogicalKeyboardKey.enter);
+    await pump();
+  }
+
+  Future<void> typePath(int i, String path) async {
+    // The end of the path bar: empty space or the current folder, both edit the path.
+    final bar = getRect(find.descendant(of: pane(i), matching: find.byTooltip('Edit path')));
+    await tapAt(Offset(bar.right - 8, bar.center.dy));
+    await pump(const Duration(milliseconds: 300));
+    await enterText(find.descendant(of: pane(i), matching: find.byType(TextField)).first, path);
+    await testTextInput.receiveAction(TextInputAction.done);
+    await pump(const Duration(milliseconds: 300));
+  }
+
+  Future<void> menu(Finder on, String item) async {
+    await tap(on, buttons: kSecondaryMouseButton, kind: PointerDeviceKind.mouse);
+    await pump(const Duration(milliseconds: 300));
+    await tapAndPump(find.text(item).last);
+  }
 
   List<Terminal> get visibleTerminals =>
       [for (final v in widgetList<TerminalView>(find.byType(TerminalView).hitTestable())) v.terminal];
@@ -577,5 +644,143 @@ void main() {
     expect(saved['themeMode'], 'dark');
     expect(saved['renderer'], 'impeller');
     expect(saved['accent'], 'blue');
+  });
+
+  testWidgets('files: side panel, SFTP page, folder ops, transfers both ways, conflict, cancel', (t) async {
+    t.testTextInput.register();
+    final [user, host] = target.split('@');
+    await File('${dir.path}/hosts.json').writeAsString(jsonEncode({
+      'schemaVersion': 1,
+      'hosts': [
+        {'id': 'fhost', 'label': 'sshairy-files', 'address': host, 'port': 22, 'username': user, 'auth': 'password'},
+      ],
+    }));
+    final local = await Directory('${dir.path}/local 本地').create();
+    final rnd = Random(7);
+    Uint8List bytes(int n) => Uint8List.fromList(List.generate(n, (_) => rnd.nextInt(256)));
+    await File('${local.path}/up 上传.bin').writeAsBytes(bytes(3 << 20));
+    await File('${local.path}/huge.bin').writeAsBytes(bytes(64 << 20));
+    await t.startApp(dir);
+
+    await t.palette('sshairy-files');
+    await t.untilFound(find.text('Unknown host'));
+    await t.tapAndPump(inDialog(find.text('Trust')));
+    await t.answerPassword(password);
+    await t.untilPrompt();
+    final term = t.terminal;
+    final tab = t.workspace.active!;
+    // Everything happens in ~/sshairy-test (TESTING §2), which the end of the test removes.
+    await t.run("rm -rf ~/sshairy-test && mkdir -p ~/sshairy-test/'中文 目录' && cd ~/sshairy-test && "
+        "head -c 2000000 /dev/urandom > 'big file.bin' && echo hello > '中文 目录/note.txt' && ln -s '中文 目录' 'dir link' && echo ready-\$((2*3))");
+    await t.until('remote fixtures', () => term.buffer.getText().contains('ready-6'));
+
+    // The side panel shares the terminal's connection.
+    await t.tapAndPump(find.byTooltip('Files'));
+    await t.untilReady(0);
+    await t.openRow(0, 'sshairy-test');
+    await t.untilRow(0, 'big file.bin');
+    expect(t.rowFinder(0, '中文 目录'), findsOneWidget);
+    await t.shot('files-side');
+    await t.tapAndPump(find.byType(TerminalView).hitTestable().first);
+    await t.expectShellAlive(2);
+
+    await t.tapAndPump(find.text('SFTP'));
+    await t.untilReady(0);
+    await t.typePath(0, local.path);
+    await t.untilRow(0, 'up 上传.bin');
+    await t.tapAndPump(find.descendant(of: find.byType(FilesPage), matching: find.text('sshairy-files')));
+    await t.untilReady(1);
+    await t.openRow(1, 'sshairy-test');
+    await t.untilRow(1, 'big file.bin');
+    await t.shot('files-page');
+
+    // Folder operations through the dialogs, checked from the shell.
+    await t.tapAndPump(find.descendant(of: t.pane(1), matching: find.byTooltip('More')));
+    await t.tapAndPump(find.text('New folder'));
+    await t.enterText(inDialog(find.byType(TextField)), 'new 新建');
+    await t.tapAndPump(inDialog(find.text('Save')));
+    await t.untilRow(1, 'new 新建');
+    await t.tapAndPump(t.rowFinder(1, 'new 新建'));
+    await t.sendKeyEvent(LogicalKeyboardKey.f2);
+    await t.untilFound(inDialog(find.byType(TextField)));
+    await t.enterText(inDialog(find.byType(TextField)), 'renamed 改名');
+    await t.tapAndPump(inDialog(find.text('Save')));
+    await t.untilRow(1, 'renamed 改名');
+    final before = t.entry(1, 'renamed 改名').mode! & 0x1FF;
+    await t.menu(t.rowFinder(1, 'renamed 改名'), 'Permissions');
+    await t.tapAndPump(inDialog(find.byType(Checkbox)).last);
+    await t.tapAndPump(inDialog(find.text('Save')));
+    final after = before ^ 1;
+    await t.until('mode changed', () => (t.entry(1, 'renamed 改名').mode! & 0x1FF) == after);
+    await t.atTerminal(tab);
+    await t.run("stat -c mode-%a 'renamed 改名'");
+    await t.until('mode on the server', () => term.buffer.getText().contains('mode-${after.toRadixString(8)}'));
+    await t.tapAndPump(find.text('SFTP'));
+    await t.tapAndPump(t.rowFinder(1, 'renamed 改名'));
+    await t.sendKeyEvent(LogicalKeyboardKey.delete);
+    await t.untilFound(inDialog(find.text('Delete')));
+    await t.tapAndPump(inDialog(find.text('Delete')));
+    await t.until('deleted', () => t.rowFinder(1, 'renamed 改名').evaluate().isEmpty);
+    // Deleting a link to a folder removes the link only.
+    await t.tapAndPump(t.rowFinder(1, 'dir link'));
+    await t.sendKeyEvent(LogicalKeyboardKey.delete);
+    await t.untilFound(inDialog(find.text('Delete')));
+    await t.tapAndPump(inDialog(find.text('Delete')));
+    await t.until('link deleted', () => t.rowFinder(1, 'dir link').evaluate().isEmpty);
+    await t.atTerminal(tab);
+    await t.run("echo kept-\$(cat '中文 目录/note.txt')");
+    await t.until('target kept', () => term.buffer.getText().contains('kept-hello'));
+    await t.tapAndPump(find.text('SFTP'));
+
+    // Upload, download a file and a folder; compare contents on both sides.
+    await t.menu(t.rowFinder(0, 'up 上传.bin'), 'Send to the other side');
+    await t.untilTransfers(1);
+    await t.untilRow(1, 'up 上传.bin');
+    await t.menu(t.rowFinder(1, 'big file.bin'), 'Send to the other side');
+    await t.untilTransfers(2);
+    await t.menu(t.rowFinder(1, '中文 目录'), 'Send to the other side');
+    await t.untilTransfers(3);
+    expect(File('${local.path}/中文 目录/note.txt').readAsStringSync(), 'hello\n');
+    final upHash = sha256.convert(File('${local.path}/up 上传.bin').readAsBytesSync()).toString();
+    final downHash = sha256.convert(File('${local.path}/big file.bin').readAsBytesSync()).toString();
+    await t.atTerminal(tab);
+    await t.run("sha256sum 'up 上传.bin' 'big file.bin'; echo parts-\$(ls -A | grep -c part)");
+    await t.until('hashes', () {
+      final text = term.buffer.getText().replaceAll('\n', '');
+      return text.contains(upHash) && text.contains(downHash) && text.contains('parts-0');
+    });
+
+    // The same name again asks; keeping both writes a second copy.
+    await t.tapAndPump(find.text('SFTP'));
+    await t.menu(t.rowFinder(1, 'big file.bin'), 'Send to the other side');
+    await t.untilFound(find.text('"big file.bin" already exists'));
+    await t.shot('files-conflict');
+    await t.tapAndPump(inDialog(find.text('Keep both')));
+    await t.untilTransfers(4);
+    expect(File('${local.path}/big file (1).bin').lengthSync(), 2000000);
+
+    // Cancelling an upload leaves no partial file and the terminal untouched.
+    await t.menu(t.rowFinder(0, 'huge.bin'), 'Send to the other side');
+    await t.until('upload running', () => t.transfers.any((x) => x.state == TransferState.running && x.bytes > 0));
+    // Closing the window now asks first; staying keeps the upload going.
+    final exit = t.binding.handleRequestAppExit();
+    await t.untilFound(find.text('1 transfer in progress'));
+    await t.shot('quit-confirm');
+    await t.tapAndPump(inDialog(find.text('Cancel')));
+    expect(await exit, ui.AppExitResponse.cancel);
+    expect(t.transfers.any((x) => x.state == TransferState.running), isTrue);
+    await t.tapAndPump(find.byTooltip('Transfers'));
+    await t.shot('files-transfers');
+    await t.tapAndPump(find.descendant(of: find.byType(TransfersPanel), matching: find.byTooltip('Cancel')));
+    await t.until('cancelled', () => t.transfers.any((x) => x.state == TransferState.cancelled));
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.pump(const Duration(milliseconds: 300));
+    await t.atTerminal(tab);
+    await t.run("echo left-\$(ls -A | grep -c -e part -e huge)");
+    await t.until('nothing left of the upload', () => term.buffer.getText().contains('left-0'));
+    await t.expectShellAlive(5);
+
+    await t.run(r'cd ~ && rm -rf ~/sshairy-test && echo cleaned-$((5*5))');
+    await t.until('cleaned up', () => term.buffer.getText().contains('cleaned-25'));
   });
 }

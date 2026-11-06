@@ -10,6 +10,8 @@ const adapters = {
   'xterm2': ['lib/features/terminal/adapters/'],
   'flutter_pty': ['lib/features/terminal/adapters/'],
   'flutter_secure_storage': ['lib/features/credentials/adapters/'],
+  'desktop_drop': ['lib/features/files/adapters/'],
+  'file_selector': ['lib/features/files/adapters/'],
 };
 
 final importLine = RegExp(r'''^\s*(?:import|export)\s+['"]([^'"]+)['"]''', multiLine: true);

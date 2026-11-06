@@ -432,4 +432,291 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dissolveGroup => '解散分组';
+
+  @override
+  String get sftp => 'SFTP';
+
+  @override
+  String get files => '文件';
+
+  @override
+  String get thisComputer => '本机';
+
+  @override
+  String get back => '后退';
+
+  @override
+  String get forward => '前进';
+
+  @override
+  String get up => '上级目录';
+
+  @override
+  String get refresh => '刷新';
+
+  @override
+  String get filter => '筛选';
+
+  @override
+  String get editPath => '编辑路径';
+
+  @override
+  String get newFolder => '新建文件夹';
+
+  @override
+  String get hiddenFiles => '隐藏文件';
+
+  @override
+  String get uploadFiles => '上传文件…';
+
+  @override
+  String get downloadTo => '下载到…';
+
+  @override
+  String get sendToOther => '发送到另一侧';
+
+  @override
+  String get editFile => '编辑';
+
+  @override
+  String get copyPath => '复制路径';
+
+  @override
+  String get permissions => '权限';
+
+  @override
+  String get colName => '名称';
+
+  @override
+  String get colModified => '修改时间';
+
+  @override
+  String get colSize => '大小';
+
+  @override
+  String get colOwner => '所有者';
+
+  @override
+  String get emptyFolder => '空文件夹';
+
+  @override
+  String deleteOne(String name) {
+    return '删除“$name”？';
+  }
+
+  @override
+  String deleteTree(String name, int count) {
+    return '删除“$name”及其中的 $count 项？';
+  }
+
+  @override
+  String deleteMany(int count) {
+    return '删除 $count 项？';
+  }
+
+  @override
+  String get permOwner => '所有者';
+
+  @override
+  String get permGroup => '组';
+
+  @override
+  String get permOthers => '其他人';
+
+  @override
+  String get permRead => '读';
+
+  @override
+  String get permWrite => '写';
+
+  @override
+  String get permExecute => '执行';
+
+  @override
+  String get transfers => '传输';
+
+  @override
+  String get clearFinished => '清除已结束';
+
+  @override
+  String get tsQueued => '排队中';
+
+  @override
+  String get tsWaiting => '等待选择';
+
+  @override
+  String get tsCompleted => '完成';
+
+  @override
+  String get tsFailed => '失败';
+
+  @override
+  String get tsCancelled => '已取消';
+
+  @override
+  String get tsInterrupted => '已中断';
+
+  @override
+  String get tsScanning => '扫描中';
+
+  @override
+  String get tsVerifying => '校验中';
+
+  @override
+  String get tsPublishing => '发布中';
+
+  @override
+  String skippedCount(int count) {
+    return '跳过 $count 项';
+  }
+
+  @override
+  String filesCount(int done, int total) {
+    return '$done/$total 个文件';
+  }
+
+  @override
+  String conflictFile(String name) {
+    return '“$name”已存在';
+  }
+
+  @override
+  String conflictDir(String name) {
+    return '文件夹“$name”已存在';
+  }
+
+  @override
+  String conflictType(String name) {
+    return '“$name”已存在，类型不同';
+  }
+
+  @override
+  String get existingItem => '现有';
+
+  @override
+  String get incomingItem => '传入';
+
+  @override
+  String get replace => '替换';
+
+  @override
+  String get merge => '合并';
+
+  @override
+  String get keepBoth => '保留两者';
+
+  @override
+  String get skip => '跳过';
+
+  @override
+  String get applyToAll => '本批次同类冲突都这样处理';
+
+  @override
+  String get upload => '上传';
+
+  @override
+  String get autoUpload => '保存时自动上传';
+
+  @override
+  String get finishEdit => '结束编辑';
+
+  @override
+  String discardEdit(String name) {
+    return '“$name”有未上传的修改，要放弃吗？';
+  }
+
+  @override
+  String get discard => '放弃';
+
+  @override
+  String get editConflict => '下载后服务器上的文件已被修改';
+
+  @override
+  String get overwrite => '覆盖';
+
+  @override
+  String get uploadAsCopy => '另存为副本';
+
+  @override
+  String get redownload => '重新下载';
+
+  @override
+  String get esModified => '未上传';
+
+  @override
+  String get esUploading => '上传中';
+
+  @override
+  String get esClean => '已同步';
+
+  @override
+  String get errFsNotFound => '不存在';
+
+  @override
+  String get errFsPermission => '没有权限';
+
+  @override
+  String get errFsExists => '已存在';
+
+  @override
+  String get errFsUnsupported => '服务器不支持此操作';
+
+  @override
+  String get errFsLost => '连接已断开';
+
+  @override
+  String get errFsFailed => '操作失败';
+
+  @override
+  String get errBadName => '名称无效';
+
+  @override
+  String get errSizeMismatch => '大小校验失败，未发布';
+
+  @override
+  String get errTargetChanged => '目标在此期间被修改，已保持原样';
+
+  @override
+  String get errReplaceUnsupported => '服务器不支持安全替换，已保留原文件';
+
+  @override
+  String get errSourceMissing => '源文件不存在';
+
+  @override
+  String errTooMany(int count) {
+    return '超过 $count 项';
+  }
+
+  @override
+  String errTooDeep(int count) {
+    return '嵌套超过 $count 层';
+  }
+
+  @override
+  String get errStalled => '30 秒没有进展';
+
+  @override
+  String get errNotRegular => '不是普通文件';
+
+  @override
+  String get errTooLarge => '超过 64 MB，请改用下载';
+
+  @override
+  String get transferConcurrency => '同时传输数';
+
+  @override
+  String transfersRunning(int count) {
+    return '$count 个传输进行中';
+  }
+
+  @override
+  String editsUnsaved(int count) {
+    return '$count 个编辑未上传';
+  }
+
+  @override
+  String get quitNote => '进行中的传输会被取消；未上传的编辑会保留，下次仍可上传。';
+
+  @override
+  String get quit => '退出';
 }

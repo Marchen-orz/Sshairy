@@ -5,13 +5,15 @@ import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 
+import '../../../foundation/cancellation.dart';
+import '../../../foundation/file_system.dart';
 import '../../../foundation/secret.dart';
 import '../../credentials/api.dart';
 import '../../hosts/api.dart';
-import '../../../foundation/cancellation.dart';
 import '../application/host_trust.dart';
 import '../domain/prompts.dart';
 import '../domain/transport.dart';
+import 'sftp_fs.dart';
 
 class _SshShell implements ShellChannel {
   _SshShell(this._session);
@@ -48,6 +50,19 @@ class _SshTransport implements Transport {
   @override
   Future<ShellChannel> openShell({required int cols, required int rows}) async =>
       _SshShell(await _channel(_client.shell(pty: SSHPtyConfig(type: 'xterm-256color', width: cols, height: rows))));
+
+  @override
+  Future<FileSystem> openFiles() async {
+    final opening = SftpFileSystem.open(_client);
+    try {
+      return await opening.timeout(_channelTimeout);
+    } on TimeoutException {
+      opening.then((fs) => fs.close()).ignore();
+      throw const ConnectError(ConnectFailure.network, 'channel open timed out');
+    } on FsError catch (e) {
+      throw ConnectError(ConnectFailure.network, e.detail);
+    }
+  }
 
   @override
   Future<ExecResult> exec(String command, {int limit = 1 << 20}) async {

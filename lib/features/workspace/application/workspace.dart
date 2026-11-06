@@ -20,12 +20,19 @@ class WorkspaceTab {
 }
 
 class WorkspaceState {
-  const WorkspaceState({this.tabs = const [], this.active});
+  const WorkspaceState({this.tabs = const [], this.active, this.files = false});
 
   final List<WorkspaceTab> tabs;
 
-  /// null shows the host vault.
+  /// null shows the host vault, or the SFTP page when [files] is set.
   final TabId? active;
+  final bool files;
+
+  /// The same view with other tabs.
+  WorkspaceState withTabs(List<WorkspaceTab> tabs, {TabId? active}) {
+    final a = active ?? this.active;
+    return WorkspaceState(tabs: tabs, active: a, files: files && a == null);
+  }
 
   WorkspaceTab? get activeTab => tabs.where((t) => t.id == active).firstOrNull;
 }
@@ -71,16 +78,14 @@ class Workspace extends Notifier<WorkspaceState> {
   /// An empty or blank [title] goes back to the host's name.
   void rename(TabId id, String? title) {
     final t = title?.trim();
-    _set(WorkspaceState(
-      tabs: [
-        for (final tab in state.tabs)
-          tab.id == id ? WorkspaceTab(id, tab.layout, title: t == null || t.isEmpty ? null : t) : tab,
-      ],
-      active: state.active,
-    ));
+    _set(state.withTabs([
+      for (final tab in state.tabs) tab.id == id ? WorkspaceTab(id, tab.layout, title: t == null || t.isEmpty ? null : t) : tab,
+    ]));
   }
 
   void showVault() => _set(WorkspaceState(tabs: state.tabs));
+
+  void showFiles() => _set(WorkspaceState(tabs: state.tabs, files: true));
 
   void activate(TabId id) {
     if (state.tabs.any((t) => t.id == id)) _set(WorkspaceState(tabs: state.tabs, active: id));
@@ -96,7 +101,7 @@ class Workspace extends Notifier<WorkspaceState> {
   void moveTab(int from, int to) {
     final tabs = [...state.tabs];
     tabs.insert(to.clamp(0, tabs.length - 1), tabs.removeAt(from));
-    _set(WorkspaceState(tabs: tabs, active: state.active));
+    _set(state.withTabs(tabs));
   }
 
   void closeTab(TabId id) {
@@ -106,8 +111,8 @@ class Workspace extends Notifier<WorkspaceState> {
       _sessions.close(leaf.session);
     }
     final tabs = [...state.tabs]..removeAt(i);
-    final active = state.active != id ? state.active : (tabs.isEmpty ? null : tabs[i.clamp(0, tabs.length - 1)].id);
-    _set(WorkspaceState(tabs: tabs, active: active));
+    if (state.active != id) return _set(state.withTabs(tabs));
+    _set(WorkspaceState(tabs: tabs, active: tabs.isEmpty ? null : tabs[i.clamp(0, tabs.length - 1)].id));
   }
 
   void closePane(TabId tabId, PaneId pane) {
@@ -163,10 +168,8 @@ class Workspace extends Notifier<WorkspaceState> {
 
   WorkspaceTab? _tab(TabId id) => state.tabs.where((t) => t.id == id).firstOrNull;
 
-  void _replace(TabId id, Layout layout) => _set(WorkspaceState(
-        tabs: [for (final t in state.tabs) t.id == id ? t.withLayout(layout) : t],
-        active: state.active,
-      ));
+  void _replace(TabId id, Layout layout) =>
+      _set(state.withTabs([for (final t in state.tabs) t.id == id ? t.withLayout(layout) : t]));
 
   void _set(WorkspaceState next) {
     state = next;

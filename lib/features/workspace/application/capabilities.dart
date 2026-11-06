@@ -46,11 +46,25 @@ List<Capability> workspaceCapabilities(Ref ref) {
       Effect.localChange,
       inputSchema: const {
         'type': 'object',
-        'properties': {'tabId': {'type': 'string', 'description': 'omit for the host vault'}},
+        'properties': {
+          'tabId': {'type': 'string', 'description': 'omit for the host vault or the view'},
+          'view': {
+            'type': 'string',
+            'enum': ['vault', 'files'],
+            'description': 'a page that is not a tab; ignored with tabId',
+          },
+        },
       },
       (a, _) async {
         final id = a.optional<String>('tabId');
-        id == null ? workspace().showVault() : workspace().activate(TabId(id));
+        if (id != null) {
+          if (_tab(ref, TabId(id)) == null) return const Err(AppError('notFound', detail: 'tab'));
+          workspace().activate(TabId(id));
+        } else if (a.optional<String>('view') == 'files') {
+          workspace().showFiles();
+        } else {
+          workspace().showVault();
+        }
         return const Ok(null);
       },
     ),

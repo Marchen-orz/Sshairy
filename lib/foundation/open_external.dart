@@ -19,6 +19,22 @@ Future<bool> openExternal(String target) async {
   }
 }
 
+/// Opens a local file in the program the system associates with its type, without a shell.
+Future<bool> openFile(String path) async {
+  if (!File(path).existsSync()) return false;
+  final (exe, args) = switch (Platform.operatingSystem) {
+    'windows' => ('rundll32', ['shell32.dll,ShellExec_RunDLL', path]),
+    'macos' => ('open', [path]),
+    _ => ('xdg-open', [path]),
+  };
+  try {
+    await Process.start(exe, args, mode: ProcessStartMode.detached);
+    return true;
+  } on ProcessException {
+    return false;
+  }
+}
+
 /// Windows throws rather than answering false for names it cannot parse, such as URLs.
 bool _isDir(String path) {
   try {

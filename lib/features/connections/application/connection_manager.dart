@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../../foundation/cancellation.dart';
+import '../../../foundation/file_system.dart';
 import '../../hosts/api.dart';
 import '../domain/known_keys.dart';
 import '../domain/prompts.dart';
@@ -196,6 +197,9 @@ class TransportLease {
   Future<ShellChannel> openShell({required int cols, required int rows}) => _use().openShell(cols: cols, rows: rows);
 
   Future<ExecResult> exec(String command, {int limit = 1 << 20}) => _use().exec(command, limit: limit);
+
+  /// The caller closes the file system before releasing the lease.
+  Future<FileSystem> openFiles() => _use().openFiles();
 
   void release() {
     if (_released) return;
