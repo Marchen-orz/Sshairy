@@ -878,4 +878,202 @@ class AppLocalizationsZh extends AppLocalizations {
   String leftoverPart(String path) {
     return '无法删除临时文件 $path';
   }
+
+  @override
+  String get portForwarding => '端口转发';
+
+  @override
+  String get fwHost => '主机';
+
+  @override
+  String get fwLocal => '本地';
+
+  @override
+  String get fwRemote => '远程';
+
+  @override
+  String get fwDynamic => '动态（SOCKS5）';
+
+  @override
+  String get fwListen => '监听';
+
+  @override
+  String get fwDestination => '目标';
+
+  @override
+  String get fwExposed => '对外开放';
+
+  @override
+  String get fwAutoStart => '随应用启动';
+
+  @override
+  String get fwStart => '启动转发';
+
+  @override
+  String fwExposeConfirm(String endpoint) {
+    return '监听 $endpoint 会让其他设备也能使用此转发，继续吗？';
+  }
+
+  @override
+  String get fwExposeAllow => '允许';
+
+  @override
+  String get fwInvalid => '请检查地址和端口';
+
+  @override
+  String get fwSaveFailed => '保存失败';
+
+  @override
+  String get fwBusy => '请先停止转发';
+
+  @override
+  String get fwNoHosts => '请先添加主机';
+
+  @override
+  String get fwErrInUse => '端口已被占用';
+
+  @override
+  String get fwErrPermission => '没有权限使用此端口';
+
+  @override
+  String get fwErrAddress => '本机没有此地址';
+
+  @override
+  String get fwErrRefused => '服务器拒绝了此转发';
+
+  @override
+  String get fwErrHost => '主机已不存在';
+
+  @override
+  String get fwErrLost => '连接已断开';
+
+  @override
+  String get fwErrStop => '无法确认端口已释放，连接已保留';
+
+  @override
+  String get fwErrTarget => '无法连接目标';
+
+  @override
+  String get fwErrTimeout => '超时';
+
+  @override
+  String get fwErrSocks => 'SOCKS5 请求无效';
+
+  @override
+  String get fwErrLimit => '连接过多';
+
+  @override
+  String forwardsRunning(int count) {
+    return '$count 条转发正在运行';
+  }
+
+  @override
+  String get quitFailed =>
+      '部分更改未能保存，或任务未能停止。可以重试或返回应用。仍然退出可能丢失未保存的更改，本地编辑副本会保留。';
+
+  @override
+  String get returnToApp => '返回应用';
+
+  @override
+  String get quitAnyway => '仍然退出';
+
+  @override
+  String configUnavailable(String name) {
+    return '无法安全读取 $name';
+  }
+
+  @override
+  String get configPreserved => '原文件已保留。请在数据目录中检查或恢复文件后重试。';
+
+  @override
+  String get openDataFolder => '打开数据目录';
+
+  @override
+  String get windowMinimize => '最小化';
+
+  @override
+  String get windowMaximize => '最大化';
+
+  @override
+  String get windowRestore => '还原';
+
+  @override
+  String get windowClose => '关闭窗口';
+
+  @override
+  String get sshConfigImport => '导入 SSH config';
+
+  @override
+  String get sshConfigPick => '选择配置';
+
+  @override
+  String get sshConfigExisting => '已保存';
+
+  @override
+  String get sshConfigBlocked => '无法导入';
+
+  @override
+  String sshConfigImported(int count) {
+    return '已导入 $count 台主机';
+  }
+
+  @override
+  String get sshConfigChanged => '主机库已变化，请重新选择配置';
+
+  @override
+  String get sshConfigFailed => '无法导入配置';
+
+  @override
+  String get sshConfigMalformed => '语法无效';
+
+  @override
+  String get sshConfigUnsupported => '不支持的选项';
+
+  @override
+  String get sshConfigMatch => '已跳过 Match 区块';
+
+  @override
+  String get sshConfigPattern => '主机模式仅用于默认值';
+
+  @override
+  String get sshConfigIncludeOutside => 'Include 超出所选目录';
+
+  @override
+  String get sshConfigIncludeLimit => 'Include 文件数、深度或大小超限';
+
+  @override
+  String get sshConfigIncludeMissing => '无法读取 Include 文件';
+
+  @override
+  String get sshConfigIncludeCycle => 'Include 循环';
+
+  @override
+  String get sshConfigIncomplete => '配置未完整读取';
+
+  @override
+  String get sshConfigProxyCommand => 'ProxyCommand 需要手动配置';
+
+  @override
+  String get sshConfigInvalid => '主机设置无效';
+
+  @override
+  String get sshConfigJump => '无法解析跳板主机';
+
+  @override
+  String get sshConfigJumpCycle => '跳板链循环或过长';
+
+  @override
+  String get sshConfigAmbiguous => '匹配到多个已保存主机';
+
+  @override
+  String get sshConfigIdentity => '无法解析私钥路径';
+
+  @override
+  String get sshConfigExtraIdentity => '仅支持第一个 IdentityFile';
+
+  @override
+  String get sshConfigHostLimit => '配置中的主机过多';
+
+  @override
+  String get retryAction => '重试';
 }

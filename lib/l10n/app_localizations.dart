@@ -1729,6 +1729,384 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not remove the temporary file {path}'**
   String leftoverPart(String path);
+
+  /// No description provided for @portForwarding.
+  ///
+  /// In en, this message translates to:
+  /// **'Port forwarding'**
+  String get portForwarding;
+
+  /// No description provided for @fwHost.
+  ///
+  /// In en, this message translates to:
+  /// **'Host'**
+  String get fwHost;
+
+  /// No description provided for @fwLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get fwLocal;
+
+  /// No description provided for @fwRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote'**
+  String get fwRemote;
+
+  /// No description provided for @fwDynamic.
+  ///
+  /// In en, this message translates to:
+  /// **'Dynamic (SOCKS5)'**
+  String get fwDynamic;
+
+  /// No description provided for @fwListen.
+  ///
+  /// In en, this message translates to:
+  /// **'Listen'**
+  String get fwListen;
+
+  /// No description provided for @fwDestination.
+  ///
+  /// In en, this message translates to:
+  /// **'Destination'**
+  String get fwDestination;
+
+  /// No description provided for @fwExposed.
+  ///
+  /// In en, this message translates to:
+  /// **'Exposed'**
+  String get fwExposed;
+
+  /// No description provided for @fwAutoStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start with the app'**
+  String get fwAutoStart;
+
+  /// No description provided for @fwStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start forward'**
+  String get fwStart;
+
+  /// No description provided for @fwExposeConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening on {endpoint} lets other machines use this forward. Continue?'**
+  String fwExposeConfirm(String endpoint);
+
+  /// No description provided for @fwExposeAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get fwExposeAllow;
+
+  /// No description provided for @fwInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the addresses and ports'**
+  String get fwInvalid;
+
+  /// No description provided for @fwSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save'**
+  String get fwSaveFailed;
+
+  /// No description provided for @fwBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the forward first'**
+  String get fwBusy;
+
+  /// No description provided for @fwNoHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a host first'**
+  String get fwNoHosts;
+
+  /// No description provided for @fwErrInUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Port already in use'**
+  String get fwErrInUse;
+
+  /// No description provided for @fwErrPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Permission denied for this port'**
+  String get fwErrPermission;
+
+  /// No description provided for @fwErrAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Address not available here'**
+  String get fwErrAddress;
+
+  /// No description provided for @fwErrRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'The server refused the forward'**
+  String get fwErrRefused;
+
+  /// No description provided for @fwErrHost.
+  ///
+  /// In en, this message translates to:
+  /// **'The host no longer exists'**
+  String get fwErrHost;
+
+  /// No description provided for @fwErrLost.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection lost'**
+  String get fwErrLost;
+
+  /// No description provided for @fwErrStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not confirm the port was released; the connection is kept'**
+  String get fwErrStop;
+
+  /// No description provided for @fwErrTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot reach the destination'**
+  String get fwErrTarget;
+
+  /// No description provided for @fwErrTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Timed out'**
+  String get fwErrTimeout;
+
+  /// No description provided for @fwErrSocks.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid SOCKS5 request'**
+  String get fwErrSocks;
+
+  /// No description provided for @fwErrLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many connections'**
+  String get fwErrLimit;
+
+  /// No description provided for @forwardsRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} forwards running'**
+  String forwardsRunning(int count);
+
+  /// No description provided for @quitFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Some changes could not be saved or work could not be stopped. Retry or return to the app. Quitting anyway may lose unsaved changes; local edit copies will be kept.'**
+  String get quitFailed;
+
+  /// No description provided for @returnToApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Return to app'**
+  String get returnToApp;
+
+  /// No description provided for @quitAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Quit anyway'**
+  String get quitAnyway;
+
+  /// No description provided for @configUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not safely open {name}'**
+  String configUnavailable(String name);
+
+  /// No description provided for @configPreserved.
+  ///
+  /// In en, this message translates to:
+  /// **'The file has been kept. Check or restore it in the data folder, then retry.'**
+  String get configPreserved;
+
+  /// No description provided for @openDataFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Open data folder'**
+  String get openDataFolder;
+
+  /// No description provided for @windowMinimize.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimize'**
+  String get windowMinimize;
+
+  /// No description provided for @windowMaximize.
+  ///
+  /// In en, this message translates to:
+  /// **'Maximize'**
+  String get windowMaximize;
+
+  /// No description provided for @windowRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get windowRestore;
+
+  /// No description provided for @windowClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close window'**
+  String get windowClose;
+
+  /// No description provided for @sshConfigImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Import SSH config'**
+  String get sshConfigImport;
+
+  /// No description provided for @sshConfigPick.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose config'**
+  String get sshConfigPick;
+
+  /// No description provided for @sshConfigExisting.
+  ///
+  /// In en, this message translates to:
+  /// **'Already saved'**
+  String get sshConfigExisting;
+
+  /// No description provided for @sshConfigBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot import'**
+  String get sshConfigBlocked;
+
+  /// No description provided for @sshConfigImported.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported {count} hosts'**
+  String sshConfigImported(int count);
+
+  /// No description provided for @sshConfigChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Hosts changed; choose the config again'**
+  String get sshConfigChanged;
+
+  /// No description provided for @sshConfigFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not import the config'**
+  String get sshConfigFailed;
+
+  /// No description provided for @sshConfigMalformed.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid syntax'**
+  String get sshConfigMalformed;
+
+  /// No description provided for @sshConfigUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsupported option'**
+  String get sshConfigUnsupported;
+
+  /// No description provided for @sshConfigMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Match block skipped'**
+  String get sshConfigMatch;
+
+  /// No description provided for @sshConfigPattern.
+  ///
+  /// In en, this message translates to:
+  /// **'Host pattern provides defaults only'**
+  String get sshConfigPattern;
+
+  /// No description provided for @sshConfigIncludeOutside.
+  ///
+  /// In en, this message translates to:
+  /// **'Include is outside the selected folder'**
+  String get sshConfigIncludeOutside;
+
+  /// No description provided for @sshConfigIncludeLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Include file, depth or size limit reached'**
+  String get sshConfigIncludeLimit;
+
+  /// No description provided for @sshConfigIncludeMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Included file could not be read'**
+  String get sshConfigIncludeMissing;
+
+  /// No description provided for @sshConfigIncludeCycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Include cycle'**
+  String get sshConfigIncludeCycle;
+
+  /// No description provided for @sshConfigIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Config was not fully read'**
+  String get sshConfigIncomplete;
+
+  /// No description provided for @sshConfigProxyCommand.
+  ///
+  /// In en, this message translates to:
+  /// **'ProxyCommand requires manual setup'**
+  String get sshConfigProxyCommand;
+
+  /// No description provided for @sshConfigInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid host settings'**
+  String get sshConfigInvalid;
+
+  /// No description provided for @sshConfigJump.
+  ///
+  /// In en, this message translates to:
+  /// **'Jump host could not be resolved'**
+  String get sshConfigJump;
+
+  /// No description provided for @sshConfigJumpCycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Jump chain is cyclic or too long'**
+  String get sshConfigJumpCycle;
+
+  /// No description provided for @sshConfigAmbiguous.
+  ///
+  /// In en, this message translates to:
+  /// **'Multiple saved hosts match'**
+  String get sshConfigAmbiguous;
+
+  /// No description provided for @sshConfigIdentity.
+  ///
+  /// In en, this message translates to:
+  /// **'Private key path could not be resolved'**
+  String get sshConfigIdentity;
+
+  /// No description provided for @sshConfigExtraIdentity.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the first IdentityFile is supported'**
+  String get sshConfigExtraIdentity;
+
+  /// No description provided for @sshConfigHostLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many hosts in the config'**
+  String get sshConfigHostLimit;
+
+  /// No description provided for @retryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retryAction;
 }
 
 class _AppLocalizationsDelegate

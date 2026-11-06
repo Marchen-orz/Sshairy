@@ -903,4 +903,207 @@ class AppLocalizationsEn extends AppLocalizations {
   String leftoverPart(String path) {
     return 'Could not remove the temporary file $path';
   }
+
+  @override
+  String get portForwarding => 'Port forwarding';
+
+  @override
+  String get fwHost => 'Host';
+
+  @override
+  String get fwLocal => 'Local';
+
+  @override
+  String get fwRemote => 'Remote';
+
+  @override
+  String get fwDynamic => 'Dynamic (SOCKS5)';
+
+  @override
+  String get fwListen => 'Listen';
+
+  @override
+  String get fwDestination => 'Destination';
+
+  @override
+  String get fwExposed => 'Exposed';
+
+  @override
+  String get fwAutoStart => 'Start with the app';
+
+  @override
+  String get fwStart => 'Start forward';
+
+  @override
+  String fwExposeConfirm(String endpoint) {
+    return 'Listening on $endpoint lets other machines use this forward. Continue?';
+  }
+
+  @override
+  String get fwExposeAllow => 'Allow';
+
+  @override
+  String get fwInvalid => 'Check the addresses and ports';
+
+  @override
+  String get fwSaveFailed => 'Could not save';
+
+  @override
+  String get fwBusy => 'Stop the forward first';
+
+  @override
+  String get fwNoHosts => 'Add a host first';
+
+  @override
+  String get fwErrInUse => 'Port already in use';
+
+  @override
+  String get fwErrPermission => 'Permission denied for this port';
+
+  @override
+  String get fwErrAddress => 'Address not available here';
+
+  @override
+  String get fwErrRefused => 'The server refused the forward';
+
+  @override
+  String get fwErrHost => 'The host no longer exists';
+
+  @override
+  String get fwErrLost => 'Connection lost';
+
+  @override
+  String get fwErrStop =>
+      'Could not confirm the port was released; the connection is kept';
+
+  @override
+  String get fwErrTarget => 'Cannot reach the destination';
+
+  @override
+  String get fwErrTimeout => 'Timed out';
+
+  @override
+  String get fwErrSocks => 'Invalid SOCKS5 request';
+
+  @override
+  String get fwErrLimit => 'Too many connections';
+
+  @override
+  String forwardsRunning(int count) {
+    return '$count forwards running';
+  }
+
+  @override
+  String get quitFailed =>
+      'Some changes could not be saved or work could not be stopped. Retry or return to the app. Quitting anyway may lose unsaved changes; local edit copies will be kept.';
+
+  @override
+  String get returnToApp => 'Return to app';
+
+  @override
+  String get quitAnyway => 'Quit anyway';
+
+  @override
+  String configUnavailable(String name) {
+    return 'Could not safely open $name';
+  }
+
+  @override
+  String get configPreserved =>
+      'The file has been kept. Check or restore it in the data folder, then retry.';
+
+  @override
+  String get openDataFolder => 'Open data folder';
+
+  @override
+  String get windowMinimize => 'Minimize';
+
+  @override
+  String get windowMaximize => 'Maximize';
+
+  @override
+  String get windowRestore => 'Restore';
+
+  @override
+  String get windowClose => 'Close window';
+
+  @override
+  String get sshConfigImport => 'Import SSH config';
+
+  @override
+  String get sshConfigPick => 'Choose config';
+
+  @override
+  String get sshConfigExisting => 'Already saved';
+
+  @override
+  String get sshConfigBlocked => 'Cannot import';
+
+  @override
+  String sshConfigImported(int count) {
+    return 'Imported $count hosts';
+  }
+
+  @override
+  String get sshConfigChanged => 'Hosts changed; choose the config again';
+
+  @override
+  String get sshConfigFailed => 'Could not import the config';
+
+  @override
+  String get sshConfigMalformed => 'Invalid syntax';
+
+  @override
+  String get sshConfigUnsupported => 'Unsupported option';
+
+  @override
+  String get sshConfigMatch => 'Match block skipped';
+
+  @override
+  String get sshConfigPattern => 'Host pattern provides defaults only';
+
+  @override
+  String get sshConfigIncludeOutside =>
+      'Include is outside the selected folder';
+
+  @override
+  String get sshConfigIncludeLimit =>
+      'Include file, depth or size limit reached';
+
+  @override
+  String get sshConfigIncludeMissing => 'Included file could not be read';
+
+  @override
+  String get sshConfigIncludeCycle => 'Include cycle';
+
+  @override
+  String get sshConfigIncomplete => 'Config was not fully read';
+
+  @override
+  String get sshConfigProxyCommand => 'ProxyCommand requires manual setup';
+
+  @override
+  String get sshConfigInvalid => 'Invalid host settings';
+
+  @override
+  String get sshConfigJump => 'Jump host could not be resolved';
+
+  @override
+  String get sshConfigJumpCycle => 'Jump chain is cyclic or too long';
+
+  @override
+  String get sshConfigAmbiguous => 'Multiple saved hosts match';
+
+  @override
+  String get sshConfigIdentity => 'Private key path could not be resolved';
+
+  @override
+  String get sshConfigExtraIdentity =>
+      'Only the first IdentityFile is supported';
+
+  @override
+  String get sshConfigHostLimit => 'Too many hosts in the config';
+
+  @override
+  String get retryAction => 'Retry';
 }
