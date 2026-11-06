@@ -3,9 +3,10 @@ import '../../../foundation/cancellation.dart';
 enum InsertResult { sent, unavailable, rejected, stale, cancelled }
 
 class InsertPreview {
-  const InsertPreview(this.target, this.text, {required this.run});
+  const InsertPreview(this.target, this.text, {required this.run, this.cancellation});
   final String target, text;
   final bool run;
+  final CancellationToken? cancellation;
 
   String get visibleText => text.runes.map((r) {
     if (r == 10 || r == 9) return String.fromCharCode(r);
@@ -41,6 +42,7 @@ Future<InsertResult> approveInsertion({
         ? await approval
         : await Future.any([approval, cancel.whenCancelled.then((_) => false)]);
     if (cancel?.isCancelled ?? false) return InsertResult.cancelled;
+    if (!current()) return InsertResult.stale;
     if (!accepted) return InsertResult.rejected;
   }
   if (cancel?.isCancelled ?? false) return InsertResult.cancelled;

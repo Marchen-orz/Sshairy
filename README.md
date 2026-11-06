@@ -1,3 +1,55 @@
 # sshairy
 
-A new Flutter project.
+Lightweight SSH. Powered by AI.
+
+基于 Flutter 的桌面 SSH 客户端。先完成 SSH 与文件工作流，AI 在下一阶段接入；当前没有模型调用。
+
+主要供作者自用，处于开发阶段，不提供兼容性、可用性或数据恢复保障。目标平台为 Windows、macOS、Linux；目前只在作者的 Windows 11 和 Ubuntu 24.04 服务器上实际测试，macOS 和 Linux 桌面尚未验证。
+
+- 主机库：分组、标签、搜索、置顶、最近连接；密码与密钥认证，导入与生成 Ed25519 密钥。
+- 终端：多标签、分屏、搜索、复制粘贴、重连、布局恢复；关闭标签不会关闭其他通道。
+- 文件：双栏 SFTP、终端侧栏、上传下载、队列、冲突处理、外部编辑。
+- 片段：搜索、标签、编辑与持久化；插入焦点终端或确认后运行，断线重连使旧确认失效。
+- 外观：默认蓝色，可切绿、紫、橙；分别适配浅色和深色。Windows 默认 Skia，可在设置中切换 Impeller，重启生效。
+- 连接扩展：跳板链、SOCKS5／HTTP CONNECT 代理、按主机启用旧版算法。实际验证范围见 [ROADMAP](docs/ROADMAP.md)。
+
+密码与私钥只存系统安全存储。连接先检查主机密钥，变化时默认阻断；不修改系统 SSH 配置或 `known_hosts`。
+
+## 开发
+
+当前工具链：Flutter 3.47.9 stable、Dart 3.13.7。Windows 需要 Visual Studio 的 C++ 桌面开发工具。
+
+```sh
+flutter pub get
+flutter run -d windows
+```
+
+```sh
+flutter analyze
+dart run tool/check_imports.dart
+flutter test
+```
+
+服务器集成测试的配置见 [integration_test/app_test.dart](integration_test/app_test.dart)，凭据只通过环境变量传入。测试必须遵守 [TESTING §2](docs/TESTING.md)：文件操作限于 `~/sshairy-test/`，不得影响已有服务；没有实际运行的场景不得当作已通过。
+
+## Windows 本地打包
+
+在可执行 `flutter`、`dart` 的 PowerShell 中运行：
+
+```powershell
+./tool/package_windows.ps1
+```
+
+输出在 `dist/`：完整运行目录、ZIP 和 SHA256 校验文件。已有 Release 构建可加 `-SkipBuild`。必须分发整个目录，不能只复制 EXE；包未签名，没有安装器或自动更新。脚本保留依赖许可证，缺失时会终止打包。
+
+## 扩展
+
+采用按功能划分的模块化单体；跨模块仅通过 `api.dart`，第三方库封装在适配层，连接、终端和传输分别持有自己的资源。业务行为通过 typed 用例，命令面板经 `CapabilityDispatcher` 调用；新能力默认不向 AI 暴露。
+
+后续 AI 可扩展 Capability 目录、命令面板来源和设置分区，不需要重写 SSH/SFTP 核心。凭据与信任授权仍由确定性代码控制。设计入口：[DESIGN](docs/DESIGN.md)、[CONTRACTS](docs/CONTRACTS.md)、[SECURITY](docs/SECURITY.md)、[AI](docs/AI.md)。
+
+## 许可证
+
+计划开源，项目许可证尚未确定，当前不声明 MIT 授权。发行前还需完成许可证选择与完整依赖审计。第三方组件保留各自许可，说明见 [DEPENDENCIES](docs/DEPENDENCIES.md)。
+
+图标是本项目自有设计，SVG 源文件位于 [assets/brand/icon.svg](assets/brand/icon.svg)。只参考 Netcatty 的产品设计，未采用其 GPL 代码或品牌素材。

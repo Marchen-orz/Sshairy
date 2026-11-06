@@ -56,6 +56,7 @@ class TerminalSession extends ChangeNotifier {
   TransportLease? _lease;
   var _closed = false;
   var _shellEnded = true;
+  final _insertions = <CancellationToken>{};
 
   /// Output arrived while no pane showed this session.
   var unread = false;
@@ -92,8 +93,12 @@ class TerminalSession extends ChangeNotifier {
     CancellationToken? cancel,
   }) {
     final shell = _shell, lease = _lease;
+    // Closes the confirmation dialog when the caller cancels or this shell ends; the result stays decided by `current`.
+    final dismiss = CancellationToken();
+    _insertions.add(dismiss);
+    unawaited(cancel?.whenCancelled.then((_) => dismiss.cancel()));
     return approveInsertion(
-      preview: InsertPreview(host.target, text, run: run),
+      preview: InsertPreview(host.target, text, run: run, cancellation: dismiss),
       confirmMultiline: confirmMultiline,
       confirm: confirm,
       cancel: cancel,
@@ -102,7 +107,13 @@ class TerminalSession extends ChangeNotifier {
         _terminal.paste(text);
         if (run) shell!.write(utf8.encode('\r'));
       },
-    );
+    ).whenComplete(() => _insertions.remove(dismiss));
+  }
+
+  void _dismissInsertions() {
+    for (final token in [..._insertions]) {
+      token.cancel();
+    }
   }
 
   /// A user's attempt: starts over the automatic retry budget.
@@ -138,7 +149,12 @@ class TerminalSession extends ChangeNotifier {
       if (_closed) return shell.close();
       _shell = shell;
       _shellEnded = false;
-      shell.done.then((_) => _shellEnded = true, onError: (Object _) => _shellEnded = true);
+      void ended() {
+        _shellEnded = true;
+        if (identical(_shell, shell)) _dismissInsertions();
+      }
+
+      shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) => shell.write(utf8.encode(data));
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       shell.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -166,6 +182,7 @@ class TerminalSession extends ChangeNotifier {
     } finally {
       _terminal.onOutput = null;
       _terminal.onResize = null;
+      _dismissInsertions();
       _shell?.close();
       _shell = null;
       _lease?.release();
@@ -216,6 +233,7 @@ class TerminalSession extends ChangeNotifier {
     if (_closed) return;
     _closed = true;
     _shellEnded = true;
+    _dismissInsertions();
     _stopTimer();
     _shell?.close();
     _lease?.release();

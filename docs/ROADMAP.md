@@ -117,9 +117,9 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] 密钥生成：Ed25519，ssh-keygen 能读出同样的公钥和指纹；登录未测
 - [ ] 暂停与断点续传（F-04）
 - [ ] 10 GB 传输（P-03）
-- [ ] README 写明已测环境和无保障声明
+- [x] README 写明已测环境和无保障声明
 - [ ] 确定 LICENSE；审计依赖、字体、图标许可
-- [ ] Windows 打包；其他平台有需要时再做
+- [x] Windows 本地打包：Release 构建、完整 runner ZIP、101 个依赖许可证清单和 SHA256 已验证；未签名，正式发行仍待许可证确认。其他平台未验证
 
 ## M4 AI 首版
 
@@ -157,3 +157,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | Claude Opus 5.5 | M2 主体：foundation 的 FileSystem（SFTP 与本机两个实现）、FileSystems 每主机共享一条 SFTP、双栏 SFTP 页和终端侧栏、TransferManager（.part 发布、冲突、目录、看门狗、历史）、外部编辑、file.*/transfer.* 能力、设置里的文件分区、关窗确认 | 集成测试的文件流程只在 `~/sshairy-test/` 内，结束时删除；传输结束会刷新正在显示目标目录的栏；dartssh2 的 rename 在服务器支持 posix-rename 时会覆盖，所以 SftpFileSystem.rename 先 stat 目标 |
 | 2026-11-06 | 开发助手 | M3 路由：完整跳板链快照与池键、SOCKS5/HTTP CONNECT 适配、按主机 legacy、RSA 信任别名；主机变更串行且落盘后发布，置顶/最近时间不覆盖新配置或复活已删主机。70 项单元测试通过，flutter analyze 无问题，imports ok；此前 Windows/Ubuntu 双跳与远端转发取消集成通过 | 代理/legacy 无真实环境，未验证；转发只有领域模型，片段和导入未实现；打包脚本未运行。配置 revision/备份仍欠缺 |
 | 2026-11-06 | 开发助手 | 片段搜索、增删改、串行持久化与命令面板入口；与剪贴板共用受控插入，运行/控制字符确认绑定原 shell。Windows 无连接 CRUD/重启恢复集成通过，79 项单元测试通过，flutter analyze 无问题，imports ok | 真实 SSH 片段发送未测；SSH config、known_hosts 导入与转发规则管理继续实施 |
+| 2026-11-06 | 开发助手 | Windows 本地打包（Release、ZIP、101 个依赖许可证清单、SHA256，已核对 ZIP 内容）；片段确认窗口随取消、断线、关闭而关闭；`tool/check_imports.dart` 增加 feature 循环依赖与 `package:sshairy/` 绕过检测 | 包未签名；许可证未定，不宣称 MIT。其他平台未打包 |

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
+import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/ids.dart';
 
 import 'connection_manager_test.dart' show FakeTransport, NoPrompts;
@@ -88,6 +89,42 @@ void main() {
     expect(await pending, InsertResult.stale);
     expect(old.writes, isEmpty);
     expect(transport.opened.last.writes, isEmpty);
+  });
+
+  test('ending the shell or cancelling dismisses the open confirmation', () async {
+    await connected();
+    final shell = transport.opened.single;
+    final seen = <InsertPreview>[];
+    final gate = Completer<bool>();
+    final ended = session.insert(
+      'echo one',
+      run: true,
+      confirm: (p) {
+        seen.add(p);
+        return gate.future;
+      },
+    );
+    final cancel = CancellationToken();
+    final cancelled = session.insert(
+      'echo two',
+      run: true,
+      cancel: cancel,
+      confirm: (p) {
+        seen.add(p);
+        return gate.future;
+      },
+    );
+    expect(seen.map((p) => p.cancellation!.isCancelled), [false, false]);
+    cancel.cancel();
+    await pumpEventQueue();
+    expect(seen.map((p) => p.cancellation!.isCancelled), [false, true]);
+    expect(await cancelled, InsertResult.cancelled);
+    shell.close();
+    await pumpEventQueue();
+    expect(seen.first.cancellation!.isCancelled, isTrue);
+    gate.complete(false);
+    expect(await ended, InsertResult.stale);
+    expect(shell.writes, isEmpty);
   });
 
   test('closed or ended shell rejects pending approval', () async {
