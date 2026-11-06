@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F8DFB"/>
+      <stop offset="0.55" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#1D3FA8"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14233D"/>
+      <stop offset="1" stop-color="#0B1426"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#7DD3FC" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#7DD3FC" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="60" fill="url(#bg)"/>
+  <!-- hair: three circuit traces ending in nodes -->
+  <g fill="none" stroke="#E0F2FE" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M128 82 V44"/>
+    <path d="M106 84 L98 64 L80 52"/>
+    <path d="M150 84 L158 64 L176 52"/>
+  </g>
+  <g fill="#FDE68A" stroke="#E0F2FE" stroke-width="5">
+    <circle cx="128" cy="38" r="10"/>
+    <circle cx="74" cy="48" r="9"/>
+    <circle cx="182" cy="48" r="9"/>
+  </g>
+  <!-- face: a terminal screen -->
+  <rect x="36" y="80" width="184" height="140" rx="44" fill="url(#screen)" stroke="#93C5FD" stroke-opacity="0.45" stroke-width="4"/>
+  <circle cx="95" cy="138" r="30" fill="url(#glow)"/>
+  <circle cx="161" cy="138" r="30" fill="url(#glow)"/>
+  <!-- eyes: blinking cursor blocks -->
+  <rect x="83" y="118" width="24" height="40" rx="9" fill="#7DD3FC"/>
+  <rect x="149" y="118" width="24" height="40" rx="9" fill="#7DD3FC"/>
+  <circle cx="99" cy="128" r="4.5" fill="#FFFFFF"/>
+  <circle cx="165" cy="128" r="4.5" fill="#FFFFFF"/>
+  <!-- cheeks and smile -->
+  <ellipse cx="68" cy="174" rx="13" ry="8" fill="#F9A8D4" fill-opacity="0.9"/>
+  <ellipse cx="188" cy="174" rx="13" ry="8" fill="#F9A8D4" fill-opacity="0.9"/>
+  <path d="M114 176 Q128 190 142 176" fill="none" stroke="#7DD3FC" stroke-width="7" stroke-linecap="round"/>
+</svg>
