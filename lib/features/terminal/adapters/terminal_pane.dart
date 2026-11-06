@@ -74,13 +74,15 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
 
   /// Clearing the unread mark rebuilds the tab bar, so it waits until this build is over.
   void _markViewed() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _session.viewed = widget.active;
-      });
+    if (mounted) _session.viewed = widget.active;
+  });
 
   Future<void> _connect() => _session.connect(DialogPrompts(context));
 
   void _focusWhenConnected() {
-    if (widget.active && !_searching && _session.status == SessionStatus.connected) _focus.requestFocus();
+    if (widget.active && !_searching && _session.status == SessionStatus.connected) {
+      _focus.requestFocus();
+    }
   }
 
   /// xterm2 never sends the composing rect, so Windows puts the IME candidate window at the window corner.
@@ -148,35 +150,19 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
 
   Future<void> _copy() async {
     final text = _selectedText;
-    if (text != null && text.isNotEmpty) await Clipboard.setData(ClipboardData(text: text));
+    if (text != null && text.isNotEmpty) {
+      await Clipboard.setData(ClipboardData(text: text));
+    }
   }
 
   Future<void> _paste() async {
     final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
     if (text == null || text.isEmpty || !mounted) return;
-    if (text.contains('\n') && ref.read(settingsProvider).get(SettingKeys.confirmPaste) && !await _confirmPaste(text)) {
-      return;
-    }
-    _terminal.paste(text);
-  }
-
-  Future<bool> _confirmPaste(String text) async {
-    final l = AppLocalizations.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        content: SizedBox(
-          width: 520,
-          height: 240,
-          child: SingleChildScrollView(child: SelectableText(text, style: const TextStyle(fontFamily: 'Consolas'))),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
-          FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: Text(l.paste)),
-        ],
-      ),
+    await _session.insert(
+      text,
+      confirmMultiline: ref.read(settingsProvider).get(SettingKeys.confirmPaste),
+      confirm: (preview) => confirmTerminalInsert(context, preview),
     );
-    return ok ?? false;
   }
 
   void _selectAll() {
@@ -213,13 +199,17 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   }
 
   void _onTapUp(TapUpDetails _, CellOffset cell) {
-    if (!HardwareKeyboard.instance.isControlPressed && !HardwareKeyboard.instance.isMetaPressed) return;
+    if (!HardwareKeyboard.instance.isControlPressed && !HardwareKeyboard.instance.isMetaPressed) {
+      return;
+    }
     final link = _linkAt(cell);
     if (link != null) openExternal(link);
   }
 
   Future<void> _onSecondaryTapUp(TapUpDetails details, CellOffset cell) async {
-    if (ref.read(settingsProvider).get(SettingKeys.rightClick) == RightClick.paste) return _paste();
+    if (ref.read(settingsProvider).get(SettingKeys.rightClick) == RightClick.paste) {
+      return _paste();
+    }
     final l = AppLocalizations.of(context);
     final link = _linkAt(cell);
     final hasSelection = _selectedText?.isNotEmpty ?? false;
@@ -228,7 +218,13 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
           value: run,
           enabled: enabled,
           height: 36,
-          child: Row(children: [Icon(icon, size: 16), const SizedBox(width: Space.md), Text(label)]),
+          child: Row(
+            children: [
+              Icon(icon, size: 16),
+              const SizedBox(width: Space.md),
+              Text(label),
+            ],
+          ),
         );
     final p = details.globalPosition;
     final run = await showMenu<VoidCallback>(
@@ -265,84 +261,98 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     final copyOnSelect = settings.get(SettingKeys.copyOnSelect);
     return ListenableBuilder(
       listenable: _session,
-      builder: (context, _) => Stack(children: [
-        Positioned.fill(
-          child: Listener(
-            onPointerUp: copyOnSelect ? (_) => _copy() : null,
-            child: TerminalView(
-              _terminal,
-              key: _view,
-              focusNode: _focus,
-              controller: _controller,
-              scrollController: _scroll,
-              onKeyEvent: _onKey,
-              padding: const EdgeInsets.all(Space.sm),
-              theme: _terminalTheme(TerminalPalette.of(Theme.of(context))),
-              cursorType: switch (settings.get(SettingKeys.cursorShape)) {
-                CursorShape.block => TerminalCursorType.block,
-                CursorShape.underline => TerminalCursorType.underline,
-                CursorShape.bar => TerminalCursorType.verticalBar,
-              },
-              onPaste: _paste,
-              onTapUp: _onTapUp,
-              onSecondaryTapUp: _onSecondaryTapUp,
-              textStyle: TerminalStyle(
-                fontSize: settings.fontSize,
-                fontFamily: 'Cascadia Mono',
-                fontFamilyFallback: const [
-                  'Consolas', 'Menlo', 'DejaVu Sans Mono', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC',
-                ],
-              ),
-            ),
-          ),
-        ),
-        if (_searching)
-          Positioned(
-            top: Space.sm,
-            right: Space.lg,
-            child: _SearchBar(
-              terminal: _terminal,
-              controller: _controller,
-              reveal: _reveal,
-              onClose: _closeSearch,
-            ),
-          ),
-        if (_session.status != SessionStatus.connected)
-          Center(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Space.lg),
-                child: switch (_session) {
-                  TerminalSession(status: SessionStatus.connecting) => Row(mainAxisSize: MainAxisSize.min, children: [
-                      const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                      const SizedBox(width: Space.md),
-                      Text(l.connecting),
-                    ]),
-                  TerminalSession(reconnectIn: final n?) => Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text(_message(l, _session)),
-                      const SizedBox(height: Space.sm),
-                      Text(l.reconnectingIn(n)),
-                      const SizedBox(height: Space.md),
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        TextButton(onPressed: _session.stopReconnect, child: Text(l.stop)),
-                        const SizedBox(width: Space.sm),
-                        FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
-                      ]),
-                    ]),
-                  _ => Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text(_session.status == SessionStatus.idle ? _session.host.target : _message(l, _session)),
-                      const SizedBox(height: Space.md),
-                      FilledButton(
-                        autofocus: true,
-                        onPressed: _connect,
-                        child: Text(_session.status == SessionStatus.idle ? l.connect : l.retry),
-                      ),
-                    ]),
+      builder: (context, _) => Stack(
+        children: [
+          Positioned.fill(
+            child: Listener(
+              onPointerUp: copyOnSelect ? (_) => _copy() : null,
+              child: TerminalView(
+                _terminal,
+                key: _view,
+                focusNode: _focus,
+                controller: _controller,
+                scrollController: _scroll,
+                onKeyEvent: _onKey,
+                padding: const EdgeInsets.all(Space.sm),
+                theme: _terminalTheme(TerminalPalette.of(Theme.of(context))),
+                cursorType: switch (settings.get(SettingKeys.cursorShape)) {
+                  CursorShape.block => TerminalCursorType.block,
+                  CursorShape.underline => TerminalCursorType.underline,
+                  CursorShape.bar => TerminalCursorType.verticalBar,
                 },
+                onPaste: _paste,
+                onTapUp: _onTapUp,
+                onSecondaryTapUp: _onSecondaryTapUp,
+                textStyle: TerminalStyle(
+                  fontSize: settings.fontSize,
+                  fontFamily: 'Cascadia Mono',
+                  fontFamilyFallback: const [
+                    'Consolas',
+                    'Menlo',
+                    'DejaVu Sans Mono',
+                    'Microsoft YaHei',
+                    'PingFang SC',
+                    'Noto Sans CJK SC',
+                  ],
+                ),
               ),
             ),
           ),
-      ]),
+          if (_searching)
+            Positioned(
+              top: Space.sm,
+              right: Space.lg,
+              child: _SearchBar(terminal: _terminal, controller: _controller, reveal: _reveal, onClose: _closeSearch),
+            ),
+          if (_session.status != SessionStatus.connected)
+            Center(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Space.lg),
+                  child: switch (_session) {
+                    TerminalSession(status: SessionStatus.connecting) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const SizedBox(width: Space.md),
+                        Text(l.connecting),
+                      ],
+                    ),
+                    TerminalSession(reconnectIn: final n?) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_message(l, _session)),
+                        const SizedBox(height: Space.sm),
+                        Text(l.reconnectingIn(n)),
+                        const SizedBox(height: Space.md),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextButton(onPressed: _session.stopReconnect, child: Text(l.stop)),
+                            const SizedBox(width: Space.sm),
+                            FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    _ => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_session.status == SessionStatus.idle ? _session.host.target : _message(l, _session)),
+                        const SizedBox(height: Space.md),
+                        FilledButton(
+                          autofocus: true,
+                          onPressed: _connect,
+                          child: Text(_session.status == SessionStatus.idle ? l.connect : l.retry),
+                        ),
+                      ],
+                    ),
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

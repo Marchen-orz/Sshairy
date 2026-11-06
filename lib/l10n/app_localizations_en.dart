@@ -786,4 +786,29 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get errHostSave =>
       'Could not save this host. Check access to the data directory and secure storage.';
+
+  @override
+  String get snippets => 'Snippets';
+
+  @override
+  String get newSnippet => 'New snippet';
+
+  @override
+  String get insertSnippet => 'Insert';
+
+  @override
+  String get runSnippet => 'Run';
+
+  @override
+  String get snippetText => 'Command text';
+
+  @override
+  String get snippetUnavailable =>
+      'The target terminal is unavailable. Nothing was sent.';
+
+  @override
+  String get snippetInvalid => 'Enter a name and command of at most 64 KiB.';
+
+  @override
+  String get snippetSaveFailed => 'Could not save the snippet.';
 }

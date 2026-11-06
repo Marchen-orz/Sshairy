@@ -235,5 +235,13 @@
   "proxyUser": "代理用户名（可选）",
   "legacyAlgorithms": "旧版算法",
   "legacyAlgorithmsHint": "仅当旧服务器需要时，为此主机允许 SHA-1 和 CBC。",
-  "errHostSave": "无法保存主机，请检查数据目录和安全存储的访问权限。"
+  "errHostSave": "无法保存主机，请检查数据目录和安全存储的访问权限。",
+  "snippets": "片段",
+  "newSnippet": "新建片段",
+  "insertSnippet": "插入",
+  "runSnippet": "运行",
+  "snippetText": "命令内容",
+  "snippetUnavailable": "目标终端不可用，未发送任何内容。",
+  "snippetInvalid": "请填写名称和命令，命令不能超过 64 KiB。",
+  "snippetSaveFailed": "无法保存片段。"
 }

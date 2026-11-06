@@ -1513,6 +1513,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not save this host. Check access to the data directory and secure storage.'**
   String get errHostSave;
+
+  /// No description provided for @snippets.
+  ///
+  /// In en, this message translates to:
+  /// **'Snippets'**
+  String get snippets;
+
+  /// No description provided for @newSnippet.
+  ///
+  /// In en, this message translates to:
+  /// **'New snippet'**
+  String get newSnippet;
+
+  /// No description provided for @insertSnippet.
+  ///
+  /// In en, this message translates to:
+  /// **'Insert'**
+  String get insertSnippet;
+
+  /// No description provided for @runSnippet.
+  ///
+  /// In en, this message translates to:
+  /// **'Run'**
+  String get runSnippet;
+
+  /// No description provided for @snippetText.
+  ///
+  /// In en, this message translates to:
+  /// **'Command text'**
+  String get snippetText;
+
+  /// No description provided for @snippetUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The target terminal is unavailable. Nothing was sent.'**
+  String get snippetUnavailable;
+
+  /// No description provided for @snippetInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name and command of at most 64 KiB.'**
+  String get snippetInvalid;
+
+  /// No description provided for @snippetSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the snippet.'**
+  String get snippetSaveFailed;
 }
 
 class _AppLocalizationsDelegate

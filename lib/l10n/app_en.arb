@@ -259,5 +259,13 @@
   "proxyUser": "Proxy username (optional)",
   "legacyAlgorithms": "Legacy algorithms",
   "legacyAlgorithmsHint": "Allow SHA-1 and CBC only for this host when a legacy server requires them.",
-  "errHostSave": "Could not save this host. Check access to the data directory and secure storage."
+  "errHostSave": "Could not save this host. Check access to the data directory and secure storage.",
+  "snippets": "Snippets",
+  "newSnippet": "New snippet",
+  "insertSnippet": "Insert",
+  "runSnippet": "Run",
+  "snippetText": "Command text",
+  "snippetUnavailable": "The target terminal is unavailable. Nothing was sent.",
+  "snippetInvalid": "Enter a name and command of at most 64 KiB.",
+  "snippetSaveFailed": "Could not save the snippet."
 }

@@ -764,4 +764,28 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get errHostSave => '无法保存主机，请检查数据目录和安全存储的访问权限。';
+
+  @override
+  String get snippets => '片段';
+
+  @override
+  String get newSnippet => '新建片段';
+
+  @override
+  String get insertSnippet => '插入';
+
+  @override
+  String get runSnippet => '运行';
+
+  @override
+  String get snippetText => '命令内容';
+
+  @override
+  String get snippetUnavailable => '目标终端不可用，未发送任何内容。';
+
+  @override
+  String get snippetInvalid => '请填写名称和命令，命令不能超过 64 KiB。';
+
+  @override
+  String get snippetSaveFailed => '无法保存片段。';
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/files/api.dart';
+import '../features/snippets/api.dart';
 import '../features/workspace/api.dart';
 import '../l10n/app_localizations.dart';
 
@@ -43,6 +44,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
       _asking = false;
       if (!quit) return AppExitResponse.cancel;
     }
+    await ref.read(snippetsProvider.notifier).saved;
     await transfers.shutdown();
     await Future.wait([edits.saved, ref.read(workspaceProvider.notifier).saved])
         .timeout(const Duration(seconds: 2), onTimeout: () => const []);
@@ -56,7 +58,9 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text([if (running > 0) l.transfersRunning(running), if (unsaved > 0) l.editsUnsaved(unsaved)].join('\n')),
+        title: Text(
+          [if (running > 0) l.transfersRunning(running), if (unsaved > 0) l.editsUnsaved(unsaved)].join('\n'),
+        ),
         content: Text(l.quitNote),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),

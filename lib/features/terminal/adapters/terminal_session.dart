@@ -10,11 +10,14 @@ import 'package:xterm2/xterm.dart';
 import '../../../design/terminal_palette.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/open_external.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
+import '../domain/insertion.dart';
+import '../presentation/confirm_insert.dart';
 import 'ime_caret.dart';
 
 part 'terminal_pane.dart';
@@ -32,8 +35,8 @@ class TerminalSession extends ChangeNotifier {
     this.autoConnect = true,
     int scrollback = 2000,
     bool Function()? autoReconnect,
-  })  : _terminal = Terminal(maxLines: scrollback),
-        _autoReconnect = autoReconnect ?? (() => false) {
+  }) : _terminal = Terminal(maxLines: scrollback),
+       _autoReconnect = autoReconnect ?? (() => false) {
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
     _terminal.onClipboardQuery = (_) => null;
@@ -52,6 +55,7 @@ class TerminalSession extends ChangeNotifier {
   ShellChannel? _shell;
   TransportLease? _lease;
   var _closed = false;
+  var _shellEnded = true;
 
   /// Output arrived while no pane showed this session.
   var unread = false;
@@ -77,6 +81,30 @@ class TerminalSession extends ChangeNotifier {
 
   bool get canReconnect => _prompts != null && status != SessionStatus.connecting && status != SessionStatus.connected;
 
+  bool get canInsert =>
+      !_closed && status == SessionStatus.connected && _shell != null && !_shellEnded && !(_lease?.lost ?? true);
+
+  Future<InsertResult> insert(
+    String text, {
+    bool run = false,
+    bool confirmMultiline = true,
+    ConfirmInsert? confirm,
+    CancellationToken? cancel,
+  }) {
+    final shell = _shell, lease = _lease;
+    return approveInsertion(
+      preview: InsertPreview(host.target, text, run: run),
+      confirmMultiline: confirmMultiline,
+      confirm: confirm,
+      cancel: cancel,
+      current: () => canInsert && identical(_shell, shell) && identical(_lease, lease),
+      send: () {
+        _terminal.paste(text);
+        if (run) shell!.write(utf8.encode('\r'));
+      },
+    );
+  }
+
   /// A user's attempt: starts over the automatic retry budget.
   Future<void> connect([ConnectPrompts? prompts]) {
     _stopTimer();
@@ -93,7 +121,9 @@ class TerminalSession extends ChangeNotifier {
 
   Future<void> _connect(ConnectPrompts? prompts) async {
     prompts ??= _prompts;
-    if (prompts == null || _closed || status == SessionStatus.connecting || status == SessionStatus.connected) return;
+    if (prompts == null || _closed || status == SessionStatus.connecting || status == SessionStatus.connected) {
+      return;
+    }
     _prompts = prompts;
     status = SessionStatus.connecting;
     error = null;
@@ -107,6 +137,8 @@ class TerminalSession extends ChangeNotifier {
       _lease = lease;
       if (_closed) return shell.close();
       _shell = shell;
+      _shellEnded = false;
+      shell.done.then((_) => _shellEnded = true, onError: (Object _) => _shellEnded = true);
       _terminal.onOutput = (data) => shell.write(utf8.encode(data));
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       shell.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -125,7 +157,9 @@ class TerminalSession extends ChangeNotifier {
     } on ConnectError catch (e) {
       error = e;
       _set(SessionStatus.failed);
-      if (e.kind == ConnectFailure.network && _attempts > 0) _scheduleReconnect();
+      if (e.kind == ConnectFailure.network && _attempts > 0) {
+        _scheduleReconnect();
+      }
     } on Object catch (e) {
       error = ConnectError(ConnectFailure.network, '$e');
       _set(SessionStatus.failed);
@@ -179,7 +213,9 @@ class TerminalSession extends ChangeNotifier {
   }
 
   void close() {
+    if (_closed) return;
     _closed = true;
+    _shellEnded = true;
     _stopTimer();
     _shell?.close();
     _lease?.release();
