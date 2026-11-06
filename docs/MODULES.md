@@ -66,7 +66,7 @@ idle → resolving → connecting → handshaking → verifyingHostKey
 - 代理只用于第一跳。SOCKS5 支持无认证与用户名/口令（RFC 1929），域名交给代理解析（ATYP 3），IP 字面量按 IPv4/IPv6 发送；HTTP 发 `CONNECT host:port`（IPv6 加方括号），407 视为代理认证失败。握手后多读到的字节（服务器 banner）原样交给 SSH。
 - 主机密钥按密钥类型记录：`rsa-sha2-256`、`rsa-sha2-512` 与 `ssh-rsa` 是同一把 RSA 密钥，都记为 `ssh-rsa`。
 - 池 key 包含跳板和代理，改了路由的主机不复用旧连接。
-- known_hosts 导入（待实现的设计）：普通条目（含 `[host]:port`、逗号分隔多名）直接导入；哈希条目 `|1|…` 只能与已保存主机的地址匹配后导入；通配模式、`@cert-authority`、`@revoked`、无法解析的行计入报告，不当作可信。已有不同指纹的记录保持不变并计为冲突。
+- known_hosts 导入：设置的“数据与安全”里选择 OpenSSH known_hosts 文件（最大 2 MiB），先生成预览，用户确认后一次写入。支持普通主机名、`[host]:port`、逗号分隔的别名和 IPv6；密钥类型限 ssh-ed25519、ssh-rsa、ecdsa-sha2-nistp256/384/521，密钥数据必须与所写类型一致。哈希条目 `|1|…` 只在与已保存主机的地址和端口匹配时导入。标记（`@revoked`、`@cert-authority`）、通配与否定模式、其他密钥类型、无法解析的行和未匹配的哈希名只列入报告，绝不当作可信；`@revoked` 仅计数，不与已信任的密钥比较。与已保存记录同端点同类型但指纹不同的列为冲突，保留原记录；文件内同端点同类型出现两个不同密钥时都不采用。提交时按当时已保存的记录再判断一次。HostTrustService 的所有改动（信任、遗忘、导入）经同一队列，写盘成功后才对外可见；`verify()` 的判断规则不变。
 
 验收：C-01 host trust；C-02 多因子/取消；C-03 池与租约；C-04 路由/断网/迟到结果。
 

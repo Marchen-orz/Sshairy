@@ -811,4 +811,96 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get snippetSaveFailed => 'Could not save the snippet.';
+
+  @override
+  String get importKnownHosts => 'Import known_hosts';
+
+  @override
+  String get importAction => 'Import';
+
+  @override
+  String get knownHostsNew => 'New keys';
+
+  @override
+  String get knownHostsTrusted => 'Already trusted';
+
+  @override
+  String get knownHostsConflict => 'Differs from saved key, left unchanged';
+
+  @override
+  String get knownHostsSkipped => 'Not imported';
+
+  @override
+  String get knownHostsSavedKey => 'Saved';
+
+  @override
+  String get knownHostsFileKey => 'File';
+
+  @override
+  String get knownHostsMalformed => 'Unreadable line';
+
+  @override
+  String get knownHostsMarker => 'Marker not supported';
+
+  @override
+  String get knownHostsWildcard => 'Pattern not supported';
+
+  @override
+  String get knownHostsNegation => 'Negated pattern not supported';
+
+  @override
+  String get knownHostsKeyType => 'Key type not supported';
+
+  @override
+  String get knownHostsBadKey => 'Key data invalid or does not match its type';
+
+  @override
+  String get knownHostsHashed => 'Hashed name matches no saved host';
+
+  @override
+  String get knownHostsFileConflict => 'Conflicting keys within the file';
+
+  @override
+  String knownHostsTooLarge(int mb) {
+    return 'File is larger than $mb MB';
+  }
+
+  @override
+  String get knownHostsUnreadable => 'Could not read the file';
+
+  @override
+  String knownHostsImported(int count) {
+    return 'Imported $count keys';
+  }
+
+  @override
+  String get knownHostsSaveFailed => 'Could not save the trusted keys';
+
+  @override
+  String get tsPaused => 'Paused';
+
+  @override
+  String get tsPausing => 'Pausing';
+
+  @override
+  String get pause => 'Pause';
+
+  @override
+  String get resume => 'Resume';
+
+  @override
+  String get pauseFolderUnsupported => 'Folders cannot be paused';
+
+  @override
+  String get errSourceChanged =>
+      'The source changed, so the transfer cannot continue';
+
+  @override
+  String get errPartInvalid =>
+      'The partial file is missing or no longer matches the source';
+
+  @override
+  String leftoverPart(String path) {
+    return 'Could not remove the temporary file $path';
+  }
 }

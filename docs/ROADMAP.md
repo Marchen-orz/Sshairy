@@ -113,7 +113,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）
 - [x] 片段：搜索与增删改、持久化、插入/运行、命令面板入口；Windows 无连接界面集成通过，受控插入与 shell 生命周期用模拟通道验证，真实 SSH 片段发送未测
 - [ ] SSH config 导入：draft 预览与未支持项报告
-- [ ] known_hosts 导入
+- [x] known_hosts 导入：解析、哈希匹配（对照 `ssh-keygen -H` 的输出）、冲突不覆盖、串行落盘和预览对话框有单元/组件测试；文件选择器和真实窗口未运行
 - [ ] 密钥生成：Ed25519，ssh-keygen 能读出同样的公钥和指纹；登录未测
 - [ ] 暂停与断点续传（F-04）
 - [ ] 10 GB 传输（P-03）
@@ -158,3 +158,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | 开发助手 | M3 路由：完整跳板链快照与池键、SOCKS5/HTTP CONNECT 适配、按主机 legacy、RSA 信任别名；主机变更串行且落盘后发布，置顶/最近时间不覆盖新配置或复活已删主机。70 项单元测试通过，flutter analyze 无问题，imports ok；此前 Windows/Ubuntu 双跳与远端转发取消集成通过 | 代理/legacy 无真实环境，未验证；转发只有领域模型，片段和导入未实现；打包脚本未运行。配置 revision/备份仍欠缺 |
 | 2026-11-06 | 开发助手 | 片段搜索、增删改、串行持久化与命令面板入口；与剪贴板共用受控插入，运行/控制字符确认绑定原 shell。Windows 无连接 CRUD/重启恢复集成通过，79 项单元测试通过，flutter analyze 无问题，imports ok | 真实 SSH 片段发送未测；SSH config、known_hosts 导入与转发规则管理继续实施 |
 | 2026-11-06 | 开发助手 | Windows 本地打包（Release、ZIP、101 个依赖许可证清单、SHA256，已核对 ZIP 内容）；片段确认窗口随取消、断线、关闭而关闭；`tool/check_imports.dart` 增加 feature 循环依赖与 `package:sshairy/` 绕过检测 | 包未签名；许可证未定，不宣称 MIT。其他平台未打包 |
+| 2026-11-06 | 开发助手 | known_hosts 导入（预览、冲突报告、哈希名只匹配已保存主机）；HostTrustService 的信任、遗忘、导入改为串行并先落盘后发布。110 项单元测试通过，flutter analyze 无问题，imports ok | 文件选择器与窗口里的导入流程未实际运行；`@revoked` 只计数 |

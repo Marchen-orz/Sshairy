@@ -1561,6 +1561,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not save the snippet.'**
   String get snippetSaveFailed;
+
+  /// No description provided for @importKnownHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Import known_hosts'**
+  String get importKnownHosts;
+
+  /// No description provided for @importAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get importAction;
+
+  /// No description provided for @knownHostsNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New keys'**
+  String get knownHostsNew;
+
+  /// No description provided for @knownHostsTrusted.
+  ///
+  /// In en, this message translates to:
+  /// **'Already trusted'**
+  String get knownHostsTrusted;
+
+  /// No description provided for @knownHostsConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Differs from saved key, left unchanged'**
+  String get knownHostsConflict;
+
+  /// No description provided for @knownHostsSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Not imported'**
+  String get knownHostsSkipped;
+
+  /// No description provided for @knownHostsSavedKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get knownHostsSavedKey;
+
+  /// No description provided for @knownHostsFileKey.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get knownHostsFileKey;
+
+  /// No description provided for @knownHostsMalformed.
+  ///
+  /// In en, this message translates to:
+  /// **'Unreadable line'**
+  String get knownHostsMalformed;
+
+  /// No description provided for @knownHostsMarker.
+  ///
+  /// In en, this message translates to:
+  /// **'Marker not supported'**
+  String get knownHostsMarker;
+
+  /// No description provided for @knownHostsWildcard.
+  ///
+  /// In en, this message translates to:
+  /// **'Pattern not supported'**
+  String get knownHostsWildcard;
+
+  /// No description provided for @knownHostsNegation.
+  ///
+  /// In en, this message translates to:
+  /// **'Negated pattern not supported'**
+  String get knownHostsNegation;
+
+  /// No description provided for @knownHostsKeyType.
+  ///
+  /// In en, this message translates to:
+  /// **'Key type not supported'**
+  String get knownHostsKeyType;
+
+  /// No description provided for @knownHostsBadKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Key data invalid or does not match its type'**
+  String get knownHostsBadKey;
+
+  /// No description provided for @knownHostsHashed.
+  ///
+  /// In en, this message translates to:
+  /// **'Hashed name matches no saved host'**
+  String get knownHostsHashed;
+
+  /// No description provided for @knownHostsFileConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Conflicting keys within the file'**
+  String get knownHostsFileConflict;
+
+  /// No description provided for @knownHostsTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'File is larger than {mb} MB'**
+  String knownHostsTooLarge(int mb);
+
+  /// No description provided for @knownHostsUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the file'**
+  String get knownHostsUnreadable;
+
+  /// No description provided for @knownHostsImported.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported {count} keys'**
+  String knownHostsImported(int count);
+
+  /// No description provided for @knownHostsSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the trusted keys'**
+  String get knownHostsSaveFailed;
+
+  /// No description provided for @tsPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get tsPaused;
+
+  /// No description provided for @tsPausing.
+  ///
+  /// In en, this message translates to:
+  /// **'Pausing'**
+  String get tsPausing;
+
+  /// No description provided for @pause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get pause;
+
+  /// No description provided for @resume.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume'**
+  String get resume;
+
+  /// No description provided for @pauseFolderUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders cannot be paused'**
+  String get pauseFolderUnsupported;
+
+  /// No description provided for @errSourceChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The source changed, so the transfer cannot continue'**
+  String get errSourceChanged;
+
+  /// No description provided for @errPartInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The partial file is missing or no longer matches the source'**
+  String get errPartInvalid;
+
+  /// No description provided for @leftoverPart.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the temporary file {path}'**
+  String leftoverPart(String path);
 }
 
 class _AppLocalizationsDelegate

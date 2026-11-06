@@ -788,4 +788,94 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get snippetSaveFailed => '无法保存片段。';
+
+  @override
+  String get importKnownHosts => '导入 known_hosts';
+
+  @override
+  String get importAction => '导入';
+
+  @override
+  String get knownHostsNew => '新密钥';
+
+  @override
+  String get knownHostsTrusted => '已信任';
+
+  @override
+  String get knownHostsConflict => '与已保存的密钥不同，保持不变';
+
+  @override
+  String get knownHostsSkipped => '未导入';
+
+  @override
+  String get knownHostsSavedKey => '已保存';
+
+  @override
+  String get knownHostsFileKey => '文件中';
+
+  @override
+  String get knownHostsMalformed => '无法解析的行';
+
+  @override
+  String get knownHostsMarker => '不支持的标记';
+
+  @override
+  String get knownHostsWildcard => '不支持的通配模式';
+
+  @override
+  String get knownHostsNegation => '不支持否定模式';
+
+  @override
+  String get knownHostsKeyType => '不支持的密钥类型';
+
+  @override
+  String get knownHostsBadKey => '密钥数据无效或与类型不符';
+
+  @override
+  String get knownHostsHashed => '哈希主机名未匹配任何已保存主机';
+
+  @override
+  String get knownHostsFileConflict => '文件内的密钥互相冲突';
+
+  @override
+  String knownHostsTooLarge(int mb) {
+    return '文件超过 $mb MB';
+  }
+
+  @override
+  String get knownHostsUnreadable => '无法读取文件';
+
+  @override
+  String knownHostsImported(int count) {
+    return '已导入 $count 个密钥';
+  }
+
+  @override
+  String get knownHostsSaveFailed => '无法保存信任记录';
+
+  @override
+  String get tsPaused => '已暂停';
+
+  @override
+  String get tsPausing => '正在暂停';
+
+  @override
+  String get pause => '暂停';
+
+  @override
+  String get resume => '继续';
+
+  @override
+  String get pauseFolderUnsupported => '文件夹传输不能暂停';
+
+  @override
+  String get errSourceChanged => '源文件已变化，无法继续传输';
+
+  @override
+  String get errPartInvalid => '临时文件缺失或与源文件不再一致，无法继续';
+
+  @override
+  String leftoverPart(String path) {
+    return '无法删除临时文件 $path';
+  }
 }

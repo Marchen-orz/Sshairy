@@ -1,6 +1,14 @@
 export 'application/connection_manager.dart' show ConnectionManager, LeasePurpose, TransportLease;
-export 'application/host_trust.dart' show HostTrustService;
+export 'application/host_trust.dart' show HostTrustService, TrustImportResult;
+export 'application/known_hosts_import.dart' show KnownHostsImport, SavedEndpoint;
 export 'application/providers.dart';
+export 'domain/known_hosts.dart'
+    show
+        KnownHostsCandidate,
+        KnownHostsConflict,
+        KnownHostsIssue,
+        KnownHostsIssueEntry,
+        KnownHostsPreview;
 export 'domain/prompts.dart'
     show
         ConnectError,

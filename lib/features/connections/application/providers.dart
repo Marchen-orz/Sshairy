@@ -7,8 +7,16 @@ import '../../settings/api.dart';
 import '../adapters/ssh.dart';
 import 'connection_manager.dart';
 import 'host_trust.dart';
+import 'known_hosts_import.dart';
 
 final hostTrustProvider = Provider<HostTrustService>((ref) => HostTrustService(ref.read(dataDirProvider)));
+
+final knownHostsImportProvider = Provider<KnownHostsImport>(
+  (ref) => KnownHostsImport(
+    ref.read(hostTrustProvider),
+    () => [for (final h in ref.read(hostsProvider)) (address: h.address, port: h.port)],
+  ),
+);
 
 final connectionManagerProvider = Provider<ConnectionManager>((ref) {
   ({Duration timeout, Duration? keepAlive}) options() {
