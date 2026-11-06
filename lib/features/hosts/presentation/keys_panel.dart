@@ -38,7 +38,14 @@ class KeysPanel extends ConsumerWidget {
           ],
         ),
       );
-      if (ok ?? false) await notifier.delete(key);
+      if (ok != true) return;
+      try {
+        await notifier.delete(key);
+      } on KeyInUse catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.keyInUse(e.hosts.join(', ')))));
+        }
+      }
     }
 
     Future<void> rename(SshKey key) async {
@@ -57,65 +64,88 @@ class KeysPanel extends ConsumerWidget {
       if (label != null) await notifier.generate(label);
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-        TextButton.icon(
-          onPressed: () => showDialog<void>(context: context, builder: (_) => const _ImportDialog()),
-          icon: const Icon(Icons.file_download_outlined, size: 18),
-          label: Text(l.importKey),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton.icon(
+              onPressed: () => showDialog<void>(context: context, builder: (_) => const _ImportDialog()),
+              icon: const Icon(Icons.file_download_outlined, size: 18),
+              label: Text(l.importKey),
+            ),
+            const SizedBox(width: Space.xs),
+            TextButton.icon(onPressed: generate, icon: const Icon(Icons.add, size: 18), label: Text(l.generateKey)),
+          ],
         ),
-        const SizedBox(width: Space.xs),
-        TextButton.icon(onPressed: generate, icon: const Icon(Icons.add, size: 18), label: Text(l.generateKey)),
-      ]),
-      const SizedBox(height: Space.lg),
-      if (keys.isEmpty) Text(l.none, style: muted),
-      Expanded(
-        child: ListView(children: [
-          for (final key in keys)
-            Builder(builder: (context) {
-              final users = [for (final h in hosts) if (h.keyId == key.id) h.title];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: Space.md),
-                child: Row(children: [
-                  Icon(Icons.key_outlined, size: 20, color: theme.colorScheme.primary),
-                  const SizedBox(width: Space.md),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(key.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      Tooltip(
-                        message: key.fingerprint,
-                        child: Text(
-                          '${key.algorithm}  ${key.fingerprint}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: muted?.copyWith(fontFamily: 'Consolas'),
-                        ),
+        const SizedBox(height: Space.lg),
+        if (keys.isEmpty) Text(l.none, style: muted),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final key in keys)
+                Builder(
+                  builder: (context) {
+                    final users = [
+                      for (final h in hosts)
+                        if (h.keyId == key.id) h.title,
+                    ];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: Space.md),
+                      child: Row(
+                        children: [
+                          Icon(Icons.key_outlined, size: 20, color: theme.colorScheme.primary),
+                          const SizedBox(width: Space.md),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(key.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                Tooltip(
+                                  message: key.fingerprint,
+                                  child: Text(
+                                    '${key.algorithm}  ${key.fingerprint}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: muted?.copyWith(fontFamily: 'Consolas'),
+                                  ),
+                                ),
+                                if (users.isNotEmpty)
+                                  Text(
+                                    l.keyInUse(users.join(', ')),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: muted,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: l.copyPublicKey,
+                            onPressed: () => Clipboard.setData(ClipboardData(text: key.publicKey)),
+                            icon: const Icon(Icons.copy_outlined, size: 18),
+                          ),
+                          PopupMenuButton<VoidCallback>(
+                            tooltip: l.more,
+                            icon: const Icon(Icons.more_horiz, size: 18),
+                            onSelected: (run) => run(),
+                            itemBuilder: (_) => [
+                              PopupMenuItem(value: () => rename(key), child: Text(l.rename)),
+                              // A key some host still uses cannot go: the host would be left pointing at nothing.
+                              PopupMenuItem(enabled: users.isEmpty, value: () => remove(key), child: Text(l.delete)),
+                            ],
+                          ),
+                        ],
                       ),
-                      if (users.isNotEmpty)
-                        Text(l.keyInUse(users.join(', ')), maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
-                    ]),
-                  ),
-                  IconButton(
-                    tooltip: l.copyPublicKey,
-                    onPressed: () => Clipboard.setData(ClipboardData(text: key.publicKey)),
-                    icon: const Icon(Icons.copy_outlined, size: 18),
-                  ),
-                  PopupMenuButton<VoidCallback>(
-                    tooltip: l.more,
-                    icon: const Icon(Icons.more_horiz, size: 18),
-                    onSelected: (run) => run(),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(value: () => rename(key), child: Text(l.rename)),
-                      // A key some host still uses cannot go: the host would be left pointing at nothing.
-                      PopupMenuItem(enabled: users.isEmpty, value: () => remove(key), child: Text(l.delete)),
-                    ],
-                  ),
-                ]),
-              );
-            }),
-        ]),
-      ),
-    ]);
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -144,7 +174,9 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
   Future<void> _import() async {
     final l = AppLocalizations.of(context);
     setState(() => _busy = true);
-    final result = await ref.read(keysProvider.notifier).import(
+    final result = await ref
+        .read(keysProvider.notifier)
+        .import(
           _label.text,
           _source.text,
           passphrase: _passphrase.text.isEmpty ? null : Secret(_passphrase.text),
@@ -177,38 +209,46 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
       title: Text(l.importKey),
       content: SizedBox(
         width: 480,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          TextField(controller: _label, autofocus: true, decoration: InputDecoration(labelText: l.label)),
-          gap,
-          TextField(
-            controller: _source,
-            minLines: 4,
-            maxLines: 8,
-            style: const TextStyle(fontFamily: 'Consolas', fontSize: 12),
-            decoration: InputDecoration(labelText: l.keySource, alignLabelWithHint: true),
-          ),
-          if (_needsPassphrase) ...[
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _label,
+              autofocus: true,
+              decoration: InputDecoration(labelText: l.label),
+            ),
             gap,
             TextField(
-              controller: _passphrase,
-              obscureText: true,
-              autofocus: true,
-              decoration: InputDecoration(labelText: l.passphrase),
-              onSubmitted: (_) => _import(),
+              controller: _source,
+              minLines: 4,
+              maxLines: 8,
+              style: const TextStyle(fontFamily: 'Consolas', fontSize: 12),
+              decoration: InputDecoration(labelText: l.keySource, alignLabelWithHint: true),
             ),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: _remember,
-              onChanged: (v) => setState(() => _remember = v ?? false),
-              title: Text(l.remember),
-            ),
+            if (_needsPassphrase) ...[
+              gap,
+              TextField(
+                controller: _passphrase,
+                obscureText: true,
+                autofocus: true,
+                decoration: InputDecoration(labelText: l.passphrase),
+                onSubmitted: (_) => _import(),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _remember,
+                onChanged: (v) => setState(() => _remember = v ?? false),
+                title: Text(l.remember),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: Space.sm),
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
           ],
-          if (_error != null) ...[
-            const SizedBox(height: Space.sm),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ],
-        ]),
+        ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(l.cancel)),

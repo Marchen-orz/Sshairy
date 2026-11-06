@@ -1,4 +1,5 @@
 import '../../../foundation/ids.dart';
+import '../../../foundation/secret.dart';
 
 enum AuthKind { password, key }
 
@@ -16,14 +17,18 @@ class Proxy {
   String get key => '${kind.name}://$username@$address:$port';
 
   factory Proxy.fromJson(Map<String, dynamic> j) => Proxy(
-        ProxyKind.values.asNameMap()[j['kind']] ?? ProxyKind.socks5,
-        j['address'] as String,
-        j['port'] as int,
-        username: j['username'] as String? ?? '',
-      );
+    ProxyKind.values.asNameMap()[j['kind']] ?? ProxyKind.socks5,
+    j['address'] as String,
+    j['port'] as int,
+    username: j['username'] as String? ?? '',
+  );
 
-  Map<String, dynamic> toJson() =>
-      {'kind': kind.name, 'address': address, 'port': port, if (username.isNotEmpty) 'username': username};
+  Map<String, dynamic> toJson() => {
+    'kind': kind.name,
+    'address': address,
+    'port': port,
+    if (username.isNotEmpty) 'username': username,
+  };
 }
 
 /// Saved connection target. Secrets are never fields; they are looked up by [passwordRef]/[passphraseRef], and an
@@ -77,66 +82,69 @@ class Host {
   bool get transient => id.value.isEmpty;
   String get title => label.isEmpty ? address : label;
   String get target => port == 22 ? '$username@$address' : '$username@$address:$port';
-  String get passwordRef => 'host/${id.value}/password';
-  String get passphraseRef => 'host/${id.value}/passphrase';
-  String get proxyRef => 'host/${id.value}/proxy';
+  SecretRef get passwordRef => SecretRef.hostPassword(id);
+  SecretRef get passphraseRef => SecretRef.hostPassphrase(id);
+  SecretRef get proxyRef => SecretRef.hostProxy(id, proxy?.key ?? '');
 
   Host copyWith({bool? pinned, DateTime? lastUsed, String? group, HostId? id, String? label}) => Host(
-        id: id ?? this.id,
-        label: label ?? this.label,
-        address: address,
-        port: port,
-        username: username,
-        auth: auth,
-        keyPath: keyPath,
-        keyId: keyId,
-        group: group ?? this.group,
-        tags: tags,
-        pinned: pinned ?? this.pinned,
-        lastUsed: lastUsed ?? this.lastUsed,
-        jumpHostId: jumpHostId,
-        proxy: proxy,
-        legacy: legacy,
-      );
+    id: id ?? this.id,
+    label: label ?? this.label,
+    address: address,
+    port: port,
+    username: username,
+    auth: auth,
+    keyPath: keyPath,
+    keyId: keyId,
+    group: group ?? this.group,
+    tags: tags,
+    pinned: pinned ?? this.pinned,
+    lastUsed: lastUsed ?? this.lastUsed,
+    jumpHostId: jumpHostId,
+    proxy: proxy,
+    legacy: legacy,
+  );
 
   factory Host.fromJson(Map<String, dynamic> j) => Host(
-        id: HostId(j['id'] as String),
-        label: j['label'] as String? ?? '',
-        address: j['address'] as String,
-        port: j['port'] as int? ?? 22,
-        username: j['username'] as String,
-        auth: AuthKind.values.asNameMap()[j['auth']] ?? AuthKind.password,
-        keyPath: j['keyPath'] as String?,
-        keyId: j['keyId'] as String?,
-        group: normalizeGroup(j['group'] as String? ?? ''),
-        tags: [for (final t in j['tags'] as List<dynamic>? ?? const []) if (t is String) t],
-        pinned: j['pinned'] as bool? ?? false,
-        lastUsed: DateTime.tryParse(j['lastUsed'] as String? ?? ''),
-        jumpHostId: switch (j['jumpHostId']) {
-          final String id when id.isNotEmpty => HostId(id),
-          _ => null,
-        },
-        proxy: j['proxy'] is Map<String, dynamic> ? Proxy.fromJson(j['proxy'] as Map<String, dynamic>) : null,
-        legacy: j['legacy'] as bool? ?? false,
-      );
+    id: HostId(j['id'] as String),
+    label: j['label'] as String? ?? '',
+    address: j['address'] as String,
+    port: j['port'] as int? ?? 22,
+    username: j['username'] as String,
+    auth: AuthKind.values.asNameMap()[j['auth']] ?? AuthKind.password,
+    keyPath: j['keyPath'] as String?,
+    keyId: j['keyId'] as String?,
+    group: normalizeGroup(j['group'] as String? ?? ''),
+    tags: [
+      for (final t in j['tags'] as List<dynamic>? ?? const [])
+        if (t is String) t,
+    ],
+    pinned: j['pinned'] as bool? ?? false,
+    lastUsed: DateTime.tryParse(j['lastUsed'] as String? ?? ''),
+    jumpHostId: switch (j['jumpHostId']) {
+      final String id when id.isNotEmpty => HostId(id),
+      _ => null,
+    },
+    proxy: j['proxy'] is Map<String, dynamic> ? Proxy.fromJson(j['proxy'] as Map<String, dynamic>) : null,
+    legacy: j['legacy'] as bool? ?? false,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id.value,
-        'label': label,
-        'address': address,
-        'port': port,
-        'username': username,
-        'auth': auth.name,
-        if (keyPath != null) 'keyPath': keyPath,
-        if (keyId != null) 'keyId': keyId,
-        if (group.isNotEmpty) 'group': group,
-        if (tags.isNotEmpty) 'tags': tags,
-        if (pinned) 'pinned': true,
-        if (lastUsed != null) 'lastUsed': lastUsed!.toUtc().toIso8601String(),
-        if (jumpHostId != null) 'jumpHostId': jumpHostId!.value,
-        if (proxy != null) 'proxy': proxy!.toJson(),
-        if (legacy) 'legacy': true,
-      };
+    'id': id.value,
+    'label': label,
+    'address': address,
+    'port': port,
+    'username': username,
+    'auth': auth.name,
+    if (keyPath != null) 'keyPath': keyPath,
+    if (keyId != null) 'keyId': keyId,
+    if (group.isNotEmpty) 'group': group,
+    if (tags.isNotEmpty) 'tags': tags,
+    if (pinned) 'pinned': true,
+    if (lastUsed != null) 'lastUsed': lastUsed!.toUtc().toIso8601String(),
+    if (jumpHostId != null) 'jumpHostId': jumpHostId!.value,
+    if (proxy != null) 'proxy': proxy!.toJson(),
+    if (legacy) 'legacy': true,
+  };
 }
 
 /// Trims each segment and drops empty ones: ` prod / /web ` is `prod/web`.
@@ -144,8 +152,9 @@ String normalizeGroup(String path) => path.split('/').map((s) => s.trim()).where
 
 /// Comma or whitespace separated, without duplicates, in the order given.
 List<String> parseTags(String text) => {
-      for (final t in text.split(RegExp(r'[,\s]+'))) if (t.isNotEmpty) t,
-    }.toList();
+  for (final t in text.split(RegExp(r'[,\s]+')))
+    if (t.isNotEmpty) t,
+}.toList();
 
 /// The vault's order: pinned first, then most recent when [recent], then by name so the order is stable.
 List<Host> sortHosts(Iterable<Host> hosts, {bool recent = false}) {
@@ -158,12 +167,11 @@ List<Host> sortHosts(Iterable<Host> hosts, {bool recent = false}) {
     return y.compareTo(x);
   }
 
-  return hosts.toList()
-    ..sort((a, b) {
-      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-      final c = recent ? byRecent(a, b) : 0;
-      return c != 0 ? c : byName(a, b);
-    });
+  return hosts.toList()..sort((a, b) {
+    if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+    final c = recent ? byRecent(a, b) : 0;
+    return c != 0 ? c : byName(a, b);
+  });
 }
 
 /// Search across name, target, group and tags; every word must match somewhere.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dartssh2/dartssh2.dart';
@@ -5,19 +6,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/credentials/adapters/key_codec.dart';
 import 'package:sshairy/features/credentials/api.dart';
+import 'package:sshairy/features/credentials/adapters/secure_store.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/foundation/data_dir.dart';
+import 'package:sshairy/foundation/ids.dart';
+import 'package:sshairy/foundation/json_file.dart';
 import 'package:sshairy/foundation/result.dart';
 import 'package:sshairy/foundation/secret.dart';
 
 class MemorySecrets implements SecretStore {
-  final values = <String, String>{};
+  final values = <SecretRef, String>{};
 
   @override
-  Future<Secret?> read(String ref) async => values[ref] == null ? null : Secret(values[ref]!);
+  Future<Secret?> read(SecretRef ref) async => values[ref] == null ? null : Secret(values[ref]!);
   @override
-  Future<void> write(String ref, Secret value) async => values[ref] = value.reveal();
+  Future<void> write(SecretRef ref, Secret value) async => values[ref] = value.reveal();
   @override
-  Future<void> delete(String ref) async => values.remove(ref);
+  Future<void> delete(SecretRef ref) async => values.remove(ref);
 }
 
 /// ssh-keygen ships with Windows 10+ and every Linux desktop; it is the reference for formats and fingerprints.
@@ -59,10 +64,24 @@ void main() {
   test('keys from ssh-keygen: algorithms, encryption and fingerprints match', () {
     for (final (type, bits) in [('ed25519', null), ('rsa', '2048'), ('ecdsa', '256')]) {
       final path = '${dir.path}/$type';
-      sshKeygen(['-q', '-t', type, if (bits != null) ...['-b', bits], '-N', 'pass phrase', '-C', 'c', '-f', path]);
+      sshKeygen([
+        '-q',
+        '-t',
+        type,
+        if (bits != null) ...['-b', bits],
+        '-N',
+        'pass phrase',
+        '-C',
+        'c',
+        '-f',
+        path,
+      ]);
       final pem = File(path).readAsStringSync();
       expect(KeyCodec.isEncrypted(pem), isTrue);
-      expect(() => KeyCodec.inspect(pem), throwsA(isA<KeyCodecException>().having((e) => e.problem, 'problem', KeyProblem.needsPassphrase)));
+      expect(
+        () => KeyCodec.inspect(pem),
+        throwsA(isA<KeyCodecException>().having((e) => e.problem, 'problem', KeyProblem.needsPassphrase)),
+      );
       expect(
         () => KeyCodec.inspect(pem, passphrase: 'wrong'),
         throwsA(isA<KeyCodecException>().having((e) => e.problem, 'problem', KeyProblem.wrongPassphrase)),
@@ -73,16 +92,92 @@ void main() {
     }
   }, skip: !keygen);
 
+  test('credential access rejects private-key replacement and tracks remembered or cleared secrets', () async {
+    final secrets = MemorySecrets();
+    final c = ProviderContainer(overrides: [secretStoreProvider.overrideWithValue(secrets)]);
+    addTearDown(c.dispose);
+    final access = c.read(connectionCredentialsProvider);
+    final password = SecretRef.hostPassword(const HostId('h'));
+    expect(access.revision, 0);
+    await access.remember(password, const Secret('first'));
+    expect(access.revision, 1);
+    expect((await access.read(password))?.reveal(), 'first');
+    expect(access.revision, 1, reason: 'reads do not invalidate connections');
+    await access.remember(password, const Secret('second'));
+    expect(access.revision, 2);
+    await expectLater(access.remember(SecretRef.privateKey('k'), const Secret('not a key')), throwsArgumentError);
+    expect(secrets.values.containsKey(SecretRef.privateKey('k')), isFalse);
+    await c.read(hostCredentialCleanupProvider).clearHost(const HostId('h'), 'proxy');
+    expect(await access.read(password), isNull);
+    expect(access.revision, greaterThan(2));
+  });
+
+  test('key deletion shares the host-reference commit queue and rejects late references', () async {
+    final secrets = MemorySecrets();
+    final users = <String>[];
+    final c = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        secretStoreProvider.overrideWithValue(secrets),
+        keyReferencesProvider.overrideWithValue((_) => [...users]),
+      ],
+    );
+    addTearDown(c.dispose);
+    final keys = c.read(keysProvider.notifier);
+    final key = await keys.generate('shared');
+    final gate = Completer<void>();
+    final referencing = keys.withKeys([key.id], () async {
+      await gate.future;
+      users.add('host');
+    });
+    final deleting = expectLater(keys.delete(key), throwsA(isA<KeyInUse>()));
+    gate.complete();
+    await referencing;
+    await deleting;
+    expect(keys.byId(key.id), isNotNull);
+    expect(secrets.values.containsKey(key.privateRef), isTrue);
+    users.clear();
+    await keys.delete(key);
+    await expectLater(keys.withKeys([key.id], () async {}), throwsStateError);
+    expect(secrets.values.containsKey(key.privateRef), isFalse);
+  });
+
+  test('failed key metadata commit neither publishes changes nor removes secrets', () async {
+    final secrets = MemorySecrets();
+    final c = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        secretStoreProvider.overrideWithValue(secrets),
+        keyReferencesProvider.overrideWithValue((_) => const []),
+      ],
+    );
+    addTearDown(c.dispose);
+    final keys = c.read(keysProvider.notifier);
+    final key = await keys.generate('kept');
+    final block = File('${dir.path}/backups')..writeAsStringSync('blocked');
+    await expectLater(keys.rename(key, 'lost'), throwsA(isA<JsonFileError>()));
+    expect(keys.byId(key.id)!.label, 'kept');
+    await expectLater(keys.delete(key), throwsA(isA<JsonFileError>()));
+    expect(keys.byId(key.id), isNotNull);
+    expect(secrets.values.containsKey(key.privateRef), isTrue);
+    block.deleteSync();
+    await keys.rename(key, 'saved');
+    expect(keys.byId(key.id)!.label, 'saved');
+  });
+
   test('garbage is unsupported, not a crash', () {
     expect(() => KeyCodec.inspect('not a key'), throwsA(isA<KeyCodecException>()));
   });
 
   test('the store keeps private keys in secrets and metadata on disk, and refuses duplicates', () async {
     final secrets = MemorySecrets();
-    final c = ProviderContainer(overrides: [
-      dataDirProvider.overrideWithValue(dir.path),
-      secretStoreProvider.overrideWithValue(secrets),
-    ]);
+    final c = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        secretStoreProvider.overrideWithValue(secrets),
+        keyReferencesProvider.overrideWithValue((_) => const []),
+      ],
+    );
     addTearDown(c.dispose);
     final keys = c.read(keysProvider.notifier);
 
@@ -109,10 +204,13 @@ void main() {
   test('an encrypted import stays encrypted; its passphrase is kept only when asked', () async {
     if (!keygen) return;
     final secrets = MemorySecrets();
-    final c = ProviderContainer(overrides: [
-      dataDirProvider.overrideWithValue(dir.path),
-      secretStoreProvider.overrideWithValue(secrets),
-    ]);
+    final c = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        secretStoreProvider.overrideWithValue(secrets),
+        keyReferencesProvider.overrideWithValue((_) => const []),
+      ],
+    );
     addTearDown(c.dispose);
     final keys = c.read(keysProvider.notifier);
     final path = '${dir.path}/enc';

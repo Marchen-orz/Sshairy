@@ -8,11 +8,11 @@ class SecretStore {
 
   static const _storage = FlutterSecureStorage();
 
-  Future<Secret?> read(String ref) async {
-    final value = await _storage.read(key: ref);
+  Future<Secret?> read(SecretRef ref) async {
+    final value = await _storage.read(key: ref.storageKey);
     return value == null ? null : Secret(value);
   }
 
-  Future<void> write(String ref, Secret value) => _storage.write(key: ref, value: value.reveal());
-  Future<void> delete(String ref) => _storage.delete(key: ref);
+  Future<void> write(SecretRef ref, Secret value) => _storage.write(key: ref.storageKey, value: value.reveal());
+  Future<void> delete(SecretRef ref) => _storage.delete(key: ref.storageKey);
 }

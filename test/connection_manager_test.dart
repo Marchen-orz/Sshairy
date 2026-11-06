@@ -89,6 +89,37 @@ void main() {
     cancels = [];
   });
 
+  test('security revisions prevent reuse without closing existing leases', () async {
+    var revision = 0;
+    final m = ConnectionManager(dial, securityRevision: () => [revision]);
+    addTearDown(m.closeAll);
+    final first = m.acquire(host, prompts);
+    await pumpEventQueue();
+    gates.last.complete();
+    final a = await first;
+    revision++;
+    final second = m.acquire(host, prompts);
+    await pumpEventQueue();
+    expect(gates, hasLength(2));
+    gates.last.complete();
+    final b = await second;
+    expect(b.reused, isFalse);
+    expect(a.lost, isFalse);
+    b.release();
+    revision++;
+    final third = m.acquire(host, prompts);
+    await pumpEventQueue();
+    expect(gates, hasLength(3), reason: 'a parked transport belongs to the old revision too');
+    gates.last.complete();
+    final c = await third;
+    final same = await m.acquire(host, prompts);
+    expect(same.reused, isTrue);
+    expect(a.lost, isFalse);
+    same.release();
+    c.release();
+    a.release();
+  });
+
   test('concurrent acquires join one dial and share its transport', () async {
     final m = ConnectionManager(dial);
     final a = m.acquire(host, prompts), b = m.acquire(host, prompts);

@@ -146,7 +146,7 @@ class SshDialer {
   final Future<TransportLease> Function(List<Host>, ConnectPrompts, CancellationToken) _jump;
 
   final HostTrustService _trust;
-  final SecretStore _secrets;
+  final ConnectionCredentials _secrets;
   final SshKey? Function(String id) _keyById;
 
   /// Read at each dial, so a changed setting applies to the next connection.
@@ -174,7 +174,7 @@ class SshDialer {
   ) async {
     final host = route.first;
     if (cancel.isCancelled) throw const ConnectError(ConnectFailure.cancelled);
-    final remember = <String, Secret>{};
+    final remember = <SecretRef, Secret>{};
     final identities = host.auth == AuthKind.key ? await _loadKey(host, prompts, remember) : null;
     final savedPassword = host.auth == AuthKind.password && !host.transient
         ? await _secrets.read(host.passwordRef)
@@ -290,7 +290,7 @@ class SshDialer {
       await client.authenticated.timeout(const Duration(seconds: 120));
       if (cancel.isCancelled) throw const ConnectError(ConnectFailure.cancelled);
       for (final e in remember.entries) {
-        await _secrets.write(e.key, e.value);
+        await _secrets.remember(e.key, e.value);
       }
       return _SshTransport(client, releaseRoute);
     } on Object catch (e) {
@@ -307,9 +307,9 @@ class SshDialer {
 
   /// An imported key from the secure store, or else the key file; an imported key's passphrase is remembered
   /// with the key, so every host using it shares it.
-  Future<List<SSHKeyPair>> _loadKey(Host host, ConnectPrompts prompts, Map<String, Secret> remember) async {
+  Future<List<SSHKeyPair>> _loadKey(Host host, ConnectPrompts prompts, Map<SecretRef, Secret> remember) async {
     final String pem;
-    final String? passphraseRef;
+    final SecretRef? passphraseRef;
     if (host.keyId case final id?) {
       final key = _keyById(id);
       final stored = key == null ? null : await _secrets.read(key.privateRef);

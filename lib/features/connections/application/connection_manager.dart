@@ -21,14 +21,20 @@ enum LeasePurpose { terminal, files, forward, exec }
 /// docs/MODULES.md §2). Concurrent acquires join one dial; a transport without leases is parked for [park],
 /// then closed.
 class ConnectionManager {
-  ConnectionManager(Dial dial, {this.park = const Duration(seconds: 60)})
+  ConnectionManager(Dial dial, {this.park = const Duration(seconds: 60), this.securityRevision})
     : _dial = ((route, prompts, cancel) => dial(route.first, prompts, cancel)),
       _hostById = null;
 
-  ConnectionManager.routed(this._dial, this._hostById, {this.park = const Duration(seconds: 60)});
+  ConnectionManager.routed(
+    this._dial,
+    this._hostById, {
+    this.park = const Duration(seconds: 60),
+    this.securityRevision,
+  });
 
   final RouteDial _dial;
   final Host? Function(HostId)? _hostById;
+  final List<int> Function()? securityRevision;
   Duration park;
   final _pool = <String, _Entry>{};
   final _detached = <_Entry>{};
@@ -67,7 +73,7 @@ class ConnectionManager {
     CancellationToken? cancel,
   }) async {
     if (_closed || (cancel?.isCancelled ?? false)) throw const ConnectError(ConnectFailure.cancelled);
-    final key = jsonEncode(route.map(keyOf).toList());
+    final key = jsonEncode([route.map(keyOf).toList(), securityRevision?.call() ?? const <int>[]]);
     var entry = _pool[key];
     if (entry != null && (entry.transport?.isClosed ?? false)) {
       _forget(entry);

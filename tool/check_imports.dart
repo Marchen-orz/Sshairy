@@ -11,17 +11,22 @@ const adapters = {
   'flutter_pty': ['lib/features/terminal/adapters/'],
   'flutter_secure_storage': ['lib/features/credentials/adapters/'],
   'desktop_drop': ['lib/features/files/adapters/'],
-  'file_selector': ['lib/features/files/adapters/', 'lib/features/hosts/adapters/', 'lib/features/connections/adapters/'],
+  'file_selector': [
+    'lib/features/files/adapters/',
+    'lib/features/hosts/adapters/',
+    'lib/features/connections/adapters/',
+  ],
 };
 
 final importLine = RegExp(r'''^\s*(?:import|export|part)\s+['"]([^'"]+)['"]''', multiLine: true);
 
-void main() {
+List<String> checkImports(Directory lib) {
   final violations = <String>[];
   final dependencies = <String, Set<String>>{};
-  final files = Directory('lib').listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart'));
+  final root = lib.absolute.path.replaceAll(r'\', '/');
+  final files = lib.listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart'));
   for (final file in files) {
-    final path = file.path.replaceAll(r'\', '/');
+    final path = 'lib/${file.absolute.path.replaceAll(r'\', '/').substring(root.length + 1)}';
     final segments = path.split('/');
     final feature = path.startsWith('lib/features/') ? segments[2] : null;
     if (feature != null) dependencies.putIfAbsent(feature, () => {});
@@ -29,7 +34,8 @@ void main() {
       final target = match[1]!;
       void fail(String why) => violations.add('$path: $target ($why)');
 
-      if (segments.contains('domain') && (target.startsWith('package:') || target == 'dart:io' || target == 'dart:ui')) {
+      if (segments.contains('domain') &&
+          (target.startsWith('package:') || target == 'dart:io' || target == 'dart:ui')) {
         fail('domain must not use packages, IO or Flutter');
       }
       if (target.startsWith('package:')) {
@@ -38,7 +44,7 @@ void main() {
       }
       final Uri? resolved;
       if (target.startsWith('package:sshairy/')) {
-        resolved = Directory('lib').absolute.uri.resolve(target.substring('package:sshairy/'.length));
+        resolved = lib.absolute.uri.resolve(target.substring('package:sshairy/'.length));
       } else if (!target.contains(':')) {
         resolved = file.absolute.parent.uri.resolve(target);
       } else {
@@ -46,15 +52,20 @@ void main() {
       }
       if (resolved == null) continue;
       final local = File.fromUri(resolved).absolute.path.replaceAll(r'\', '/');
-      final root = Directory('lib').absolute.path.replaceAll(r'\', '/');
       if (!local.startsWith('$root/')) continue;
       final relative = local.substring(root.length + 1);
+      if (relative.startsWith('app/') && (feature != null || segments[1] == 'foundation' || segments[1] == 'design')) {
+        fail('only the app composition layer may depend on app');
+      }
       if ((path.startsWith('lib/foundation/') || path.startsWith('lib/design/')) && relative.startsWith('features/')) {
         fail('foundation and design must not depend on features');
       }
       if (!relative.startsWith('features/')) continue;
       final other = relative.substring('features/'.length).split('/');
       if (other.first == feature) continue;
+      if (feature != null && other.first == 'capabilities') {
+        fail('business features must not depend on capabilities; register them in app');
+      }
       if (other.length != 2 || other[1] != 'api.dart') fail('features may only import each other through api.dart');
       if (feature != null) dependencies[feature]!.add(other.first);
     }
@@ -76,6 +87,11 @@ void main() {
   for (final feature in dependencies.keys) {
     visit(feature);
   }
+  return violations;
+}
+
+void main() {
+  final violations = checkImports(Directory('lib'));
   violations.forEach(print);
   if (violations.isNotEmpty) exit(1);
   print('imports ok');

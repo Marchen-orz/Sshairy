@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/side_drawer.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../capabilities/api.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
@@ -90,25 +89,6 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
 
 /// The transfer queue and edits, from the title bar or the palette.
 Future<void> showTransfers(BuildContext context) => showSideDrawer<void>(context, (_) => const TransfersPanel());
-
-List<PaletteEntry> filesPaletteEntries(PaletteContext c) {
-  final l = c.l;
-  return [
-    PaletteEntry(
-      section: PaletteSection.actions,
-      title: l.sftp,
-      keywords: l.files,
-      icon: Icons.folder_copy_outlined,
-      run: () => c.dispatch('workspace.focus', {'view': 'files'}),
-    ),
-    PaletteEntry(
-      section: PaletteSection.actions,
-      title: l.transfers,
-      icon: Icons.swap_vert,
-      run: () => showTransfers(c.context),
-    ),
-  ];
-}
 
 /// The title-bar button: shows how much is running.
 class TransfersButton extends ConsumerWidget {

@@ -31,7 +31,7 @@ final connectionManagerProvider = Provider<ConnectionManager>((ref) {
   late final ConnectionManager manager;
   final dialer = SshDialer(
     ref.read(hostTrustProvider),
-    ref.read(secretStoreProvider),
+    ref.read(connectionCredentialsProvider),
     options,
     (id) => ref.read(keysProvider.notifier).byId(id),
     (route, prompts, cancel) => manager.acquireRoute(route, prompts, cancel: cancel),
@@ -40,6 +40,7 @@ final connectionManagerProvider = Provider<ConnectionManager>((ref) {
     dialer.dial,
     (id) => ref.read(hostsProvider.notifier).byId(id),
     park: Duration(seconds: ref.read(settingsProvider).get(SettingKeys.idleTtl)),
+    securityRevision: () => [ref.read(hostTrustProvider).revision, ref.read(connectionCredentialsProvider).revision],
   );
   ref.listen(settingsProvider.select((s) => s.get(SettingKeys.idleTtl)), (_, v) => manager.park = Duration(seconds: v));
   ref.onDispose(manager.closeAll);

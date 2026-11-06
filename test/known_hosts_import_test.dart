@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/connections/adapters/host_key_codec.dart';
 import 'package:sshairy/features/connections/adapters/known_hosts_file.dart';
 import 'package:sshairy/features/connections/application/host_trust.dart';
+import 'package:sshairy/foundation/json_file.dart';
 import 'package:sshairy/features/connections/application/known_hosts_import.dart';
 import 'package:sshairy/features/connections/domain/known_hosts.dart';
 import 'package:sshairy/features/connections/domain/prompts.dart';
@@ -398,6 +400,18 @@ void main() {
     });
   });
 
+  test('forgetting an endpoint invalidates an outstanding trust choice', () async {
+    final dir = await Directory.systemTemp.createTemp('sshairy-stale-trust-');
+    addTearDown(() => dir.delete(recursive: true));
+    final trust = HostTrustService(dir.path);
+    final prompts = _DelayedChoice();
+    final verifying = trust.verify('h', 22, 'ssh-ed25519', edFp, prompts);
+    await trust.forget('h:22');
+    prompts.choice.complete(TrustChoice.save);
+    expect(await verifying, isFalse);
+    expect(trust.entries, isEmpty);
+  });
+
   group('trust service', () {
     late Directory dir;
     setUp(() async => dir = await Directory.systemTemp.createTemp('sshairy-trust-'));
@@ -429,7 +443,7 @@ void main() {
         trust.importKeys({
           'h:22': {'ssh-ed25519': edFp},
         }),
-        throwsA(isA<FileSystemException>()),
+        throwsA(isA<JsonFileError>()),
       );
       expect(trust.entries, isEmpty);
       Directory('${dir.path}/gone').createSync();
@@ -457,4 +471,12 @@ void main() {
       expect(file.lastModifiedSync(), stamp);
     });
   });
+}
+
+class _DelayedChoice implements ConnectPrompts {
+  final choice = Completer<TrustChoice>();
+  @override
+  Future<TrustChoice> hostKey(HostKeyPrompt prompt) => choice.future;
+  @override
+  Future<SecretAnswer?> secret(SecretRequest request) async => null;
 }

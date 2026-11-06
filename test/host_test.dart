@@ -24,10 +24,18 @@ void main() {
   });
 
   test('Host survives a JSON round trip', () {
-    const host = Host(id: HostId('x'), label: 'web', address: 'h', port: 2222, username: 'u', auth: AuthKind.key, keyPath: '~/k');
+    const host = Host(
+      id: HostId('x'),
+      label: 'web',
+      address: 'h',
+      port: 2222,
+      username: 'u',
+      auth: AuthKind.key,
+      keyPath: '~/k',
+    );
     final copy = Host.fromJson(host.toJson());
     expect(copy.toJson(), host.toJson());
-    expect(copy.passwordRef, 'host/x/password');
+    expect(copy.passwordRef.storageKey, 'host/x/password');
 
     final full = Host.fromJson({
       ...host.toJson(),
@@ -44,15 +52,15 @@ void main() {
   });
 
   Host h(String label, {String group = '', bool pinned = false, int? used, List<String> tags = const []}) => Host(
-        id: HostId(label),
-        label: label,
-        address: '$label.example',
-        username: 'u',
-        group: group,
-        pinned: pinned,
-        tags: tags,
-        lastUsed: used == null ? null : DateTime.utc(2026, 1, 1, used),
-      );
+    id: HostId(label),
+    label: label,
+    address: '$label.example',
+    username: 'u',
+    group: group,
+    pinned: pinned,
+    tags: tags,
+    lastUsed: used == null ? null : DateTime.utc(2026, 1, 1, used),
+  );
 
   test('pinned hosts lead; then recent use or name', () {
     final hosts = [h('b', used: 1), h('a'), h('c', used: 3), h('d', pinned: true)];
@@ -61,9 +69,20 @@ void main() {
   });
 
   test('groups nest by path and search covers groups and tags', () {
-    final hosts = [h('web', group: 'prod/web', tags: ['nginx']), h('db', group: 'prod'), h('dev', group: 'production')];
+    final hosts = [
+      h('web', group: 'prod/web', tags: ['nginx']),
+      h('db', group: 'prod'),
+      h('dev', group: 'production'),
+    ];
     expect(allGroups(hosts), ['prod', 'prod/web', 'production']);
-    expect([for (final x in hosts) if (inGroup(x, 'prod')) x.label], ['web', 'db'], reason: 'prefix is not enough');
+    expect(
+      [
+        for (final x in hosts)
+          if (inGroup(x, 'prod')) x.label,
+      ],
+      ['web', 'db'],
+      reason: 'prefix is not enough',
+    );
     expect(hostMatches(hosts[0], 'NGINX web'), isTrue);
     expect(hostMatches(hosts[0], 'nginx db'), isFalse, reason: 'every word must match');
     expect(parseTags('a, b  a,,c'), ['a', 'b', 'c']);
