@@ -29,7 +29,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - Capability 目录有 host.list/create/update/delete、session.open/close/reconnect、workspace.split/focus/renameTab/duplicateTab、settings.get/patch（schema 由 SettingDef 生成）；还没有 revision、审批和审计。界面按钮仍直接调用 notifier，命令面板经 dispatcher。
 - ConnectionManager 的池 key 是主机 ID、端点、用户名、认证方式和密钥路径，还没有 ResolvedConnectionSpec 和凭据/信任 revision；停泊时长、连接超时和保活取自设置。没有脱敏日志。
 - 终端输出同步解析，应用层没有流控；E-03 只证明库支持背压，T-03 仍未做。
-- 主机只有名称、地址、端口、用户名和认证方式，没有分组和继承；密码在首次连接时输入并可选记住，表单里没有密码字段。
+- 主机有分组路径、标签、置顶和最近连接，没有 Group 对象、继承和 Identity；密码在首次连接时输入并可选记住，表单里没有密码字段。
 - 使用系统原生标题栏，没有左侧导航。
 
 ## M0 技术验证
@@ -69,9 +69,9 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 主机与凭据：
 - [ ] 主机、分组、身份、继承解析（H-01）
 - [ ] 持久化与坏数据恢复（H-02）
-- [ ] 主机库：网格/列表、搜索、排序、置顶、最近连接、快速连接（H-03）
+- [ ] 主机库：网格/列表、搜索、排序、置顶、最近连接、快速连接（H-03）：分组筛选、按标签搜索、置顶、列表视图已在集成测试中确认；拖拽排序未做
 - [ ] SecretRef 与系统凭据存储，无明文降级（D-02）
-- [ ] 密钥导入、引用与加密私钥（H-04）
+- [ ] 密钥导入、引用与加密私钥（H-04）：导入 ssh-keygen 生成的 Ed25519/RSA/ECDSA 加密私钥、指纹与 ssh-keygen 一致有单元测试；用导入的密钥登录服务器未测（需要改服务器的 authorized_keys，按 TESTING §2 先问作者）
 
 连接：
 - [ ] HostTrustService、trust 数据、确认对话框（C-01）：已独立为 HostTrustService，所有拨号经它校验
@@ -114,7 +114,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] 片段
 - [ ] SSH config 导入：draft 预览与未支持项报告
 - [ ] known_hosts 导入
-- [ ] 密钥生成
+- [ ] 密钥生成：Ed25519，ssh-keygen 能读出同样的公钥和指纹；登录未测
 - [ ] 暂停与断点续传（F-04）
 - [ ] 10 GB 传输（P-03）
 - [ ] README 写明已测环境和无保障声明
@@ -153,3 +153,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | Claude Opus 5.5 | 蓝色默认主题色与可选色、终端配色随明暗、应用图标；foundation 的 ID/Result/取消；Capability 目录、dispatcher、命令面板（Ctrl+Shift+P）；分屏树、窗格焦点、布局与当前标签恢复 | 窗格焦点以布局为准，对话框还回的焦点会被送回；workspace.json 在 Provider 构建后才建会话（Riverpod 不允许构建中改别的 provider） |
 | 2026-11-06 | Claude Opus 5.5 | ConnectionManager（池、合并拨号、租约、停泊、复用失败重建一次）与 HostTrustService；终端经租约开 shell | 退出 shell 后 60s 内重连和同主机新标签不再要密码；集成测试已按此修改 |
 | 2026-11-06 | Claude Opus 5.5 | 终端搜索、链接、右键菜单、选中复制、光标形状；自动重连（1/2/4/8/16s）；标签重命名、复制、未读标记；SettingDef 设置定义与分区化设置页；信任记录管理 | 未读标记要在帧后改（构建中通知会断言）；对话框里的 TextEditingController 由对话框自己持有（`design/text_prompt.dart`） |
+| 2026-11-06 | Claude Opus 5.5 | 主机分组路径、标签、置顶、最近连接、网格/列表、排序；密钥库（导入、生成、复制公钥、按主机引用）；host.* 能力加分组/标签/置顶/keyId，新增 key.list、key.generate | dartssh2 现在也允许出现在 `credentials/adapters`（解析和生成密钥）；单元测试用系统 ssh-keygen 作格式参照，没有时跳过 |

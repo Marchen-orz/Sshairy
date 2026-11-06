@@ -84,10 +84,11 @@ class _SshTransport implements Transport {
 /// Dials and authenticates SSH transports for [ConnectionManager]. The host key is checked by [HostTrustService]
 /// before any credential is sent.
 class SshDialer {
-  SshDialer(this._trust, this._secrets, this._options);
+  SshDialer(this._trust, this._secrets, this._options, this._keyById);
 
   final HostTrustService _trust;
   final SecretStore _secrets;
+  final SshKey? Function(String id) _keyById;
 
   /// Read at each dial, so a changed setting applies to the next connection.
   final ({Duration timeout, Duration? keepAlive}) Function() _options;
@@ -175,25 +176,43 @@ class SshDialer {
     }
   }
 
+  /// An imported key from the secure store, or else the key file; an imported key's passphrase is remembered
+  /// with the key, so every host using it shares it.
   Future<List<SSHKeyPair>> _loadKey(Host host, ConnectPrompts prompts, Map<String, Secret> remember) async {
-    var path = host.keyPath ?? '';
-    if (path.startsWith('~')) {
-      path = (Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '') + path.substring(1);
-    }
     final String pem;
+    final String? passphraseRef;
+    if (host.keyId case final id?) {
+      final key = _keyById(id);
+      final stored = key == null ? null : await _secrets.read(key.privateRef);
+      if (stored == null) throw const ConnectError(ConnectFailure.keyFile, 'key not found');
+      pem = stored.reveal();
+      passphraseRef = key!.passphraseRef;
+    } else {
+      var path = host.keyPath ?? '';
+      if (path.startsWith('~')) {
+        path = (Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '') + path.substring(1);
+      }
+      try {
+        pem = await File(path).readAsString();
+      } on Object catch (e) {
+        throw ConnectError(ConnectFailure.keyFile, '$e');
+      }
+      passphraseRef = host.transient ? null : host.passphraseRef;
+    }
+    Secret? passphrase;
+    final bool encrypted;
     try {
-      pem = await File(path).readAsString();
+      encrypted = SSHKeyPair.isEncryptedPem(pem);
     } on Object catch (e) {
       throw ConnectError(ConnectFailure.keyFile, '$e');
     }
-    Secret? passphrase;
-    if (SSHKeyPair.isEncryptedPem(pem)) {
-      passphrase = host.transient ? null : await _secrets.read(host.passphraseRef);
+    if (encrypted) {
+      passphrase = passphraseRef == null ? null : await _secrets.read(passphraseRef);
       if (passphrase == null) {
-        final a = await prompts.secret(SecretRequest(SecretKind.passphrase, canRemember: !host.transient));
+        final a = await prompts.secret(SecretRequest(SecretKind.passphrase, canRemember: passphraseRef != null));
         if (a == null) throw const ConnectError(ConnectFailure.cancelled);
         passphrase = a.value;
-        if (a.remember) remember[host.passphraseRef] = a.value;
+        if (a.remember && passphraseRef != null) remember[passphraseRef] = a.value;
       }
     }
     try {

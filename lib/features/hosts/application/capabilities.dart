@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/result.dart';
 import '../../capabilities/api.dart';
+import '../../credentials/api.dart';
 import '../domain/host.dart';
 import 'hosts.dart';
 
@@ -15,6 +16,11 @@ Map<String, Object?> hostDto(Host h) => {
       'port': h.port,
       'username': h.username,
       'auth': h.auth.name,
+      if (h.keyId != null) 'keyId': h.keyId,
+      'group': h.group,
+      'tags': h.tags,
+      'pinned': h.pinned,
+      if (h.lastUsed != null) 'lastUsed': h.lastUsed!.toUtc().toIso8601String(),
     };
 
 const _hostFields = {
@@ -27,6 +33,10 @@ const _hostFields = {
     'enum': ['password', 'key'],
   },
   'keyPath': {'type': 'string'},
+  'keyId': {'type': 'string', 'description': 'An imported key from key.list; used instead of keyPath.'},
+  'group': {'type': 'string', 'description': 'Slash-separated path such as prod/web; empty for none.'},
+  'tags': {'type': 'array', 'items': {'type': 'string'}},
+  'pinned': {'type': 'boolean'},
 };
 
 List<Capability> hostCapabilities(Ref ref) {
@@ -39,9 +49,20 @@ List<Capability> hostCapabilities(Ref ref) {
     if (address.isEmpty || username.isEmpty) return const Err(AppError('invalidArgument', detail: 'address, username'));
     if (port < 1 || port > 65535) return const Err(AppError('invalidArgument', detail: 'port'));
     final auth = AuthKind.values.asNameMap()[a.optional<String>('auth')] ?? existing?.auth ?? AuthKind.password;
-    final keyPath = a.optional<String>('keyPath') ?? existing?.keyPath;
-    if (auth == AuthKind.key && (keyPath == null || keyPath.trim().isEmpty)) {
+    var keyPath = a.optional<String>('keyPath') ?? existing?.keyPath;
+    var keyId = a.optional<String>('keyId') ?? existing?.keyId;
+    // Naming one way to find the key drops the other.
+    if (a.raw.containsKey('keyPath')) keyId = null;
+    if (a.raw.containsKey('keyId')) keyPath = null;
+    if (keyId != null && ref.read(keysProvider.notifier).byId(keyId) == null) {
+      return const Err(AppError('notFound', detail: 'keyId'));
+    }
+    if (auth == AuthKind.key && keyId == null && (keyPath == null || keyPath.trim().isEmpty)) {
       return const Err(AppError('invalidArgument', detail: 'keyPath'));
+    }
+    final tags = a.raw['tags'];
+    if (tags != null && (tags is! List || tags.any((t) => t is! String))) {
+      return const Err(AppError('invalidArgument', detail: 'tags'));
     }
     return Ok(Host(
       id: existing?.id ?? HostsNotifier.newId(),
@@ -50,7 +71,12 @@ List<Capability> hostCapabilities(Ref ref) {
       port: port,
       username: username,
       auth: auth,
-      keyPath: auth == AuthKind.key ? keyPath!.trim() : null,
+      keyPath: auth == AuthKind.key && keyId == null ? keyPath!.trim() : null,
+      keyId: auth == AuthKind.key ? keyId : null,
+      group: normalizeGroup(a.optional<String>('group') ?? existing?.group ?? ''),
+      tags: tags == null ? existing?.tags ?? const [] : parseTags((tags as List).join(',')),
+      pinned: a.optional<bool>('pinned') ?? existing?.pinned ?? false,
+      lastUsed: existing?.lastUsed,
     ));
   }
 
@@ -106,11 +132,11 @@ List<Capability> hostCapabilities(Ref ref) {
 }
 
 List<PaletteEntry> hostPaletteEntries(PaletteContext c) => [
-      for (final h in c.ref.read(hostsProvider))
+      for (final h in sortHosts(c.ref.read(hostsProvider), recent: true))
         PaletteEntry(
           section: PaletteSection.hosts,
           title: h.title,
-          subtitle: h.target,
+          subtitle: h.group.isEmpty ? h.target : '${h.target} · ${h.group}',
           icon: Icons.dns_outlined,
           run: () => c.dispatch('session.open', {'hostId': h.id.value}),
         ),

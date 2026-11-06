@@ -19,7 +19,12 @@ final connectionManagerProvider = Provider<ConnectionManager>((ref) {
     );
   }
 
-  final dialer = SshDialer(ref.read(hostTrustProvider), ref.read(secretStoreProvider), options);
+  final dialer = SshDialer(
+    ref.read(hostTrustProvider),
+    ref.read(secretStoreProvider),
+    options,
+    (id) => ref.read(keysProvider.notifier).byId(id),
+  );
   final manager = ConnectionManager(dialer.dial, park: Duration(seconds: ref.read(settingsProvider).get(SettingKeys.idleTtl)));
   ref.listen(settingsProvider.select((s) => s.get(SettingKeys.idleTtl)), (_, v) => manager.park = Duration(seconds: v));
   ref.onDispose(manager.closeAll);

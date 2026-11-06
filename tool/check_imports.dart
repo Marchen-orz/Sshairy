@@ -1,12 +1,15 @@
 // Enforces the dependency rules in CLAUDE.md. Usage: dart run tool/check_imports.dart
 import 'dart:io';
 
-/// Third-party packages and the only directory each may appear in.
+/// Third-party packages and the only directories each may appear in.
 const adapters = {
-  'dartssh2': 'lib/features/connections/adapters/',
-  'xterm2': 'lib/features/terminal/adapters/',
-  'flutter_pty': 'lib/features/terminal/adapters/',
-  'flutter_secure_storage': 'lib/features/credentials/adapters/',
+  // Credentials parses and generates keys with it; connections dials.
+  'dartssh2': ['lib/features/connections/adapters/', 'lib/features/credentials/adapters/'],
+  'pinenacl': ['lib/features/credentials/adapters/'],
+  'crypto': ['lib/features/credentials/adapters/'],
+  'xterm2': ['lib/features/terminal/adapters/'],
+  'flutter_pty': ['lib/features/terminal/adapters/'],
+  'flutter_secure_storage': ['lib/features/credentials/adapters/'],
 };
 
 final importLine = RegExp(r'''^\s*(?:import|export)\s+['"]([^'"]+)['"]''', multiLine: true);
@@ -30,7 +33,7 @@ void main() {
       }
       if (target.startsWith('package:')) {
         final allowed = adapters[target.substring(8).split('/').first];
-        if (allowed != null && !path.startsWith(allowed)) fail('only allowed in $allowed');
+        if (allowed != null && !allowed.any(path.startsWith)) fail('only allowed in ${allowed.join(', ')}');
       }
       if (!target.contains(':')) {
         final resolved = file.parent.uri.resolve(target).path;

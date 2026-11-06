@@ -15,6 +15,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
+import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/workspace/api.dart';
 import 'package:sshairy/features/terminal/adapters/ime_caret.dart';
@@ -477,6 +478,74 @@ void main() {
     await t.palette('Theme: Dark');
     await t.until('dark theme', () => Theme.of(t.element(find.byType(WorkspacePage))).brightness == Brightness.dark);
     await t.closeTabByKeyboard();
+  });
+
+  testWidgets('vault: groups, search by tag, pin, list view, a generated key on a host', (t) async {
+    t.testTextInput.register();
+    Map<String, Object?> host(String id, String group, [List<String> tags = const []]) =>
+        {'id': id, 'label': id, 'address': '$id.invalid', 'username': 'u', 'auth': 'password', 'group': group, 'tags': tags};
+    await File('${dir.path}/hosts.json').writeAsString(jsonEncode({
+      'schemaVersion': 1,
+      'hosts': [host('alpha', 'prod/web', ['nginx']), host('bravo', 'prod'), host('charlie', '')],
+    }));
+    await t.startApp(dir);
+    double top(String label) => t.getTopLeft(find.text(label)).dy;
+    double left(String label) => t.getTopLeft(find.text(label)).dx;
+    bool shown(String label) => find.text(label).evaluate().isNotEmpty;
+
+    Finder chip(String label) => find.widgetWithText(ChoiceChip, label);
+    await t.tapAndPump(chip('prod/web'));
+    expect([shown('alpha'), shown('bravo'), shown('charlie')], [true, false, false]);
+    await t.tapAndPump(chip('prod'));
+    expect([shown('alpha'), shown('bravo'), shown('charlie')], [true, true, false]);
+    await t.tapAndPump(chip('All'));
+    await t.enterText(find.byType(TextField).first, 'nginx');
+    await t.pump();
+    expect([shown('alpha'), shown('bravo'), shown('charlie')], [true, false, false]);
+    await t.enterText(find.byType(TextField).first, '');
+    await t.pump();
+
+    await t.tapAndPump(find.descendant(of: find.byType(Card).at(2), matching: find.byTooltip('More')));
+    await t.tapAndPump(find.text('Pin'));
+    await t.until('charlie first', () => left('charlie') < left('alpha') || top('charlie') < top('alpha'));
+    await t.tapAndPump(find.byTooltip('List'));
+    expect(top('charlie') < top('alpha') && top('alpha') < top('bravo'), isTrue);
+    expect(find.textContaining('#nginx'), findsOneWidget);
+    await t.shot('vault-list');
+
+    // A generated key, given to a host; while a host uses it, it cannot be deleted.
+    await t.tapAndPump(find.byTooltip('Keys'));
+    await t.tapAndPump(find.text('Generate key'));
+    await t.enterText(inDialog(find.byType(TextField)), 'sshairy-it-key');
+    await t.tapAndPump(inDialog(find.text('Save')));
+    await t.untilFound(find.text('sshairy-it-key'));
+    final keys = jsonDecode(await File('${dir.path}/keys.json').readAsString()) as Map<String, dynamic>;
+    final key = (keys['keys'] as List<dynamic>).single as Map<String, dynamic>;
+    final privateRef = 'key/${key['id']}/private';
+    const secrets = SecretStore();
+    addTearDown(() => secrets.delete(privateRef));
+    expect((await secrets.read(privateRef))?.reveal(), contains('OPENSSH PRIVATE KEY'));
+    expect(jsonEncode(keys), isNot(contains('PRIVATE KEY')));
+    await t.tapAndPump(find.byTooltip('Copy public key'));
+    expect((await Clipboard.getData(Clipboard.kTextPlain))?.text, key['publicKey']);
+    await t.shot('keys');
+    await t.sendKeyEvent(LogicalKeyboardKey.escape);
+    await t.until('drawer closed', () => find.text('sshairy-it-key').evaluate().isEmpty);
+
+    await t.tapAndPump(find.descendant(of: find.byType(Card).at(1), matching: find.byTooltip('More')));
+    await t.tapAndPump(find.text('Edit'));
+    await t.tapAndPump(find.text('Private key'));
+    await t.tapAndPump(find.byType(DropdownButtonFormField<String?>));
+    await t.tapAndPump(find.text('sshairy-it-key · ssh-ed25519').last);
+    await t.shot('host-form-key');
+    await t.tapAndPump(find.text('Save'));
+    await t.until('saved', () => File('${dir.path}/hosts.json').readAsStringSync().contains('"keyId"'));
+
+    await t.tapAndPump(find.byTooltip('Keys'));
+    expect(find.text('Used by alpha'), findsOneWidget);
+    await t.tapAndPump(find.descendant(of: find.byType(KeysPanel), matching: find.byTooltip('More')));
+    final delete = t.widget<PopupMenuItem<VoidCallback>>(find.widgetWithText(PopupMenuItem<VoidCallback>, 'Delete'));
+    expect(delete.enabled, isFalse);
   });
 
   testWidgets('settings: theme, font size and language apply and persist', (t) async {

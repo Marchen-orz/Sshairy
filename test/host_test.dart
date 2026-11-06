@@ -28,5 +28,44 @@ void main() {
     final copy = Host.fromJson(host.toJson());
     expect(copy.toJson(), host.toJson());
     expect(copy.passwordRef, 'host/x/password');
+
+    final full = Host.fromJson({
+      ...host.toJson(),
+      'keyId': 'k1',
+      'group': ' prod / /web ',
+      'tags': ['a', 3, 'b'],
+      'pinned': true,
+      'lastUsed': '2026-11-06T08:00:00Z',
+    });
+    expect(full.group, 'prod/web');
+    expect(full.tags, ['a', 'b'], reason: 'values of the wrong type are dropped');
+    expect(Host.fromJson(full.toJson()).toJson(), full.toJson());
+    expect(host.toJson().keys, isNot(contains('group')), reason: 'empty fields stay out of hosts.json');
+  });
+
+  Host h(String label, {String group = '', bool pinned = false, int? used, List<String> tags = const []}) => Host(
+        id: HostId(label),
+        label: label,
+        address: '$label.example',
+        username: 'u',
+        group: group,
+        pinned: pinned,
+        tags: tags,
+        lastUsed: used == null ? null : DateTime.utc(2026, 1, 1, used),
+      );
+
+  test('pinned hosts lead; then recent use or name', () {
+    final hosts = [h('b', used: 1), h('a'), h('c', used: 3), h('d', pinned: true)];
+    expect(sortHosts(hosts).map((x) => x.label), ['d', 'a', 'b', 'c']);
+    expect(sortHosts(hosts, recent: true).map((x) => x.label), ['d', 'c', 'b', 'a'], reason: 'never used goes last');
+  });
+
+  test('groups nest by path and search covers groups and tags', () {
+    final hosts = [h('web', group: 'prod/web', tags: ['nginx']), h('db', group: 'prod'), h('dev', group: 'production')];
+    expect(allGroups(hosts), ['prod', 'prod/web', 'production']);
+    expect([for (final x in hosts) if (inGroup(x, 'prod')) x.label], ['web', 'db'], reason: 'prefix is not enough');
+    expect(hostMatches(hosts[0], 'NGINX web'), isTrue);
+    expect(hostMatches(hosts[0], 'nginx db'), isFalse, reason: 'every word must match');
+    expect(parseTags('a, b  a,,c'), ['a', 'b', 'c']);
   });
 }

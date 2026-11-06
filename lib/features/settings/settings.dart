@@ -13,6 +13,10 @@ enum CursorShape { block, underline, bar }
 
 enum RightClick { menu, paste }
 
+enum HostView { grid, list }
+
+enum HostOrder { name, recent }
+
 /// What the runner started with; null where the runner does not choose.
 final runningRendererProvider = Provider<Renderer?>((_) => null);
 
@@ -130,12 +134,15 @@ abstract final class SettingKeys {
   static const idleTtl = IntSetting('idleTtl', 60, 0, 300);
   static const autoReconnect = BoolSetting('autoReconnect', false);
 
+  static const hostView = EnumSetting('hostView', HostView.grid, HostView.values);
+  static const hostOrder = EnumSetting('hostOrder', HostOrder.name, HostOrder.values);
+
   static const showHidden = BoolSetting('showHidden', false);
   static const transferConcurrency = IntSetting('transferConcurrency', 3, 1, 8);
 
   static const List<SettingDef<Object?>> all = [
     themeMode, accent, locale, renderer, fontSize, scrollback, cursorShape, copyOnSelect, rightClick, confirmPaste,
-    connectTimeout, keepAlive, idleTtl, autoReconnect, showHidden, transferConcurrency,
+    connectTimeout, keepAlive, idleTtl, autoReconnect, hostView, hostOrder, showHidden, transferConcurrency,
   ];
 
   static SettingDef<Object?>? byKey(String key) => all.where((d) => d.key == key).firstOrNull;

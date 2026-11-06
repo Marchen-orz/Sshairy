@@ -54,6 +54,7 @@ class Workspace extends Notifier<WorkspaceState> {
   }
 
   TabId openHost(Host host) {
+    if (!host.transient) ref.read(hostsProvider.notifier).touch(host.id).ignore();
     final s = _sessions.open(host);
     final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
     _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/misc.dart';
 
 import '../features/capabilities/api.dart';
 import '../features/connections/api.dart';
+import '../features/credentials/api.dart';
 import '../features/hosts/api.dart';
 import '../features/settings/api.dart';
 import '../features/workspace/api.dart';
@@ -11,6 +12,7 @@ List<Override> appOverrides() => [
       capabilityDispatcherProvider.overrideWith(
         (ref) => CapabilityDispatcher([
           ...hostCapabilities(ref),
+          ...keyCapabilities(ref),
           ...workspaceCapabilities(ref),
           ...settingsCapabilities(ref),
         ]),

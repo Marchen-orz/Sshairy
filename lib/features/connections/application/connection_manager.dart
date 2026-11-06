@@ -25,7 +25,7 @@ class ConnectionManager {
 
   /// What must match for two users to share a transport. Holds references, never secrets.
   static String keyOf(Host h) =>
-      [h.id.value, KnownKeys.endpoint(h.address, h.port), h.username, h.auth.name, h.keyPath ?? ''].join('\u0000');
+      [h.id.value, KnownKeys.endpoint(h.address, h.port), h.username, h.auth.name, h.keyId ?? h.keyPath ?? ''].join('\u0000');
 
   /// Hosts that currently have a live or dialling transport.
   Set<Host> get hosts => {for (final e in [..._pool.values, ..._detached]) e.host};

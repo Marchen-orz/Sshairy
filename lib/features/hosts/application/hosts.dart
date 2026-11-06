@@ -20,11 +20,51 @@ class HostsNotifier extends Notifier<List<Host>> {
 
   static HostId newId() => HostId(ids.newId());
 
+  /// Completes once every write issued so far has landed.
+  Future<void> get saved => _file.idle;
+
   Host? byId(HostId id) => state.where((h) => h.id == id).firstOrNull;
 
   Future<void> save(Host host) {
     final i = state.indexWhere((h) => h.id == host.id);
     state = i < 0 ? [...state, host] : ([...state]..[i] = host);
+    return _persist();
+  }
+
+  Future<void> setPinned(Host host, bool pinned) => save(host.copyWith(pinned: pinned));
+
+  /// Recorded when a session opens, for the "recent" order.
+  Future<void> touch(HostId id) async {
+    final host = byId(id);
+    if (host != null) await save(host.copyWith(lastUsed: DateTime.now()));
+  }
+
+  /// A copy under [label] that shares the key but not the remembered password.
+  Future<Host> duplicate(Host host, String label) async {
+    final copy = Host(
+      id: newId(),
+      label: label,
+      address: host.address,
+      port: host.port,
+      username: host.username,
+      auth: host.auth,
+      keyPath: host.keyPath,
+      keyId: host.keyId,
+      group: host.group,
+      tags: host.tags,
+    );
+    await save(copy);
+    return copy;
+  }
+
+  /// Moves every host in [from] or below it under [to]; an empty [to] dissolves the group and keeps its subgroups.
+  Future<void> renameGroup(String from, String to) {
+    state = [
+      for (final h in state)
+        h.group == from || h.group.startsWith('$from/')
+            ? h.copyWith(group: normalizeGroup(to + h.group.substring(from.length)))
+            : h,
+    ];
     return _persist();
   }
 

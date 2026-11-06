@@ -346,4 +346,90 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get stop => '停止';
+
+  @override
+  String get keys => '密钥';
+
+  @override
+  String get importKey => '导入密钥';
+
+  @override
+  String get generateKey => '生成密钥';
+
+  @override
+  String get keySource => '私钥内容或文件路径';
+
+  @override
+  String get keyFile => '密钥文件';
+
+  @override
+  String get copyPublicKey => '复制公钥';
+
+  @override
+  String keyInUse(String names) {
+    return '正在被 $names 使用';
+  }
+
+  @override
+  String deleteKey(String name) {
+    return '删除密钥 $name？之后主机将无法使用它。';
+  }
+
+  @override
+  String get errKeyUnsupported => '不支持的私钥格式';
+
+  @override
+  String get errKeyNeedsPassphrase => '该密钥已加密，请输入口令';
+
+  @override
+  String get errKeyWrongPassphrase => '口令错误';
+
+  @override
+  String errKeyDuplicate(String name) {
+    return '已导入为 $name';
+  }
+
+  @override
+  String get errKeyUnreadable => '无法读取文件';
+
+  @override
+  String get group => '分组';
+
+  @override
+  String get tags => '标签';
+
+  @override
+  String get tagsHint => '用逗号分隔';
+
+  @override
+  String get allHosts => '全部';
+
+  @override
+  String get pin => '置顶';
+
+  @override
+  String get unpin => '取消置顶';
+
+  @override
+  String get sortName => '按名称';
+
+  @override
+  String get sortRecent => '按最近连接';
+
+  @override
+  String get gridView => '网格';
+
+  @override
+  String get listView => '列表';
+
+  @override
+  String copyOf(String name) {
+    return '$name 副本';
+  }
+
+  @override
+  String get renameGroup => '重命名分组';
+
+  @override
+  String get dissolveGroup => '解散分组';
 }

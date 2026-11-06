@@ -347,4 +347,91 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get stop => 'Stop';
+
+  @override
+  String get keys => 'Keys';
+
+  @override
+  String get importKey => 'Import key';
+
+  @override
+  String get generateKey => 'Generate key';
+
+  @override
+  String get keySource => 'Private key or file path';
+
+  @override
+  String get keyFile => 'Key file';
+
+  @override
+  String get copyPublicKey => 'Copy public key';
+
+  @override
+  String keyInUse(String names) {
+    return 'Used by $names';
+  }
+
+  @override
+  String deleteKey(String name) {
+    return 'Delete key $name? Hosts can no longer use it.';
+  }
+
+  @override
+  String get errKeyUnsupported => 'Not a supported private key';
+
+  @override
+  String get errKeyNeedsPassphrase =>
+      'This key is encrypted; enter its passphrase';
+
+  @override
+  String get errKeyWrongPassphrase => 'Wrong passphrase';
+
+  @override
+  String errKeyDuplicate(String name) {
+    return 'Already imported as $name';
+  }
+
+  @override
+  String get errKeyUnreadable => 'Cannot read the file';
+
+  @override
+  String get group => 'Group';
+
+  @override
+  String get tags => 'Tags';
+
+  @override
+  String get tagsHint => 'Comma separated';
+
+  @override
+  String get allHosts => 'All';
+
+  @override
+  String get pin => 'Pin';
+
+  @override
+  String get unpin => 'Unpin';
+
+  @override
+  String get sortName => 'By name';
+
+  @override
+  String get sortRecent => 'By recent use';
+
+  @override
+  String get gridView => 'Grid';
+
+  @override
+  String get listView => 'List';
+
+  @override
+  String copyOf(String name) {
+    return '$name copy';
+  }
+
+  @override
+  String get renameGroup => 'Rename group';
+
+  @override
+  String get dissolveGroup => 'Dissolve group';
 }

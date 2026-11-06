@@ -745,6 +745,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stop'**
   String get stop;
+
+  /// No description provided for @keys.
+  ///
+  /// In en, this message translates to:
+  /// **'Keys'**
+  String get keys;
+
+  /// No description provided for @importKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Import key'**
+  String get importKey;
+
+  /// No description provided for @generateKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate key'**
+  String get generateKey;
+
+  /// No description provided for @keySource.
+  ///
+  /// In en, this message translates to:
+  /// **'Private key or file path'**
+  String get keySource;
+
+  /// No description provided for @keyFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Key file'**
+  String get keyFile;
+
+  /// No description provided for @copyPublicKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy public key'**
+  String get copyPublicKey;
+
+  /// No description provided for @keyInUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Used by {names}'**
+  String keyInUse(String names);
+
+  /// No description provided for @deleteKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete key {name}? Hosts can no longer use it.'**
+  String deleteKey(String name);
+
+  /// No description provided for @errKeyUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Not a supported private key'**
+  String get errKeyUnsupported;
+
+  /// No description provided for @errKeyNeedsPassphrase.
+  ///
+  /// In en, this message translates to:
+  /// **'This key is encrypted; enter its passphrase'**
+  String get errKeyNeedsPassphrase;
+
+  /// No description provided for @errKeyWrongPassphrase.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong passphrase'**
+  String get errKeyWrongPassphrase;
+
+  /// No description provided for @errKeyDuplicate.
+  ///
+  /// In en, this message translates to:
+  /// **'Already imported as {name}'**
+  String errKeyDuplicate(String name);
+
+  /// No description provided for @errKeyUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot read the file'**
+  String get errKeyUnreadable;
+
+  /// No description provided for @group.
+  ///
+  /// In en, this message translates to:
+  /// **'Group'**
+  String get group;
+
+  /// No description provided for @tags.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get tags;
+
+  /// No description provided for @tagsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Comma separated'**
+  String get tagsHint;
+
+  /// No description provided for @allHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get allHosts;
+
+  /// No description provided for @pin.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get pin;
+
+  /// No description provided for @unpin.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpin'**
+  String get unpin;
+
+  /// No description provided for @sortName.
+  ///
+  /// In en, this message translates to:
+  /// **'By name'**
+  String get sortName;
+
+  /// No description provided for @sortRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'By recent use'**
+  String get sortRecent;
+
+  /// No description provided for @gridView.
+  ///
+  /// In en, this message translates to:
+  /// **'Grid'**
+  String get gridView;
+
+  /// No description provided for @listView.
+  ///
+  /// In en, this message translates to:
+  /// **'List'**
+  String get listView;
+
+  /// No description provided for @copyOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} copy'**
+  String copyOf(String name);
+
+  /// No description provided for @renameGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename group'**
+  String get renameGroup;
+
+  /// No description provided for @dissolveGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Dissolve group'**
+  String get dissolveGroup;
 }
 
 class _AppLocalizationsDelegate
