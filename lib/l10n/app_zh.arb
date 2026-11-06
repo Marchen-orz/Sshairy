@@ -52,5 +52,10 @@
   "more": "更多",
   "renderer": "渲染器",
   "restartToApply": "重启后生效",
+  "accent": "主题色",
+  "accentBlue": "蓝",
+  "accentGreen": "绿",
+  "accentViolet": "紫",
+  "accentOrange": "橙",
   "newConnection": "新建连接"
 }

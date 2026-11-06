@@ -175,5 +175,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get restartToApply => 'Takes effect after restart';
 
   @override
+  String get accent => 'Accent color';
+
+  @override
+  String get accentBlue => 'Blue';
+
+  @override
+  String get accentGreen => 'Green';
+
+  @override
+  String get accentViolet => 'Violet';
+
+  @override
+  String get accentOrange => 'Orange';
+
+  @override
   String get newConnection => 'New connection';
 }

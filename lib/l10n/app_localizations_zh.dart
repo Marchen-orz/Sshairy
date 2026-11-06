@@ -174,5 +174,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get restartToApply => '重启后生效';
 
   @override
+  String get accent => '主题色';
+
+  @override
+  String get accentBlue => '蓝';
+
+  @override
+  String get accentGreen => '绿';
+
+  @override
+  String get accentViolet => '紫';
+
+  @override
+  String get accentOrange => '橙';
+
+  @override
   String get newConnection => '新建连接';
 }

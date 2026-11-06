@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 /// Spacing and radius tokens from docs/UI.md §2.
@@ -9,23 +11,50 @@ abstract final class Radii {
   static const control = 6.0, card = 10.0, panel = 12.0;
 }
 
-ThemeData buildTheme(Brightness brightness) {
+/// Accent presets from docs/UI.md §2; each has one shade per brightness.
+enum Accent {
+  blue(Color(0xFF2563EB), Color(0xFF60A5FA)),
+  green(Color(0xFF087F5B), Color(0xFF34D399)),
+  violet(Color(0xFF6D4AE0), Color(0xFFA78BFA)),
+  orange(Color(0xFFC2410C), Color(0xFFFB923C));
+
+  const Accent(this.light, this.dark);
+
+  final Color light, dark;
+
+  Color of(Brightness b) => b == Brightness.light ? light : dark;
+}
+
+const _onAccentDark = Color(0xFF0B1220);
+
+/// White or a near-black, whichever reads better on [c].
+Color onColor(Color c) {
+  double contrast(Color a, Color b) {
+    final (x, y) = (a.computeLuminance(), b.computeLuminance());
+    return (max(x, y) + 0.05) / (min(x, y) + 0.05);
+  }
+
+  return contrast(c, const Color(0xFFFFFFFF)) >= contrast(c, _onAccentDark) ? const Color(0xFFFFFFFF) : _onAccentDark;
+}
+
+ThemeData buildTheme(Brightness brightness, [Accent accent = Accent.blue]) {
   final light = brightness == Brightness.light;
   Color c(int l, int d) => Color(light ? l : d);
+  final primary = accent.of(brightness);
   final scheme = ColorScheme(
     brightness: brightness,
-    surface: c(0xFFFFFFFF, 0xFF20252D),
-    surfaceContainerLowest: c(0xFFF4F6F8, 0xFF15181D),
-    surfaceContainerLow: c(0xFFEBEEF2, 0xFF1C2026),
-    surfaceContainerHigh: c(0xFFFFFFFF, 0xFF272D37),
-    onSurface: c(0xFF17212F, 0xFFE6EAF0),
-    onSurfaceVariant: c(0xFF596579, 0xFFA6B0BF),
-    outlineVariant: c(0xFFD6DDE5, 0xFF39424F),
-    outline: c(0xFFB4BFCC, 0xFF55606F),
-    primary: c(0xFF087F5B, 0xFF34D399),
-    onPrimary: c(0xFFFFFFFF, 0xFF10241D),
-    secondary: c(0xFF087F5B, 0xFF34D399),
-    onSecondary: c(0xFFFFFFFF, 0xFF10241D),
+    surface: c(0xFFFFFFFF, 0xFF1A212C),
+    surfaceContainerLowest: c(0xFFF3F6FA, 0xFF0F141B),
+    surfaceContainerLow: c(0xFFE9EEF5, 0xFF151B24),
+    surfaceContainerHigh: c(0xFFFFFFFF, 0xFF222B38),
+    onSurface: c(0xFF142033, 0xFFE4EAF2),
+    onSurfaceVariant: c(0xFF56657D, 0xFF9AA8BC),
+    outlineVariant: c(0xFFD3DCE8, 0xFF2F3A4A),
+    outline: c(0xFFB0BDCD, 0xFF4B5869),
+    primary: primary,
+    onPrimary: onColor(primary),
+    secondary: primary,
+    onSecondary: onColor(primary),
     error: c(0xFFB42332, 0xFFFF8792),
     onError: c(0xFFFFFFFF, 0xFF2A0A0E),
     tertiary: c(0xFF865400, 0xFFF5C66B),

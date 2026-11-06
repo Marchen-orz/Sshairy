@@ -41,6 +41,23 @@ class SettingsPanel extends ConsumerWidget {
         ),
       ),
       field(
+        l.accent,
+        Wrap(spacing: Space.sm, children: [
+          for (final a in Accent.values)
+            _Swatch(
+              color: a.of(Theme.of(context).brightness),
+              label: switch (a) {
+                Accent.blue => l.accentBlue,
+                Accent.green => l.accentGreen,
+                Accent.violet => l.accentViolet,
+                Accent.orange => l.accentOrange,
+              },
+              selected: settings.accent == a,
+              onTap: () => notifier.update(accent: a),
+            ),
+        ]),
+      ),
+      field(
         l.language,
         SegmentedButton<String>(
           showSelectedIcon: false,
@@ -88,5 +105,44 @@ class SettingsPanel extends ConsumerWidget {
           ]),
         ),
     ]);
+  }
+}
+
+class _Swatch extends StatelessWidget {
+  const _Swatch({required this.color, required this.label, required this.selected, required this.onTap});
+
+  final Color color;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        label: label,
+        selected: selected,
+        button: true,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 32,
+            height: 32,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: selected ? color : scheme.outlineVariant, width: 2),
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: selected ? Icon(Icons.check, size: 16, color: onColor(color)) : null,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

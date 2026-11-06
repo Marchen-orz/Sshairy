@@ -51,20 +51,33 @@ M4 右侧增加 AI 页签。未实现模块不显示空按钮、不可用入口�
 
 | role | Light | Dark |
 |---|---|---|
-| background | #F4F6F8 | #15181D |
-| sidebar | #EBEEF2 | #1C2026 |
-| surface | #FFFFFF | #20252D |
-| elevated | #FFFFFF | #272D37 |
-| border | #D6DDE5 | #39424F |
-| text | #17212F | #E6EAF0 |
-| textMuted | #596579 | #A6B0BF |
-| accent | #087F5B | #34D399 |
-| onAccent | #FFFFFF | #10241D |
+| background | #F3F6FA | #0F141B |
+| sidebar | #E9EEF5 | #151B24 |
+| surface | #FFFFFF | #1A212C |
+| elevated | #FFFFFF | #222B38 |
+| border | #D3DCE8 | #2F3A4A |
+| text | #142033 | #E4EAF2 |
+| textMuted | #56657D | #9AA8BC |
+| accent | 见下表 | 见下表 |
+| onAccent | 按对比度计算 | 按对比度计算 |
 | danger | #B42332 | #FF8792 |
 | warning | #865400 | #F5C66B |
 | focus | accent | accent |
 
-这是自有初始配色，不声称复现截图或已通过全部对比度测试。正文对比度至少 4.5:1，重要控件边界/焦点至少 3:1；用户自定义 accent 后重新计算 onAccent，不让白字直接叠浅绿。
+中性色带一点冷蓝，配合默认蓝色 accent。accent 在设置里从预设中选，Light/Dark 各用一档：
+
+| accent | Light | Dark |
+|---|---|---|
+| 蓝（默认） | #2563EB | #60A5FA |
+| 绿 | #087F5B | #34D399 |
+| 紫 | #6D4AE0 | #A78BFA |
+| 橙 | #C2410C | #FB923C |
+
+onAccent 取白色或 #0B1220 中与 accent 对比度更高的一个，不让白字叠浅色。不提供任意取色器：预设能保证两种模式下的对比度。
+
+终端配色跟随明暗模式（ANSI 色是 tokens 的例外，单独映射在 `lib/design/terminal_palette.dart`）：背景 Light #FFFFFF / Dark #10151C，光标为 accent，选区为 accent 加透明度。Light 下 ANSI white 用灰色，避免白字落在白底上。
+
+这是自有配色，不声称已通过全部对比度测试。正文对比度至少 4.5:1，重要控件边界/焦点至少 3:1。
 
 - 间距：4/8/12/16/24/32；圆角：6 控件、10 卡片、12 面板/弹层；不为每处单独发明半径。
 - 字体：系统 UI 字体及系统 CJK fallback；正文 14，次级 12，标题 18。关键操作/地址不低于 12。终端默认等宽 14，可选择系统已安装字体，包体只附确有必要且许可清晰的字体。

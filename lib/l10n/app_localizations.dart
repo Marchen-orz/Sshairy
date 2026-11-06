@@ -410,6 +410,36 @@ abstract class AppLocalizations {
   /// **'Takes effect after restart'**
   String get restartToApply;
 
+  /// No description provided for @accent.
+  ///
+  /// In en, this message translates to:
+  /// **'Accent color'**
+  String get accent;
+
+  /// No description provided for @accentBlue.
+  ///
+  /// In en, this message translates to:
+  /// **'Blue'**
+  String get accentBlue;
+
+  /// No description provided for @accentGreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Green'**
+  String get accentGreen;
+
+  /// No description provided for @accentViolet.
+  ///
+  /// In en, this message translates to:
+  /// **'Violet'**
+  String get accentViolet;
+
+  /// No description provided for @accentOrange.
+  ///
+  /// In en, this message translates to:
+  /// **'Orange'**
+  String get accentOrange;
+
   /// No description provided for @newConnection.
   ///
   /// In en, this message translates to:

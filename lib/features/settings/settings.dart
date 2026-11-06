@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../design/theme.dart';
 import '../../foundation/data_dir.dart';
 import '../../foundation/json_file.dart';
 
@@ -11,9 +12,16 @@ enum Renderer { skia, impeller }
 final runningRendererProvider = Provider<Renderer?>((_) => null);
 
 class Settings {
-  const Settings({this.themeMode = ThemeMode.system, this.fontSize = 14, this.locale, this.renderer = Renderer.skia});
+  const Settings({
+    this.themeMode = ThemeMode.system,
+    this.accent = Accent.blue,
+    this.fontSize = 14,
+    this.locale,
+    this.renderer = Renderer.skia,
+  });
 
   final ThemeMode themeMode;
+  final Accent accent;
   final double fontSize;
 
   /// null follows the system language.
@@ -25,6 +33,7 @@ class Settings {
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
         themeMode: ThemeMode.values.asNameMap()[j['themeMode']] ?? ThemeMode.system,
+        accent: Accent.values.asNameMap()[j['accent']] ?? Accent.blue,
         fontSize: ((j['fontSize'] as num?)?.toDouble() ?? 14).clamp(minFontSize, maxFontSize),
         locale: const ['zh', 'en'].contains(j['locale']) ? j['locale'] as String : null,
         renderer: Renderer.values.asNameMap()[j['renderer']] ?? Renderer.skia,
@@ -33,6 +42,7 @@ class Settings {
   Map<String, dynamic> toJson() => {
         'schemaVersion': 1,
         'themeMode': themeMode.name,
+        'accent': accent.name,
         'fontSize': fontSize,
         'locale': locale,
         'renderer': renderer.name,
@@ -47,9 +57,16 @@ class SettingsNotifier extends Notifier<Settings> {
   @override
   Settings build() => Settings.fromJson(_file.read() ?? const {});
 
-  Future<void> update({ThemeMode? themeMode, double? fontSize, String? Function()? locale, Renderer? renderer}) {
+  Future<void> update({
+    ThemeMode? themeMode,
+    Accent? accent,
+    double? fontSize,
+    String? Function()? locale,
+    Renderer? renderer,
+  }) {
     state = Settings(
       themeMode: themeMode ?? state.themeMode,
+      accent: accent ?? state.accent,
       fontSize: (fontSize ?? state.fontSize).clamp(Settings.minFontSize, Settings.maxFontSize),
       locale: locale != null ? locale() : state.locale,
       renderer: renderer ?? state.renderer,

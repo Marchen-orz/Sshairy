@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm2/xterm.dart';
 
+import '../../../design/terminal_palette.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
@@ -204,6 +205,7 @@ class _TerminalPaneState extends State<TerminalPane> {
             controller: _controller,
             onKeyEvent: _onKey,
             padding: const EdgeInsets.all(Space.sm),
+            theme: _terminalTheme(TerminalPalette.of(Theme.of(context))),
             onPaste: _paste,
             textStyle: TerminalStyle(
               fontSize: widget.fontSize,
@@ -245,4 +247,33 @@ class _TerminalPaneState extends State<TerminalPane> {
         ConnectFailure.keyFile => l.errKeyFile(s.error!.detail),
         ConnectFailure.cancelled => l.errCancelled,
       };
+}
+
+TerminalTheme _terminalTheme(TerminalPalette p) {
+  final a = p.ansi;
+  return TerminalTheme(
+    cursor: p.cursor,
+    selection: p.selection,
+    foreground: p.foreground,
+    background: p.background,
+    black: a[0],
+    red: a[1],
+    green: a[2],
+    yellow: a[3],
+    blue: a[4],
+    magenta: a[5],
+    cyan: a[6],
+    white: a[7],
+    brightBlack: a[8],
+    brightRed: a[9],
+    brightGreen: a[10],
+    brightYellow: a[11],
+    brightBlue: a[12],
+    brightMagenta: a[13],
+    brightCyan: a[14],
+    brightWhite: a[15],
+    searchHitBackground: p.searchHit,
+    searchHitBackgroundCurrent: p.searchHitCurrent,
+    searchHitForeground: const Color(0xFF10151C),
+  );
 }

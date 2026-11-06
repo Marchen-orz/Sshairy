@@ -56,5 +56,10 @@
   "more": "More",
   "renderer": "Renderer",
   "restartToApply": "Takes effect after restart",
+  "accent": "Accent color",
+  "accentBlue": "Blue",
+  "accentGreen": "Green",
+  "accentViolet": "Violet",
+  "accentOrange": "Orange",
   "newConnection": "New connection"
 }

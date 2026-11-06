@@ -33,8 +33,8 @@ class SshairyApp extends ConsumerWidget {
     return MaterialApp(
       title: 'sshairy',
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
+      theme: buildTheme(Brightness.light, settings.accent),
+      darkTheme: buildTheme(Brightness.dark, settings.accent),
       themeMode: settings.themeMode,
       locale: settings.locale == null ? null : Locale(settings.locale!),
       localizationsDelegates: const [

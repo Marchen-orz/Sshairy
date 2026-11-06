@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/terminal/adapters/ime_caret.dart';
@@ -347,6 +348,9 @@ void main() {
     await t.tapAndPump(find.text('Dark'));
     expect(Theme.of(t.element(find.text('Theme'))).brightness, Brightness.dark);
     await t.shot('settings-dark');
+    await t.tapAndPump(find.byTooltip('Green'));
+    expect(Theme.of(t.element(find.text('Theme'))).colorScheme.primary, Accent.green.dark);
+    await t.tapAndPump(find.byTooltip('Blue'));
     await t.tapAndPump(find.text('Impeller'));
     expect(find.text('Takes effect after restart'), findsOneWidget);
     await t.shot('settings-renderer');
@@ -364,5 +368,6 @@ void main() {
     final saved = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
     expect(saved['themeMode'], 'dark');
     expect(saved['renderer'], 'impeller');
+    expect(saved['accent'], 'blue');
   });
 }
