@@ -11,6 +11,7 @@ import '../application/hosts.dart';
 import '../domain/host.dart';
 import 'host_form.dart';
 import 'keys_panel.dart';
+import 'ssh_config_import_panel.dart';
 
 class VaultPage extends ConsumerStatefulWidget {
   const VaultPage({super.key, required this.active, required this.onConnect});
@@ -175,6 +176,11 @@ class _VaultPageState extends ConsumerState<VaultPage> {
             tooltip: l.keys,
             onPressed: () => showSideDrawer<void>(context, (_) => const KeysPanel()),
             icon: const Icon(Icons.key_outlined, size: 20),
+          ),
+          IconButton(
+            tooltip: l.sshConfigImport,
+            onPressed: () => showSideDrawer<void>(context, (_) => const SshConfigImportPanel()),
+            icon: const Icon(Icons.download_outlined, size: 20),
           ),
           const SizedBox(width: Space.sm),
           FilledButton.icon(onPressed: _edit, icon: const Icon(Icons.add, size: 20), label: Text(l.newHost)),
