@@ -14,7 +14,19 @@ final snippetInsertionProvider = Provider<InsertSnippet>(
 final snippetsProvider = NotifierProvider<Snippets, List<Snippet>>(Snippets.new);
 
 class Snippets extends Notifier<List<Snippet>> {
-  late final _file = JsonFile('${ref.read(dataDirProvider)}/snippets.json', backups: true);
+  late final _file = JsonFile(
+    '${ref.read(dataDirProvider)}/snippets.json',
+    backups: true,
+    validate: (json) {
+      if (json['snippets'] is! List) throw const FormatException('invalid snippets');
+      final ids = <String>{};
+      for (final entry in json['snippets'] as List) {
+        final snippet = Snippet.fromJson((entry as Map).cast<String, dynamic>());
+        snippet.validate();
+        if (!ids.add(snippet.id)) throw const FormatException('duplicate snippet');
+      }
+    },
+  );
   Future<void> _pending = Future.value();
 
   @override
@@ -23,7 +35,7 @@ class Snippets extends Notifier<List<Snippet>> {
       Snippet.fromJson(entry as Map<String, dynamic>),
   ];
 
-  Future<void> get saved => _pending;
+  Future<void> get saved => _pending.then((_) => _file.idle);
   Snippet? byId(String id) => state.where((s) => s.id == id).firstOrNull;
 
   Future<void> _change(List<Snippet> Function() change) {

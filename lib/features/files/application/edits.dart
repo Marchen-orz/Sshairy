@@ -52,46 +52,45 @@ class ExternalEdit {
     EditState? state,
     bool? autoUpload,
     String? Function()? error,
-  }) =>
-      ExternalEdit(
-        id: id,
-        host: host,
-        hostLabel: hostLabel,
-        remotePath: remotePath ?? this.remotePath,
-        localPath: localPath,
-        baseline: baseline ?? this.baseline,
-        state: state ?? this.state,
-        autoUpload: autoUpload ?? this.autoUpload,
-        error: error == null ? this.error : error(),
-      );
+  }) => ExternalEdit(
+    id: id,
+    host: host,
+    hostLabel: hostLabel,
+    remotePath: remotePath ?? this.remotePath,
+    localPath: localPath,
+    baseline: baseline ?? this.baseline,
+    state: state ?? this.state,
+    autoUpload: autoUpload ?? this.autoUpload,
+    error: error == null ? this.error : error(),
+  );
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'host': host.value,
-        'hostLabel': hostLabel,
-        'remotePath': remotePath,
-        'localPath': localPath,
-        if (baseline.size != null) 'size': baseline.size,
-        if (baseline.modified != null) 'modified': baseline.modified!.millisecondsSinceEpoch,
-        'unsaved': unsaved,
-        if (autoUpload) 'autoUpload': true,
-      };
+    'id': id,
+    'host': host.value,
+    'hostLabel': hostLabel,
+    'remotePath': remotePath,
+    'localPath': localPath,
+    if (baseline.size != null) 'size': baseline.size,
+    if (baseline.modified != null) 'modified': baseline.modified!.millisecondsSinceEpoch,
+    'unsaved': unsaved,
+    if (autoUpload) 'autoUpload': true,
+  };
 
   factory ExternalEdit.fromJson(Map<String, dynamic> j) => ExternalEdit(
-        id: j['id'] as String,
-        host: HostId(j['host'] as String),
-        hostLabel: j['hostLabel'] as String? ?? '',
-        remotePath: j['remotePath'] as String,
-        localPath: j['localPath'] as String,
-        baseline: FileEntry(
-          PathStyle.posix.name(j['remotePath'] as String),
-          FileKind.file,
-          size: j['size'] as int?,
-          modified: j['modified'] == null ? null : DateTime.fromMillisecondsSinceEpoch(j['modified'] as int),
-        ),
-        state: j['unsaved'] == true ? EditState.modified : EditState.clean,
-        autoUpload: j['autoUpload'] == true,
-      );
+    id: j['id'] as String,
+    host: HostId(j['host'] as String),
+    hostLabel: j['hostLabel'] as String? ?? '',
+    remotePath: j['remotePath'] as String,
+    localPath: j['localPath'] as String,
+    baseline: FileEntry(
+      PathStyle.posix.name(j['remotePath'] as String),
+      FileKind.file,
+      size: j['size'] as int?,
+      modified: j['modified'] == null ? null : DateTime.fromMillisecondsSinceEpoch(j['modified'] as int),
+    ),
+    state: j['unsaved'] == true ? EditState.modified : EditState.clean,
+    autoUpload: j['autoUpload'] == true,
+  );
 }
 
 /// Larger files belong in a transfer, not an editor round trip.
@@ -102,7 +101,17 @@ final editsProvider = NotifierProvider<ExternalEdits, List<ExternalEdit>>(Extern
 /// Owns edit copies and their watchers (docs/CONTRACTS.md §2).
 class ExternalEdits extends Notifier<List<ExternalEdit>> {
   late final String _root = '${ref.read(dataDirProvider)}${Platform.pathSeparator}edits';
-  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/edits.json');
+  late final JsonFile _file = JsonFile(
+    '${ref.read(dataDirProvider)}/edits.json',
+    validate: (json) {
+      if (json['edits'] is! List) throw const FormatException('invalid edits');
+      final ids = <String>{};
+      for (final entry in json['edits'] as List) {
+        final edit = ExternalEdit.fromJson((entry as Map).cast<String, dynamic>());
+        if (!ids.add(edit.id)) throw const FormatException('duplicate edit');
+      }
+    },
+  );
   final _watchers = <String, StreamSubscription<FileSystemEvent>>{};
   final _debounce = <String, Timer>{};
   final _localStamp = <String, (int, DateTime)>{};
@@ -110,6 +119,8 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   /// Saves while an upload runs are caught up afterwards, so an older upload never has the last word.
   final _uploading = <String>{};
   final _again = <String>{};
+  var _closing = false;
+  Completer<void>? _uploadsIdle;
 
   @override
   List<ExternalEdit> build() {
@@ -144,12 +155,31 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
 
   int get unsavedCount => state.where((e) => e.unsaved).length;
 
+  /// Leaves edit copies on disk and prevents watchers from starting another upload while quitting.
+  Future<void> shutdown() async {
+    _closing = true;
+    for (final timer in _debounce.values) {
+      timer.cancel();
+    }
+    _debounce.clear();
+    _again.clear();
+    await _uploadsIdle?.future;
+    // Editors can replace their file just before quitting, before the watcher debounce has fired.
+    for (final edit in [...state]) {
+      await _changed(edit.id);
+    }
+    await saved;
+  }
+
+  void resumeAfterShutdown() => _closing = false;
+
   FileSystems get _pool => ref.read(fileSystemsProvider);
   ExternalEdit? _byId(String id) => state.where((e) => e.id == id).firstOrNull;
 
   /// Downloads [remotePath] and opens it in the system's program for its type. An edit already open for the
   /// same file is reopened, not downloaded over.
   Future<Result<void>> open(Host host, String remotePath) async {
+    if (_closing) return const Err(AppError('closing'));
     final existing = state.where((e) => e.host == host.id && e.remotePath == remotePath).firstOrNull;
     if (existing != null) {
       await openFile(existing.localPath);
@@ -207,6 +237,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   /// Uploads the local copy over the remote file if that is still the one downloaded; otherwise marks a
   /// conflict. [force] overwrites anyway, [asCopy] uploads beside it and keeps editing the copy.
   Future<void> upload(String id, {bool force = false, bool asCopy = false}) async {
+    if (_closing) return;
     if (_uploading.contains(id)) {
       _again.add(id);
       return;
@@ -214,6 +245,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     final edit = _byId(id);
     if (edit == null) return;
     _uploading.add(id);
+    _uploadsIdle ??= Completer<void>();
     _change(id, (e) => e.copyWith(state: EditState.uploading, error: () => null));
     FsHandle? handle;
     try {
@@ -237,11 +269,10 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       // Saved again during the upload: still modified, and uploaded again below when automatic.
       final later = await _stamp(edit.localPath);
       final dirty = later != stamp;
-      _change(id, (e) => e.copyWith(
-            remotePath: target,
-            baseline: now,
-            state: dirty ? EditState.modified : EditState.clean,
-          ));
+      _change(
+        id,
+        (e) => e.copyWith(remotePath: target, baseline: now, state: dirty ? EditState.modified : EditState.clean),
+      );
       if (stamp != null) _localStamp[id] = stamp;
       if (dirty && edit.autoUpload) _again.add(id);
     } on Object catch (e) {
@@ -254,7 +285,11 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     } finally {
       handle?.release();
       _uploading.remove(id);
-      if (_again.remove(id)) unawaited(upload(id));
+      if (_uploading.isEmpty) {
+        _uploadsIdle?.complete();
+        _uploadsIdle = null;
+      }
+      if (_again.remove(id) && !_closing) unawaited(upload(id));
     }
   }
 
@@ -287,7 +322,10 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     if (edit == null) return;
     await _watchers.remove(id)?.cancel();
     _debounce.remove(id)?.cancel();
-    _set([for (final e in state) if (e.id != id) e]);
+    _set([
+      for (final e in state)
+        if (e.id != id) e,
+    ]);
     final dir = File(edit.localPath).parent;
     // Windows may still hold the file open in the editor; a leftover copy is retried on the next finish.
     await dir.delete(recursive: true).then((_) {}, onError: (Object _) {});
@@ -342,4 +380,3 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     });
   }
 }
-

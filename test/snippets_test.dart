@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/app/capabilities/snippets.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/features/snippets/api.dart';
 import 'package:sshairy/features/terminal/domain/insertion.dart';
@@ -102,8 +103,8 @@ void main() {
     test('invalid and failed writes leave published state unchanged, queue recovers', () async {
       await snippets.save(snippet('a'));
       await expectLater(snippets.save(snippet('bad', '界' * 22000)), throwsArgumentError);
-      final blocker = Directory('${dir.path}/snippets.json.tmp')..createSync();
-      await expectLater(snippets.save(snippet('b')), throwsA(isA<FileSystemException>()));
+      final blocker = File('${dir.path}/backups')..writeAsStringSync('blocked');
+      await expectLater(snippets.save(snippet('b')), throwsA(isA<Exception>()));
       expect(container.read(snippetsProvider).single.id, 'a');
       blocker.deleteSync();
       await snippets.save(snippet('b'));

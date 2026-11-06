@@ -56,7 +56,10 @@ class EnumSetting<T extends Enum> extends SettingDef<T> {
   @override
   Object? encode(T value) => value.name;
   @override
-  Map<String, Object?> get schema => {'type': 'string', 'enum': [for (final v in values) v.name]};
+  Map<String, Object?> get schema => {
+    'type': 'string',
+    'enum': [for (final v in values) v.name],
+  };
 }
 
 class IntSetting extends SettingDef<int> {
@@ -108,17 +111,22 @@ class OptionalChoice extends SettingDef<String?> {
   String? decode(Object? raw) => raw as String?;
   @override
   Map<String, Object?> get schema => {
-        'type': ['string', 'null'],
-        'enum': [...options, null],
-      };
+    'type': ['string', 'null'],
+    'enum': [...options, null],
+  };
 }
 
 abstract final class SettingKeys {
   static const themeMode = EnumSetting('themeMode', ThemeMode.system, ThemeMode.values);
   static const accent = EnumSetting('accent', Accent.blue, Accent.values);
   static const locale = OptionalChoice('locale', ['zh', 'en']);
-  static const renderer = EnumSetting('renderer', Renderer.skia, Renderer.values,
-      apply: ApplyMode.restart, agentExposed: false);
+  static const renderer = EnumSetting(
+    'renderer',
+    Renderer.skia,
+    Renderer.values,
+    apply: ApplyMode.restart,
+    agentExposed: false,
+  );
 
   static const fontSize = DoubleSetting('fontSize', 14, 8, 32);
   static const scrollback = IntSetting('scrollback', 2000, 500, 20000, apply: ApplyMode.newSessions);
@@ -141,8 +149,24 @@ abstract final class SettingKeys {
   static const transferConcurrency = IntSetting('transferConcurrency', 3, 1, 8);
 
   static const List<SettingDef<Object?>> all = [
-    themeMode, accent, locale, renderer, fontSize, scrollback, cursorShape, copyOnSelect, rightClick, confirmPaste,
-    connectTimeout, keepAlive, idleTtl, autoReconnect, hostView, hostOrder, showHidden, transferConcurrency,
+    themeMode,
+    accent,
+    locale,
+    renderer,
+    fontSize,
+    scrollback,
+    cursorShape,
+    copyOnSelect,
+    rightClick,
+    confirmPaste,
+    connectTimeout,
+    keepAlive,
+    idleTtl,
+    autoReconnect,
+    hostView,
+    hostOrder,
+    showHidden,
+    transferConcurrency,
   ];
 
   static SettingDef<Object?>? byKey(String key) => all.where((d) => d.key == key).firstOrNull;
@@ -166,31 +190,52 @@ class Settings {
 
   /// Bad or unknown values fall back to defaults rather than failing the start.
   factory Settings.fromJson(Map<String, dynamic> j) => Settings({
-        for (final d in SettingKeys.all)
-          if (j.containsKey(d.key) && d.accepts(j[d.key])) d.key: d.decode(j[d.key]),
-      });
+    for (final d in SettingKeys.all)
+      if (j.containsKey(d.key) && d.accepts(j[d.key])) d.key: d.decode(j[d.key]),
+  });
 
-  Map<String, dynamic> toJson() => {
-        'schemaVersion': 1,
-        for (final d in SettingKeys.all) d.key: d.encode(get(d)),
-      };
+  Map<String, dynamic> toJson() => {'schemaVersion': 1, for (final d in SettingKeys.all) d.key: d.encode(get(d))};
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, Settings>(SettingsNotifier.new);
 
 class SettingsNotifier extends Notifier<Settings> {
-  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/settings.json', backups: true);
+  late final JsonFile _file = JsonFile(
+    '${ref.read(dataDirProvider)}/settings.json',
+    backups: true,
+    validate: (json) {
+      for (final definition in SettingKeys.all) {
+        if (json.containsKey(definition.key) && !definition.accepts(json[definition.key])) {
+          throw FormatException('invalid setting ${definition.key}');
+        }
+      }
+    },
+  );
 
   @override
   Settings build() => Settings.fromJson(_file.read() ?? const {});
 
-  Future<void> set<T>(SettingDef<T> d, T value) async {
-    state = state.copyWith({d.key: value});
-    await _file.write(state.toJson());
+  Future<void> _pending = Future.value();
+  Future<void> get saved => _pending.then((_) => _file.idle);
+  int get revision => _file.revision;
+
+  Future<void> _change(Map<String, Object?> decoded, {int? expectedRevision}) {
+    final next = _pending.then((_) async {
+      final settings = state.copyWith(decoded);
+      await _file.write(settings.toJson(), expectedRevision: expectedRevision);
+      state = settings;
+    });
+    _pending = next.catchError((Object _) {});
+    return next;
+  }
+
+  Future<void> set<T>(SettingDef<T> d, T value) {
+    if (!d.accepts(d.encode(value))) throw ArgumentError.value(value, d.key);
+    return _change({d.key: value});
   }
 
   /// Applies JSON values all or nothing. With [exposedOnly], settings kept from the agent are refused too.
-  Future<Result<void>> patch(Map<String, Object?> raw, {bool exposedOnly = false}) async {
+  Future<Result<void>> patch(Map<String, Object?> raw, {bool exposedOnly = false, int? expectedRevision}) async {
     final decoded = <String, Object?>{};
     for (final MapEntry(:key, :value) in raw.entries) {
       final d = SettingKeys.byKey(key);
@@ -198,8 +243,7 @@ class SettingsNotifier extends Notifier<Settings> {
       if (!d.accepts(value)) return Err(AppError('invalidArgument', detail: key));
       decoded[key] = d.decode(value);
     }
-    state = state.copyWith(decoded);
-    await _file.write(state.toJson());
+    await _change(decoded, expectedRevision: expectedRevision);
     return const Ok(null);
   }
 }
