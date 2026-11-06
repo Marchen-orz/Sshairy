@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:sshairy/features/credentials/api.dart';
+import 'package:sshairy/features/terminal/adapters/ime_caret.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/main.dart';
 import 'package:xterm2/xterm.dart';
@@ -88,6 +89,24 @@ extension on WidgetTester {
   Future<void> expectShellAlive(int n) async {
     await run('echo sshairy-\$(($n*7))');
     await until('command output', () => terminal.buffer.getText().contains('sshairy-${n * 7}'));
+  }
+
+  Future<void> expectImeAtCursor() async {
+    final view = state<TerminalViewState>(find.byType(TerminalView).hitTestable().first);
+    final scale = this.view.devicePixelRatio;
+    late Rect cursor;
+    late ({Offset caret, Offset composition, Offset candidate})? ime;
+    bool near(Offset a, double x, double y) => (a.dx - x).abs() <= 1 && (a.dy - y).abs() <= 1;
+    await until('IME position at the cursor', () {
+      final r = view.globalCursorRect;
+      cursor = Rect.fromLTRB(r.left * scale, r.top * scale, r.right * scale, r.bottom * scale);
+      ime = ImeCaret.current();
+      final i = ime;
+      return i != null &&
+          near(i.composition, cursor.left, cursor.top) &&
+          near(i.candidate, cursor.left, cursor.bottom) &&
+          near(i.caret, cursor.left, cursor.bottom);
+    }, seconds: 5).catchError((Object e) => fail('$e: cursor $cursor, IME $ime (null means the window has no focus)'));
   }
 
   Future<void> closeTabByKeyboard() async {
@@ -171,6 +190,17 @@ void main() {
     await t.untilPrompt();
     await t.expectShellAlive(6);
     await t.shot('terminal');
+
+    // IMEs read their position before a composition starts, so it must follow the cursor between compositions.
+    final start = t.terminal.buffer.cursorX;
+    t.terminal.textInput('x' * 60);
+    await t.until('long input echoed', () => t.terminal.buffer.cursorX == start + 60);
+    await t.expectImeAtCursor();
+    for (var i = 0; i < 60; i++) {
+      await t.sendKeyEvent(LogicalKeyboardKey.backspace);
+    }
+    await t.until('input deleted', () => t.terminal.buffer.cursorX == start);
+    await t.expectImeAtCursor();
 
     final term = t.terminal;
     await t.run('stty size');

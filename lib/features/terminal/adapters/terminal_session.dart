@@ -136,7 +136,7 @@ class _TerminalPaneState extends State<TerminalPane> {
         'height': rect.height,
       });
       final scale = View.of(context).devicePixelRatio;
-      ImeCaret.moveTo((rect.left * scale).toInt(), (rect.bottom * scale).toInt());
+      ImeCaret.moveTo(Rect.fromLTRB(rect.left * scale, rect.top * scale, rect.right * scale, rect.bottom * scale));
     });
     WidgetsBinding.instance.ensureVisualUpdate();
   }
