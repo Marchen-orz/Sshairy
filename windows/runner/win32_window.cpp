@@ -2,6 +2,7 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <windowsx.h>
 
 #include "resource.h"
 
@@ -145,6 +146,10 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
+  const MARGINS shadow = {1, 1, 1, 1};
+  DwmExtendFrameIntoClientArea(window, &shadow);
+  SetWindowPos(window, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 
   return OnCreate();
 }
@@ -179,6 +184,30 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_NCCALCSIZE:
+      // Keep native resize/Snap styles while Flutter draws the entire frame.
+      if (wparam) return 0;
+      break;
+
+    case WM_NCHITTEST:
+      return HitTest({GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)});
+
+    case WM_GETMINMAXINFO: {
+      auto limits = reinterpret_cast<MINMAXINFO*>(lparam);
+      const UINT dpi = GetDpiForWindow(hwnd);
+      limits->ptMinTrackSize = {MulDiv(960, dpi, 96), MulDiv(640, dpi, 96)};
+      MONITORINFO monitor = {sizeof(MONITORINFO)};
+      if (GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                         &monitor)) {
+        limits->ptMaxPosition = {
+            monitor.rcWork.left - monitor.rcMonitor.left,
+            monitor.rcWork.top - monitor.rcMonitor.top};
+        limits->ptMaxSize = {monitor.rcWork.right - monitor.rcWork.left,
+                            monitor.rcWork.bottom - monitor.rcWork.top};
+      }
+      return 0;
+    }
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -221,6 +250,29 @@ Win32Window::MessageHandler(HWND hwnd,
   return DefWindowProc(window_handle_, message, wparam, lparam);
 }
 
+LRESULT Win32Window::HitTest(POINT point) const {
+  if (IsZoomed(window_handle_)) return HTCLIENT;
+  RECT bounds;
+  GetWindowRect(window_handle_, &bounds);
+  const int border = GetSystemMetricsForDpi(SM_CXSIZEFRAME,
+                                            GetDpiForWindow(window_handle_)) +
+                     GetSystemMetricsForDpi(SM_CXPADDEDBORDER,
+                                            GetDpiForWindow(window_handle_));
+  const bool left = point.x < bounds.left + border;
+  const bool right = point.x >= bounds.right - border;
+  const bool top = point.y < bounds.top + border;
+  const bool bottom = point.y >= bounds.bottom - border;
+  if (top && left) return HTTOPLEFT;
+  if (top && right) return HTTOPRIGHT;
+  if (bottom && left) return HTBOTTOMLEFT;
+  if (bottom && right) return HTBOTTOMRIGHT;
+  if (left) return HTLEFT;
+  if (right) return HTRIGHT;
+  if (top) return HTTOP;
+  if (bottom) return HTBOTTOM;
+  return HTCLIENT;
+}
+
 void Win32Window::Destroy() {
   OnDestroy();
 
@@ -255,7 +307,7 @@ RECT Win32Window::GetClientArea() {
   return frame;
 }
 
-HWND Win32Window::GetHandle() {
+HWND Win32Window::GetHandle() const {
   return window_handle_;
 }
 

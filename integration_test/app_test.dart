@@ -17,8 +17,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
+import 'package:sshairy/features/credentials/adapters/secure_store.dart';
 import 'package:sshairy/features/files/api.dart';
-import 'package:sshairy/features/files/domain/transfer.dart';
 import 'package:sshairy/features/files/presentation/file_pane.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/settings/api.dart';
@@ -48,8 +48,7 @@ extension on WidgetTester {
     await pump();
   }
 
-  Future<void> untilFound(Finder f, {int seconds = 30}) =>
-      until('$f', () => f.evaluate().isNotEmpty, seconds: seconds);
+  Future<void> untilFound(Finder f, {int seconds = 30}) => until('$f', () => f.evaluate().isNotEmpty, seconds: seconds);
 
   Future<void> tapAndPump(Finder f) async {
     await tap(f);
@@ -59,18 +58,20 @@ extension on WidgetTester {
   }
 
   Future<void> startApp(Directory dir) async {
-    await pumpWidget(RepaintBoundary(
-      key: boundary,
-      child: ProviderScope(
-        key: UniqueKey(),
-        overrides: [
-          dataDirProvider.overrideWithValue(dir.path),
-          runningRendererProvider.overrideWithValue(Renderer.skia),
-          ...appOverrides(),
-        ],
-        child: const SshairyApp(),
+    await pumpWidget(
+      RepaintBoundary(
+        key: boundary,
+        child: ProviderScope(
+          key: UniqueKey(),
+          overrides: [
+            dataDirProvider.overrideWithValue(dir.path),
+            runningRendererProvider.overrideWithValue(Renderer.skia),
+            ...appOverrides(),
+          ],
+          child: const SshairyApp(),
+        ),
       ),
-    ));
+    );
     await pump();
   }
 
@@ -156,15 +157,11 @@ extension on WidgetTester {
 
   List<Transfer> get transfers => container.read(transfersProvider);
 
-  Future<void> untilTransfers(int completed) => until(
-        '$completed transfers done',
-        () {
-          final failed = transfers.where((x) => x.state == TransferState.failed);
-          if (failed.isNotEmpty) fail('transfer failed: ${failed.first.error} ${failed.first.detail}');
-          return transfers.where((x) => x.state == TransferState.completed).length == completed;
-        },
-        seconds: 120,
-      );
+  Future<void> untilTransfers(int completed) => until('$completed transfers done', () {
+    final failed = transfers.where((x) => x.state == TransferState.failed);
+    if (failed.isNotEmpty) fail('transfer failed: ${failed.first.error} ${failed.first.detail}');
+    return transfers.where((x) => x.state == TransferState.completed).length == completed;
+  }, seconds: 120);
 
   Future<void> atTerminal(TabId tab) async {
     container.read(workspaceProvider.notifier).activate(tab);
@@ -212,8 +209,9 @@ extension on WidgetTester {
     await tapAndPump(find.text(item).last);
   }
 
-  List<Terminal> get visibleTerminals =>
-      [for (final v in widgetList<TerminalView>(find.byType(TerminalView).hitTestable())) v.terminal];
+  List<Terminal> get visibleTerminals => [
+    for (final v in widgetList<TerminalView>(find.byType(TerminalView).hitTestable())) v.terminal,
+  ];
 
   Future<void> shot(String name) async {
     if (shots == null) return;
@@ -276,7 +274,8 @@ void main() {
     await t.closeTabByKeyboard();
 
     // Removing the record from settings means the next connection asks again.
-    await t.tapAndPump(find.byTooltip('Settings'));
+    await t.tapAndPump(find.byTooltip('More').first);
+    await t.tapAndPump(find.text('Settings'));
     await t.scrollUntilVisible(
       find.byTooltip('Remove'),
       300,
@@ -440,7 +439,7 @@ void main() {
     await t.shot('vault');
 
     final hosts = jsonDecode(await File('${dir.path}/hosts.json').readAsString()) as Map<String, dynamic>;
-    final ref = 'host/${(hosts['hosts'] as List<dynamic>).single['id']}/password';
+    final ref = SecretRef.hostPassword(HostId((hosts['hosts'] as List<dynamic>).single['id'] as String));
     const secrets = SecretStore();
     addTearDown(() => secrets.delete(ref));
     expect(await secrets.read(ref), isNull);
@@ -449,8 +448,10 @@ void main() {
     await t.untilFound(find.text('Unknown host'));
     await t.tapAndPump(inDialog(find.text('Trust')));
     await t.answerPassword('sshairy-wrong-password');
-    await t.until('auth result', () =>
-        find.text('Authentication failed').evaluate().isNotEmpty || find.byType(AlertDialog).evaluate().isNotEmpty);
+    await t.until(
+      'auth result',
+      () => find.text('Authentication failed').evaluate().isNotEmpty || find.byType(AlertDialog).evaluate().isNotEmpty,
+    );
     // Servers that fall back to keyboard-interactive ask again; never send a second wrong password.
     if (find.byType(AlertDialog).evaluate().isNotEmpty) await t.tapAndPump(inDialog(find.text('Cancel')));
     await t.shot('auth-failed');
@@ -483,12 +484,14 @@ void main() {
   testWidgets('workspace: palette, split panes, restore after restart', (t) async {
     t.testTextInput.register();
     final [user, host] = target.split('@');
-    await File('${dir.path}/hosts.json').writeAsString(jsonEncode({
-      'schemaVersion': 1,
-      'hosts': [
-        {'id': 'wshost', 'label': 'sshairy-ws', 'address': host, 'port': 22, 'username': user, 'auth': 'password'},
-      ],
-    }));
+    await File('${dir.path}/hosts.json').writeAsString(
+      jsonEncode({
+        'schemaVersion': 1,
+        'hosts': [
+          {'id': 'wshost', 'label': 'sshairy-ws', 'address': host, 'port': 22, 'username': user, 'auth': 'password'},
+        ],
+      }),
+    );
     await t.startApp(dir);
 
     await t.palette('sshairy-ws');
@@ -549,12 +552,25 @@ void main() {
 
   testWidgets('vault: groups, search by tag, pin, list view, a generated key on a host', (t) async {
     t.testTextInput.register();
-    Map<String, Object?> host(String id, String group, [List<String> tags = const []]) =>
-        {'id': id, 'label': id, 'address': '$id.invalid', 'username': 'u', 'auth': 'password', 'group': group, 'tags': tags};
-    await File('${dir.path}/hosts.json').writeAsString(jsonEncode({
-      'schemaVersion': 1,
-      'hosts': [host('alpha', 'prod/web', ['nginx']), host('bravo', 'prod'), host('charlie', '')],
-    }));
+    Map<String, Object?> host(String id, String group, [List<String> tags = const []]) => {
+      'id': id,
+      'label': id,
+      'address': '$id.invalid',
+      'username': 'u',
+      'auth': 'password',
+      'group': group,
+      'tags': tags,
+    };
+    await File('${dir.path}/hosts.json').writeAsString(
+      jsonEncode({
+        'schemaVersion': 1,
+        'hosts': [
+          host('alpha', 'prod/web', ['nginx']),
+          host('bravo', 'prod'),
+          host('charlie', ''),
+        ],
+      }),
+    );
     await t.startApp(dir);
     double top(String label) => t.getTopLeft(find.text(label)).dy;
     double left(String label) => t.getTopLeft(find.text(label)).dx;
@@ -588,7 +604,7 @@ void main() {
     await t.untilFound(find.text('sshairy-it-key'));
     final keys = jsonDecode(await File('${dir.path}/keys.json').readAsString()) as Map<String, dynamic>;
     final key = (keys['keys'] as List<dynamic>).single as Map<String, dynamic>;
-    final privateRef = 'key/${key['id']}/private';
+    final privateRef = SecretRef.privateKey(key['id'] as String);
     const secrets = SecretStore();
     addTearDown(() => secrets.delete(privateRef));
     expect((await secrets.read(privateRef))?.reveal(), contains('OPENSSH PRIVATE KEY'));
@@ -619,7 +635,8 @@ void main() {
     t.testTextInput.register();
     await t.startApp(dir);
 
-    await t.tapAndPump(find.byTooltip('Settings'));
+    await t.tapAndPump(find.byTooltip('More').first);
+    await t.tapAndPump(find.text('Settings'));
     await t.tapAndPump(find.text('Dark'));
     expect(Theme.of(t.element(find.text('Theme'))).brightness, Brightness.dark);
     await t.shot('settings-dark');
@@ -649,12 +666,14 @@ void main() {
   testWidgets('files: side panel, SFTP page, folder ops, transfers both ways, conflict, cancel', (t) async {
     t.testTextInput.register();
     final [user, host] = target.split('@');
-    await File('${dir.path}/hosts.json').writeAsString(jsonEncode({
-      'schemaVersion': 1,
-      'hosts': [
-        {'id': 'fhost', 'label': 'sshairy-files', 'address': host, 'port': 22, 'username': user, 'auth': 'password'},
-      ],
-    }));
+    await File('${dir.path}/hosts.json').writeAsString(
+      jsonEncode({
+        'schemaVersion': 1,
+        'hosts': [
+          {'id': 'fhost', 'label': 'sshairy-files', 'address': host, 'port': 22, 'username': user, 'auth': 'password'},
+        ],
+      }),
+    );
     final local = await Directory('${dir.path}/local 本地').create();
     final rnd = Random(7);
     Uint8List bytes(int n) => Uint8List.fromList(List.generate(n, (_) => rnd.nextInt(256)));
@@ -670,8 +689,10 @@ void main() {
     final term = t.terminal;
     final tab = t.workspace.active!;
     // Everything happens in ~/sshairy-test (TESTING §2), which the end of the test removes.
-    await t.run("rm -rf ~/sshairy-test && mkdir -p ~/sshairy-test/'中文 目录' && cd ~/sshairy-test && "
-        "head -c 2000000 /dev/urandom > 'big file.bin' && echo hello > '中文 目录/note.txt' && ln -s '中文 目录' 'dir link' && echo ready-\$((2*3))");
+    await t.run(
+      "rm -rf ~/sshairy-test && mkdir -p ~/sshairy-test/'中文 目录' && cd ~/sshairy-test && "
+      "head -c 2000000 /dev/urandom > 'big file.bin' && echo hello > '中文 目录/note.txt' && ln -s '中文 目录' 'dir link' && echo ready-\$((2*3))",
+    );
     await t.until('remote fixtures', () => term.buffer.getText().contains('ready-6'));
 
     // The side panel shares the terminal's connection.

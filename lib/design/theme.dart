@@ -13,7 +13,7 @@ abstract final class Radii {
 
 /// Accent presets from docs/UI.md §2; each has one shade per brightness.
 enum Accent {
-  blue(Color(0xFF2563EB), Color(0xFF60A5FA)),
+  blue(Color(0xFF06ADC8), Color(0xFF5ADDEB)),
   green(Color(0xFF087F5B), Color(0xFF34D399)),
   violet(Color(0xFF6D4AE0), Color(0xFFA78BFA)),
   orange(Color(0xFFC2410C), Color(0xFFFB923C));
@@ -43,13 +43,13 @@ ThemeData buildTheme(Brightness brightness, [Accent accent = Accent.blue]) {
   final primary = accent.of(brightness);
   final scheme = ColorScheme(
     brightness: brightness,
-    surface: c(0xFFFFFFFF, 0xFF1A212C),
-    surfaceContainerLowest: c(0xFFF3F6FA, 0xFF0F141B),
-    surfaceContainerLow: c(0xFFE9EEF5, 0xFF151B24),
-    surfaceContainerHigh: c(0xFFFFFFFF, 0xFF222B38),
-    onSurface: c(0xFF142033, 0xFFE4EAF2),
-    onSurfaceVariant: c(0xFF56657D, 0xFF9AA8BC),
-    outlineVariant: c(0xFFD3DCE8, 0xFF2F3A4A),
+    surface: c(0xFFFFFFFF, 0xFF18252D),
+    surfaceContainerLowest: c(0xFFF4F8FA, 0xFF10191E),
+    surfaceContainerLow: c(0xFFEAF2F5, 0xFF142129),
+    surfaceContainerHigh: c(0xFFFFFFFF, 0xFF1E3039),
+    onSurface: c(0xFF16323E, 0xFFE3F2F4),
+    onSurfaceVariant: c(0xFF536D78, 0xFF9AB6C1),
+    outlineVariant: c(0xFFD5E5E9, 0xFF30454F),
     outline: c(0xFFB0BDCD, 0xFF4B5869),
     primary: primary,
     onPrimary: onColor(primary),

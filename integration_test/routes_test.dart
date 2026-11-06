@@ -12,11 +12,13 @@ import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/foundation/secret.dart';
 
-class _MemorySecrets extends SecretStore {
+class _MemorySecrets implements ConnectionCredentials {
   @override
-  Future<Secret?> read(String ref) async => null;
+  int get revision => 0;
   @override
-  Future<void> write(String ref, Secret value) async => throw StateError('test must not save credentials');
+  Future<Secret?> read(SecretRef ref) async => null;
+  @override
+  Future<void> remember(SecretRef ref, Secret value) async => throw StateError('test must not save credentials');
 }
 
 class _Prompts implements ConnectPrompts {

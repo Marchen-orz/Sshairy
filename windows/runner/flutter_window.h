@@ -3,8 +3,11 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/encodable_value.h>
+#include <flutter/method_channel.h>
 
 #include <memory>
+#include <optional>
 
 #include "win32_window.h"
 
@@ -21,8 +24,22 @@ class FlutterWindow : public Win32Window {
   void OnDestroy() override;
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
+  LRESULT HitTest(POINT screen_point) const override;
 
  private:
+  void HandleWindowMethod(
+      const flutter::MethodCall<flutter::EncodableValue>& call,
+      std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
+  void NotifyWindowState();
+  flutter::EncodableMap WindowState() const;
+  static LRESULT CALLBACK ChildSubclassProc(HWND window, UINT message,
+                                            WPARAM wparam, LPARAM lparam,
+                                            UINT_PTR id, DWORD_PTR data);
+
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> window_channel_;
+  std::optional<RECT> maximize_button_;
+  bool maximize_hovered_ = false;
+
   // The project to run.
   flutter::DartProject project_;
 

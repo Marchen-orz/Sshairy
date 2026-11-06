@@ -38,7 +38,7 @@ v0.2。借鉴 Netcatty 的浏览器式标签、彩色主机标识、主机库和
 M4 右侧增加 AI 页签。未实现模块不显示空按钮、不可用入口或假数据。主机库和工作区左侧导航是两种上下文，同一时刻只显示一种。设置在窗口内打开，不额外常驻一个 Flutter engine。
 
 - 标题栏初值 40；标签 30 高、120–220 宽；多余标签横向滚动/溢出，不缩成无法点击的碎片。
-- Windows/Linux 窗口按钮在右，macOS 原生 traffic lights 预留；不在 Win 画假的红黄绿按钮。保留拖动、双击最大化、Snap、系统菜单与屏幕阅读器语义，插件无法满足则用原生标题栏降级。
+- Windows 使用无系统顶栏的自绘窗口（ADR-12），窗口按钮在右，与标签行融合；不在 Win 画假的红黄绿按钮。保留原生拖动、双击最大化、边缘缩放、Snap、系统菜单与屏幕阅读器语义。关闭按钮和系统关闭共用 ShutdownCoordinator。其他平台目前保留原生外框，未验证的行为在 ROADMAP 记录。
 - 左栏 224，范围 176–320，折叠宽 56；终端主机树可整体隐藏。
 - 主区域使用层次清楚的 surface 和细边框，浅阴影；不全屏毛玻璃、不做大面积动态渐变。
 - 编辑抽屉默认 400，范围 360–560；可固定内联或覆盖，窄窗口使用覆盖并明确关闭。
@@ -51,13 +51,13 @@ M4 右侧增加 AI 页签。未实现模块不显示空按钮、不可用入口�
 
 | role | Light | Dark |
 |---|---|---|
-| background | #F3F6FA | #0F141B |
-| sidebar | #E9EEF5 | #151B24 |
-| surface | #FFFFFF | #1A212C |
-| elevated | #FFFFFF | #222B38 |
-| border | #D3DCE8 | #2F3A4A |
-| text | #142033 | #E4EAF2 |
-| textMuted | #56657D | #9AA8BC |
+| background | #F4F8FA | #10191E |
+| sidebar | #EAF2F5 | #142129 |
+| surface | #FFFFFF | #18252D |
+| elevated | #FFFFFF | #1E3039 |
+| border | #D5E5E9 | #30454F |
+| text | #16323E | #E3F2F4 |
+| textMuted | #536D78 | #9AB6C1 |
 | accent | 见下表 | 见下表 |
 | onAccent | 按对比度计算 | 按对比度计算 |
 | danger | #B42332 | #FF8792 |
@@ -68,7 +68,7 @@ M4 右侧增加 AI 页签。未实现模块不显示空按钮、不可用入口�
 
 | accent | Light | Dark |
 |---|---|---|
-| 蓝（默认） | #2563EB | #60A5FA |
+| 冰蓝（默认） | #06ADC8 | #5ADDEB |
 | 绿 | #087F5B | #34D399 |
 | 紫 | #6D4AE0 | #A78BFA |
 | 橙 | #C2410C | #FB923C |
@@ -79,7 +79,7 @@ onAccent 取白色或 #0B1220 中与 accent 对比度更高的一个，不让白
 
 这是自有配色，不声称已通过全部对比度测试。正文对比度至少 4.5:1，重要控件边界/焦点至少 3:1。
 
-应用图标：自有设计，源文件 `assets/brand/icon.svg`。终端屏幕做脸、光标块做眼睛，头顶三根带节点的走线是“呆毛”（取 sshairy 的 hairy）。`windows/runner/resources/app_icon.ico` 由它导出：Edge headless 渲染 1024 px 透明 PNG，再用 Pillow 生成 16–256 多尺寸。改图标时改 SVG 后重新导出。
+应用图标：由 Codex 独立重绘，源文件 `assets/brand/icon.svg`。饱满的终端精灵轮廓，屏幕上的 `>` 与光标兼作表情，简洁连接节点表达 SSH；移除旧版三根电路呆毛。`windows/runner/resources/app_icon.ico` 与应用内 PNG 从同一 SVG 导出，16–256 px 检查轮廓和提示符，明暗背景预览验证；不复制 Netcatty 的代码或素材。
 
 - 间距：4/8/12/16/24/32；圆角：6 控件、10 卡片、12 面板/弹层；不为每处单独发明半径。
 - 字体：系统 UI 字体及系统 CJK fallback；正文 14，次级 12，标题 18。关键操作/地址不低于 12。终端默认等宽 14，可选择系统已安装字体，包体只附确有必要且许可清晰的字体。

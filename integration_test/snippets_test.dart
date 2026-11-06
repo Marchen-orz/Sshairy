@@ -37,16 +37,19 @@ void main() {
 
     try {
       await start();
-      await tester.tap(find.byTooltip('Snippets'));
+      await tester.tap(find.byTooltip('More').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Snippets'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('New snippet'));
       await tester.pumpAndSettle();
-      final fields = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+      final editor = find.byKey(const ValueKey('snippet-editor'));
+      final fields = find.descendant(of: editor, matching: find.byType(TextField));
       await tester.enterText(fields.at(0), 'Status check');
       await tester.enterText(fields.at(1), 'printf sshairy-snippet');
       await tester.enterText(fields.at(2), 'ops, shell');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-      await waitFor(() => find.byType(AlertDialog).evaluate().isEmpty);
+      await waitFor(() => editor.evaluate().isEmpty);
       expect(find.text('Status check'), findsOneWidget);
       final container = ProviderScope.containerOf(tester.element(find.byType(SnippetsPanel)));
       final saved = container.read(snippetsProvider).single;
@@ -59,10 +62,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(fields.at(0), 'Renamed check');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
-      await waitFor(() => find.byType(AlertDialog).evaluate().isEmpty);
+      await waitFor(() => editor.evaluate().isEmpty);
       await container.read(snippetsProvider.notifier).saved;
       await start();
-      await tester.tap(find.byTooltip('Snippets'));
+      await tester.tap(find.byTooltip('More').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Snippets'));
       await tester.pumpAndSettle();
       expect(find.text('Renamed check'), findsOneWidget);
       await tester.tap(find.byTooltip('Delete'));

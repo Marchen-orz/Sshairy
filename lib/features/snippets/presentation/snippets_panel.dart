@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/theme.dart';
+import '../../../design/side_drawer.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/cancellation.dart';
 import '../../../l10n/app_localizations.dart';
@@ -26,7 +27,7 @@ class _SnippetsPanelState extends ConsumerState<SnippetsPanel> {
     super.dispose();
   }
 
-  Future<void> _edit([Snippet? snippet]) => showDialog<void>(context: context, builder: (_) => _SnippetEditor(snippet));
+  Future<void> _edit([Snippet? snippet]) => showSideDrawer<void>(context, (_) => _SnippetEditor(snippet));
 
   Future<void> _insert(Snippet snippet, {bool run = false}) async {
     if (_busy != null) return;
@@ -210,42 +211,50 @@ class _SnippetEditorState extends ConsumerState<_SnippetEditor> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return AlertDialog(
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _label,
-                autofocus: true,
-                decoration: InputDecoration(labelText: l.label),
-              ),
-              const SizedBox(height: Space.lg),
-              TextField(
-                controller: _text,
-                minLines: 5,
-                maxLines: 12,
-                decoration: InputDecoration(labelText: l.snippetText),
-              ),
-              const SizedBox(height: Space.lg),
-              TextField(
-                controller: _tags,
-                decoration: InputDecoration(labelText: l.tags),
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: Space.sm),
-                  child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+    return Column(
+      key: const ValueKey('snippet-editor'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _label,
+                  autofocus: true,
+                  decoration: InputDecoration(labelText: l.label),
                 ),
-            ],
+                const SizedBox(height: Space.lg),
+                TextField(
+                  controller: _text,
+                  minLines: 5,
+                  maxLines: 12,
+                  decoration: InputDecoration(labelText: l.snippetText),
+                ),
+                const SizedBox(height: Space.lg),
+                TextField(
+                  controller: _tags,
+                  decoration: InputDecoration(labelText: l.tags),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.sm),
+                    child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
-      actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: Text(l.cancel)),
-        FilledButton(onPressed: _saving ? null : _save, child: Text(l.save)),
+        const SizedBox(height: Space.lg),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: Text(l.cancel)),
+            const SizedBox(width: Space.sm),
+            FilledButton(onPressed: _saving ? null : _save, child: Text(l.save)),
+          ],
+        ),
       ],
     );
   }

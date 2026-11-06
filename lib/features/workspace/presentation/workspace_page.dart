@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
+import '../../../design/window_chrome.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../capabilities/api.dart';
+import '../../connections/api.dart';
 import '../../files/api.dart';
+import '../../forwarding/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../../snippets/api.dart';
@@ -18,7 +20,9 @@ import '../domain/layout.dart';
 import 'split_view.dart';
 
 class WorkspacePage extends ConsumerStatefulWidget {
-  const WorkspacePage({super.key});
+  const WorkspacePage({super.key, required this.openPalette});
+
+  final Future<void> Function(BuildContext context) openPalette;
 
   @override
   ConsumerState<WorkspacePage> createState() => _WorkspacePageState();
@@ -42,6 +46,10 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     // Queued transfers and edits ask from whichever page is showing.
     ref.read(transfersProvider.notifier).ui = DialogTransferUi(context);
     _insertUi.confirm = _confirmInsert;
+    // Rules marked to start with the app ask their host key and password questions from here.
+    final forwards = ref.read(forwardsProvider.notifier);
+    forwards.prompts = DialogPrompts(context);
+    forwards.autoStart().ignore();
   }
 
   late final _insertUi = ref.read(terminalInsertUiProvider);
@@ -63,7 +71,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   void _openSettings() => _overlay(() => showSideDrawer<void>(context, (_) => const SettingsPanel()));
   void _openSnippets() => _overlay(() => showSideDrawer<void>(context, (_) => const SnippetsPanel()));
-  void _openPalette() => _overlay(() => showCommandPalette(context));
+  void _openForwarding() => _overlay(() => showSideDrawer<void>(context, (_) => const ForwardingPanel()));
+  void _openPalette() => _overlay(() => widget.openPalette(context));
 
   late final _bindings = <SingleActivator, VoidCallback>{
     const SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true): () => _workspace.showVault(),
@@ -229,6 +238,12 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
               color: scheme.surfaceContainerLow,
               child: Row(
                 children: [
+                  DesktopDragRegion(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                      child: Image.asset('assets/brand/icon.png', width: 24, height: 24, semanticLabel: 'sshairy'),
+                    ),
+                  ),
                   _Tab(
                     selected: vault,
                     onTap: _workspace.showVault,
@@ -242,54 +257,56 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     title: l.sftp,
                   ),
                   Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: ReorderableListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            shrinkWrap: true,
-                            buildDefaultDragHandles: false,
-                            itemCount: state.tabs.length,
-                            onReorderItem: _workspace.moveTab,
-                            proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
-                            itemBuilder: (context, i) {
-                              final tab = state.tabs[i];
-                              final session = sessions[tab.layout.focusedLeaf.session];
-                              final all = [for (final l in tab.layout.leaves) ?sessions[l.session]];
-                              final count = tab.layout.leaves.length;
-                              return ReorderableDragStartListener(
-                                key: ValueKey(tab.id),
-                                index: i,
-                                child: session == null
-                                    ? const SizedBox.shrink()
-                                    : ListenableBuilder(
-                                        listenable: Listenable.merge(all),
-                                        builder: (context, _) {
-                                          final name = tab.title ?? session.host.title;
-                                          return _Tab(
-                                            selected: state.active == tab.id,
-                                            onTap: () => _workspace.activate(tab.id),
-                                            onDoubleTap: () => _rename(tab, name),
-                                            onSecondaryTap: (p) => _tabMenu(tab, name, p),
-                                            leading: SessionStatusIcon(
-                                              session.status,
-                                              unread: all.any((s) => s.unread),
-                                            ),
-                                            title: count > 1 ? '$name · $count' : name,
-                                            onClose: () => _workspace.closeTab(tab.id),
-                                          );
-                                        },
-                                      ),
-                              );
-                            },
+                    child: DesktopDragRegion(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: ReorderableListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              shrinkWrap: true,
+                              buildDefaultDragHandles: false,
+                              itemCount: state.tabs.length,
+                              onReorderItem: _workspace.moveTab,
+                              proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
+                              itemBuilder: (context, i) {
+                                final tab = state.tabs[i];
+                                final session = sessions[tab.layout.focusedLeaf.session];
+                                final all = [for (final l in tab.layout.leaves) ?sessions[l.session]];
+                                final count = tab.layout.leaves.length;
+                                return ReorderableDragStartListener(
+                                  key: ValueKey(tab.id),
+                                  index: i,
+                                  child: session == null
+                                      ? const SizedBox.shrink()
+                                      : ListenableBuilder(
+                                          listenable: Listenable.merge(all),
+                                          builder: (context, _) {
+                                            final name = tab.title ?? session.host.title;
+                                            return _Tab(
+                                              selected: state.active == tab.id,
+                                              onTap: () => _workspace.activate(tab.id),
+                                              onDoubleTap: () => _rename(tab, name),
+                                              onSecondaryTap: (p) => _tabMenu(tab, name, p),
+                                              leading: SessionStatusIcon(
+                                                session.status,
+                                                unread: all.any((s) => s.unread),
+                                              ),
+                                              title: count > 1 ? '$name · $count' : name,
+                                              onClose: () => _workspace.closeTab(tab.id),
+                                            );
+                                          },
+                                        ),
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: l.newConnection,
-                          onPressed: _workspace.showVault,
-                          icon: const Icon(Icons.add, size: 18),
-                        ),
-                      ],
+                          IconButton(
+                            tooltip: l.newConnection,
+                            onPressed: _workspace.showVault,
+                            icon: const Icon(Icons.add, size: 18),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   if (state.activeTab case final tab?)
@@ -312,17 +329,24 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                         PopupMenuItem(value: SplitAxis.vertical, child: Text(l.splitDown)),
                       ],
                     ),
-                  IconButton(tooltip: l.snippets, onPressed: _openSnippets, icon: const Icon(Icons.code, size: 18)),
                   const TransfersButton(),
-                  IconButton(
-                    tooltip: l.commandPalette,
-                    onPressed: _openPalette,
-                    icon: const Icon(Icons.search, size: 18),
+                  PopupMenuButton<VoidCallback>(
+                    tooltip: l.more,
+                    icon: const Icon(Icons.more_horiz, size: 18),
+                    onSelected: (action) => action(),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: _openSnippets, child: Text(l.snippets)),
+                      PopupMenuItem(value: _openForwarding, child: Text(l.portForwarding)),
+                      PopupMenuItem(value: _openPalette, child: Text(l.commandPalette)),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(value: _openSettings, child: Text(l.settings)),
+                    ],
                   ),
-                  IconButton(
-                    tooltip: l.settings,
-                    onPressed: _openSettings,
-                    icon: const Icon(Icons.settings_outlined, size: 18),
+                  WindowControls(
+                    minimizeLabel: l.windowMinimize,
+                    maximizeLabel: l.windowMaximize,
+                    restoreLabel: l.windowRestore,
+                    closeLabel: l.windowClose,
                   ),
                 ],
               ),

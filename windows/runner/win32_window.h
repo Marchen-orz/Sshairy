@@ -47,7 +47,7 @@ class Win32Window {
 
   // Returns the backing Window handle to enable clients to set icon and other
   // window properties. Returns nullptr if the window has been destroyed.
-  HWND GetHandle();
+  HWND GetHandle() const;
 
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
@@ -70,6 +70,9 @@ class Win32Window {
 
   // Called when Destroy is called.
   virtual void OnDestroy();
+
+  // The Flutter child forwards non-client hit tests so resizing works over its surface.
+  virtual LRESULT HitTest(POINT screen_point) const;
 
  private:
   friend class WindowClassRegistrar;
