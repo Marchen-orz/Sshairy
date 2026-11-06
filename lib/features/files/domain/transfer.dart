@@ -1,17 +1,21 @@
 import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 
-/// [waiting] needs the user's answer to a conflict; [interrupted] was unfinished when the app last quit.
+/// [waiting] needs the user's answer to a conflict; [pausing] drains in-flight writes before [paused];
+/// [interrupted] was unfinished when the app last quit. A paused transfer keeps its target locked but frees
+/// its connection and its slot in the concurrency limit.
 enum TransferState {
   queued,
   running,
   waiting,
+  pausing,
+  paused,
   completed,
   failed,
   cancelled,
   interrupted;
 
-  bool get active => this == queued || this == running || this == waiting;
+  bool get active => this == queued || this == running || this == waiting || this == pausing || this == paused;
   bool get canRetry => this == failed || this == cancelled || this == interrupted;
 }
 
@@ -30,8 +34,112 @@ class FileEnd {
 
   Map<String, Object?> toJson() => {if (host != null) 'host': host!.value, 'path': path, 'label': label};
 
-  factory FileEnd.fromJson(Map<String, dynamic> j) =>
-      FileEnd(j['host'] == null ? null : HostId(j['host'] as String), j['path'] as String, label: j['label'] as String? ?? '');
+  factory FileEnd.fromJson(Map<String, dynamic> j) => FileEnd(
+    j['host'] == null ? null : HostId(j['host'] as String),
+    j['path'] as String,
+    label: j['label'] as String? ?? '',
+  );
+}
+
+/// The hidden file a paused transfer stages in, beside its target (docs/SECURITY.md §5): the target's name and
+/// this transfer's ID, so a restored history can never name some other file to touch.
+String partPathFor(PathStyle style, String target, TransferId id) =>
+    style.join(style.parent(target), '.${style.name(target)}.${id.value}.part');
+
+Map<String, Object?> _entryJson(FileEntry e) => {
+  'kind': e.kind.name,
+  if (e.size != null) 'size': e.size,
+  if (e.modified != null) 'modified': e.modified!.toIso8601String(),
+};
+
+FileEntry _entryFrom(Map<String, dynamic> j) => FileEntry(
+  '',
+  FileKind.values.byName(j['kind'] as String),
+  size: j['size'] as int?,
+  modified: j['modified'] == null ? null : DateTime.parse(j['modified'] as String),
+);
+
+/// Where a paused single-file transfer stopped (docs/TRANSFER_RESUME.md). Only a [settled] checkpoint — recorded
+/// after the writes drained and the source and part were verified — may be resumed; an unsettled one only tells
+/// the next start which part file to clean up.
+class TransferCheckpoint {
+  const TransferCheckpoint({
+    required this.offset,
+    required this.source,
+    required this.target,
+    required this.part,
+    this.replacing,
+    this.settled = false,
+  });
+
+  /// The stable length of the part file when the writes had drained.
+  final int offset;
+
+  /// The source as it was when the transfer paused; resuming requires it to be unchanged.
+  final FileEntry source;
+
+  /// The actual target, which a keep-both conflict may have renamed.
+  final String target;
+
+  /// Always [partPathFor] of [target] and the owning transfer's ID.
+  final String part;
+
+  /// What the target looked like before being replaced, to re-check at publish time.
+  final FileEntry? replacing;
+
+  final bool settled;
+
+  TransferCheckpoint copyWith({int? offset, bool? settled}) => TransferCheckpoint(
+    offset: offset ?? this.offset,
+    source: source,
+    target: target,
+    part: part,
+    replacing: replacing,
+    settled: settled ?? this.settled,
+  );
+
+  Map<String, Object?> toJson() => {
+    'offset': offset,
+    'source': _entryJson(source),
+    'target': target,
+    'part': part,
+    if (replacing != null) 'replacing': _entryJson(replacing!),
+    'settled': settled,
+  };
+
+  factory TransferCheckpoint.fromJson(Map<String, dynamic> j) => TransferCheckpoint(
+    offset: j['offset'] as int,
+    source: _entryFrom((j['source'] as Map).cast()),
+    target: j['target'] as String,
+    part: j['part'] as String,
+    replacing: j['replacing'] == null ? null : _entryFrom((j['replacing'] as Map).cast()),
+    settled: j['settled'] as bool? ?? false,
+  );
+}
+
+/// Why [cp] cannot be resumed for [t], or null when it can. Structural only: no file system is touched, so a
+/// passing check still has to be followed by stats of the source and the part.
+String? checkpointProblem(Transfer t, TransferCheckpoint cp, PathStyle style) {
+  if (!cp.settled) return 'partInvalid';
+  if (!partDerived(t, cp, style)) return 'partInvalid';
+  if (cp.offset < 0 || cp.source.size == null || cp.offset > cp.source.size!) return 'partInvalid';
+  return null;
+}
+
+/// Whether the checkpoint's part is the one this transfer owns: beside a target that is either the original
+/// path or a legal keep-both name of it. This is what gates cleanup, so restored JSON never deletes by path.
+bool partDerived(Transfer t, TransferCheckpoint cp, PathStyle style) {
+  final original = t.target.path;
+  if (style.parent(cp.target) != style.parent(original)) return false;
+  if (cp.part != partPathFor(style, cp.target, t.id)) return false;
+  final name = style.name(cp.target), originalName = style.name(original);
+  if (name == originalName) return true;
+  for (var n = 1; n < 1000; n++) {
+    final candidate = keepBothName(originalName, n, directory: false);
+    if (candidate == name) return true;
+    if (candidate.length >= name.length) return false;
+  }
+  return false;
 }
 
 /// One queued copy of a file or directory. [target] is the full path the item should get; keeping both copies
@@ -55,6 +163,8 @@ class Transfer {
     this.detail = '',
     this.finished,
     this.conflict,
+    this.directory = false,
+    this.checkpoint,
   });
 
   final TransferId id;
@@ -84,6 +194,12 @@ class Transfer {
   /// What [waiting] waits for.
   final Conflict? conflict;
 
+  /// Whether the source is a directory, known after the first stat; directories have no checkpoint.
+  final bool directory;
+
+  /// Where a paused or interrupted single-file transfer stopped.
+  final TransferCheckpoint? checkpoint;
+
   bool get upload => source.local && !target.local;
   bool get download => !source.local && target.local;
 
@@ -101,47 +217,52 @@ class Transfer {
     String? detail,
     DateTime? Function()? finished,
     Conflict? Function()? conflict,
-  }) =>
-      Transfer(
-        id: id,
-        batch: batch ?? this.batch,
-        source: source,
-        target: target,
-        created: created,
-        state: state ?? this.state,
-        phase: phase == null ? this.phase : phase(),
-        bytes: bytes ?? this.bytes,
-        total: total == null ? this.total : total(),
-        files: files ?? this.files,
-        totalFiles: totalFiles == null ? this.totalFiles : totalFiles(),
-        skipped: skipped ?? this.skipped,
-        speed: speed ?? this.speed,
-        error: error == null ? this.error : error(),
-        detail: detail ?? this.detail,
-        finished: finished == null ? this.finished : finished(),
-        conflict: conflict == null ? this.conflict : conflict(),
-      );
+    bool? directory,
+    TransferCheckpoint? Function()? checkpoint,
+  }) => Transfer(
+    id: id,
+    batch: batch ?? this.batch,
+    source: source,
+    target: target,
+    created: created,
+    state: state ?? this.state,
+    phase: phase == null ? this.phase : phase(),
+    bytes: bytes ?? this.bytes,
+    total: total == null ? this.total : total(),
+    files: files ?? this.files,
+    totalFiles: totalFiles == null ? this.totalFiles : totalFiles(),
+    skipped: skipped ?? this.skipped,
+    speed: speed ?? this.speed,
+    error: error == null ? this.error : error(),
+    detail: detail ?? this.detail,
+    finished: finished == null ? this.finished : finished(),
+    conflict: conflict == null ? this.conflict : conflict(),
+    directory: directory ?? this.directory,
+    checkpoint: checkpoint == null ? this.checkpoint : checkpoint(),
+  );
 
   /// A fresh attempt from the start, in a batch of its own so earlier "apply to all" answers do not carry over.
   Transfer restart(String batch) => Transfer(id: id, batch: batch, source: source, target: target, created: created);
 
   /// Only what history needs: no handles, no secrets, no conflict in progress.
   Map<String, Object?> toJson() => {
-        'id': id.value,
-        'batch': batch,
-        'source': source.toJson(),
-        'target': target.toJson(),
-        'created': created.toIso8601String(),
-        'state': state.name,
-        'bytes': bytes,
-        if (total != null) 'total': total,
-        'files': files,
-        if (totalFiles != null) 'totalFiles': totalFiles,
-        if (skipped > 0) 'skipped': skipped,
-        if (error != null) 'error': error,
-        if (detail.isNotEmpty) 'detail': detail,
-        if (finished != null) 'finished': finished!.toIso8601String(),
-      };
+    'id': id.value,
+    'batch': batch,
+    'source': source.toJson(),
+    'target': target.toJson(),
+    'created': created.toIso8601String(),
+    'state': state.name,
+    'bytes': bytes,
+    if (total != null) 'total': total,
+    'files': files,
+    if (totalFiles != null) 'totalFiles': totalFiles,
+    if (skipped > 0) 'skipped': skipped,
+    if (error != null) 'error': error,
+    if (detail.isNotEmpty) 'detail': detail,
+    if (finished != null) 'finished': finished!.toIso8601String(),
+    if (directory) 'directory': true,
+    if (checkpoint != null) 'checkpoint': checkpoint!.toJson(),
+  };
 
   /// A transfer that was still active when saved did not finish: it comes back interrupted, never running.
   factory Transfer.fromJson(Map<String, dynamic> j) {
@@ -161,7 +282,18 @@ class Transfer {
       error: j['error'] as String?,
       detail: j['detail'] as String? ?? '',
       finished: j['finished'] == null ? null : DateTime.parse(j['finished'] as String),
+      directory: j['directory'] as bool? ?? false,
+      // A checkpoint that no longer parses is dropped, not the whole history: the transfer just restarts.
+      checkpoint: j['checkpoint'] == null ? null : _tryCheckpoint((j['checkpoint'] as Map).cast<String, dynamic>()),
     );
+  }
+
+  static TransferCheckpoint? _tryCheckpoint(Map<String, dynamic> j) {
+    try {
+      return TransferCheckpoint.fromJson(j);
+    } on Object {
+      return null;
+    }
   }
 }
 
@@ -178,10 +310,20 @@ class Conflict {
   final FileEntry existing, incoming;
 
   List<ConflictChoice> get choices => switch (kind) {
-        ConflictKind.file => const [ConflictChoice.replace, ConflictChoice.keepBoth, ConflictChoice.skip, ConflictChoice.cancel],
-        ConflictKind.directory => const [ConflictChoice.merge, ConflictChoice.keepBoth, ConflictChoice.skip, ConflictChoice.cancel],
-        ConflictKind.fileOnDir => const [ConflictChoice.keepBoth, ConflictChoice.skip, ConflictChoice.cancel],
-      };
+    ConflictKind.file => const [
+      ConflictChoice.replace,
+      ConflictChoice.keepBoth,
+      ConflictChoice.skip,
+      ConflictChoice.cancel,
+    ],
+    ConflictKind.directory => const [
+      ConflictChoice.merge,
+      ConflictChoice.keepBoth,
+      ConflictChoice.skip,
+      ConflictChoice.cancel,
+    ],
+    ConflictKind.fileOnDir => const [ConflictChoice.keepBoth, ConflictChoice.skip, ConflictChoice.cancel],
+  };
 }
 
 class ConflictAnswer {
@@ -201,29 +343,44 @@ String keepBothName(String name, int n, {required bool directory}) {
 }
 
 /// Every active transfer stays; finished ones are kept for [maxAge] and at most [max] of them, newest first.
-List<Transfer> pruneHistory(List<Transfer> all, DateTime now, {int max = 200, Duration maxAge = const Duration(days: 30)}) {
+/// A transfer with a checkpoint also stays: dropping it would strand its part file (docs/TRANSFER_RESUME.md).
+List<Transfer> pruneHistory(
+  List<Transfer> all,
+  DateTime now, {
+  int max = 200,
+  Duration maxAge = const Duration(days: 30),
+}) {
   final done = [
     for (final t in all)
-      if (!t.state.active && now.difference(t.finished ?? t.created) <= maxAge) t,
+      if (!t.state.active && t.checkpoint == null && now.difference(t.finished ?? t.created) <= maxAge) t,
   ]..sort((a, b) => (b.finished ?? b.created).compareTo(a.finished ?? a.created));
   final kept = {...done.take(max).map((t) => t.id)};
-  return [for (final t in all) if (t.state.active || kept.contains(t.id)) t];
+  return [
+    for (final t in all)
+      if (t.state.active || t.checkpoint != null || kept.contains(t.id)) t,
+  ];
 }
 
 /// The queued transfers that may start now, oldest first: at most [global] running, [perHost] on any one host,
-/// and never two writing the same target.
+/// and never two writing the same target. A paused or interrupted transfer with a checkpoint keeps its target
+/// locked until it is resumed, finished or explicitly cleaned up.
 List<TransferId> runnable(List<Transfer> all, {required int global, int perHost = 2}) {
-  bool busy(Transfer t) => t.state == TransferState.running || t.state == TransferState.waiting;
+  bool holdsSlot(Transfer t) =>
+      t.state == TransferState.running || t.state == TransferState.waiting || t.state == TransferState.pausing;
+  bool holdsTarget(Transfer t) =>
+      holdsSlot(t) || t.state == TransferState.paused || (t.state == TransferState.interrupted && t.checkpoint != null);
   Iterable<String> hosts(Transfer t) => {?t.source.host?.value, ?t.target.host?.value};
   String target(Transfer t) => '${t.target.host?.value ?? ''}\u0000${t.target.path}';
 
   var running = 0;
   final perHostCount = <String, int>{};
   final targets = <String>{};
-  for (final t in all.where(busy)) {
-    running++;
-    for (final h in hosts(t)) {
-      perHostCount[h] = (perHostCount[h] ?? 0) + 1;
+  for (final t in all.where(holdsTarget)) {
+    if (holdsSlot(t)) {
+      running++;
+      for (final h in hosts(t)) {
+        perHostCount[h] = (perHostCount[h] ?? 0) + 1;
+      }
     }
     targets.add(target(t));
   }

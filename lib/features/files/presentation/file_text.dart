@@ -30,28 +30,30 @@ String formatMode(int? mode) {
 
 /// The message for a failure code from file operations, transfers and edits.
 String fileErrorCode(AppLocalizations l, String code) => switch (code) {
-      'notFound' => l.errFsNotFound,
-      'permission' => l.errFsPermission,
-      'exists' || 'conflict' => l.errFsExists,
-      'unsupported' => l.errFsUnsupported,
-      'lost' => l.errFsLost,
-      'badName' => l.errBadName,
-      'sizeMismatch' => l.errSizeMismatch,
-      'targetChanged' => l.errTargetChanged,
-      'replaceUnsupported' => l.errReplaceUnsupported,
-      'sourceMissing' || 'hostMissing' => l.errSourceMissing,
-      'tooMany' => l.errTooMany(maxScanEntries),
-      'tooDeep' => l.errTooDeep(maxScanDepth),
-      'stalled' => l.errStalled,
-      'unsupportedType' || 'notAFile' => l.errNotRegular,
-      'tooLarge' => l.errTooLarge,
-      'connect' => l.errConnect(''),
-      'cancelled' => l.tsCancelled,
-      _ => l.errFsFailed,
-    };
+  'notFound' => l.errFsNotFound,
+  'permission' => l.errFsPermission,
+  'exists' || 'conflict' => l.errFsExists,
+  'unsupported' => l.errFsUnsupported,
+  'lost' => l.errFsLost,
+  'badName' => l.errBadName,
+  'sizeMismatch' => l.errSizeMismatch,
+  'targetChanged' => l.errTargetChanged,
+  'replaceUnsupported' => l.errReplaceUnsupported,
+  'sourceMissing' || 'hostMissing' => l.errSourceMissing,
+  'tooMany' => l.errTooMany(maxScanEntries),
+  'tooDeep' => l.errTooDeep(maxScanDepth),
+  'stalled' => l.errStalled,
+  'unsupportedType' || 'notAFile' => l.errNotRegular,
+  'sourceChanged' => l.errSourceChanged,
+  'partInvalid' => l.errPartInvalid,
+  'tooLarge' => l.errTooLarge,
+  'connect' => l.errConnect(''),
+  'cancelled' => l.tsCancelled,
+  _ => l.errFsFailed,
+};
 
 String fileError(AppLocalizations l, Object? e) => switch (e) {
-      FsError(:final kind) => fileErrorCode(l, kind.name),
-      OpFailure(:final code) => fileErrorCode(l, code),
-      _ => l.errFsFailed,
-    };
+  FsError(:final kind) => fileErrorCode(l, kind.name),
+  OpFailure(:final code) => fileErrorCode(l, code),
+  _ => l.errFsFailed,
+};

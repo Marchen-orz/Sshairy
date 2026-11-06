@@ -14,28 +14,51 @@ class OpFailure implements Exception {
   String toString() => 'OpFailure($code, $detail)';
 }
 
+/// Thrown by [writeVerified] when [pause] was cancelled: the writes were drained, the part's settled length
+/// was re-checked, and the part was left in place for resuming.
+class Paused implements Exception {
+  const Paused(this.written);
+  final int written;
+
+  @override
+  String toString() => 'Paused($written)';
+}
+
 /// Writes [data] into a hidden `.part` beside [path], checks its length, then publishes it (docs/SECURITY.md §5).
 /// With [replacing], the target must still look like that entry and is swapped in one step; without, an
-/// existing target is never overwritten. The part is removed whenever publishing does not happen.
+/// existing target is never overwritten. The part is removed whenever publishing does not happen — except on
+/// [pause], which stops the copy at a stable length and throws [Paused] instead. [part] overrides where the
+/// staging file goes, for callers that derive its name from the transfer so it can be found again.
 Future<int> writeVerified(
   FileSystem fs,
   String path,
   Stream<Uint8List> data, {
   int? expectedSize,
   FileEntry? replacing,
+  String? part,
   void Function(int written)? onProgress,
   void Function(TransferPhase phase)? onPhase,
   CancellationToken? cancel,
+  CancellationToken? pause,
 }) async {
   if (replacing != null && !fs.canReplace) throw const OpFailure('replaceUnsupported');
   final style = fs.style;
-  final part = style.join(style.parent(path), '.${style.name(path)}.${newId().substring(0, 6)}.part');
-  var published = false;
+  final partPath = part ?? style.join(style.parent(path), '.${style.name(path)}.${newId().substring(0, 6)}.part');
+  var published = false, paused = false;
   try {
-    final written = await fs.create(part, data, onProgress: onProgress, cancel: cancel);
+    final written = await fs.create(partPath, data, onProgress: onProgress, cancel: cancel);
     if (cancel?.isCancelled ?? false) return written;
+    if (pause?.isCancelled ?? false) {
+      // A settled length, not an aborted write: whatever the file system confirmed is on disk.
+      final settled = await fs.stat(partPath);
+      if (settled == null || settled.kind != FileKind.file || settled.size != written) {
+        throw const OpFailure('partInvalid');
+      }
+      paused = true;
+      throw Paused(written);
+    }
     onPhase?.call(TransferPhase.verifying);
-    final copied = await fs.stat(part);
+    final copied = await fs.stat(partPath);
     // A length check catches truncation, not corruption; it is not a hash.
     if (copied?.size != written || (expectedSize != null && written != expectedSize)) {
       throw OpFailure('sizeMismatch', '$written/${expectedSize ?? '?'}');
@@ -44,15 +67,15 @@ Future<int> writeVerified(
     if (replacing != null) {
       final now = await fs.stat(path);
       if (now == null || !now.sameAs(replacing)) throw const OpFailure('targetChanged');
-      await fs.replace(part, path);
+      await fs.replace(partPath, path);
     } else {
-      await fs.rename(part, path);
+      await fs.rename(partPath, path);
     }
     published = true;
     return written;
   } finally {
-    if (!published) {
-      await fs.delete(part).timeout(const Duration(seconds: 5)).then((_) {}, onError: (Object _) {});
+    if (!published && !paused) {
+      await fs.delete(partPath).timeout(const Duration(seconds: 5)).then((_) {}, onError: (Object _) {});
     }
   }
 }

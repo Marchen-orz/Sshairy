@@ -36,28 +36,29 @@ class SftpFileSystem implements FileSystem {
 
   @override
   Future<String> resolve(String path) => _guard(() async {
-        final abs = await _sftp.absolute(path);
-        await _sftp.stat(abs);
-        return abs;
-      });
+    final abs = await _sftp.absolute(path);
+    await _sftp.stat(abs);
+    return abs;
+  });
 
   @override
   Future<List<FileEntry>> list(String dir) => _guard(() async {
-        final names = await _sftp.listdir(dir);
-        final out = <FileEntry>[];
-        for (final n in names) {
-          if (n.filename == '.' || n.filename == '..') continue;
-          var entry = _entry(n.filename, n.attr, n.longname);
-          if (entry.kind == FileKind.link) {
-            // Only to know whether the link can be entered; failures leave it a plain link.
-            final target = await _sftp.stat(PathStyle.posix.join(dir, n.filename)).then<SftpFileAttrs?>((a) => a,
-                onError: (Object _) => null);
-            if (target?.isDirectory ?? false) entry = _entry(n.filename, n.attr, n.longname, linkToDir: true);
-          }
-          out.add(entry);
-        }
-        return out;
-      });
+    final names = await _sftp.listdir(dir);
+    final out = <FileEntry>[];
+    for (final n in names) {
+      if (n.filename == '.' || n.filename == '..') continue;
+      var entry = _entry(n.filename, n.attr, n.longname);
+      if (entry.kind == FileKind.link) {
+        // Only to know whether the link can be entered; failures leave it a plain link.
+        final target = await _sftp
+            .stat(PathStyle.posix.join(dir, n.filename))
+            .then<SftpFileAttrs?>((a) => a, onError: (Object _) => null);
+        if (target?.isDirectory ?? false) entry = _entry(n.filename, n.attr, n.longname, linkToDir: true);
+      }
+      out.add(entry);
+    }
+    return out;
+  });
 
   @override
   Future<FileEntry?> stat(String path) async {
@@ -76,20 +77,20 @@ class SftpFileSystem implements FileSystem {
 
   @override
   Future<void> rename(String from, String to) => _guard(() async {
-        // dartssh2 renames with posix-rename where the server has it, which replaces silently. Checking first
-        // leaves a window between the two requests; SFTP has no compare-and-swap to close it (SECURITY §5).
-        if (await stat(to) != null) throw const FsError(FsFailure.exists);
-        await _sftp.rename(from, to);
-      });
+    // dartssh2 renames with posix-rename where the server has it, which replaces silently. Checking first
+    // leaves a window between the two requests; SFTP has no compare-and-swap to close it (SECURITY §5).
+    if (await stat(to) != null) throw const FsError(FsFailure.exists);
+    await _sftp.rename(from, to);
+  });
 
   @override
   bool get canReplace => _posixRename;
 
   @override
   Future<void> replace(String from, String to) => _guard(() async {
-        if (!_posixRename) throw const FsError(FsFailure.unsupported, 'posix-rename');
-        await _sftp.rename(from, to);
-      });
+    if (!_posixRename) throw const FsError(FsFailure.unsupported, 'posix-rename');
+    await _sftp.rename(from, to);
+  });
 
   @override
   Future<void> delete(String path) => _guard(() => _sftp.remove(path));
@@ -105,7 +106,7 @@ class SftpFileSystem implements FileSystem {
       _guard(() => _sftp.setStat(path, SftpFileAttrs(mode: SftpFileMode.value(mode & 0xFFF))));
 
   @override
-  Stream<Uint8List> read(String path) async* {
+  Stream<Uint8List> read(String path, {int offset = 0}) async* {
     final SftpFile file;
     try {
       file = await _sftp.open(path);
@@ -113,11 +114,42 @@ class SftpFileSystem implements FileSystem {
       throw _map(e);
     }
     try {
-      yield* file.read(chunkSize: _chunk, maxPendingRequests: _inFlight).handleError((Object e) => throw _map(e));
+      yield* file
+          .read(offset: offset, chunkSize: _chunk, maxPendingRequests: _inFlight)
+          .handleError((Object e) => throw _map(e));
     } finally {
       await file.close().catchError((_) {});
     }
   }
+
+  /// Continues the part file at [offset]; a different length means the checkpoint is stale, not to be extended.
+  @override
+  Future<int> append(
+    String path,
+    Stream<Uint8List> data, {
+    required int offset,
+    void Function(int written)? onProgress,
+    CancellationToken? cancel,
+  }) => _guard(() async {
+    // Without truncate this opens the existing file and leaves its bytes alone.
+    final file = await _sftp.open(path, mode: SftpFileOpenMode.write);
+    try {
+      final size = (await file.stat()).size;
+      if (size != offset) throw FsError(FsFailure.partInvalid, '$size/$offset');
+      final writer = file.write(
+        data,
+        offset: offset,
+        onProgress: onProgress,
+        chunkSize: _chunk,
+        maxPendingRequests: _inFlight,
+      );
+      cancel?.whenCancelled.then((_) => writer.abort()).ignore();
+      await writer.done;
+      return writer.progress;
+    } finally {
+      await file.close().catchError((_) {});
+    }
+  });
 
   @override
   Future<int> create(
@@ -125,21 +157,20 @@ class SftpFileSystem implements FileSystem {
     Stream<Uint8List> data, {
     void Function(int written)? onProgress,
     CancellationToken? cancel,
-  }) =>
-      _guard(() async {
-        final file = await _sftp.open(
-          path,
-          mode: SftpFileOpenMode.create | SftpFileOpenMode.exclusive | SftpFileOpenMode.write,
-        );
-        try {
-          final writer = file.write(data, onProgress: onProgress, chunkSize: _chunk, maxPendingRequests: _inFlight);
-          cancel?.whenCancelled.then((_) => writer.abort()).ignore();
-          await writer.done;
-          return writer.progress;
-        } finally {
-          await file.close().catchError((_) {});
-        }
-      });
+  }) => _guard(() async {
+    final file = await _sftp.open(
+      path,
+      mode: SftpFileOpenMode.create | SftpFileOpenMode.exclusive | SftpFileOpenMode.write,
+    );
+    try {
+      final writer = file.write(data, onProgress: onProgress, chunkSize: _chunk, maxPendingRequests: _inFlight);
+      cancel?.whenCancelled.then((_) => writer.abort()).ignore();
+      await writer.done;
+      return writer.progress;
+    } finally {
+      await file.close().catchError((_) {});
+    }
+  });
 
   @override
   Future<void> close() => _sftp.close().catchError((_) {});
@@ -155,17 +186,19 @@ class SftpFileSystem implements FileSystem {
   }
 
   static FsError _map(Object e) => switch (e) {
-        FsError() => e,
-        SftpStatusError(code: SftpStatusCode.noSuchFile) => FsError(FsFailure.notFound, e.message),
-        SftpStatusError(code: SftpStatusCode.permissionDenied) => FsError(FsFailure.permission, e.message),
-        SftpStatusError(code: SftpStatusCode.opUnsupported) => FsError(FsFailure.unsupported, e.message),
-        SftpStatusError(code: SftpStatusCode.noConnection || SftpStatusCode.connectionLost) =>
-          FsError(FsFailure.lost, e.message),
-        // SFTP v3 has no "exists" status; OpenSSH answers a clashing exclusive create or mkdir with failure.
-        SftpStatusError() => FsError(FsFailure.failed, e.message),
-        SftpAbortError() || SSHError() => FsError(FsFailure.lost, '$e'),
-        _ => FsError(FsFailure.failed, '$e'),
-      };
+    FsError() => e,
+    SftpStatusError(code: SftpStatusCode.noSuchFile) => FsError(FsFailure.notFound, e.message),
+    SftpStatusError(code: SftpStatusCode.permissionDenied) => FsError(FsFailure.permission, e.message),
+    SftpStatusError(code: SftpStatusCode.opUnsupported) => FsError(FsFailure.unsupported, e.message),
+    SftpStatusError(code: SftpStatusCode.noConnection || SftpStatusCode.connectionLost) => FsError(
+      FsFailure.lost,
+      e.message,
+    ),
+    // SFTP v3 has no "exists" status; OpenSSH answers a clashing exclusive create or mkdir with failure.
+    SftpStatusError() => FsError(FsFailure.failed, e.message),
+    SftpAbortError() || SSHError() => FsError(FsFailure.lost, '$e'),
+    _ => FsError(FsFailure.failed, '$e'),
+  };
 
   static FileEntry _entry(String name, SftpFileAttrs a, String longname, {bool linkToDir = false}) {
     // `ls -l` style: mode, links, owner, group, size, date… Servers that send something else get no owner.

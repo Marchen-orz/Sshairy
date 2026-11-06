@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,16 +85,22 @@ void main() {
   });
 
   group('transfer model', () {
-    Transfer t(String id, {String? src, String? dst, String path = '/x', TransferState s = TransferState.queued, DateTime? at}) =>
-        Transfer(
-          id: TransferId(id),
-          batch: 'b',
-          source: FileEnd(src == null ? null : HostId(src), '/s/$id'),
-          target: FileEnd(dst == null ? null : HostId(dst), path == '/x' ? '/t/$id' : path),
-          created: at ?? DateTime(2026),
-          state: s,
-          finished: s.active ? null : at,
-        );
+    Transfer t(
+      String id, {
+      String? src,
+      String? dst,
+      String path = '/x',
+      TransferState s = TransferState.queued,
+      DateTime? at,
+    }) => Transfer(
+      id: TransferId(id),
+      batch: 'b',
+      source: FileEnd(src == null ? null : HostId(src), '/s/$id'),
+      target: FileEnd(dst == null ? null : HostId(dst), path == '/x' ? '/t/$id' : path),
+      created: at ?? DateTime(2026),
+      state: s,
+      finished: s.active ? null : at,
+    );
 
     test('runnable respects global, per-host and target limits', () {
       final all = [
@@ -108,6 +115,27 @@ void main() {
       expect(runnable(all, global: 2).map((i) => i.value), ['1', '2']);
       final busy = [t('1', dst: 'h', s: TransferState.waiting), ...all.skip(1)];
       expect(runnable(busy, global: 8).map((i) => i.value), ['2', '4', '6']);
+      // A parked or stranded transfer holds its target without taking a slot.
+      final parked = [t('1', dst: 'h', path: '/same', s: TransferState.paused), t('2', dst: 'h', path: '/same')];
+      expect(runnable(parked, global: 8), isEmpty);
+      final stranded = [
+        Transfer(
+          id: TransferId('1'),
+          batch: 'b',
+          source: FileEnd(null, '/s'),
+          target: FileEnd(HostId('h'), '/same'),
+          created: DateTime(2026),
+          state: TransferState.interrupted,
+          checkpoint: TransferCheckpoint(
+            offset: 1,
+            source: FileEntry('s', FileKind.file, size: 2),
+            target: '/same',
+            part: '/.same.1.part',
+          ),
+        ),
+        t('2', dst: 'h', path: '/same'),
+      ];
+      expect(runnable(stranded, global: 8), isEmpty);
     });
 
     test('saved active transfers come back interrupted; history is pruned', () {
@@ -119,7 +147,12 @@ void main() {
       final now = DateTime(2026, 6, 1);
       final all = [
         t('old', s: TransferState.completed, at: now.subtract(const Duration(days: 31))),
-        for (var i = 0; i < 5; i++) t('d$i', s: TransferState.completed, at: now.subtract(Duration(hours: i))),
+        for (var i = 0; i < 5; i++)
+          t(
+            'd$i',
+            s: TransferState.completed,
+            at: now.subtract(Duration(hours: i)),
+          ),
         t('q'),
       ];
       expect(pruneHistory(all, now, max: 3).map((x) => x.id.value), ['d0', 'd1', 'd2', 'q']);
@@ -132,6 +165,69 @@ void main() {
       m.add(t0.add(const Duration(seconds: 1)), 1000);
       m.add(t0.add(const Duration(seconds: 2)), 3000);
       expect(m.bytesPerSecond, 1500);
+    });
+
+    test('checkpoints round-trip and only resume paths the transfer owns', () {
+      final t = Transfer(
+        id: TransferId('own'),
+        batch: 'b',
+        source: FileEnd(HostId('g'), '/s/a'),
+        target: FileEnd(HostId('h'), '/dst/a.txt'),
+        created: DateTime(2026),
+      );
+      final cp = TransferCheckpoint(
+        offset: 3,
+        source: FileEntry('a.txt', FileKind.file, size: 5),
+        target: '/dst/a.txt',
+        part: partPathFor(PathStyle.posix, '/dst/a.txt', t.id),
+        settled: true,
+      );
+      final back = Transfer.fromJson(
+        (jsonDecode(jsonEncode(t.copyWith(checkpoint: () => cp).toJson())) as Map).cast<String, dynamic>(),
+      );
+      expect(back.checkpoint?.offset, 3);
+      expect(back.checkpoint?.replacing, isNull);
+      expect(checkpointProblem(back, back.checkpoint!, PathStyle.posix), isNull);
+      // Unsettled, beyond the source, or naming a file that is not this transfer's own part.
+      expect(checkpointProblem(back, cp.copyWith(settled: false), PathStyle.posix), 'partInvalid');
+      expect(checkpointProblem(back, cp.copyWith(offset: 6), PathStyle.posix), 'partInvalid');
+      expect(
+        checkpointProblem(
+          back,
+          TransferCheckpoint(offset: 3, source: cp.source, target: '/dst/a.txt', part: '/etc/passwd', settled: true),
+          PathStyle.posix,
+        ),
+        'partInvalid',
+      );
+      expect(
+        checkpointProblem(
+          back,
+          TransferCheckpoint(
+            offset: 3,
+            source: cp.source,
+            target: '/elsewhere/a.txt',
+            part: partPathFor(PathStyle.posix, '/elsewhere/a.txt', t.id),
+            settled: true,
+          ),
+          PathStyle.posix,
+        ),
+        'partInvalid',
+      );
+      // A keep-both name in the same directory is still the transfer's own target.
+      expect(
+        checkpointProblem(
+          back,
+          TransferCheckpoint(
+            offset: 3,
+            source: cp.source,
+            target: '/dst/a (1).txt',
+            part: partPathFor(PathStyle.posix, '/dst/a (1).txt', t.id),
+            settled: true,
+          ),
+          PathStyle.posix,
+        ),
+        isNull,
+      );
     });
   });
 
@@ -176,6 +272,19 @@ void main() {
       expect(dir.listSync(), hasLength(1));
     });
 
+    test('a pause parks the copy: drained, kept, unpublished', () async {
+      final pause = CancellationToken();
+      final data = StreamController<Uint8List>();
+      final part = at('.p.bin.staged');
+      final writing = writeVerified(fs, at('p.bin'), data.stream, expectedSize: 10, part: part, pause: pause);
+      data.add(utf8.encode('hello'));
+      pause.cancel();
+      await data.close();
+      await expectLater(writing, throwsA(isA<Paused>().having((p) => p.written, 'written', 5)));
+      expect(File(part).readAsStringSync(), 'hello');
+      expect(File(at('p.bin')).existsSync(), isFalse);
+    });
+
     test('lists, stats, renames and deletes trees', () async {
       Directory(at('d/e')).createSync(recursive: true);
       File(at('d/e/f.txt')).writeAsStringSync('x');
@@ -205,10 +314,14 @@ void main() {
       Directory(at('dst')).createSync();
       File(at('src/a.txt')).writeAsStringSync('alpha');
       File(at('src/sub/b.txt')).writeAsStringSync('bravo!');
-      c = ProviderContainer(overrides: [
-        dataDirProvider.overrideWithValue(dir.path),
-        fileSystemsProvider.overrideWithValue(FileSystems(ConnectionManager((_, _, _) => throw StateError('no')), (_) => null)),
-      ]);
+      c = ProviderContainer(
+        overrides: [
+          dataDirProvider.overrideWithValue(dir.path),
+          fileSystemsProvider.overrideWithValue(
+            FileSystems(ConnectionManager((_, _, _) => throw StateError('no')), (_) => null),
+          ),
+        ],
+      );
       ui = FakeUi(const ConflictAnswer(ConflictChoice.replace));
       c.read(transfersProvider.notifier).ui = ui;
     });
@@ -225,6 +338,57 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       return c.read(transfersProvider);
+    }
+
+    Future<Transfer> waitFor(TransferId id, TransferState s) async {
+      for (var i = 0; i < 500 && manager().byId(id)?.state != s; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final t = manager().byId(id)!;
+      expect(t.state, s);
+      return t;
+    }
+
+    ProviderContainer fresh() => ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        fileSystemsProvider.overrideWithValue(
+          FileSystems(ConnectionManager((_, _, _) => throw StateError('no')), (_) => null),
+        ),
+      ],
+    );
+
+    /// A paused transfer in transfers.json, with [offset] bytes of [bytes] already in its part file.
+    TransferId craftPark(int offset, List<int> bytes, {bool settled = true}) {
+      File(at('src/big.bin')).writeAsBytesSync(bytes);
+      final id = TransferId('parked-$offset-${settled ? '' : 'x'}');
+      final target = at('dst/big.bin');
+      final part = partPathFor(TransferManager.styleOf(null), target, id);
+      File(part).writeAsBytesSync(bytes.sublist(0, offset));
+      final s = FileStat.statSync(at('src/big.bin'));
+      File(at('transfers.json')).writeAsStringSync(
+        jsonEncode({
+          'schemaVersion': 1,
+          'transfers': [
+            Transfer(
+              id: id,
+              batch: 'b',
+              source: FileEnd(null, at('src/big.bin')),
+              target: FileEnd(null, target),
+              created: DateTime.now(),
+              state: TransferState.paused,
+              checkpoint: TransferCheckpoint(
+                offset: offset,
+                source: FileEntry('big.bin', FileKind.file, size: s.size, modified: s.modified),
+                target: target,
+                part: part,
+                settled: settled,
+              ),
+            ).toJson(),
+          ],
+        }),
+      );
+      return id;
     }
 
     test('copies a file and a directory', () async {
@@ -292,6 +456,145 @@ void main() {
       final t = (await settle()).single;
       expect(t.state, TransferState.failed);
       expect(t.error, 'sourceMissing');
+    });
+
+    test('pause parks a file at a stable length; resume finishes it', () async {
+      final bytes = List<int>.generate(300000, (i) => i & 0xff);
+      File(at('src/big.bin')).writeAsBytesSync(bytes);
+      final id = manager().enqueue(from: null, paths: [at('src/big.bin')], to: null, targetDir: at('dst')).single;
+      manager().pause(id);
+      final parked = await waitFor(id, TransferState.paused);
+      expect(parked.checkpoint?.settled, isTrue);
+      expect(File(parked.checkpoint!.part).lengthSync(), parked.checkpoint!.offset);
+      expect(File(parked.checkpoint!.part).lengthSync(), lessThanOrEqualTo(bytes.length));
+      expect(File(at('dst/big.bin')).existsSync(), isFalse);
+      await manager().saved;
+      final saved = (jsonDecode(File(at('transfers.json')).readAsStringSync()) as Map)['transfers'] as List;
+      expect(Transfer.fromJson((saved.single as Map).cast()).checkpoint?.settled, isTrue);
+
+      manager().resume(id);
+      final done = await waitFor(id, TransferState.completed);
+      expect(done.bytes, bytes.length);
+      expect(File(at('dst/big.bin')).readAsBytesSync(), bytes);
+      expect(File(parked.checkpoint!.part).existsSync(), isFalse, reason: 'no part left');
+    });
+
+    test('a settled checkpoint survives a restart and resumes from its offset', () async {
+      final bytes = List<int>.generate(100000, (i) => (i * 7) & 0xff);
+      final id = craftPark(40000, bytes);
+      final part = partPathFor(TransferManager.styleOf(null), at('dst/big.bin'), id);
+      final c2 = fresh();
+      addTearDown(c2.dispose);
+      final restored = c2.read(transfersProvider).single;
+      expect(restored.state, TransferState.interrupted);
+      expect(restored.checkpoint?.offset, 40000);
+      final m2 = c2.read(transfersProvider.notifier)..ui = ui;
+      m2.resume(restored.id);
+      for (var i = 0; i < 500 && c2.read(transfersProvider).single.state.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final done = c2.read(transfersProvider).single;
+      expect(done.state, TransferState.completed);
+      expect(File(at('dst/big.bin')).readAsBytesSync(), bytes);
+      expect(File(part).existsSync(), isFalse);
+      await m2.saved;
+    });
+
+    test('a changed source or a moved part refuses to resume', () async {
+      final bytes = List<int>.generate(100000, (i) => i & 0xff);
+      craftPark(40000, bytes);
+      File(at('src/big.bin')).writeAsBytesSync(bytes.sublist(0, 60000));
+      final c2 = fresh();
+      addTearDown(c2.dispose);
+      final m2 = c2.read(transfersProvider.notifier)..ui = ui;
+      final first = c2.read(transfersProvider).single;
+      m2.resume(first.id);
+      for (var i = 0; i < 500 && c2.read(transfersProvider).single.state.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final refused = c2.read(transfersProvider).single;
+      expect(refused.state, TransferState.failed);
+      expect(refused.error, 'sourceChanged');
+      expect(refused.checkpoint, isNotNull, reason: 'kept so remove/retry can clean the part');
+      expect(File(at('dst/big.bin')).existsSync(), isFalse);
+      await m2.saved;
+      c2.dispose();
+
+      // A part that no longer matches its checkpoint is just as refused.
+      final id2 = craftPark(40000, bytes);
+      final part2 = partPathFor(TransferManager.styleOf(null), at('dst/big.bin'), id2);
+      File(part2).writeAsBytesSync(bytes.sublist(0, 20000));
+      final c3 = fresh();
+      addTearDown(c3.dispose);
+      final m3 = c3.read(transfersProvider.notifier)..ui = ui;
+      m3.resume(c3.read(transfersProvider).single.id);
+      for (var i = 0; i < 500 && c3.read(transfersProvider).single.state.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final invalid = c3.read(transfersProvider).single;
+      expect(invalid.state, TransferState.failed);
+      expect(invalid.error, 'partInvalid');
+      await m3.saved;
+    });
+
+    test('an unsettled checkpoint is not resumable; retry starts over and cleans up', () async {
+      final bytes = List<int>.generate(100000, (i) => i & 0xff);
+      final id = craftPark(40000, bytes, settled: false);
+      final part = partPathFor(TransferManager.styleOf(null), at('dst/big.bin'), id);
+      final c2 = fresh();
+      addTearDown(c2.dispose);
+      final m2 = c2.read(transfersProvider.notifier)..ui = ui;
+      final stranded = c2.read(transfersProvider).single;
+      expect(stranded.state, TransferState.interrupted);
+      m2.resume(stranded.id);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(c2.read(transfersProvider).single.state, TransferState.interrupted, reason: 'not resumable');
+
+      await m2.retry(stranded.id);
+      for (var i = 0; i < 500 && c2.read(transfersProvider).single.state.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final done = c2.read(transfersProvider).single;
+      expect(done.state, TransferState.completed);
+      expect(File(at('dst/big.bin')).readAsBytesSync(), bytes);
+      expect(File(part).existsSync(), isFalse, reason: 'the unsettled part was cleaned');
+      await m2.saved;
+    });
+
+    test('cancelling a parked transfer cleans its part', () async {
+      final bytes = List<int>.generate(5000, (i) => i & 0xff);
+      File(at('src/small.bin')).writeAsBytesSync(bytes);
+      final id = manager().enqueue(from: null, paths: [at('src/small.bin')], to: null, targetDir: at('dst')).single;
+      manager().pause(id);
+      final parked = await waitFor(id, TransferState.paused);
+      expect(File(parked.checkpoint!.part).existsSync(), isTrue);
+      await manager().cancel(id);
+      final gone = await waitFor(id, TransferState.cancelled);
+      expect(gone.checkpoint, isNull);
+      expect(File(parked.checkpoint!.part).existsSync(), isFalse);
+      expect(File(at('dst/small.bin')).existsSync(), isFalse);
+    });
+
+    test('a parked transfer holds its target until it is resolved', () async {
+      final id1 = manager().enqueue(from: null, paths: [at('src/a.txt')], to: null, targetDir: at('dst')).single;
+      manager().pause(id1);
+      await waitFor(id1, TransferState.paused);
+      final id2 = manager().enqueue(from: null, paths: [at('src/a.txt')], to: null, targetDir: at('dst')).single;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(manager().byId(id2)?.state, TransferState.queued);
+      manager().resume(id1);
+      await waitFor(id1, TransferState.completed);
+      await waitFor(id2, TransferState.completed);
+      expect(File(at('dst/a.txt')).readAsStringSync(), 'alpha');
+    });
+
+    test('pausing a directory transfer does nothing', () async {
+      final id = manager().enqueue(from: null, paths: [at('src/sub')], to: null, targetDir: at('dst')).single;
+      manager().pause(id);
+      final done = await settle();
+      expect(done.single.state, TransferState.completed);
+      expect(done.single.checkpoint, isNull);
+      expect(File(at('dst/sub/b.txt')).readAsStringSync(), 'bravo!');
     });
   });
 }

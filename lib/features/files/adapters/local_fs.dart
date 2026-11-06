@@ -32,7 +32,10 @@ class LocalFileSystem implements FileSystem {
     try {
       final out = <FileEntry>[];
       await for (final e in Directory(dir).list(followLinks: false)) {
-        final entry = await _entry(e.path, e is Link ? FileKind.link : (e is Directory ? FileKind.directory : FileKind.file));
+        final entry = await _entry(
+          e.path,
+          e is Link ? FileKind.link : (e is Directory ? FileKind.directory : FileKind.file),
+        );
         if (entry != null) out.add(entry);
       }
       return out;
@@ -55,21 +58,21 @@ class LocalFileSystem implements FileSystem {
 
   @override
   Future<void> mkdir(String path) => _guard(() async {
-        // Directory.create succeeds on an existing directory; mkdir must not.
-        if (await stat(path) != null) throw const FsError(FsFailure.exists);
-        await Directory(path).create();
-      });
+    // Directory.create succeeds on an existing directory; mkdir must not.
+    if (await stat(path) != null) throw const FsError(FsFailure.exists);
+    await Directory(path).create();
+  });
 
   @override
   Future<void> rename(String from, String to) => _guard(() async {
-        if (await stat(to) != null) throw const FsError(FsFailure.exists);
-        final type = await FileSystemEntity.type(from, followLinks: false);
-        await switch (type) {
-          FileSystemEntityType.directory => Directory(from).rename(to),
-          FileSystemEntityType.link => Link(from).rename(to),
-          _ => File(from).rename(to),
-        };
-      });
+    if (await stat(to) != null) throw const FsError(FsFailure.exists);
+    final type = await FileSystemEntity.type(from, followLinks: false);
+    await switch (type) {
+      FileSystemEntityType.directory => Directory(from).rename(to),
+      FileSystemEntityType.link => Link(from).rename(to),
+      _ => File(from).rename(to),
+    };
+  });
 
   @override
   bool get canReplace => true;
@@ -80,10 +83,10 @@ class LocalFileSystem implements FileSystem {
 
   @override
   Future<void> delete(String path) => _guard(() async {
-        final type = await FileSystemEntity.type(path, followLinks: false);
-        if (type == FileSystemEntityType.directory) throw const FsError(FsFailure.failed, 'is a directory');
-        await (type == FileSystemEntityType.link ? Link(path).delete() : File(path).delete());
-      });
+    final type = await FileSystemEntity.type(path, followLinks: false);
+    if (type == FileSystemEntityType.directory) throw const FsError(FsFailure.failed, 'is a directory');
+    await (type == FileSystemEntityType.link ? Link(path).delete() : File(path).delete());
+  });
 
   @override
   Future<void> rmdir(String path) => _guard(() => Directory(path).delete());
@@ -93,14 +96,14 @@ class LocalFileSystem implements FileSystem {
 
   @override
   Future<void> chmod(String path, int mode) => _guard(() async {
-        // Arguments go to chmod directly, never through a shell.
-        final r = await Process.run('chmod', [(mode & 0xFFF).toRadixString(8), path]);
-        if (r.exitCode != 0) throw FsError(FsFailure.permission, '${r.stderr}'.trim());
-      });
+    // Arguments go to chmod directly, never through a shell.
+    final r = await Process.run('chmod', [(mode & 0xFFF).toRadixString(8), path]);
+    if (r.exitCode != 0) throw FsError(FsFailure.permission, '${r.stderr}'.trim());
+  });
 
   @override
-  Stream<Uint8List> read(String path) =>
-      File(path).openRead().map((c) => c is Uint8List ? c : Uint8List.fromList(c)).handleError((Object e) {
+  Stream<Uint8List> read(String path, {int offset = 0}) =>
+      File(path).openRead(offset).map((c) => c is Uint8List ? c : Uint8List.fromList(c)).handleError((Object e) {
         throw e is FileSystemException ? _map(e) : e;
       });
 
@@ -110,28 +113,59 @@ class LocalFileSystem implements FileSystem {
     Stream<Uint8List> data, {
     void Function(int written)? onProgress,
     CancellationToken? cancel,
-  }) =>
-      _guard(() async {
-        final file = File(path);
-        await file.create(exclusive: true);
-        final raf = await file.open(mode: FileMode.writeOnly);
-        var written = 0;
-        try {
-          await for (final chunk in data) {
-            if (cancel?.isCancelled ?? false) break;
-            await raf.writeFrom(chunk);
-            written += chunk.length;
-            onProgress?.call(written);
-          }
-          await raf.flush();
-        } finally {
-          await raf.close();
-        }
-        return written;
-      });
+  }) => _guard(() async {
+    final file = File(path);
+    await file.create(exclusive: true);
+    final raf = await file.open(mode: FileMode.writeOnly);
+    var written = 0;
+    try {
+      await for (final chunk in data) {
+        if (cancel?.isCancelled ?? false) break;
+        await raf.writeFrom(chunk);
+        written += chunk.length;
+        onProgress?.call(written);
+      }
+      await raf.flush();
+    } finally {
+      await raf.close();
+    }
+    return written;
+  });
 
   @override
   Future<void> close() async {}
+
+  /// Continues the file at [offset]; a different length means the checkpoint is stale, not to be extended.
+  @override
+  Future<int> append(
+    String path,
+    Stream<Uint8List> data, {
+    required int offset,
+    void Function(int written)? onProgress,
+    CancellationToken? cancel,
+  }) => _guard(() async {
+    final file = File(path);
+    if (!await file.exists()) throw const FsError(FsFailure.notFound);
+    if (await file.length() != offset) {
+      throw FsError(FsFailure.partInvalid, '${await file.length()}/$offset');
+    }
+    // FileMode.append is the only non-truncating random-access write mode; writeOnly would zero the part.
+    final raf = await file.open(mode: FileMode.append);
+    var written = 0;
+    try {
+      await raf.setPosition(offset);
+      await for (final chunk in data) {
+        if (cancel?.isCancelled ?? false) break;
+        await raf.writeFrom(chunk);
+        written += chunk.length;
+        onProgress?.call(written);
+      }
+      await raf.flush();
+    } finally {
+      await raf.close();
+    }
+    return written;
+  });
 
   Future<FileEntry?> _entry(String path, FileKind kind) async {
     // FileStat follows links, which is what a link's size and time should show.
@@ -149,9 +183,9 @@ class LocalFileSystem implements FileSystem {
   }
 
   Future<List<FileEntry>> _drives() async => [
-        for (final letter in 'CDEFGHIJKLMNOPQRSTUVWXYZAB'.split(''))
-          if (await Directory('$letter:\\').exists()) FileEntry('$letter:\\', FileKind.directory),
-      ];
+    for (final letter in 'CDEFGHIJKLMNOPQRSTUVWXYZAB'.split(''))
+      if (await Directory('$letter:\\').exists()) FileEntry('$letter:\\', FileKind.directory),
+  ];
 
   static Future<T> _guard<T>(Future<T> Function() run) async {
     try {

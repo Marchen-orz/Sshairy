@@ -37,7 +37,7 @@ class FileEntry {
   bool sameAs(FileEntry other) => size == other.size && modified == other.modified && kind == other.kind;
 }
 
-enum FsFailure { notFound, exists, permission, unsupported, lost, failed }
+enum FsFailure { notFound, exists, permission, unsupported, lost, partInvalid, failed }
 
 class FsError implements Exception {
   const FsError(this.kind, [this.detail = '']);
@@ -137,13 +137,23 @@ abstract interface class FileSystem {
   bool get canChmod;
   Future<void> chmod(String path, int mode);
 
-  Stream<Uint8List> read(String path);
+  Stream<Uint8List> read(String path, {int offset = 0});
 
   /// Creates [path], which must not exist yet, and writes [data] into it. [onProgress] gets the bytes the file
   /// system confirmed; [cancel] stops the write and leaves the partial file for the caller to remove.
   Future<int> create(
     String path,
     Stream<Uint8List> data, {
+    void Function(int written)? onProgress,
+    CancellationToken? cancel,
+  });
+
+  /// Continues an existing regular file whose length must equal [offset]; never truncates it.
+  /// Returns newly written bytes, and [onProgress] also counts only the new bytes.
+  Future<int> append(
+    String path,
+    Stream<Uint8List> data, {
+    required int offset,
     void Function(int written)? onProgress,
     CancellationToken? cancel,
   });
