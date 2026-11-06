@@ -30,6 +30,7 @@
 | [TESTING.md](TESTING.md) | 真实环境测试规则、技术实验、功能检查 |
 | [ROADMAP.md](ROADMAP.md) | 里程碑、当前进度、交接记录 |
 | [NETCATTY_REVIEW.md](NETCATTY_REVIEW.md) | 固定版本源码证据和取舍理由 |
+| [CORRECTION.md](CORRECTION.md) | 2026-11-06 纠偏与自绘窗口实施约束 |
 
 每次先读本文件与 ROADMAP，再读对应专题。用户新指示优先于文档。发现代码、测试、文档冲突时记录并修订，不把待验证项当事实。涉及决策的修改同步更新对应规范，不机械要求每个代码变更都修改全套文档。
 
@@ -147,5 +148,6 @@ UI 可以通过 typed façade 调用同一用例；命令面板和 AI 经 Capabi
 | ADR-09 | M0 只验证终端方案 | 信任库的基础能力，只测集成风险和未证实行为；SFTP、凭据、窗口等到用到时验证，失败代价可控 |
 | ADR-10 | 只在作者真实环境测试 | 开源自用，不做兼容性保障；Windows + 作者的 Ubuntu 服务器为准，其他平台未验证不阻塞；不建 Docker、fixture、CI 矩阵。安全规则不因此放宽 |
 | ADR-11 | Windows 默认 Skia 渲染 | 空白 Flutter 应用开 Impeller 就占 244 MB，最大化后 430 MB，主要是核显共享内存里的渲染缓冲；Skia 下 97/131 MB（TESTING §6）。界面以文字和平面控件为主，Impeller 预编译着色器的好处用不上。保留切换，作为 Skia 出问题或被移除时的退路 |
+| ADR-12 | Windows 无系统顶栏、自绘窗口控件 | 用户于 2026-11-06 明确要求；Flutter 顶栏与标签区域融合，原生 runner 保留缩放、DPI 和系统关闭生命周期。macOS/Linux 尚无同等实测，不假装自绘已覆盖三端。实现和验证见 CORRECTION、ROADMAP |
 
 新增决策在此记录，详细实现只放对应专题，避免多个文件维护不同默认值。
