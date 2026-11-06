@@ -8,6 +8,7 @@ import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
+import 'ime_caret.dart';
 
 enum SessionStatus { connecting, connected, failed, disconnected }
 
@@ -134,6 +135,8 @@ class _TerminalPaneState extends State<TerminalPane> {
         'width': rect.width,
         'height': rect.height,
       });
+      final scale = View.of(context).devicePixelRatio;
+      ImeCaret.moveTo((rect.left * scale).toInt(), (rect.bottom * scale).toInt());
     });
     WidgetsBinding.instance.ensureVisualUpdate();
   }
