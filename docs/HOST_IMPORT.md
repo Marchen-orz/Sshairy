@@ -35,7 +35,7 @@ FinalShell 支持 `authentication_type` 缺省或为 `1`、无 `secret_key_id` �
 
 来源重新选择、返回或关闭会释放预览引用；预览不保存配置原文或秘密。Dart String 不能保证物理擦除，不宣称内存安全擦除。
 
-公开格式参考：[旧式密码编码](https://mg-freedom.org/mg/finalshell-decrypt-password/)。仅以合成配置验证算法及失败处理；未验证作者的真实 FinalShell 版本。
+公开格式参考：[旧式密码编码](https://mg-freedom.org/mg/finalshell-decrypt-password/)、[私钥引用字段说明](https://github.com/BitsFlowCloud/DengShell/blob/main/build/FINALSHELL-IMPORT.md)。仅以合成配置验证算法及失败处理；未验证作者的真实 FinalShell 版本。
 
 ## 暂不支持
 
