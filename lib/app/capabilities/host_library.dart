@@ -20,6 +20,8 @@ Future<Result<Object?>> Function(Args, RequestContext) guarded(Future<Object?> F
         return Err(AppError(e.code, detail: e.detail));
       } on IdentityInUse catch (e) {
         return Err(AppError('inUse', detail: e.references.join(', ')));
+      } on HostInUse catch (e) {
+        return Err(AppError('inUse', detail: e.references.join(', ')));
       }
     };
 

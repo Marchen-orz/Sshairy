@@ -81,6 +81,13 @@ class IdentityInUse implements Exception {
   final List<String> references;
 }
 
+/// A host that is somebody's jump host cannot be removed: dropping it would send them straight to their target,
+/// or leave a route that no longer exists.
+class HostInUse implements Exception {
+  const HostInUse(this.references);
+  final List<String> references;
+}
+
 /// Where each effective value came from: `''` is the built-in default, `global`, `group:<id>` or `host`.
 class ResolvedConnection {
   const ResolvedConnection({
@@ -435,7 +442,22 @@ class HostLibrary {
     return library.copyWith(hosts: i < 0 ? [...library.hosts, stored] : ([...library.hosts]..[i] = stored));
   }
 
-  HostLibrary withoutHost(HostId id) => copyWith(hosts: hosts.where((h) => h.id != id));
+  /// Who names [id] as a jump host: the global defaults, groups and hosts that set it themselves. A host that
+  /// only inherits the jump is covered by the layer it inherits from.
+  List<String> jumpReferences(HostId id) => [
+    if (defaults.jump.value == id) 'global',
+    for (final group in groups)
+      if (group.defaults.jump.value == id) groupPath(group.id),
+    for (final host in hosts)
+      if (host.id != id && (host.overrides ?? explicitConnection(host)).jump.value == id) host.title,
+  ];
+
+  /// Throws [HostInUse] while something still routes through it.
+  HostLibrary withoutHost(HostId id) {
+    final references = jumpReferences(id);
+    if (references.isNotEmpty) throw HostInUse(references);
+    return copyWith(hosts: hosts.where((h) => h.id != id));
+  }
 
   HostLibrary withGroup(HostGroup group) {
     final i = groups.indexWhere((g) => g.id == group.id);

@@ -12,10 +12,13 @@ import 'identities_panel.dart';
 import 'login_editor.dart';
 
 class _ProxyEditor extends StatefulWidget {
-  const _ProxyEditor({super.key, this.initial, this.enabled = true});
+  const _ProxyEditor({super.key, this.initial, this.enabled = true, this.onInvalid});
 
   final Proxy? initial;
   final bool enabled;
+
+  /// Called when a field fails validation, so the section holding it can be opened.
+  final VoidCallback? onInvalid;
 
   @override
   State<_ProxyEditor> createState() => _ProxyEditorState();
@@ -33,6 +36,11 @@ class _ProxyEditorState extends State<_ProxyEditor> {
     _portField.dispose();
     _user.dispose();
     super.dispose();
+  }
+
+  String? _checked(String? error) {
+    if (error != null) widget.onInvalid?.call();
+    return error;
   }
 
   Proxy? get value => _kind == null
@@ -62,14 +70,14 @@ class _ProxyEditorState extends State<_ProxyEditor> {
           TextFormField(
             controller: _address,
             enabled: enabled,
-            validator: (v) => requiredField(l, v),
+            validator: (v) => _checked(requiredField(l, v)),
             decoration: InputDecoration(labelText: l.proxyAddress),
           ),
           formGap,
           TextFormField(
             controller: _portField,
             enabled: enabled,
-            validator: (v) => portField(l, v),
+            validator: (v) => _checked(portField(l, v)),
             decoration: InputDecoration(labelText: l.port),
           ),
           formGap,
@@ -154,6 +162,7 @@ class ConnectionEditor extends ConsumerStatefulWidget {
 class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
   final _login = GlobalKey<LoginEditorState>();
   final _proxy = GlobalKey<_ProxyEditorState>();
+  final _route = ExpansibleController();
 
   ResolvedConnection get _inherited => widget.inherited;
   bool get _canLinkLogin => widget.loginOptional || _inherited.authentication != null;
@@ -181,6 +190,7 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
 
   @override
   void dispose() {
+    _route.dispose();
     _portField.dispose();
     super.dispose();
   }
@@ -214,6 +224,11 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
       legacy: _legacyLinked ? const OverrideValue.inherit() : OverrideValue.value(_legacy),
     );
   }
+
+  /// A section that is folded away cannot show what is wrong inside it, so a failed save opens it.
+  void _revealRoute() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted && !_route.isExpanded) _route.expand();
+  });
 
   void _unlinkPort() => _portField.text = '${_inherited.port}';
 
@@ -276,6 +291,7 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
 
     final effectiveJump = _jumpLinked ? _inherited.jump : _jump;
     final route = ExpansionTile(
+      controller: _route,
       title: Text(l.route),
       tilePadding: EdgeInsets.zero,
       maintainState: true,
@@ -321,7 +337,7 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
                     initial: _inherited.proxy,
                     enabled: false,
                   )
-                : _ProxyEditor(key: _proxy, initial: _proxySeed),
+                : _ProxyEditor(key: _proxy, initial: _proxySeed, onInvalid: _revealRoute),
           ),
         ],
         formGap,

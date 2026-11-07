@@ -200,6 +200,26 @@ void main() {
     });
   });
 
+  group('jump hosts', () {
+    test('a host used as a jump host cannot be deleted, and can once the reference is gone', () async {
+      await hosts.saveDefaults(_login('root'));
+      await hosts.save(_inheriting('bastion'));
+      await hosts.save(
+        _inheriting('inner').copyWith(overrides: () => _with(jump: const OverrideValue.value(HostId('bastion')))),
+      );
+
+      await expectLater(
+        hosts.delete(hosts.byId(const HostId('bastion'))!),
+        throwsA(isA<HostInUse>().having((e) => e.references, 'references', ['inner'])),
+      );
+      expect(hosts.byId(const HostId('bastion')), isNotNull);
+
+      await hosts.save(hosts.byId(const HostId('inner'))!.copyWith(overrides: () => const ConnectionOverrides()));
+      await hosts.delete(hosts.byId(const HostId('bastion'))!);
+      expect(hosts.byId(const HostId('bastion')), isNull);
+    });
+  });
+
   group('identities and keys', () {
     test('an identity in use cannot be removed, and each save raises its revision', () async {
       await hosts.saveIdentity(const HostIdentity(id: 'i1', label: 'ops', username: 'ops', policy: _password));

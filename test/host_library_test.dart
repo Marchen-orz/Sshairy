@@ -389,6 +389,41 @@ void main() {
     });
   });
 
+  group('removing a host', () {
+    ConnectionOverrides via(String jump) => _with(jump: OverrideValue.value(HostId(jump)));
+
+    test("a host that is somebody's jump host stays until nothing routes through it", () {
+      final library = HostLibrary(
+        defaults: _with(authentication: OverrideValue.value(_login('root'))),
+        groups: [_group('g', defaults: via('inner'))],
+        hosts: [
+          _host('bastion'),
+          _host('inner'),
+          _host('behind', overrides: via('bastion')),
+          _host('inherits', group: 'g'),
+          _host('loop', overrides: via('loop')),
+        ],
+      );
+      expect(library.jumpReferences(const HostId('bastion')), ['behind']);
+      expect(library.jumpReferences(const HostId('inner')), [
+        'g',
+      ], reason: 'a host that inherits is covered by its group');
+      expect(
+        () => library.withoutHost(const HostId('bastion')),
+        throwsA(isA<HostInUse>().having((e) => e.references, 'references', ['behind'])),
+      );
+      expect(() => library.withoutHost(const HostId('inner')), throwsA(isA<HostInUse>()));
+      expect(library.withoutHost(const HostId('behind')).hosts.map((h) => h.id.value), isNot(contains('behind')));
+      expect(library.withoutHost(const HostId('loop')).hosts, hasLength(4), reason: 'a host never holds itself');
+
+      final byDefault = HostLibrary(
+        defaults: _with(jump: const OverrideValue.value(HostId('bastion'))),
+        hosts: [_host('bastion')],
+      );
+      expect(byDefault.jumpReferences(const HostId('bastion')), ['global']);
+    });
+  });
+
   group('schema 1', () {
     final v1 = {
       'schemaVersion': 1,

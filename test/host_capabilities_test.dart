@@ -105,6 +105,17 @@ void main() {
       expect(container.read(hostsProvider).single.port, 22, reason: 'dissolving drops the group defaults');
     });
 
+    test('a host that others route through is refused by host.delete with inUse', () async {
+      await ok('hostDefaults.update', {'username': 'root'});
+      final bastion = await ok('host.create', {'address': 'b.example'});
+      final inner = await ok('host.create', {'address': 'i.example', 'jumpHostId': bastion['id']});
+      await refused('host.delete', {'hostId': bastion['id']}, 'inUse');
+      expect(container.read(hostsProvider), hasLength(2));
+
+      await ok('host.update', {'hostId': inner['id'], 'jumpHostId': ''});
+      expect(await call('host.delete', {'hostId': bastion['id']}), isA<Ok<Object?>>());
+    });
+
     test('a host cannot be created while no layer provides a login', () async {
       await refused('host.create', {'address': 'a.example'}, 'invalidArgument');
       expect(container.read(hostsProvider), isEmpty);

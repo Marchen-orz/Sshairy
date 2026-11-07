@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/double_click.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
@@ -718,7 +719,7 @@ class _PaneHeader extends StatelessWidget {
   }
 }
 
-class _Tab extends StatelessWidget {
+class _Tab extends StatefulWidget {
   const _Tab({
     required this.selected,
     required this.onTap,
@@ -738,22 +739,33 @@ class _Tab extends StatelessWidget {
   final VoidCallback? onClose;
 
   @override
+  State<_Tab> createState() => _TabState();
+}
+
+class _TabState extends State<_Tab> {
+  final _clicks = DoubleClick();
+
+  void _tap() {
+    widget.onTap();
+    if (widget.onDoubleTap != null && _clicks.hit) widget.onDoubleTap!();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(right: Space.xs),
       child: Center(
         child: Material(
-          color: selected ? scheme.surface : Colors.transparent,
+          color: widget.selected ? scheme.surface : Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Radii.control),
-            side: selected ? BorderSide(color: scheme.outlineVariant) : BorderSide.none,
+            side: widget.selected ? BorderSide(color: scheme.outlineVariant) : BorderSide.none,
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: onTap,
-            onDoubleTap: onDoubleTap,
-            onSecondaryTapUp: onSecondaryTap == null ? null : (d) => onSecondaryTap!(d.globalPosition),
+            onTap: _tap,
+            onSecondaryTapUp: widget.onSecondaryTap == null ? null : (d) => widget.onSecondaryTap!(d.globalPosition),
             child: ConstrainedBox(
               constraints: const BoxConstraints(minWidth: WorkspaceSize.tabMin, maxWidth: WorkspaceSize.tabMax),
               child: SizedBox(
@@ -763,14 +775,14 @@ class _Tab extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox.square(dimension: 16, child: Center(child: leading)),
+                      SizedBox.square(dimension: 16, child: Center(child: widget.leading)),
                       const SizedBox(width: Space.sm),
-                      Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      if (onClose != null) ...[
+                      Flexible(child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      if (widget.onClose != null) ...[
                         const SizedBox(width: Space.xs),
                         IconButton(
                           tooltip: AppLocalizations.of(context).close,
-                          onPressed: onClose,
+                          onPressed: widget.onClose,
                           constraints: const BoxConstraints.tightFor(width: 22, height: 22),
                           style: IconButton.styleFrom(minimumSize: const Size(22, 22), padding: EdgeInsets.zero),
                           icon: const Icon(Icons.close, size: 14),

@@ -38,6 +38,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String hostInUse(String names) {
+    return 'Jump host of $names';
+  }
+
+  @override
   String get save => 'Save';
 
   @override
@@ -428,9 +433,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String copyOf(String name) {
     return '$name copy';
   }
-
-  @override
-  String get renameGroup => 'Rename group';
 
   @override
   String get dissolveGroup => 'Dissolve group';

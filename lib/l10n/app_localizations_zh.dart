@@ -38,6 +38,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String hostInUse(String names) {
+    return '是 $names 的跳板';
+  }
+
+  @override
   String get save => '保存';
 
   @override
@@ -426,9 +431,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String copyOf(String name) {
     return '$name 副本';
   }
-
-  @override
-  String get renameGroup => '重命名分组';
 
   @override
   String get dissolveGroup => '解散分组';

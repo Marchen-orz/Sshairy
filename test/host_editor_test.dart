@@ -214,6 +214,31 @@ void main() {
     });
   });
 
+  group('route section', () {
+    testWidgets('a failed save opens the folded route section that holds the error', (tester) async {
+      await open(tester, const HostForm());
+      await tester.tap(find.text('Connection route'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Inherited from Default').at(1));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(DropdownButtonFormField<ProxyKind>, 'Proxy'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SOCKS5').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Connection route'));
+      await tester.pumpAndSettle();
+      expect(find.text('Proxy address'), findsNothing, reason: 'the section is folded');
+
+      await tester.enterText(field('Address'), 'a.example');
+      await tester.enterText(field('Username'), 'me');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Required'), findsOneWidget, reason: 'the proxy address is empty and now visible');
+      expect(hosts.library.hosts, isEmpty);
+    });
+  });
+
   group('groups, defaults and identities', () {
     testWidgets('a group left with every field linked stores no defaults of its own', (tester) async {
       await open(tester, const GroupPanel());
@@ -309,6 +334,65 @@ void main() {
   });
 
   group('vault', () {
+    testWidgets('a jump host cannot be deleted while a host routes through it', (tester) async {
+      await prepare(tester, () async {
+        await hosts.saveDefaults(_login('root'));
+        await hosts.save(const Host(id: HostId('bastion'), label: 'bastion', address: 'b.example', username: 'u'));
+        await hosts.save(
+          const Host(
+            id: HostId('inner'),
+            label: 'inner',
+            address: 'i.example',
+            username: 'u',
+            jumpHostId: HostId('bastion'),
+          ),
+        );
+      });
+      await pumpApp(
+        tester,
+        Scaffold(body: VaultPage(active: true, onConnect: (_) {})),
+        size: const Size(1200, 800),
+      );
+
+      // Hosts are listed by name, so the first card is the bastion.
+      await tester.tap(find.descendant(of: find.byType(Card).first, matching: find.byTooltip('More')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete'));
+      await until(tester, () => find.text('Jump host of inner').evaluate().isNotEmpty);
+      expect(hosts.byId(const HostId('bastion')), isNotNull);
+    });
+
+    testWidgets('a double click connects and a single one only focuses', (tester) async {
+      await prepare(tester, () async {
+        await hosts.saveDefaults(_login('root'));
+        await hosts.save(const Host(id: HostId('h'), label: 'h', address: 'h.example', username: 'u'));
+      });
+      final connected = <String>[];
+      await pumpApp(
+        tester,
+        Scaffold(body: VaultPage(active: true, onConnect: (h) => connected.add(h.id.value))),
+        size: const Size(1200, 800),
+      );
+
+      await tester.tap(find.text('u@h.example'));
+      await tester.pump();
+      expect(connected, isEmpty);
+      await tester.tap(find.text('u@h.example'));
+      await tester.pump();
+      expect(connected, ['h']);
+
+      await tester.runAsync(() => Future<void>.delayed(kDoubleTapTimeout + const Duration(milliseconds: 100)));
+      await tester.tap(find.text('u@h.example'));
+      await tester.pump();
+      expect(connected, ['h'], reason: 'the pair was used up and the next click starts a new one');
+      await tester.runAsync(() => Future<void>.delayed(kDoubleTapTimeout + const Duration(milliseconds: 100)));
+      await tester.tap(find.text('u@h.example'));
+      await tester.pump();
+      expect(connected, ['h'], reason: 'two clicks far apart are not a pair');
+    });
+
     testWidgets('empty groups show, and dissolving one that has defaults asks first', (tester) async {
       await prepare(tester, () async {
         await hosts.saveDefaults(_login('root'));

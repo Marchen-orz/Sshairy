@@ -146,6 +146,12 @@ abstract class AppLocalizations {
   /// **'Delete {name}?'**
   String deleteHost(String name);
 
+  /// No description provided for @hostInUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Jump host of {names}'**
+  String hostInUse(String names);
+
   /// No description provided for @save.
   ///
   /// In en, this message translates to:
@@ -889,12 +895,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{name} copy'**
   String copyOf(String name);
-
-  /// No description provided for @renameGroup.
-  ///
-  /// In en, this message translates to:
-  /// **'Rename group'**
-  String get renameGroup;
 
   /// No description provided for @dissolveGroup.
   ///

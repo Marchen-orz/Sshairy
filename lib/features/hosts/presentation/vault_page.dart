@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/double_click.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
@@ -69,7 +70,14 @@ class _VaultPageState extends ConsumerState<VaultPage> {
         ],
       ),
     );
-    if (ok ?? false) await _hosts.delete(host);
+    if (!(ok ?? false)) return;
+    try {
+      await _hosts.delete(host);
+    } on HostInUse catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.hostInUse(e.references.join(', ')))));
+      }
+    }
   }
 
   Future<void> _groupMenu(String path, Offset p) async {
@@ -315,7 +323,13 @@ class _HostTile extends StatefulWidget {
 
 class _HostTileState extends State<_HostTile> {
   final _focus = FocusNode();
+  final _clicks = DoubleClick();
   var _hovered = false, _focused = false;
+
+  void _tap() {
+    _focus.requestFocus();
+    if (_clicks.hit) widget.onConnect();
+  }
 
   @override
   void dispose() {
@@ -425,8 +439,7 @@ class _HostTileState extends State<_HostTile> {
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               focusNode: _focus,
-              onTap: _focus.requestFocus,
-              onDoubleTap: widget.onConnect,
+              onTap: _tap,
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: Space.md, vertical: widget.list ? Space.xs : 0),
                 child: content,

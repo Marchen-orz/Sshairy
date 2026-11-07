@@ -220,6 +220,7 @@ class HostsNotifier extends Notifier<List<Host>> {
   Future<void> saveDefaults(ConnectionOverrides defaults, {int? expectedRevision}) =>
       _apply((library) => library.withDefaults(defaults), expectedRevision: expectedRevision);
 
+  /// Throws [HostInUse] while another host, a group or the defaults still use it as their jump host.
   Future<void> delete(Host host) => _apply(
     (library) => library.hostById(host.id) == null ? null : library.withoutHost(host.id),
     routes: false,
