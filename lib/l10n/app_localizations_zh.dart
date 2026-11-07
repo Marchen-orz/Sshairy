@@ -1085,12 +1085,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get retryAction => '重试';
 
   @override
-  String get showHostTree => '显示主机';
-
-  @override
-  String get hideHostTree => '隐藏主机';
-
-  @override
   String get resizeToolPanel => '调整工具面板宽度';
 
   @override
@@ -1165,4 +1159,99 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get errSave => '无法保存，请检查数据目录和安全存储的访问权限。';
+
+  @override
+  String get monitor => '服务器监控';
+
+  @override
+  String get cpu => 'CPU';
+
+  @override
+  String get gpu => 'GPU';
+
+  @override
+  String get memory => '内存';
+
+  @override
+  String get swap => '交换';
+
+  @override
+  String get network => '网络';
+
+  @override
+  String get disks => '磁盘';
+
+  @override
+  String get load => '负载';
+
+  @override
+  String get uptime => '运行';
+
+  @override
+  String cores(int count) {
+    return '$count 核';
+  }
+
+  @override
+  String uptimeDays(int days, int hours) {
+    return '$days 天 $hours 小时';
+  }
+
+  @override
+  String uptimeHours(int hours, int minutes) {
+    return '$hours 小时 $minutes 分';
+  }
+
+  @override
+  String get monitorUnsupported => '这台服务器没有 /proc，无法显示监控';
+
+  @override
+  String get monitorFailed => '读取失败，正在重试';
+
+  @override
+  String get monitorOffline => '连接后显示';
+
+  @override
+  String get uiFont => '界面字体';
+
+  @override
+  String get uiFontSize => '界面字号';
+
+  @override
+  String get terminalFont => '终端字体';
+
+  @override
+  String get defaultFont => '默认';
+
+  @override
+  String get searchFonts => '搜索字体';
+
+  @override
+  String get workspaceSection => '工作区';
+
+  @override
+  String get filesDock => '文件面板位置';
+
+  @override
+  String get dockLeft => '左侧';
+
+  @override
+  String get dockRight => '右侧';
+
+  @override
+  String get dockBottom => '下方';
+
+  @override
+  String get dockPosition => '停靠位置';
+
+  @override
+  String get confirmQuit => '退出前确认';
+
+  @override
+  String get quitTitle => '退出 sshairy？';
+
+  @override
+  String sessionsOpen(int count) {
+    return '$count 个会话将断开';
+  }
 }

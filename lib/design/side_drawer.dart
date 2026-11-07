@@ -1,28 +1,64 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import 'popup.dart';
 import 'theme.dart';
 
-/// Edit drawer from docs/UI.md §1: slides in from the right, Esc or the barrier closes it.
-Future<T?> showSideDrawer<T>(BuildContext context, WidgetBuilder builder) => showGeneralDialog<T>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black26,
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (context, _, _) => Align(
-        alignment: Alignment.centerRight,
-        child: SizedBox(
-          width: 400,
-          height: double.infinity,
-          child: Material(
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: Padding(padding: const EdgeInsets.all(Space.xl), child: builder(context)),
+/// Edit drawer from docs/UI.md §1: a floating panel on the right; Esc or a click outside closes it.
+Future<T?> showSideDrawer<T>(BuildContext context, WidgetBuilder builder, {double width = WorkspaceSize.flyout}) =>
+    _showPanel<T>(context, builder, width: width, right: true);
+
+/// A secondary panel beside the icon rail, for keys, forwarding, snippets, trust records and settings.
+Future<T?> showFlyout<T>(BuildContext context, WidgetBuilder builder, {double width = WorkspaceSize.flyout}) =>
+    _showPanel<T>(context, builder, width: width, right: false);
+
+Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required double width, required bool right}) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black.withValues(alpha: right ? (dark ? .4 : .18) : (dark ? .25 : .08)),
+    transitionDuration: Motion.panel,
+    // Focus starts inside, so Escape closes the panel even when nothing in it takes focus.
+    pageBuilder: (context, _, _) => CallbackShortcuts(
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context)},
+      child: Focus(
+        autofocus: true,
+        child: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              // Panels stay below the title bar, leaving the tabs' row and the window buttons visible.
+              top: WorkspaceSize.titleBar + Space.sm,
+              bottom: Space.sm,
+              right: right ? Space.sm : 0,
+              left: right ? 0 : WorkspaceSize.rail + Space.xs,
+            ),
+            child: Align(
+              alignment: right ? Alignment.centerRight : Alignment.centerLeft,
+              child: SizedBox(
+                width: width,
+                height: double.infinity,
+                child: PopupSurface(
+                  radius: Radii.panel,
+                  padding: const EdgeInsets.all(20),
+                  child: Builder(builder: builder),
+                ),
+              ),
+            ),
           ),
         ),
       ),
-      transitionBuilder: (context, animation, _, child) => SlideTransition(
-        position: CurvedAnimation(parent: animation, curve: Curves.easeOut)
-            .drive(Tween(begin: const Offset(1, 0), end: Offset.zero)),
-        child: child,
-      ),
-    );
+    ),
+    transitionBuilder: (context, animation, _, child) {
+      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween(begin: Offset(right ? .06 : -.06, 0), end: Offset.zero).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}

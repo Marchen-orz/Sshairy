@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/configuration.dart';
+import 'package:sshairy/design/dialog.dart';
 import 'package:sshairy/foundation/json_file.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
 
@@ -60,7 +61,7 @@ void main() {
     expect(jsonDecode(File(file.path).readAsStringSync())['n'], 1);
     final protection = dir.listSync().where((entry) => entry.path.contains('.before-restore-')).single as File;
     expect(protection.readAsStringSync(), 'damaged');
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppDialog), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -78,7 +79,7 @@ void main() {
     expect(find.text('Could not restore the snapshot. The current file was preserved.'), findsOneWidget);
     await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppDialog), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

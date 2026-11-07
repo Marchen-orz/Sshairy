@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../application/host_trust.dart';
@@ -48,13 +49,13 @@ class _KnownHostsImportDialogState extends State<KnownHostsImportDialog> {
     final scheme = Theme.of(context).colorScheme;
     final p = widget.preview;
     final muted = Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
-    final mono = muted?.copyWith(fontFamily: 'Consolas');
+    final monoStyle = mono(context, muted);
 
     Widget summary(IconData icon, Color color, int count, String label) => Padding(
       padding: const EdgeInsets.only(bottom: Space.xs),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: color),
+          Icon(icon, size: 16, color: color),
           const SizedBox(width: Space.sm),
           SizedBox(
             width: 48,
@@ -84,7 +85,12 @@ class _KnownHostsImportDialogState extends State<KnownHostsImportDialog> {
 
     Widget fingerprint(String label, String value) => Tooltip(
       message: value,
-      child: Text(label.isEmpty ? value : '$label  $value', maxLines: 1, overflow: TextOverflow.ellipsis, style: mono),
+      child: Text(
+        label.isEmpty ? value : '$label  $value',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: monoStyle,
+      ),
     );
 
     final rows = <Widget Function()>[
@@ -111,7 +117,7 @@ class _KnownHostsImportDialogState extends State<KnownHostsImportDialog> {
                 [...details, ...lines, if (group.length > _shownLines) '…'].join('  '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: mono,
+                style: monoStyle,
               ),
             ]);
           },
@@ -122,10 +128,10 @@ class _KnownHostsImportDialogState extends State<KnownHostsImportDialog> {
         ]),
     ];
 
-    return AlertDialog(
+    return AppDialog(
+      width: 608,
       title: Text(l.importKnownHosts),
       content: SizedBox(
-        width: 560,
         height: 120 + (rows.length * 52.0).clamp(0.0, 300.0).toDouble(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

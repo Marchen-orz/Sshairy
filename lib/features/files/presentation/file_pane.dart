@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/controls.dart';
+import '../../../design/dialog.dart';
+import '../../../design/menu.dart';
+import '../../../design/popup.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/file_system.dart';
@@ -20,7 +24,7 @@ import '../application/transfers.dart';
 import '../domain/transfer.dart';
 import 'file_text.dart';
 
-const _rowHeight = 32.0;
+const _rowHeight = 28.0;
 
 /// Entries dragged out of a pane.
 class FileDrag {
@@ -114,12 +118,15 @@ class _FilePaneState extends ConsumerState<FilePane> {
   }
 
   Future<void> _newFolder() async {
-    final name = await showDialog<String>(context: context, builder: (_) => TextPromptDialog(title: l.newFolder));
+    final name = await showAppDialog<String>(
+      context: context,
+      builder: (_) => TextPromptDialog(title: l.newFolder),
+    );
     if (name != null && name.trim().isNotEmpty) _report(await b.mkdir(name));
   }
 
   Future<void> _rename(FileEntry e) async {
-    final name = await showDialog<String>(
+    final name = await showAppDialog<String>(
       context: context,
       builder: (_) => TextPromptDialog(title: l.rename, initial: e.name),
     );
@@ -138,9 +145,9 @@ class _FilePaneState extends ConsumerState<FilePane> {
       text = l.deleteOne(items.single.name);
     }
     if (!mounted) return;
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
         content: Text(text),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -156,7 +163,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
   }
 
   Future<void> _chmod(FileEntry e) async {
-    final mode = await showDialog<int>(context: context, builder: (_) => _ModeDialog(e.name, e.mode ?? 0));
+    final mode = await showAppDialog<int>(context: context, builder: (_) => _ModeDialog(e.name, e.mode ?? 0));
     if (mode != null) _report(await b.chmod(e, mode));
   }
 
@@ -165,20 +172,19 @@ class _FilePaneState extends ConsumerState<FilePane> {
     final items = _targets(clicked);
     final other = widget.other;
     final fs = b.fs;
-    PopupMenuEntry<VoidCallback> item(String label, IconData icon, VoidCallback? run) => PopupMenuItem(
-          value: run,
-          enabled: run != null,
-          height: 36,
-          child: Row(children: [Icon(icon, size: 16), const SizedBox(width: Space.md), Text(label)]),
-        );
+    AppMenuItem<VoidCallback> item(String label, IconData icon, VoidCallback? run) =>
+        AppMenuItem(value: run ?? () {}, label: label, icon: icon, enabled: run != null);
     final single = items.length == 1 ? items.single : null;
-    final run = await showMenu<VoidCallback>(
+    final run = await showAppMenu<VoidCallback>(
       context: context,
-      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      anchor: anchorAt(at),
       items: [
         if (single != null) ...[
-          item(single.browsable || b.local ? l.open : l.editFile, single.browsable ? Icons.folder_open_outlined : Icons.edit_outlined,
-              single.browsable || single.kind == FileKind.file ? () => _open(single) : null),
+          item(
+            single.browsable || b.local ? l.open : l.editFile,
+            single.browsable ? Icons.folder_open_outlined : Icons.edit_outlined,
+            single.browsable || single.kind == FileKind.file ? () => _open(single) : null,
+          ),
         ],
         if (items.isNotEmpty) ...[
           if (other != null)
@@ -188,9 +194,13 @@ class _FilePaneState extends ConsumerState<FilePane> {
           if (single != null) item(l.rename, Icons.drive_file_rename_outline, () => _rename(single)),
           if (single != null && fs != null && fs.canChmod && single.mode != null)
             item(l.permissions, Icons.lock_outline, () => _chmod(single)),
-          item(l.copyPath, Icons.content_copy, () => Clipboard.setData(ClipboardData(text: items.map(b.pathOf).join('\n')))),
+          item(
+            l.copyPath,
+            Icons.content_copy,
+            () => Clipboard.setData(ClipboardData(text: items.map(b.pathOf).join('\n'))),
+          ),
           item(l.delete, Icons.delete_outline, () => _delete(items)),
-          const PopupMenuDivider(),
+          const AppMenuDivider(),
         ],
         item(l.newFolder, Icons.create_new_folder_outlined, _newFolder),
         if (!b.local) item(l.uploadFiles, Icons.upload_outlined, _uploadPicked),
@@ -218,14 +228,16 @@ class _FilePaneState extends ConsumerState<FilePane> {
   }
 
   void _editPath() => setState(() {
-        _pathField.text = b.path;
-        _editingPath = true;
-      });
+    _pathField.text = b.path;
+    _editingPath = true;
+  });
 
   void _move(int delta, {required bool extend}) {
     final names = b.visible.map((e) => e.name).toList();
     if (names.isEmpty) return;
-    final current = b.selection.isEmpty ? -1 : names.indexOf(delta > 0 ? b.selection.last.name : b.selection.first.name);
+    final current = b.selection.isEmpty
+        ? -1
+        : names.indexOf(delta > 0 ? b.selection.last.name : b.selection.first.name);
     final next = (current + delta).clamp(0, names.length - 1);
     b.select(names[next], range: extend);
     _reveal(names[next]);
@@ -287,7 +299,10 @@ class _FilePaneState extends ConsumerState<FilePane> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     ref.listen(transfersProvider, (before, now) {
-      final running = {for (final t in before ?? const <Transfer>[]) if (t.state.active) t.id};
+      final running = {
+        for (final t in before ?? const <Transfer>[])
+          if (t.state.active) t.id,
+      };
       if (now.any((t) => running.contains(t.id) && !t.state.active && _shows(t.target))) b.refresh();
     });
     return ListenableBuilder(
@@ -306,11 +321,14 @@ class _FilePaneState extends ConsumerState<FilePane> {
                 width: 2,
               ),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _toolbar(context),
-              const Divider(),
-              Expanded(child: _body(context)),
-            ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _toolbar(context),
+                const Divider(),
+                Expanded(child: _body(context)),
+              ],
+            ),
           ),
         ),
       ),
@@ -320,54 +338,59 @@ class _FilePaneState extends ConsumerState<FilePane> {
   Widget _toolbar(BuildContext context) {
     final theme = Theme.of(context);
     Widget icon(String tip, IconData i, VoidCallback? run) => IconButton(
-          tooltip: tip,
-          onPressed: run,
-          constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-          style: IconButton.styleFrom(minimumSize: const Size(30, 30), padding: EdgeInsets.zero),
-          icon: Icon(i, size: 18),
-        );
+      tooltip: tip,
+      onPressed: run,
+      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+      style: IconButton.styleFrom(minimumSize: const Size(28, 28), padding: EdgeInsets.zero),
+      icon: Icon(i, size: 16),
+    );
     final ready = b.ready;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.xs),
-      child: Row(children: [
-        if (widget.pickHost) _HostPicker(browser: b),
-        icon(l.back, Icons.arrow_back, ready && b.canBack ? b.back : null),
-        icon(l.forward, Icons.arrow_forward, ready && b.canForward ? b.forward : null),
-        icon(l.up, Icons.arrow_upward, ready ? b.up : null),
-        const SizedBox(width: Space.xs),
-        Expanded(child: ready ? _path(theme) : const SizedBox.shrink()),
-        const SizedBox(width: Space.xs),
-        SizedBox(
-          width: 120,
-          height: 30,
-          child: TextField(
-            controller: _filter,
-            enabled: ready,
-            onChanged: b.setFilter,
-            style: theme.textTheme.bodySmall,
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: l.filter,
-              prefixIcon: const Icon(Icons.filter_list, size: 16),
-              prefixIconConstraints: const BoxConstraints(minWidth: 28),
-              contentPadding: const EdgeInsets.symmetric(vertical: Space.sm),
+      child: Row(
+        children: [
+          if (widget.pickHost) _HostPicker(browser: b),
+          icon(l.back, Icons.arrow_back, ready && b.canBack ? b.back : null),
+          icon(l.forward, Icons.arrow_forward, ready && b.canForward ? b.forward : null),
+          icon(l.up, Icons.arrow_upward, ready ? b.up : null),
+          const SizedBox(width: Space.xs),
+          Expanded(child: ready ? _path(theme) : const SizedBox.shrink()),
+          const SizedBox(width: Space.xs),
+          SizedBox(
+            width: 120,
+            height: 28,
+            child: TextField(
+              controller: _filter,
+              enabled: ready,
+              onChanged: b.setFilter,
+              style: theme.textTheme.bodySmall,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: l.filter,
+                prefixIcon: const Icon(Icons.filter_list, size: 16),
+                prefixIconConstraints: const BoxConstraints(minWidth: 28),
+                contentPadding: const EdgeInsets.symmetric(vertical: Space.sm),
+              ),
             ),
           ),
-        ),
-        icon(l.refresh, Icons.refresh, ready ? b.refresh : null),
-        PopupMenuButton<VoidCallback>(
-          tooltip: l.more,
-          enabled: ready,
-          icon: const Icon(Icons.more_horiz, size: 18),
-          onSelected: (run) => run(),
-          itemBuilder: (_) => [
-            PopupMenuItem(value: _newFolder, child: Text(l.newFolder)),
-            if (!b.local) PopupMenuItem(value: _uploadPicked, child: Text(l.uploadFiles)),
-            CheckedPopupMenuItem(checked: b.showHidden, value: b.toggleHidden, child: Text(l.hiddenFiles)),
-            PopupMenuItem(value: () => Clipboard.setData(ClipboardData(text: b.path)), child: Text(l.copyPath)),
-          ],
-        ),
-      ]),
+          icon(l.refresh, Icons.refresh, ready ? b.refresh : null),
+          AppMenuButton<VoidCallback>(
+            tooltip: l.more,
+            enabled: ready,
+            icon: const Icon(Icons.more_horiz, size: 16),
+            onSelected: (run) => run(),
+            items: () => [
+              AppMenuItem(value: _newFolder, label: l.newFolder),
+              if (!b.local) AppMenuItem(value: _uploadPicked, label: l.uploadFiles),
+              AppMenuItem(checked: b.showHidden, value: b.toggleHidden, label: l.hiddenFiles),
+              AppMenuItem(
+                value: () => Clipboard.setData(ClipboardData(text: b.path)),
+                label: l.copyPath,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -376,12 +399,15 @@ class _FilePaneState extends ConsumerState<FilePane> {
   Widget _path(ThemeData theme) {
     if (_editingPath) {
       return SizedBox(
-        height: 30,
+        height: 28,
         child: TextField(
           controller: _pathField,
           autofocus: true,
-          style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'Consolas'),
-          decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.sm)),
+          style: mono(context, theme.textTheme.bodySmall),
+          decoration: const InputDecoration(
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.sm),
+          ),
           onTapOutside: (_) => setState(() => _editingPath = false),
           onSubmitted: (text) async {
             final error = await b.goTyped(text);
@@ -393,39 +419,43 @@ class _FilePaneState extends ConsumerState<FilePane> {
       );
     }
     final crumbs = b.style.crumbs(b.path);
-    return Stack(children: [
-      Positioned.fill(
-        child: Tooltip(
-          message: l.editPath,
-          waitDuration: const Duration(milliseconds: 600),
-          child: InkWell(onTap: _editPath),
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Tooltip(
+            message: l.editPath,
+            waitDuration: const Duration(milliseconds: 600),
+            child: InkWell(onTap: _editPath),
+          ),
         ),
-      ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          child: Row(children: [
-            for (final (i, (label, path)) in crumbs.indexed) ...[
-              if (i > 0 && !(i == 1 && crumbs.first.$1 == '/'))
-                Icon(Icons.chevron_right, size: 14, color: theme.colorScheme.onSurfaceVariant),
-              InkWell(
-                borderRadius: BorderRadius.circular(Radii.control),
-                // The current folder has nowhere to go, so it edits the path; a long path may leave no empty space.
-                onTap: i == crumbs.length - 1 ? _editPath : () => b.go(path),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.xs),
-                  child: label.isEmpty
-                      ? Icon(Icons.computer, size: 16, color: theme.colorScheme.onSurfaceVariant)
-                      : Text(label, style: theme.textTheme.bodySmall),
-                ),
-              ),
-            ],
-          ]),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: Row(
+              children: [
+                for (final (i, (label, path)) in crumbs.indexed) ...[
+                  if (i > 0 && !(i == 1 && crumbs.first.$1 == '/'))
+                    Icon(Icons.chevron_right, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(Radii.control),
+                    // The current folder has nowhere to go, so it edits the path; a long path may leave no empty space.
+                    onTap: i == crumbs.length - 1 ? _editPath : () => b.go(path),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.xs),
+                      child: label.isEmpty
+                          ? Icon(Icons.computer, size: 16, color: theme.colorScheme.onSurfaceVariant)
+                          : Text(label, style: theme.textTheme.bodySmall),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _body(BuildContext context) {
@@ -439,71 +469,86 @@ class _FilePaneState extends ConsumerState<FilePane> {
       case BrowserStatus.failed || BrowserStatus.lost:
         final text = b.status == BrowserStatus.lost ? l.errFsLost : connectErrorText(l, b.connectError);
         return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(text, style: TextStyle(color: theme.colorScheme.error), textAlign: TextAlign.center),
-            const SizedBox(height: Space.md),
-            FilledButton.tonal(onPressed: () => b.reconnect(DialogPrompts(context)), child: Text(l.retry)),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                text,
+                style: TextStyle(color: theme.colorScheme.error),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: Space.md),
+              FilledButton.tonal(onPressed: () => b.reconnect(DialogPrompts(context)), child: Text(l.retry)),
+            ],
+          ),
         );
       case BrowserStatus.ready:
         break;
     }
     final items = b.visible;
-    return LayoutBuilder(builder: (context, box) {
-      final wide = box.maxWidth >= 560, medium = box.maxWidth >= 380;
-      final columns = _Columns(modified: medium, size: box.maxWidth >= 300, mode: wide && !b.local);
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (b.listError != null)
-          Container(
-            color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
-            padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
-            child: Text(fileError(l, b.listError), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
-          ),
-        _Header(browser: b, columns: columns),
-        if (b.loading) const LinearProgressIndicator(minHeight: 2) else const SizedBox(height: 2),
-        Expanded(
-          child: Focus(
-            focusNode: _list,
-            onKeyEvent: _onKey,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                _list.requestFocus();
-                b.clearSelection();
-              },
-              onSecondaryTapUp: (d) => _menu(d.globalPosition, null),
-              child: items.isEmpty
-                  ? Center(child: Text(l.emptyFolder, style: muted))
-                  : ListView.builder(
-                      controller: _scroll,
-                      itemExtent: _rowHeight,
-                      itemCount: items.length,
-                      itemBuilder: (context, i) {
-                        final e = items[i];
-                        final row = _Row(
-                          entry: e,
-                          columns: columns,
-                          selected: b.selected.contains(e.name),
-                          onTap: () => _tap(e),
-                          onDoubleTap: () => _open(e),
-                          onSecondaryTap: (p) => _menu(p, e),
-                        );
-                        return Draggable<FileDrag>(
-                          data: FileDrag(b, _targets(e)),
-                          dragAnchorStrategy: pointerDragAnchorStrategy,
-                          onDragStarted: () {
-                            if (!b.selected.contains(e.name)) b.select(e.name);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final wide = box.maxWidth >= 560, medium = box.maxWidth >= 380;
+        final columns = _Columns(modified: medium, size: box.maxWidth >= 300, mode: wide && !b.local);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (b.listError != null)
+              Container(
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
+                child: Text(
+                  fileError(l, b.listError),
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                ),
+              ),
+            _Header(browser: b, columns: columns),
+            if (b.loading) const LinearProgressIndicator(minHeight: 2) else const SizedBox(height: 2),
+            Expanded(
+              child: Focus(
+                focusNode: _list,
+                onKeyEvent: _onKey,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    _list.requestFocus();
+                    b.clearSelection();
+                  },
+                  onSecondaryTapUp: (d) => _menu(d.globalPosition, null),
+                  child: items.isEmpty
+                      ? Center(child: Text(l.emptyFolder, style: muted))
+                      : ListView.builder(
+                          controller: _scroll,
+                          itemExtent: _rowHeight,
+                          itemCount: items.length,
+                          itemBuilder: (context, i) {
+                            final e = items[i];
+                            final row = _Row(
+                              entry: e,
+                              columns: columns,
+                              selected: b.selected.contains(e.name),
+                              onTap: () => _tap(e),
+                              onDoubleTap: () => _open(e),
+                              onSecondaryTap: (p) => _menu(p, e),
+                            );
+                            return Draggable<FileDrag>(
+                              data: FileDrag(b, _targets(e)),
+                              dragAnchorStrategy: pointerDragAnchorStrategy,
+                              onDragStarted: () {
+                                if (!b.selected.contains(e.name)) b.select(e.name);
+                              },
+                              feedback: _DragFeedback(_targets(e)),
+                              child: row,
+                            );
                           },
-                          feedback: _DragFeedback(_targets(e)),
-                          child: row,
-                        );
-                      },
-                    ),
+                        ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ]);
-    });
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -516,7 +561,12 @@ class FilePaneSend {
   void run(TransferManager transfers) {
     final from = drag.from;
     if (drag.entries.isEmpty || !to.ready) return;
-    transfers.enqueue(from: from.host, paths: [for (final e in drag.entries) from.pathOf(e)], to: to.host, targetDir: to.path);
+    transfers.enqueue(
+      from: from.host,
+      paths: [for (final e in drag.entries) from.pathOf(e)],
+      to: to.host,
+      targetDir: to.path,
+    );
   }
 }
 
@@ -538,15 +588,24 @@ class _Header extends StatelessWidget {
     final style = theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     Widget cell(String text, FileSort? sort, {TextAlign align = TextAlign.start}) {
       final active = sort != null && browser.sort == sort;
-      final label = Row(mainAxisSize: MainAxisSize.min, children: [
-        Flexible(child: Text(text, style: style, overflow: TextOverflow.ellipsis)),
-        if (active) Icon(browser.descending ? Icons.arrow_downward : Icons.arrow_upward, size: 12, color: style?.color),
-      ]);
+      final label = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(text, style: style, overflow: TextOverflow.ellipsis),
+          ),
+          if (active)
+            Icon(browser.descending ? Icons.arrow_downward : Icons.arrow_upward, size: 12, color: style?.color),
+        ],
+      );
       return sort == null
           ? label
           : InkWell(
               onTap: () => browser.setSort(sort),
-              child: Align(alignment: align == TextAlign.end ? Alignment.centerRight : Alignment.centerLeft, child: label),
+              child: Align(
+                alignment: align == TextAlign.end ? Alignment.centerRight : Alignment.centerLeft,
+                child: label,
+              ),
             );
     }
 
@@ -554,16 +613,18 @@ class _Header extends StatelessWidget {
       height: 26,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: Space.md),
-        child: Row(children: [
-          const SizedBox(width: 24),
-          Expanded(child: cell(l.colName, FileSort.name)),
-          if (columns.modified) SizedBox(width: 128, child: cell(l.colModified, FileSort.modified)),
-          if (columns.size) SizedBox(width: 72, child: cell(l.colSize, FileSort.size, align: TextAlign.end)),
-          if (columns.mode) ...[
-            const SizedBox(width: Space.md),
-            SizedBox(width: 150, child: cell('${l.permissions} · ${l.colOwner}', null)),
+        child: Row(
+          children: [
+            const SizedBox(width: 24),
+            Expanded(child: cell(l.colName, FileSort.name)),
+            if (columns.modified) SizedBox(width: 128, child: cell(l.colModified, FileSort.modified)),
+            if (columns.size) SizedBox(width: 72, child: cell(l.colSize, FileSort.size, align: TextAlign.end)),
+            if (columns.mode) ...[
+              const SizedBox(width: Space.md),
+              SizedBox(width: 150, child: cell('${l.permissions} · ${l.colOwner}', null)),
+            ],
           ],
-        ]),
+        ),
       ),
     );
   }
@@ -606,33 +667,38 @@ class _Row extends StatelessWidget {
         onSecondaryTapUp: (d) => onSecondaryTap(d.globalPosition),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: Space.md),
-          child: Row(children: [
-            Icon(icon, size: 16, color: e.browsable ? scheme.primary : scheme.onSurfaceVariant),
-            const SizedBox(width: Space.sm),
-            Expanded(
-              child: Text(
-                e.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: e.hidden ? theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant) : null,
-              ),
-            ),
-            if (columns.modified) SizedBox(width: 128, child: Text(formatTime(e.modified), style: muted)),
-            if (columns.size)
-              SizedBox(width: 72, child: Text(e.isDir ? '' : formatSize(e.size), style: muted, textAlign: TextAlign.end)),
-            if (columns.mode) ...[
-              const SizedBox(width: Space.md),
-              SizedBox(
-                width: 150,
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: e.browsable ? scheme.primary : scheme.onSurfaceVariant),
+              const SizedBox(width: Space.sm),
+              Expanded(
                 child: Text(
-                  [formatMode(e.mode), ?e.owner].join(' '),
+                  e.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: muted?.copyWith(fontFamily: 'Consolas'),
+                  style: e.hidden ? theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant) : null,
                 ),
               ),
+              if (columns.modified) SizedBox(width: 128, child: Text(formatTime(e.modified), style: muted)),
+              if (columns.size)
+                SizedBox(
+                  width: 72,
+                  child: Text(e.isDir ? '' : formatSize(e.size), style: muted, textAlign: TextAlign.end),
+                ),
+              if (columns.mode) ...[
+                const SizedBox(width: Space.md),
+                SizedBox(
+                  width: 150,
+                  child: Text(
+                    [formatMode(e.mode), ?e.owner].join(' '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: mono(context, muted),
+                  ),
+                ),
+              ],
             ],
-          ]),
+          ),
         ),
       ),
     );
@@ -652,11 +718,14 @@ class _DragFeedback extends StatelessWidget {
       color: scheme.surfaceContainerHigh,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(entries.length == 1 && entries.single.isDir ? Icons.folder : Icons.description_outlined, size: 16),
-          const SizedBox(width: Space.sm),
-          Text(entries.length == 1 ? entries.single.name : '${entries.first.name} +${entries.length - 1}'),
-        ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(entries.length == 1 && entries.single.isDir ? Icons.folder : Icons.description_outlined, size: 16),
+            const SizedBox(width: Space.sm),
+            Text(entries.length == 1 ? entries.single.name : '${entries.first.name} +${entries.length - 1}'),
+          ],
+        ),
       ),
     );
   }
@@ -672,30 +741,31 @@ class _HostPicker extends ConsumerWidget {
     final l = AppLocalizations.of(context);
     final hosts = sortHosts(ref.watch(hostsProvider), recent: true);
     final current = browser.host;
-    return PopupMenuButton<Host?>(
-      tooltip: '',
+    return AppMenuButton<Host?>(
       onSelected: (h) => browser.open(h, DialogPrompts(context)),
-      itemBuilder: (_) => [
-        PopupMenuItem<Host?>(value: null, child: Row(children: [const Icon(Icons.computer, size: 16), const SizedBox(width: Space.sm), Text(l.thisComputer)])),
-        for (final h in hosts)
-          PopupMenuItem<Host?>(value: h, child: Row(children: [const Icon(Icons.dns_outlined, size: 16), const SizedBox(width: Space.sm), Text(h.title)])),
+      items: () => [
+        AppMenuItem(value: null, label: l.thisComputer, icon: Icons.computer),
+        for (final h in hosts) AppMenuItem(value: h, label: h.title, icon: Icons.dns_outlined),
       ],
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 160),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(current == null && browser.fs != null ? Icons.computer : Icons.dns_outlined, size: 16),
-            const SizedBox(width: Space.sm),
-            Flexible(
-              child: Text(
-                current?.title ?? (browser.fs != null ? l.thisComputer : '—'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(current == null && browser.fs != null ? Icons.computer : Icons.dns_outlined, size: 16),
+              const SizedBox(width: Space.sm),
+              Flexible(
+                child: Text(
+                  current?.title ?? (browser.fs != null ? l.thisComputer : '—'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-            const Icon(Icons.arrow_drop_down, size: 18),
-          ]),
+              const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
+            ],
+          ),
         ),
       ),
     );
@@ -711,23 +781,27 @@ class _HostList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final hosts = sortHosts(ref.watch(hostsProvider), recent: true);
-    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
-    return ListView(padding: const EdgeInsets.all(Space.md), children: [
-      ListTile(
-        dense: true,
-        leading: const Icon(Icons.computer),
-        title: Text(l.thisComputer),
-        onTap: () => browser.open(null, DialogPrompts(context)),
-      ),
-      for (final h in hosts)
+    final muted = Theme.of(context).textTheme.bodySmall
+        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    return ListView(
+      padding: const EdgeInsets.all(Space.md),
+      children: [
         ListTile(
           dense: true,
-          leading: const Icon(Icons.dns_outlined),
-          title: Text(h.title),
-          subtitle: Text(h.target, style: muted),
-          onTap: () => browser.open(h, DialogPrompts(context)),
+          leading: const Icon(Icons.computer),
+          title: Text(l.thisComputer),
+          onTap: () => browser.open(null, DialogPrompts(context)),
         ),
-    ]);
+        for (final h in hosts)
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.dns_outlined),
+            title: Text(h.title),
+            subtitle: Text(h.target, style: muted),
+            onTap: () => browser.open(h, DialogPrompts(context)),
+          ),
+      ],
+    );
   }
 }
 
@@ -746,35 +820,53 @@ class _ModeDialogState extends State<_ModeDialog> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final mono = Theme.of(context).textTheme.bodyMedium?.copyWith(fontFamily: 'Consolas');
+    final monoStyle = mono(context, Theme.of(context).textTheme.bodyMedium);
     final rows = [(l.permOwner, 6), (l.permGroup, 3), (l.permOthers, 0)];
     final cols = [(l.permRead, 2), (l.permWrite, 1), (l.permExecute, 0)];
-    return AlertDialog(
+    return AppDialog(
       title: Text(widget.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Table(
-          defaultColumnWidth: const IntrinsicColumnWidth(),
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          children: [
-            TableRow(children: [
-              const SizedBox.shrink(),
-              for (final (label, _) in cols)
-                Padding(padding: const EdgeInsets.symmetric(horizontal: Space.sm), child: Text(label, textAlign: TextAlign.center)),
-            ]),
-            for (final (label, shift) in rows)
-              TableRow(children: [
-                Padding(padding: const EdgeInsets.only(right: Space.md), child: Text(label)),
-                for (final (_, bit) in cols)
-                  Checkbox(
-                    value: _mode & (1 << (shift + bit)) != 0,
-                    onChanged: (v) => setState(() => _mode ^= 1 << (shift + bit)),
-                  ),
-              ]),
-          ],
-        ),
-        const SizedBox(height: Space.md),
-        Text('${(_mode & 0x1FF).toRadixString(8).padLeft(3, '0')}  ${formatMode(_mode)}', style: mono),
-      ]),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Table(
+            defaultColumnWidth: const IntrinsicColumnWidth(),
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: [
+              TableRow(
+                children: [
+                  const SizedBox.shrink(),
+                  for (final (label, _) in cols)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                      child: Text(label, textAlign: TextAlign.center),
+                    ),
+                ],
+              ),
+              for (final (label, shift) in rows)
+                TableRow(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: Space.md),
+                      child: Text(label),
+                    ),
+                    for (final (_, bit) in cols)
+                      Padding(
+                        padding: const EdgeInsets.all(Space.sm),
+                        child: Center(
+                          child: AppCheckbox(
+                            value: _mode & (1 << (shift + bit)) != 0,
+                            onChanged: (v) => setState(() => _mode ^= 1 << (shift + bit)),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: Space.md),
+          Text('${(_mode & 0x1FF).toRadixString(8).padLeft(3, '0')}  ${formatMode(_mode)}', style: monoStyle),
+        ],
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(l.cancel)),
         FilledButton(onPressed: () => Navigator.pop(context, _mode), child: Text(l.save)),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderException;
 
+import '../design/dialog.dart';
 import '../design/theme.dart';
 import '../features/connections/api.dart';
 import '../features/credentials/api.dart';
@@ -84,7 +85,7 @@ class ConfigurationErrorPage extends ConsumerWidget {
                     if (issue.recovery case final storage?)
                       TextButton(
                         onPressed: () async {
-                          final restored = await showDialog<bool>(
+                          final restored = await showAppDialog<bool>(
                             context: context,
                             barrierDismissible: false,
                             builder: (_) => _SnapshotDialog(storage),
@@ -154,40 +155,38 @@ class _SnapshotDialogState extends ConsumerState<_SnapshotDialog> {
     final dates = MaterialLocalizations.of(context);
     return PopScope(
       canPop: !_busy,
-      child: AlertDialog(
+      child: AppDialog(
+        width: 488,
         title: Text(l.configRestoreSnapshots),
-        content: SizedBox(
-          width: 440,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_snapshots.isEmpty) Text(l.configNoSnapshots),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final snapshot in _snapshots)
-                      ListTile(
-                        selected: identical(_selected, snapshot),
-                        leading: Icon(
-                          identical(_selected, snapshot) ? Icons.radio_button_checked : Icons.radio_button_off,
-                        ),
-                        title: Text(l.configSnapshotRevision(snapshot.revision)),
-                        subtitle: Text(
-                          '${dates.formatMediumDate(snapshot.created)} '
-                          '${dates.formatTimeOfDay(TimeOfDay.fromDateTime(snapshot.created))}',
-                        ),
-                        onTap: _busy ? null : () => setState(() => _selected = snapshot),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_snapshots.isEmpty) Text(l.configNoSnapshots),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final snapshot in _snapshots)
+                    ListTile(
+                      selected: identical(_selected, snapshot),
+                      leading: Icon(
+                        identical(_selected, snapshot) ? Icons.radio_button_checked : Icons.radio_button_off,
                       ),
-                  ],
-                ),
+                      title: Text(l.configSnapshotRevision(snapshot.revision)),
+                      subtitle: Text(
+                        '${dates.formatMediumDate(snapshot.created)} '
+                        '${dates.formatTimeOfDay(TimeOfDay.fromDateTime(snapshot.created))}',
+                      ),
+                      onTap: _busy ? null : () => setState(() => _selected = snapshot),
+                    ),
+                ],
               ),
-              if (_failed) ...[
-                const SizedBox(height: Space.md),
-                Text(l.configRestoreFailed, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-              ],
+            ),
+            if (_failed) ...[
+              const SizedBox(height: Space.md),
+              Text(l.configRestoreFailed, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
-          ),
+          ],
         ),
         actions: [
           TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(false), child: Text(l.cancel)),

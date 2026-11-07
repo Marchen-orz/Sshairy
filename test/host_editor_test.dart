@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
+import 'package:sshairy/design/select.dart';
 import 'package:sshairy/design/side_drawer.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
@@ -221,7 +222,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Inherited from Default').at(1));
       await tester.pump();
-      await tester.tap(find.widgetWithText(DropdownButtonFormField<ProxyKind>, 'Proxy'));
+      await tester.tap(find.widgetWithText(AppSelect<ProxyKind?>, 'Proxy'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('SOCKS5').last);
       await tester.pumpAndSettle();

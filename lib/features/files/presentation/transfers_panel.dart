@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/controls.dart';
+import '../../../design/dialog.dart';
+import '../../../design/menu.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
@@ -27,6 +30,7 @@ class DialogTransferUi implements TransferUi {
     final route = DialogRoute<ConflictAnswer>(
       context: context,
       barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? .5 : .28),
       builder: (_) => _ConflictDialog(transfer, conflict),
     );
     // Only this dialog closes; a password prompt opened above it meanwhile stays.
@@ -74,19 +78,19 @@ class _ConflictDialogState extends State<_ConflictDialog> {
       ConflictChoice.cancel => l.cancel,
     };
     final t = widget.transfer;
-    return AlertDialog(
+    return AppDialog(
+      width: 508,
       title: Text(switch (c.kind) {
         ConflictKind.file => l.conflictFile(name),
         ConflictKind.directory => l.conflictDir(name),
         ConflictKind.fileOnDir => l.conflictType(name),
       }),
-      content: SizedBox(
-        width: 460,
+      content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SelectableText(c.path, style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'Consolas')),
+            SelectableText(c.path, style: mono(context, theme.textTheme.bodySmall)),
             const SizedBox(height: Space.md),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,13 +101,7 @@ class _ConflictDialogState extends State<_ConflictDialog> {
               ],
             ),
             const SizedBox(height: Space.sm),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: _all,
-              onChanged: (v) => setState(() => _all = v ?? false),
-              title: Text(l.applyToAll),
-            ),
+            AppToggleRow(checkbox: true, value: _all, onChanged: (v) => setState(() => _all = v), title: l.applyToAll),
           ],
         ),
       ),
@@ -145,7 +143,7 @@ class TransfersPanel extends ConsumerWidget {
           children: [
             TextButton.icon(
               onPressed: transfers.any((t) => !t.state.active) ? manager.clearFinished : null,
-              icon: const Icon(Icons.clear_all, size: 18),
+              icon: const Icon(Icons.clear_all, size: 16),
               label: Text(l.clearFinished),
             ),
           ],
@@ -214,7 +212,7 @@ class _TransferRow extends ConsumerWidget {
         children: [
           Icon(
             t.upload ? Icons.upload : (t.download ? Icons.download : Icons.swap_horiz),
-            size: 18,
+            size: 16,
             color: t.state == TransferState.failed ? scheme.error : scheme.primary,
           ),
           const SizedBox(width: Space.md),
@@ -253,32 +251,32 @@ class _TransferRow extends ConsumerWidget {
             IconButton(
               tooltip: l.pause,
               onPressed: () => manager.pause(t.id),
-              icon: const Icon(Icons.pause_outlined, size: 18),
+              icon: const Icon(Icons.pause_outlined, size: 16),
             ),
           if (t.state == TransferState.paused ||
               (t.state == TransferState.interrupted && t.checkpoint?.settled == true))
             IconButton(
               tooltip: l.resume,
               onPressed: () => manager.resume(t.id),
-              icon: const Icon(Icons.play_arrow, size: 18),
+              icon: const Icon(Icons.play_arrow, size: 16),
             ),
           if (t.state.active && t.state != TransferState.paused)
             IconButton(
               tooltip: l.cancel,
               onPressed: () => manager.cancel(t.id),
-              icon: const Icon(Icons.close, size: 18),
+              icon: const Icon(Icons.close, size: 16),
             )
           else ...[
             if (t.state.canRetry)
               IconButton(
                 tooltip: l.retry,
                 onPressed: () => manager.retry(t.id),
-                icon: const Icon(Icons.refresh, size: 18),
+                icon: const Icon(Icons.refresh, size: 16),
               ),
             IconButton(
               tooltip: l.remove,
               onPressed: () => manager.remove(t.id),
-              icon: const Icon(Icons.delete_outline, size: 18),
+              icon: const Icon(Icons.delete_outline, size: 16),
             ),
           ],
         ],
@@ -301,9 +299,9 @@ class _EditRow extends ConsumerWidget {
 
     Future<void> finish() async {
       if (e.unsaved) {
-        final ok = await showDialog<bool>(
+        final ok = await showAppDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => AppDialog(
             content: Text(l.discardEdit(e.name)),
             actions: [
               TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -338,7 +336,7 @@ class _EditRow extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.edit_note, size: 20, color: warn ? scheme.error : scheme.primary),
+              Icon(Icons.edit_note, size: 18, color: warn ? scheme.error : scheme.primary),
               const SizedBox(width: Space.md),
               Expanded(
                 child: Column(
@@ -361,25 +359,25 @@ class _EditRow extends ConsumerWidget {
                 IconButton(
                   tooltip: l.upload,
                   onPressed: () => edits.upload(e.id),
-                  icon: const Icon(Icons.upload, size: 18),
+                  icon: const Icon(Icons.upload, size: 16),
                 ),
               IconButton(
                 tooltip: l.open,
                 onPressed: () => edits.reopen(e.id),
-                icon: const Icon(Icons.open_in_new, size: 18),
+                icon: const Icon(Icons.open_in_new, size: 16),
               ),
-              PopupMenuButton<VoidCallback>(
+              AppMenuButton<VoidCallback>(
                 tooltip: l.more,
-                icon: const Icon(Icons.more_horiz, size: 18),
+                icon: const Icon(Icons.more_horiz, size: 16),
                 onSelected: (run) => run(),
-                itemBuilder: (_) => [
-                  CheckedPopupMenuItem(
+                items: () => [
+                  AppMenuItem(
                     checked: e.autoUpload,
                     value: () => edits.setAutoUpload(e.id, !e.autoUpload),
-                    child: Text(l.autoUpload),
+                    label: l.autoUpload,
                   ),
-                  PopupMenuItem(value: () => edits.redownload(e.id), child: Text(l.redownload)),
-                  PopupMenuItem(value: finish, child: Text(l.finishEdit)),
+                  AppMenuItem(value: () => edits.redownload(e.id), label: l.redownload),
+                  AppMenuItem(value: finish, label: l.finishEdit),
                 ],
               ),
             ],

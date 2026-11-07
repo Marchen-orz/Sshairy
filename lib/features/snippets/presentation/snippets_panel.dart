@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../design/theme.dart';
+import '../../../design/dialog.dart';
 import '../../../design/side_drawer.dart';
+import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/cancellation.dart';
 import '../../../l10n/app_localizations.dart';
@@ -52,9 +53,9 @@ class _SnippetsPanelState extends ConsumerState<SnippetsPanel> {
 
   Future<void> _delete(Snippet snippet) async {
     final l = AppLocalizations.of(context);
-    final yes = await showDialog<bool>(
+    final yes = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
         content: Text(l.deleteOne(snippet.label)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -85,14 +86,14 @@ class _SnippetsPanelState extends ConsumerState<SnippetsPanel> {
               child: TextField(
                 autofocus: true,
                 onChanged: (s) => setState(() => _query = s),
-                decoration: InputDecoration(hintText: l.snippets, prefixIcon: const Icon(Icons.search)),
+                decoration: InputDecoration(hintText: l.snippets, prefixIcon: const Icon(Icons.search, size: 16)),
               ),
             ),
             IconButton(tooltip: l.newSnippet, onPressed: () => _edit(), icon: const Icon(Icons.add)),
             IconButton(tooltip: l.closePane, onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
           ],
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
         Expanded(
           child: items.isEmpty
               ? Center(child: Text(l.noMatches))
@@ -114,12 +115,12 @@ class _SnippetsPanelState extends ConsumerState<SnippetsPanel> {
                                   IconButton(
                                     tooltip: l.edit,
                                     onPressed: () => _edit(s),
-                                    icon: const Icon(Icons.edit_outlined, size: 18),
+                                    icon: const Icon(Icons.edit_outlined, size: 16),
                                   ),
                                   IconButton(
                                     tooltip: l.delete,
                                     onPressed: () => _delete(s),
-                                    icon: const Icon(Icons.delete_outline, size: 18),
+                                    icon: const Icon(Icons.delete_outline, size: 16),
                                   ),
                                 ],
                               ),

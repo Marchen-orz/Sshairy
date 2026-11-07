@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm2/xterm.dart';
 
+import '../../../design/menu.dart';
+import '../../../design/popup.dart';
 import '../../../design/terminal_palette.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';

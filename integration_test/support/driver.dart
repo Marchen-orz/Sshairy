@@ -11,6 +11,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
+import 'package:sshairy/design/controls.dart';
+import 'package:sshairy/design/dialog.dart';
 import 'package:sshairy/features/files/api.dart';
 import 'package:sshairy/features/files/presentation/file_pane.dart';
 import 'package:sshairy/features/settings/api.dart';
@@ -30,7 +32,7 @@ final boundary = GlobalKey();
 // ignore: avoid_print
 void report(String line) => print('REPORT $line');
 
-Finder inDialog(Finder f) => find.descendant(of: find.byType(AlertDialog), matching: f);
+Finder inDialog(Finder f) => find.descendant(of: find.byType(AppDialog), matching: f);
 
 extension AppDriver on WidgetTester {
   Future<void> until(String what, bool Function() done, {int seconds = 30}) async {
@@ -93,7 +95,7 @@ extension AppDriver on WidgetTester {
   Future<void> answerPassword(String value, {bool remember = false}) async {
     await untilFound(inDialog(find.byType(TextField)));
     await enterText(inDialog(find.byType(TextField)), value);
-    if (remember) await tapAndPump(inDialog(find.byType(Checkbox)));
+    if (remember) await tapAndPump(inDialog(find.byType(AppCheckbox)));
     await tapAndPump(inDialog(find.widgetWithText(FilledButton, 'Connect')));
   }
 
@@ -193,7 +195,7 @@ extension AppDriver on WidgetTester {
   /// Ready, after a password prompt when the files channel needed a connection of its own.
   Future<void> untilReady(int i) async {
     bool ready() => find.byType(FilePane).evaluate().length > i && widget<FilePane>(pane(i)).browser.ready;
-    await until('pane $i ready or asking', () => ready() || find.byType(AlertDialog).evaluate().isNotEmpty);
+    await until('pane $i ready or asking', () => ready() || find.byType(AppDialog).evaluate().isNotEmpty);
     if (!ready()) await answerPassword(password);
     await until('pane $i ready', ready);
   }

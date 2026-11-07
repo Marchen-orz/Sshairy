@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/dialog.dart';
 import '../../../design/double_click.dart';
+import '../../../design/menu.dart';
+import '../../../design/popup.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
@@ -56,9 +59,9 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 
   Future<void> _delete(Host host) async {
     final l = AppLocalizations.of(context);
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
         content: Text(l.deleteHost(host.title)),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -85,12 +88,12 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     final library = ref.read(hostLibraryProvider);
     final group = library.groupById(library.groupIdFor(path));
     if (group == null) return;
-    final run = await showMenu<VoidCallback>(
+    final run = await showAppMenu<VoidCallback>(
       context: context,
-      position: RelativeRect.fromLTRB(p.dx, p.dy, p.dx, p.dy),
+      anchor: anchorAt(p),
       items: [
-        PopupMenuItem(height: 36, value: () => _editGroup(group), child: Text(l.editGroup)),
-        PopupMenuItem(height: 36, value: () => _dissolve(group), child: Text(l.dissolveGroup)),
+        AppMenuItem(value: () => _editGroup(group), label: l.editGroup),
+        AppMenuItem(value: () => _dissolve(group), label: l.dissolveGroup),
       ],
     );
     run?.call();
@@ -112,9 +115,9 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     final path = library.groupPath(group.id);
     final parent = group.parentId == null ? '' : library.groupPath(group.parentId);
     if (!group.defaults.isEmpty) {
-      final ok = await showDialog<bool>(
+      final ok = await showAppDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => AppDialog(
           content: Text(l.dissolveGroupConfirm(path)),
           actions: [
             TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -175,7 +178,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     );
 
     return Padding(
-      padding: const EdgeInsets.all(Space.xl),
+      padding: const EdgeInsets.all(Space.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -186,7 +189,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                   controller: _search,
                   focusNode: _searchFocus,
                   autofocus: true,
-                  decoration: InputDecoration(hintText: l.searchHint, prefixIcon: const Icon(Icons.search, size: 20)),
+                  decoration: InputDecoration(hintText: l.searchHint, prefixIcon: const Icon(Icons.search, size: 16)),
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (_) => _submit(matches, quick),
                 ),
@@ -197,52 +200,43 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                 onPressed: () => ref
                     .read(settingsProvider.notifier)
                     .set(SettingKeys.hostView, view == HostView.grid ? HostView.list : HostView.grid),
-                icon: Icon(view == HostView.grid ? Icons.view_list_outlined : Icons.grid_view_outlined, size: 20),
+                icon: Icon(view == HostView.grid ? Icons.view_list_outlined : Icons.grid_view_outlined, size: 18),
               ),
-              PopupMenuButton<HostOrder>(
+              AppMenuButton<HostOrder>(
                 tooltip: order == HostOrder.name ? l.sortName : l.sortRecent,
-                icon: const Icon(Icons.sort, size: 20),
-                initialValue: order,
+                icon: const Icon(Icons.sort, size: 18),
                 onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.hostOrder, v),
-                itemBuilder: (_) => [
-                  CheckedPopupMenuItem(
-                    value: HostOrder.name,
-                    checked: order == HostOrder.name,
-                    child: Text(l.sortName),
-                  ),
-                  CheckedPopupMenuItem(
-                    value: HostOrder.recent,
-                    checked: order == HostOrder.recent,
-                    child: Text(l.sortRecent),
-                  ),
+                items: () => [
+                  AppMenuItem(value: HostOrder.name, label: l.sortName, checked: order == HostOrder.name),
+                  AppMenuItem(value: HostOrder.recent, label: l.sortRecent, checked: order == HostOrder.recent),
                 ],
               ),
               IconButton(
                 tooltip: l.newGroup,
                 onPressed: () => showSideDrawer<void>(context, (_) => GroupPanel(parent: _group)),
-                icon: const Icon(Icons.create_new_folder_outlined, size: 20),
+                icon: const Icon(Icons.create_new_folder_outlined, size: 18),
               ),
               IconButton(
                 tooltip: l.sshConfigImport,
                 onPressed: () => showSideDrawer<void>(context, (_) => const SshConfigImportPanel()),
-                icon: const Icon(Icons.download_outlined, size: 20),
+                icon: const Icon(Icons.download_outlined, size: 18),
               ),
-              PopupMenuButton<Widget>(
+              AppMenuButton<Widget>(
                 tooltip: l.more,
-                icon: const Icon(Icons.tune_outlined, size: 20),
+                icon: const Icon(Icons.tune_outlined, size: 18),
                 onSelected: (panel) => showSideDrawer<void>(context, (_) => panel),
-                itemBuilder: (_) => [
-                  PopupMenuItem(value: const DefaultsPanel(), child: Text(l.globalDefaults)),
-                  PopupMenuItem(value: const IdentitiesPanel(), child: Text(l.identities)),
-                  PopupMenuItem(value: const KeysPanel(), child: Text(l.keys)),
+                items: () => [
+                  AppMenuItem(value: const DefaultsPanel(), label: l.globalDefaults),
+                  AppMenuItem(value: const IdentitiesPanel(), label: l.identities),
+                  AppMenuItem(value: const KeysPanel(), label: l.keys),
                 ],
               ),
               const SizedBox(width: Space.sm),
-              FilledButton.icon(onPressed: _edit, icon: const Icon(Icons.add, size: 20), label: Text(l.newHost)),
+              FilledButton.icon(onPressed: _edit, icon: const Icon(Icons.add, size: 16), label: Text(l.newHost)),
             ],
           ),
           if (groups.isNotEmpty) ...[
-            const SizedBox(height: Space.lg),
+            const SizedBox(height: Space.md),
             SizedBox(
               height: 32,
               child: ListView(
@@ -269,17 +263,17 @@ class _VaultPageState extends ConsumerState<VaultPage> {
               ),
             ),
           ],
-          const SizedBox(height: Space.lg),
+          const SizedBox(height: Space.md),
           if (quick != null) ...[
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
                 onPressed: () => widget.onConnect(quick),
-                icon: const Icon(Icons.bolt, size: 20),
+                icon: const Icon(Icons.bolt, size: 16),
                 label: Text(l.connectTo(quick.target)),
               ),
             ),
-            const SizedBox(height: Space.lg),
+            const SizedBox(height: Space.md),
           ],
           Expanded(
             child: matches.isEmpty
@@ -293,9 +287,9 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                 : GridView.builder(
                     gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                       maxCrossAxisExtent: 320,
-                      mainAxisExtent: 76,
-                      crossAxisSpacing: Space.md,
-                      mainAxisSpacing: Space.md,
+                      mainAxisExtent: 64,
+                      crossAxisSpacing: Space.sm,
+                      mainAxisSpacing: Space.sm,
                     ),
                     itemCount: matches.length,
                     itemBuilder: (context, i) => tile(matches[i]),
@@ -359,13 +353,13 @@ class _HostTileState extends State<_HostTile> {
     );
     final target = Text(host.target, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted);
     final avatar = Container(
-      width: widget.list ? 32 : 40,
-      height: widget.list ? 32 : 40,
+      width: widget.list ? 24 : 32,
+      height: widget.list ? 24 : 32,
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(Radii.control),
       ),
-      child: Icon(Icons.dns_outlined, size: widget.list ? 18 : 20, color: theme.colorScheme.primary),
+      child: Icon(Icons.dns_outlined, size: widget.list ? 14 : 16, color: theme.colorScheme.primary),
     );
     // Stays in the tree when hidden: an open menu would otherwise lose its selection when focus moves.
     final actions = Opacity(
@@ -376,15 +370,13 @@ class _HostTileState extends State<_HostTile> {
           IconButton(
             tooltip: l.connect,
             onPressed: widget.onConnect,
-            icon: const Icon(Icons.play_arrow_outlined, size: 20),
+            icon: const Icon(Icons.play_arrow_outlined, size: 16),
           ),
-          PopupMenuButton<VoidCallback>(
+          AppMenuButton<VoidCallback>(
             tooltip: l.more,
-            icon: const Icon(Icons.more_horiz, size: 20),
+            icon: const Icon(Icons.more_horiz, size: 16),
             onSelected: (action) => action(),
-            itemBuilder: (_) => [
-              for (final (label, run) in widget.actions) PopupMenuItem(value: run, child: Text(label)),
-            ],
+            items: () => [for (final (label, run) in widget.actions) AppMenuItem(value: run, label: label)],
           ),
         ],
       ),
@@ -441,8 +433,8 @@ class _HostTileState extends State<_HostTile> {
               focusNode: _focus,
               onTap: _tap,
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: Space.md, vertical: widget.list ? Space.xs : 0),
-                child: content,
+                padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                child: widget.list ? SizedBox(height: WorkspaceSize.listRow, child: content) : content,
               ),
             ),
           ),

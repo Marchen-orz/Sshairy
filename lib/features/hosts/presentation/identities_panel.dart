@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/dialog.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
@@ -21,9 +22,9 @@ class IdentitiesPanel extends ConsumerWidget {
     final library = ref.watch(hostLibraryProvider);
 
     Future<void> remove(HostIdentity identity) async {
-      final ok = await showDialog<bool>(
+      final ok = await showAppDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => AppDialog(
           content: Text(l.deleteIdentity(identity.label)),
           actions: [
             TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -53,12 +54,12 @@ class IdentitiesPanel extends ConsumerWidget {
           children: [
             TextButton.icon(
               onPressed: () => showSideDrawer<void>(context, (_) => const IdentityForm()),
-              icon: const Icon(Icons.add, size: 18),
+              icon: const Icon(Icons.add, size: 16),
               label: Text(l.newIdentity),
             ),
           ],
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
         if (library.identities.isEmpty) Text(l.none, style: muted),
         Expanded(
           child: ListView(
@@ -68,10 +69,10 @@ class IdentitiesPanel extends ConsumerWidget {
                   builder: (context) {
                     final users = library.identityReferences(identity.id);
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: Space.md),
+                      padding: const EdgeInsets.only(bottom: Space.sm),
                       child: Row(
                         children: [
-                          Icon(Icons.badge_outlined, size: 20, color: theme.colorScheme.primary),
+                          Icon(Icons.badge_outlined, size: 18, color: theme.colorScheme.primary),
                           const SizedBox(width: Space.md),
                           Expanded(
                             child: Column(
@@ -92,13 +93,13 @@ class IdentitiesPanel extends ConsumerWidget {
                           IconButton(
                             tooltip: l.edit,
                             onPressed: () => showSideDrawer<void>(context, (_) => IdentityForm(identity: identity)),
-                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            icon: const Icon(Icons.edit_outlined, size: 16),
                           ),
                           // An identity something still uses cannot go: the host would be left without a login.
                           IconButton(
                             tooltip: l.delete,
                             onPressed: users.isEmpty ? () => remove(identity) : null,
-                            icon: const Icon(Icons.delete_outline, size: 18),
+                            icon: const Icon(Icons.delete_outline, size: 16),
                           ),
                         ],
                       ),

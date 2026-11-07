@@ -17,6 +17,8 @@ enum HostView { grid, list }
 
 enum HostOrder { name, recent }
 
+enum FilesDock { left, right, bottom }
+
 /// What the runner started with; null where the runner does not choose.
 final runningRendererProvider = Provider<Renderer?>((_) => null);
 
@@ -116,6 +118,24 @@ class OptionalChoice extends SettingDef<String?> {
   };
 }
 
+/// A font family name, or null for the default. Only the name is stored; a font that is not installed falls back.
+class FontSetting extends SettingDef<String?> {
+  const FontSetting(String key, {super.apply, super.agentExposed}) : super(key, null);
+
+  static final _control = RegExp(r'[\x00-\x1f\x7f]');
+
+  @override
+  bool accepts(Object? raw) =>
+      raw == null || (raw is String && raw.trim().isNotEmpty && raw.length <= 64 && !_control.hasMatch(raw));
+  @override
+  String? decode(Object? raw) => raw as String?;
+  @override
+  Map<String, Object?> get schema => {
+    'type': ['string', 'null'],
+    'maxLength': 64,
+  };
+}
+
 abstract final class SettingKeys {
   static const themeMode = EnumSetting('themeMode', ThemeMode.system, ThemeMode.values);
   static const accent = EnumSetting('accent', Accent.blue, Accent.values);
@@ -128,6 +148,12 @@ abstract final class SettingKeys {
     agentExposed: false,
   );
 
+  static const uiFontFamily = FontSetting('uiFontFamily');
+  static const uiFontSize = DoubleSetting('uiFontSize', AppFonts.uiSize, AppFonts.uiSizeMin, AppFonts.uiSizeMax);
+
+  static const terminalFontFamily = FontSetting('terminalFontFamily');
+
+  /// The terminal's font size; the key predates the interface size.
   static const fontSize = DoubleSetting('fontSize', 14, 8, 32);
   static const scrollback = IntSetting('scrollback', 2000, 500, 20000, apply: ApplyMode.newSessions);
   static const cursorShape = EnumSetting('cursorShape', CursorShape.block, CursorShape.values);
@@ -145,6 +171,12 @@ abstract final class SettingKeys {
   static const hostView = EnumSetting('hostView', HostView.grid, HostView.values);
   static const hostOrder = EnumSetting('hostOrder', HostOrder.name, HostOrder.values);
 
+  static const showMonitor = BoolSetting('showMonitor', true);
+  static const filesDock = EnumSetting('filesDock', FilesDock.right, FilesDock.values);
+
+  /// Asks before every quit; running transfers, unsaved edits and tunnels ask regardless.
+  static const confirmQuit = BoolSetting('confirmQuit', true, agentExposed: false);
+
   static const showHidden = BoolSetting('showHidden', false);
   static const transferConcurrency = IntSetting('transferConcurrency', 3, 1, 8);
 
@@ -153,6 +185,9 @@ abstract final class SettingKeys {
     accent,
     locale,
     renderer,
+    uiFontFamily,
+    uiFontSize,
+    terminalFontFamily,
     fontSize,
     scrollback,
     cursorShape,
@@ -165,6 +200,9 @@ abstract final class SettingKeys {
     autoReconnect,
     hostView,
     hostOrder,
+    showMonitor,
+    filesDock,
+    confirmQuit,
     showHidden,
     transferConcurrency,
   ];
@@ -185,6 +223,9 @@ class Settings {
   String? get locale => get(SettingKeys.locale);
   Renderer get renderer => get(SettingKeys.renderer);
   double get fontSize => get(SettingKeys.fontSize);
+  String? get uiFontFamily => get(SettingKeys.uiFontFamily);
+  double get uiFontSize => get(SettingKeys.uiFontSize);
+  String? get terminalFontFamily => get(SettingKeys.terminalFontFamily);
 
   Settings copyWith(Map<String, Object?> decoded) => Settings({..._values, ...decoded});
 

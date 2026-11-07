@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/controls.dart';
+import '../../../design/select.dart';
 import '../../../design/side_drawer.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
@@ -54,14 +56,13 @@ class _ProxyEditorState extends State<_ProxyEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DropdownButtonFormField<ProxyKind>(
-          initialValue: _kind,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: l.proxy),
-          items: [
-            DropdownMenuItem(value: null, child: Text(l.directConnection)),
-            const DropdownMenuItem(value: ProxyKind.socks5, child: Text('SOCKS5')),
-            const DropdownMenuItem(value: ProxyKind.http, child: Text('HTTP CONNECT')),
+        AppSelect<ProxyKind?>(
+          value: _kind,
+          label: l.proxy,
+          options: [
+            AppOption(null, l.directConnection),
+            const AppOption(ProxyKind.socks5, 'SOCKS5'),
+            const AppOption(ProxyKind.http, 'HTTP CONNECT'),
           ],
           onChanged: enabled ? (v) => setState(() => _kind = v) : null,
         ),
@@ -120,7 +121,7 @@ class _Inheritable extends StatelessWidget {
           onPressed: canLink ? () => onChanged(!linked) : null,
           icon: Icon(
             linked ? Icons.link : Icons.link_off,
-            size: 18,
+            size: 16,
             color: linked ? scheme.primary : scheme.onSurfaceVariant,
           ),
         ),
@@ -256,20 +257,15 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
     final identityId = _loginLinked ? inheritedIdentity : _identityId;
 
     Widget identityPicker() => Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: DropdownButtonFormField<String?>(
-            key: ValueKey('identity-$identityId-$_loginLinked'),
-            initialValue: identityId,
-            isExpanded: true,
-            decoration: InputDecoration(labelText: l.identity),
-            items: [
-              DropdownMenuItem(value: null, child: Text(l.customLogin)),
-              for (final identity in identities)
-                DropdownMenuItem(
-                  value: identity.id,
-                  child: Text('${identity.label} · ${identity.username}', overflow: TextOverflow.ellipsis),
-                ),
+          child: AppSelect<String?>(
+            value: identityId,
+            label: l.identity,
+            options: [
+              AppOption(null, l.customLogin),
+              for (final identity in identities) AppOption(identity.id, '${identity.label} · ${identity.username}'),
             ],
             onChanged: _loginLinked
                 ? null
@@ -284,7 +280,7 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
         IconButton(
           tooltip: l.identities,
           onPressed: _loginLinked ? null : () => showSideDrawer<void>(context, (_) => const IdentitiesPanel()),
-          icon: const Icon(Icons.badge_outlined, size: 20),
+          icon: const Icon(Icons.badge_outlined, size: 18),
         ),
       ],
     );
@@ -304,20 +300,14 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
             _jumpLinked = linked;
             if (!linked) _jump = _inherited.jump;
           }),
-          child: DropdownButtonFormField<HostId?>(
-            key: ValueKey('jump-$effectiveJump-$_jumpLinked'),
-            initialValue: effectiveJump,
-            isExpanded: true,
-            decoration: InputDecoration(labelText: l.jumpHost),
-            items: [
-              DropdownMenuItem(value: null, child: Text(l.directConnection)),
+          child: AppSelect<HostId?>(
+            value: effectiveJump,
+            label: l.jumpHost,
+            options: [
+              AppOption(null, l.directConnection),
               if (effectiveJump != null && (effectiveJump == widget.self || hosts.every((h) => h.id != effectiveJump)))
-                DropdownMenuItem(value: effectiveJump, child: Text(l.errRouteMissing)),
-              for (final h in hosts.where((h) => h.id != widget.self))
-                DropdownMenuItem(
-                  value: h.id,
-                  child: Text(h.title, overflow: TextOverflow.ellipsis),
-                ),
+                AppOption(effectiveJump, l.errRouteMissing),
+              for (final h in hosts.where((h) => h.id != widget.self)) AppOption(h.id, h.title),
             ],
             onChanged: _jumpLinked ? null : (v) => setState(() => _jump = v),
           ),
@@ -348,10 +338,9 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
             _legacyLinked = linked;
             if (!linked) _legacy = _inherited.legacy;
           }),
-          child: SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l.legacyAlgorithms),
-            subtitle: Text(l.legacyAlgorithmsHint),
+          child: AppToggleRow(
+            title: l.legacyAlgorithms,
+            subtitle: l.legacyAlgorithmsHint,
             value: _legacyLinked ? _inherited.legacy : _legacy,
             onChanged: _legacyLinked ? null : (v) => setState(() => _legacy = v),
           ),

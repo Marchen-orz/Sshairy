@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/controls.dart';
+import '../../../design/select.dart';
 import '../../../design/side_drawer.dart';
+import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../credentials/api.dart';
 import '../domain/host.dart';
@@ -78,28 +81,27 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
           decoration: InputDecoration(labelText: l.username),
         ),
         formGap,
-        DropdownButtonFormField<_AuthMode>(
-          initialValue: _mode,
-          isExpanded: true,
-          items: [
-            DropdownMenuItem(value: _AuthMode.password, child: Text(l.password)),
-            DropdownMenuItem(value: _AuthMode.key, child: Text(l.privateKey)),
-            DropdownMenuItem(value: _AuthMode.keyPassword, child: Text(l.keyThenPassword)),
+        AppSelect<_AuthMode>(
+          value: _mode,
+          options: [
+            AppOption(_AuthMode.password, l.password),
+            AppOption(_AuthMode.key, l.privateKey),
+            AppOption(_AuthMode.keyPassword, l.keyThenPassword),
           ],
-          onChanged: enabled ? (v) => setState(() => _mode = v!) : null,
+          onChanged: enabled ? (v) => setState(() => _mode = v) : null,
         ),
         if (_mode != _AuthMode.password) ...[
           formGap,
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: DropdownButtonFormField<String?>(
-                  initialValue: _keyId,
-                  isExpanded: true,
-                  decoration: InputDecoration(labelText: l.privateKey),
-                  items: [
-                    for (final k in keys) DropdownMenuItem(value: k.id, child: Text('${k.label} · ${k.algorithm}')),
-                    DropdownMenuItem(value: null, child: Text(l.keyFile)),
+                child: AppSelect<String?>(
+                  value: _keyId,
+                  label: l.privateKey,
+                  options: [
+                    for (final k in keys) AppOption(k.id, '${k.label} · ${k.algorithm}'),
+                    AppOption(null, l.keyFile),
                   ],
                   onChanged: enabled ? (v) => setState(() => _keyId = v) : null,
                 ),
@@ -107,7 +109,7 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
               IconButton(
                 tooltip: l.keys,
                 onPressed: enabled ? () => showSideDrawer<void>(context, (_) => const KeysPanel()) : null,
-                icon: const Icon(Icons.key_outlined, size: 20),
+                icon: const Icon(Icons.key_outlined, size: 18),
               ),
             ],
           ),
@@ -121,9 +123,9 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
             ),
           ],
         ],
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(l.allowInteractive),
+        const SizedBox(height: Space.sm),
+        AppToggleRow(
+          title: l.allowInteractive,
           value: _interactive,
           onChanged: enabled ? (v) => setState(() => _interactive = v) : null,
         ),

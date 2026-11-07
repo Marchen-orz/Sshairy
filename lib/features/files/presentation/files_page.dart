@@ -41,11 +41,18 @@ class _FilesPageState extends ConsumerState<FilesPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: FilePane(browser: _left, other: _right, pickHost: true)),
-        const VerticalDivider(width: 1),
-        Expanded(child: FilePane(browser: _right, other: _left, pickHost: true)),
-      ]);
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Expanded(
+        child: FilePane(browser: _left, other: _right, pickHost: true),
+      ),
+      const VerticalDivider(width: 1),
+      Expanded(
+        child: FilePane(browser: _right, other: _left, pickHost: true),
+      ),
+    ],
+  );
 }
 
 /// The terminal's side panel: one remote pane on [host], reopened when the focused pane moves to another host.
@@ -101,11 +108,7 @@ class TransfersButton extends ConsumerWidget {
     return IconButton(
       tooltip: l.transfers,
       onPressed: () => showTransfers(context),
-      icon: Badge(
-        isLabelVisible: active > 0,
-        label: Text('$active'),
-        child: const Icon(Icons.swap_vert, size: 18),
-      ),
+      icon: Badge(isLabelVisible: active > 0, label: Text('$active'), child: const Icon(Icons.swap_vert, size: 16)),
     );
   }
 }

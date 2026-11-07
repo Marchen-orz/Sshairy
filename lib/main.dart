@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,10 +25,14 @@ Future<void> main(List<String> args) async {
   await dir.create(recursive: true);
   final diagnostics = DiagnosticLog('${dir.path}/logs');
   diagnostics.record(DiagnosticArea.application, DiagnosticAction.start, DiagnosticOutcome.started);
-  FlutterError.onError = (_) =>
-      diagnostics.record(DiagnosticArea.application, DiagnosticAction.uncaught, DiagnosticOutcome.failed);
-  PlatformDispatcher.instance.onError = (_, _) {
+  // The log keeps no error text (docs/DIAGNOSTICS.md); a debug run still shows it on the console.
+  FlutterError.onError = (details) {
     diagnostics.record(DiagnosticArea.application, DiagnosticAction.uncaught, DiagnosticOutcome.failed);
+    if (kDebugMode) FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    diagnostics.record(DiagnosticArea.application, DiagnosticAction.uncaught, DiagnosticOutcome.failed);
+    if (kDebugMode) debugPrint('uncaught: $error\n$stack');
     return true;
   };
   final renderer =
@@ -57,8 +62,20 @@ class SshairyApp extends ConsumerWidget {
     return MaterialApp(
       title: 'sshairy',
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light, settings.accent),
-      darkTheme: buildTheme(Brightness.dark, settings.accent),
+      theme: buildTheme(
+        Brightness.light,
+        settings.accent,
+        settings.uiFontSize,
+        settings.uiFontFamily,
+        settings.terminalFontFamily,
+      ),
+      darkTheme: buildTheme(
+        Brightness.dark,
+        settings.accent,
+        settings.uiFontSize,
+        settings.uiFontFamily,
+        settings.terminalFontFamily,
+      ),
       themeMode: settings.themeMode,
       locale: settings.locale == null ? null : Locale(settings.locale!),
       localizationsDelegates: const [

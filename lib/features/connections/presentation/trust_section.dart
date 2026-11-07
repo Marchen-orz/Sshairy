@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
@@ -38,7 +39,7 @@ class _TrustedKeysState extends ConsumerState<_TrustedKeys> {
       case Ok(:final value):
         final preview = await importer.preview(value);
         if (!mounted) return;
-        final result = await showDialog<TrustImportResult>(
+        final result = await showAppDialog<TrustImportResult>(
           context: context,
           barrierDismissible: false,
           builder: (_) => KnownHostsImportDialog(preview: preview, commit: () => importer.commit(preview)),
@@ -59,45 +60,55 @@ class _TrustedKeysState extends ConsumerState<_TrustedKeys> {
       for (final MapEntry(key: endpoint, value: types) in trust.entries.entries)
         for (final MapEntry(key: type, value: fingerprint) in types.entries) (endpoint, type, fingerprint),
     ]..sort((a, b) => a.$1.compareTo(b.$1));
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        Expanded(child: Text(l.trustedKeys)),
-        IconButton(
-          tooltip: l.importKnownHosts,
-          onPressed: _import,
-          icon: const Icon(Icons.file_upload_outlined, size: 18),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(l.trustedKeys)),
+            IconButton(
+              tooltip: l.importKnownHosts,
+              onPressed: _import,
+              icon: const Icon(Icons.file_upload_outlined, size: 16),
+            ),
+          ],
         ),
-      ]),
-      const SizedBox(height: Space.sm),
-      if (keys.isEmpty) Text(l.none, style: muted),
-      for (final (endpoint, type, fingerprint) in keys)
-        Padding(
-          padding: const EdgeInsets.only(bottom: Space.sm),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(endpoint, maxLines: 1, overflow: TextOverflow.ellipsis),
-                Tooltip(
-                  message: fingerprint,
-                  child: Text(
-                    '$type  $fingerprint',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: muted?.copyWith(fontFamily: 'Consolas'),
+        const SizedBox(height: Space.sm),
+        if (keys.isEmpty) Text(l.none, style: muted),
+        for (final (endpoint, type, fingerprint) in keys)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Space.sm),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(endpoint, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Tooltip(
+                        message: fingerprint,
+                        child: Text(
+                          '$type  $fingerprint',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: mono(context, muted),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ]),
+                IconButton(
+                  tooltip: l.remove,
+                  onPressed: () async {
+                    await trust.forget(endpoint, type);
+                    if (mounted) setState(() {});
+                  },
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                ),
+              ],
             ),
-            IconButton(
-              tooltip: l.remove,
-              onPressed: () async {
-                await trust.forget(endpoint, type);
-                if (mounted) setState(() {});
-              },
-              icon: const Icon(Icons.delete_outline, size: 18),
-            ),
-          ]),
-        ),
-    ]);
+          ),
+      ],
+    );
   }
 }

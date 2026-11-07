@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/controls.dart';
+import '../../../design/dialog.dart';
+import '../../../design/menu.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
@@ -24,9 +27,9 @@ class KeysPanel extends ConsumerWidget {
     final notifier = ref.read(keysProvider.notifier);
 
     Future<void> remove(SshKey key) async {
-      final ok = await showDialog<bool>(
+      final ok = await showAppDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => AppDialog(
           content: Text(l.deleteKey(key.label)),
           actions: [
             TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -49,7 +52,7 @@ class KeysPanel extends ConsumerWidget {
     }
 
     Future<void> rename(SshKey key) async {
-      final label = await showDialog<String>(
+      final label = await showAppDialog<String>(
         context: context,
         builder: (_) => TextPromptDialog(title: l.rename, initial: key.label),
       );
@@ -57,7 +60,7 @@ class KeysPanel extends ConsumerWidget {
     }
 
     Future<void> generate() async {
-      final label = await showDialog<String>(
+      final label = await showAppDialog<String>(
         context: context,
         builder: (_) => TextPromptDialog(title: l.generateKey, hint: l.label),
       );
@@ -71,15 +74,15 @@ class KeysPanel extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             TextButton.icon(
-              onPressed: () => showDialog<void>(context: context, builder: (_) => const _ImportDialog()),
-              icon: const Icon(Icons.file_download_outlined, size: 18),
+              onPressed: () => showAppDialog<void>(context: context, builder: (_) => const _ImportDialog()),
+              icon: const Icon(Icons.file_download_outlined, size: 16),
               label: Text(l.importKey),
             ),
             const SizedBox(width: Space.xs),
-            TextButton.icon(onPressed: generate, icon: const Icon(Icons.add, size: 18), label: Text(l.generateKey)),
+            TextButton.icon(onPressed: generate, icon: const Icon(Icons.add, size: 16), label: Text(l.generateKey)),
           ],
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
         if (keys.isEmpty) Text(l.none, style: muted),
         Expanded(
           child: ListView(
@@ -89,10 +92,10 @@ class KeysPanel extends ConsumerWidget {
                   builder: (context) {
                     final users = library.keyReferences(key.id);
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: Space.md),
+                      padding: const EdgeInsets.only(bottom: Space.sm),
                       child: Row(
                         children: [
-                          Icon(Icons.key_outlined, size: 20, color: theme.colorScheme.primary),
+                          Icon(Icons.key_outlined, size: 18, color: theme.colorScheme.primary),
                           const SizedBox(width: Space.md),
                           Expanded(
                             child: Column(
@@ -105,7 +108,7 @@ class KeysPanel extends ConsumerWidget {
                                     '${key.algorithm}  ${key.fingerprint}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: muted?.copyWith(fontFamily: 'Consolas'),
+                                    style: mono(context, muted),
                                   ),
                                 ),
                                 if (users.isNotEmpty)
@@ -121,16 +124,21 @@ class KeysPanel extends ConsumerWidget {
                           IconButton(
                             tooltip: l.copyPublicKey,
                             onPressed: () => Clipboard.setData(ClipboardData(text: key.publicKey)),
-                            icon: const Icon(Icons.copy_outlined, size: 18),
+                            icon: const Icon(Icons.copy_outlined, size: 16),
                           ),
-                          PopupMenuButton<VoidCallback>(
+                          AppMenuButton<VoidCallback>(
                             tooltip: l.more,
-                            icon: const Icon(Icons.more_horiz, size: 18),
+                            icon: const Icon(Icons.more_horiz, size: 16),
                             onSelected: (run) => run(),
-                            itemBuilder: (_) => [
-                              PopupMenuItem(value: () => rename(key), child: Text(l.rename)),
+                            items: () => [
+                              AppMenuItem(value: () => rename(key), label: l.rename),
                               // A key some host still uses cannot go: the host would be left pointing at nothing.
-                              PopupMenuItem(enabled: users.isEmpty, value: () => remove(key), child: Text(l.delete)),
+                              AppMenuItem(
+                                enabled: users.isEmpty,
+                                value: () => remove(key),
+                                label: l.delete,
+                                destructive: true,
+                              ),
                             ],
                           ),
                         ],
@@ -202,10 +210,10 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     const gap = SizedBox(height: Space.lg);
-    return AlertDialog(
+    return AppDialog(
       title: Text(l.importKey),
-      content: SizedBox(
-        width: 480,
+      width: 480,
+      content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -220,7 +228,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
               controller: _source,
               minLines: 4,
               maxLines: 8,
-              style: const TextStyle(fontFamily: 'Consolas', fontSize: 12),
+              style: mono(context, const TextStyle(fontSize: 12)),
               decoration: InputDecoration(labelText: l.keySource, alignLabelWithHint: true),
             ),
             if (_needsPassphrase) ...[
@@ -232,12 +240,12 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 decoration: InputDecoration(labelText: l.passphrase),
                 onSubmitted: (_) => _import(),
               ),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
+              const SizedBox(height: Space.xs),
+              AppToggleRow(
+                checkbox: true,
                 value: _remember,
-                onChanged: (v) => setState(() => _remember = v ?? false),
-                title: Text(l.remember),
+                onChanged: (v) => setState(() => _remember = v),
+                title: l.remember,
               ),
             ],
             if (_error != null) ...[

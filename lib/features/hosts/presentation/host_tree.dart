@@ -104,7 +104,7 @@ class _HostTreeState extends ConsumerState<HostTree> {
           Padding(
             padding: const EdgeInsets.all(Space.sm),
             child: TextField(
-              decoration: InputDecoration(hintText: l.searchHint, prefixIcon: const Icon(Icons.search, size: 18)),
+              decoration: InputDecoration(hintText: l.searchHint, prefixIcon: const Icon(Icons.search, size: 16)),
               onChanged: (value) => setState(() => _query = value),
             ),
           ),

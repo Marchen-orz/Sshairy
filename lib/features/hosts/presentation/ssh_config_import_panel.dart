@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/controls.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/json_file.dart';
 import '../../../l10n/app_localizations.dart';
@@ -86,13 +87,17 @@ class _SshConfigImportPanelState extends ConsumerState<SshConfigImportPanel> {
         Row(
           children: [
             Expanded(child: Text(l.sshConfigImport, style: theme.textTheme.titleMedium)),
-            IconButton(tooltip: l.closePane, onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+            IconButton(
+              tooltip: l.closePane,
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close, size: 16),
+            ),
           ],
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
         OutlinedButton.icon(
           onPressed: _busy ? null : _pick,
-          icon: const Icon(Icons.file_open_outlined, size: 18),
+          icon: const Icon(Icons.file_open_outlined, size: 16),
           label: Text(preview?.name ?? l.sshConfigPick, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
         if (_busy) const LinearProgressIndicator(),
@@ -102,16 +107,19 @@ class _SshConfigImportPanelState extends ConsumerState<SshConfigImportPanel> {
             child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
           ),
         if (selectable.isNotEmpty)
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l.selectAll),
-            value: selectable.every((d) => _selected.contains(d.source.alias)),
-            onChanged: _busy
-                ? null
-                : (checked) => setState(() {
-                    _selected.clear();
-                    if (checked == true) _selected.addAll(selectable.map((d) => d.source.alias));
-                  }),
+          Padding(
+            padding: const EdgeInsets.only(top: Space.sm),
+            child: AppToggleRow(
+              checkbox: true,
+              title: l.selectAll,
+              value: selectable.every((d) => _selected.contains(d.source.alias)),
+              onChanged: _busy
+                  ? null
+                  : (checked) => setState(() {
+                      _selected.clear();
+                      if (checked) _selected.addAll(selectable.map((d) => d.source.alias));
+                    }),
+            ),
           ),
         const SizedBox(height: Space.sm),
         Expanded(
@@ -124,7 +132,7 @@ class _SshConfigImportPanelState extends ConsumerState<SshConfigImportPanel> {
                   onChanged: _busy || !draft.selectable
                       ? null
                       : (value) => setState(() {
-                          if (value == true) {
+                          if (value) {
                             _selected.add(draft.source.alias);
                           } else {
                             _selected.remove(draft.source.alias);
@@ -144,7 +152,7 @@ class _SshConfigImportPanelState extends ConsumerState<SshConfigImportPanel> {
             ],
           ),
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
         FilledButton(onPressed: _busy || count == 0 ? null : _commit, child: Text('${l.importAction} ($count)')),
       ],
     );
@@ -155,7 +163,7 @@ class _DraftRow extends StatelessWidget {
   const _DraftRow({required this.draft, required this.selected, required this.onChanged});
   final SshImportDraft draft;
   final bool selected;
-  final ValueChanged<bool?>? onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -167,13 +175,10 @@ class _DraftRow extends StatelessWidget {
         : draft.issues.isNotEmpty
         ? l.sshConfigBlocked
         : null;
-    return CheckboxListTile(
-      contentPadding: EdgeInsets.zero,
-      controlAffinity: ListTileControlAffinity.leading,
-      value: selected,
-      onChanged: onChanged,
-      title: Text(source.alias, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Column(
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final details = DefaultTextStyle.merge(
+      style: muted,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('${source.username}@${source.address}:${source.port}', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -194,6 +199,35 @@ class _DraftRow extends StatelessWidget {
               style: TextStyle(color: theme.colorScheme.error),
             ),
         ],
+      ),
+    );
+    // A checkbox row with several detail lines, which AppToggleRow's single subtitle cannot hold.
+    return MergeSemantics(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.control),
+        onTap: onChanged == null ? null : () => onChanged!(!selected),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: Space.xs),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: AppCheckbox(value: selected, onChanged: onChanged),
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(source.alias, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    details,
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

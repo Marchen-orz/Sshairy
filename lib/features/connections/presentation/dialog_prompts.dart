@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../design/controls.dart';
+import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/secret.dart';
 import '../../../l10n/app_localizations.dart';
@@ -16,29 +18,29 @@ class DialogPrompts implements ConnectPrompts {
     if (!context.mounted) return TrustChoice.reject;
     final l = AppLocalizations.of(context);
     final changed = p.check is KeyChanged;
-    final mono = TextStyle(fontFamily: 'Consolas', color: Theme.of(context).colorScheme.onSurface);
+    final monoStyle = mono(context, TextStyle(color: Theme.of(context).colorScheme.onSurface));
     Widget row(String label, String value) => Padding(
       padding: const EdgeInsets.only(top: Space.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: Theme.of(context).textTheme.bodySmall),
-          SelectableText(value, style: mono),
+          SelectableText(value, style: monoStyle),
         ],
       ),
     );
-    final choice = await showDialog<TrustChoice>(
+    final choice = await showAppDialog<TrustChoice>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
+        width: 528,
         title: Text(changed ? l.hostKeyChanged : l.hostKeyUnknown),
-        content: SizedBox(
-          width: 480,
+        content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SelectableText('${p.endpoint} · ${p.type}', style: mono),
+              SelectableText('${p.endpoint} · ${p.type}', style: monoStyle),
               if (p.check case KeyChanged(:final saved)) ...[
                 row(l.previousKey, saved),
                 row(l.currentKey, p.fingerprint),
@@ -75,7 +77,7 @@ class DialogPrompts implements ConnectPrompts {
   @override
   Future<SecretAnswer?> secret(SecretRequest r) async {
     if (!context.mounted) return null;
-    return showDialog<SecretAnswer>(
+    return showAppDialog<SecretAnswer>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _SecretDialog(request: r),
@@ -112,9 +114,9 @@ class _SecretDialogState extends State<_SecretDialog> {
       SecretKind.challenge => r.text,
     };
     void submit() => Navigator.pop(context, SecretAnswer(Secret(_input.text), remember: _remember));
-    return AlertDialog(
-      content: SizedBox(
-        width: 360,
+    return AppDialog(
+      width: 408,
+      content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -127,12 +129,14 @@ class _SecretDialogState extends State<_SecretDialog> {
               onSubmitted: (_) => submit(),
             ),
             if (r.canRemember)
-              CheckboxListTile(
-                value: _remember,
-                onChanged: (v) => setState(() => _remember = v!),
-                title: Text(l.remember),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
+              Padding(
+                padding: const EdgeInsets.only(top: Space.sm),
+                child: AppToggleRow(
+                  checkbox: true,
+                  value: _remember,
+                  onChanged: (v) => setState(() => _remember = v),
+                  title: l.remember,
+                ),
               ),
           ],
         ),

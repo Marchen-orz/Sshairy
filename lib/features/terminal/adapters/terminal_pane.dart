@@ -213,35 +213,23 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     final l = AppLocalizations.of(context);
     final link = _linkAt(cell);
     final hasSelection = _selectedText?.isNotEmpty ?? false;
-    PopupMenuItem<VoidCallback> item(String label, IconData icon, VoidCallback run, {bool enabled = true}) =>
-        PopupMenuItem(
-          value: run,
-          enabled: enabled,
-          height: 36,
-          child: Row(
-            children: [
-              Icon(icon, size: 16),
-              const SizedBox(width: Space.md),
-              Text(label),
-            ],
-          ),
-        );
-    final p = details.globalPosition;
-    final run = await showMenu<VoidCallback>(
+    AppMenuItem<VoidCallback> item(String label, IconData icon, VoidCallback run, {bool enabled = true}) =>
+        AppMenuItem(value: run, label: label, icon: icon, enabled: enabled);
+    final run = await showAppMenu<VoidCallback>(
       context: context,
-      position: RelativeRect.fromLTRB(p.dx, p.dy, p.dx, p.dy),
+      anchor: anchorAt(details.globalPosition),
       items: [
         if (link != null) ...[
           item(l.openLink, Icons.open_in_new, () => openExternal(link)),
           item(l.copyLink, Icons.link, () => Clipboard.setData(ClipboardData(text: link))),
-          const PopupMenuDivider(),
+          const AppMenuDivider(),
         ],
         item(l.copy, Icons.copy_outlined, _copy, enabled: hasSelection),
         item(l.paste, Icons.content_paste_outlined, _paste),
         item(l.selectAll, Icons.select_all, _selectAll),
         item(l.find, Icons.search, () => setState(() => _searching = true)),
         item(l.clearScreen, Icons.clear_all, _terminal.clear),
-        if (widget.actions.isNotEmpty) const PopupMenuDivider(),
+        if (widget.actions.isNotEmpty) const AppMenuDivider(),
         for (final a in widget.actions) item(a.label, a.icon, a.run),
       ],
     );
@@ -285,15 +273,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
                 onSecondaryTapUp: _onSecondaryTapUp,
                 textStyle: TerminalStyle(
                   fontSize: settings.fontSize,
-                  fontFamily: 'Cascadia Mono',
-                  fontFamilyFallback: const [
-                    'Consolas',
-                    'Menlo',
-                    'DejaVu Sans Mono',
-                    'Microsoft YaHei',
-                    'PingFang SC',
-                    'Noto Sans CJK SC',
-                  ],
+                  fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
+                  fontFamilyFallback: const [...AppFonts.monoFallback, 'Menlo', 'DejaVu Sans Mono'],
                 ),
               ),
             ),

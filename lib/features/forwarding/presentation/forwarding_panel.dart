@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../design/theme.dart';
+import '../../../design/controls.dart';
+import '../../../design/dialog.dart';
+import '../../../design/select.dart';
 import '../../../design/side_drawer.dart';
+import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
@@ -31,7 +34,7 @@ class ForwardingPanel extends ConsumerWidget {
             IconButton(tooltip: l.closePane, onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
           ],
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
         Expanded(
           child: items.isEmpty
               ? Center(child: Text(l.none))
@@ -87,9 +90,9 @@ class _RuleCard extends ConsumerWidget {
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
     final l = AppLocalizations.of(context);
-    final yes = await showDialog<bool>(
+    final yes = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AppDialog(
         content: Text(l.deleteOne(forward.rule.title)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -167,17 +170,17 @@ class _RuleCard extends ConsumerWidget {
                 IconButton(
                   tooltip: forward.active ? l.stop : l.fwStart,
                   onPressed: stopping ? null : () => _toggle(context, ref),
-                  icon: Icon(forward.active ? Icons.stop : Icons.play_arrow, size: 18),
+                  icon: Icon(forward.active ? Icons.stop : Icons.play_arrow, size: 16),
                 ),
                 IconButton(
                   tooltip: l.edit,
                   onPressed: forward.active ? null : () => showSideDrawer<void>(context, (_) => _ForwardEditor(rule)),
-                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
                 ),
                 IconButton(
                   tooltip: l.delete,
                   onPressed: forward.active ? null : () => _delete(context, ref),
-                  icon: const Icon(Icons.delete_outline, size: 18),
+                  icon: const Icon(Icons.delete_outline, size: 16),
                 ),
               ],
             ),
@@ -288,9 +291,9 @@ class _ForwardEditorState extends ConsumerState<_ForwardEditor> {
     if (rule == null) return setState(() => _error = l.fwInvalid);
     final forwards = ref.read(forwardsProvider.notifier);
     if (forwards.needsExposureConfirmation(rule)) {
-      final allowed = await showDialog<bool>(
+      final allowed = await showAppDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => AppDialog(
           content: Text(l.fwExposeConfirm(rule.endpoint)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
@@ -354,22 +357,24 @@ class _ForwardEditorState extends ConsumerState<_ForwardEditor> {
                 if (hosts.isEmpty)
                   Text(l.fwNoHosts)
                 else
-                  DropdownButtonFormField<HostId>(
-                    initialValue: hosts.any((h) => h.id == _host) ? _host : null,
-                    decoration: InputDecoration(labelText: l.fwHost),
-                    items: [for (final h in hosts) DropdownMenuItem(value: h.id, child: Text(h.title))],
+                  AppSelect<HostId?>(
+                    value: hosts.any((h) => h.id == _host) ? _host : null,
+                    label: l.fwHost,
+                    options: [for (final h in hosts) AppOption(h.id, h.title)],
                     onChanged: (v) => setState(() => _host = v),
                   ),
                 const SizedBox(height: Space.lg),
-                SegmentedButton<ForwardKind>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(value: ForwardKind.local, label: Text(l.fwLocal)),
-                    ButtonSegment(value: ForwardKind.remote, label: Text(l.fwRemote)),
-                    ButtonSegment(value: ForwardKind.dynamic, label: Text(l.fwDynamic)),
-                  ],
-                  selected: {_kind},
-                  onSelectionChanged: (s) => setState(() => _kind = s.first),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppSegmented<ForwardKind>(
+                    segments: {
+                      ForwardKind.local: l.fwLocal,
+                      ForwardKind.remote: l.fwRemote,
+                      ForwardKind.dynamic: l.fwDynamic,
+                    },
+                    selected: _kind,
+                    onChanged: (v) => setState(() => _kind = v),
+                  ),
                 ),
                 const SizedBox(height: Space.lg),
                 row(
@@ -378,7 +383,7 @@ class _ForwardEditorState extends ConsumerState<_ForwardEditor> {
                     decoration: InputDecoration(
                       labelText: l.fwListen,
                       hintText: '127.0.0.1',
-                      prefixIcon: Icon(remote ? Icons.dns_outlined : Icons.computer_outlined, size: 18),
+                      prefixIcon: Icon(remote ? Icons.dns_outlined : Icons.computer_outlined, size: 16),
                       helperText: exposed ? l.fwExposed : null,
                       helperStyle: TextStyle(color: scheme.error),
                     ),
@@ -397,7 +402,7 @@ class _ForwardEditorState extends ConsumerState<_ForwardEditor> {
                       decoration: InputDecoration(
                         labelText: l.fwDestination,
                         hintText: '127.0.0.1',
-                        prefixIcon: Icon(remote ? Icons.computer_outlined : Icons.dns_outlined, size: 18),
+                        prefixIcon: Icon(remote ? Icons.computer_outlined : Icons.dns_outlined, size: 16),
                       ),
                     ),
                     TextField(
@@ -408,15 +413,9 @@ class _ForwardEditorState extends ConsumerState<_ForwardEditor> {
                   ),
                 ],
                 const SizedBox(height: Space.sm),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(l.fwAutoStart),
-                  value: _autoStart,
-                  onChanged: (v) => setState(() => _autoStart = v),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(l.autoReconnect),
+                AppToggleRow(title: l.fwAutoStart, value: _autoStart, onChanged: (v) => setState(() => _autoStart = v)),
+                AppToggleRow(
+                  title: l.autoReconnect,
                   value: _autoReconnect,
                   onChanged: (v) => setState(() => _autoReconnect = v),
                 ),

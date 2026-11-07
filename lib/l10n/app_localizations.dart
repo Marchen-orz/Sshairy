@@ -2114,18 +2114,6 @@ abstract class AppLocalizations {
   /// **'Retry'**
   String get retryAction;
 
-  /// No description provided for @showHostTree.
-  ///
-  /// In en, this message translates to:
-  /// **'Show hosts'**
-  String get showHostTree;
-
-  /// No description provided for @hideHostTree.
-  ///
-  /// In en, this message translates to:
-  /// **'Hide hosts'**
-  String get hideHostTree;
-
   /// No description provided for @resizeToolPanel.
   ///
   /// In en, this message translates to:
@@ -2257,6 +2245,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not save. Check access to the data directory and secure storage.'**
   String get errSave;
+
+  /// No description provided for @monitor.
+  ///
+  /// In en, this message translates to:
+  /// **'Server monitor'**
+  String get monitor;
+
+  /// No description provided for @cpu.
+  ///
+  /// In en, this message translates to:
+  /// **'CPU'**
+  String get cpu;
+
+  /// No description provided for @gpu.
+  ///
+  /// In en, this message translates to:
+  /// **'GPU'**
+  String get gpu;
+
+  /// No description provided for @memory.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory'**
+  String get memory;
+
+  /// No description provided for @swap.
+  ///
+  /// In en, this message translates to:
+  /// **'Swap'**
+  String get swap;
+
+  /// No description provided for @network.
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get network;
+
+  /// No description provided for @disks.
+  ///
+  /// In en, this message translates to:
+  /// **'Disks'**
+  String get disks;
+
+  /// No description provided for @load.
+  ///
+  /// In en, this message translates to:
+  /// **'Load'**
+  String get load;
+
+  /// No description provided for @uptime.
+  ///
+  /// In en, this message translates to:
+  /// **'Up'**
+  String get uptime;
+
+  /// No description provided for @cores.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} cores'**
+  String cores(int count);
+
+  /// No description provided for @uptimeDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{days}d {hours}h'**
+  String uptimeDays(int days, int hours);
+
+  /// No description provided for @uptimeHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours}h {minutes}m'**
+  String uptimeHours(int hours, int minutes);
+
+  /// No description provided for @monitorUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'This server has no /proc, so there is nothing to show'**
+  String get monitorUnsupported;
+
+  /// No description provided for @monitorFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read stats; retrying'**
+  String get monitorFailed;
+
+  /// No description provided for @monitorOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown once connected'**
+  String get monitorOffline;
+
+  /// No description provided for @uiFont.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface font'**
+  String get uiFont;
+
+  /// No description provided for @uiFontSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface font size'**
+  String get uiFontSize;
+
+  /// No description provided for @terminalFont.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal font'**
+  String get terminalFont;
+
+  /// No description provided for @defaultFont.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get defaultFont;
+
+  /// No description provided for @searchFonts.
+  ///
+  /// In en, this message translates to:
+  /// **'Search fonts'**
+  String get searchFonts;
+
+  /// No description provided for @workspaceSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Workspace'**
+  String get workspaceSection;
+
+  /// No description provided for @filesDock.
+  ///
+  /// In en, this message translates to:
+  /// **'Files panel'**
+  String get filesDock;
+
+  /// No description provided for @dockLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Left'**
+  String get dockLeft;
+
+  /// No description provided for @dockRight.
+  ///
+  /// In en, this message translates to:
+  /// **'Right'**
+  String get dockRight;
+
+  /// No description provided for @dockBottom.
+  ///
+  /// In en, this message translates to:
+  /// **'Bottom'**
+  String get dockBottom;
+
+  /// No description provided for @dockPosition.
+  ///
+  /// In en, this message translates to:
+  /// **'Dock position'**
+  String get dockPosition;
+
+  /// No description provided for @confirmQuit.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm before quitting'**
+  String get confirmQuit;
+
+  /// No description provided for @quitTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Quit sshairy?'**
+  String get quitTitle;
+
+  /// No description provided for @sessionsOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} sessions will be disconnected'**
+  String sessionsOpen(int count);
 }
 
 class _AppLocalizationsDelegate

@@ -2,21 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../design/theme.dart';
+import '../../../design/dialog.dart';
 import '../../../l10n/app_localizations.dart';
 import '../domain/insertion.dart';
 
 Future<bool> confirmTerminalInsert(BuildContext context, InsertPreview preview) async {
   if (!context.mounted || (preview.cancellation?.isCancelled ?? false)) return false;
   final navigator = Navigator.of(context, rootNavigator: true);
+  // A route of our own rather than showAppDialog, so cancellation can remove it.
   final route = DialogRoute<bool>(
     context: context,
+    barrierColor: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? .5 : .28),
     builder: (context) {
       final l = AppLocalizations.of(context);
-      return AlertDialog(
+      return AppDialog(
+        width: 568,
         title: Text(preview.target),
         content: SizedBox(
-          width: 520,
           height: 240,
           child: SingleChildScrollView(
             child: SelectableText(preview.visibleText, style: Theme.of(context).textTheme.bodyMedium),
@@ -24,12 +26,9 @@ Future<bool> confirmTerminalInsert(BuildContext context, InsertPreview preview) 
         ),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
-          Padding(
-            padding: const EdgeInsets.only(left: Space.sm),
-            child: FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(preview.run ? l.runSnippet : l.paste),
-            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(preview.run ? l.runSnippet : l.paste),
           ),
         ],
       );

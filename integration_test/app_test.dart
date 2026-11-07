@@ -14,6 +14,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:sshairy/design/controls.dart';
+import 'package:sshairy/design/dialog.dart';
+import 'package:sshairy/design/popup.dart';
+import 'package:sshairy/design/select.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/credentials/adapters/secure_store.dart';
@@ -58,7 +62,7 @@ void main() {
     await t.shot('hostkey-unknown');
     await t.tapAndPump(inDialog(find.text('Cancel')));
     await t.untilFound(find.text('Host key rejected'));
-    expect(find.byType(AlertDialog), findsNothing, reason: 'no password prompt after rejecting the key');
+    expect(find.byType(AppDialog), findsNothing, reason: 'no password prompt after rejecting the key');
     expect(File('${dir.path}/trust.json').existsSync(), isFalse);
     await t.closeTabByKeyboard();
     expect(find.text(address), findsNothing);
@@ -86,8 +90,7 @@ void main() {
     await t.closeTabByKeyboard();
 
     // Removing the record from settings means the next connection asks again.
-    await t.tapAndPump(find.byTooltip('More').first);
-    await t.tapAndPump(find.text('Settings'));
+    await t.tapAndPump(find.byTooltip('Settings'));
     await t.scrollUntilVisible(
       find.byTooltip('Remove'),
       300,
@@ -160,7 +163,7 @@ void main() {
     await t.sendKeyEvent(LogicalKeyboardKey.keyV);
     await t.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await t.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-    await t.untilFound(find.byType(AlertDialog));
+    await t.untilFound(find.byType(AppDialog));
     expect(term.buffer.getText(), isNot(contains('pasted-2')), reason: 'nothing is sent before confirming');
     await t.shot('paste-confirm');
     await t.tapAndPump(inDialog(find.text('Paste')));
@@ -199,7 +202,7 @@ void main() {
     // Leaving the shell only closes the channel; the connection is parked, so reconnecting needs no password.
     await t.tapAndPump(find.text('Reconnect'));
     await t.untilPrompt();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppDialog), findsNothing);
     expect(find.text('Disconnected'), findsNothing);
     expect(t.terminal, same(term));
 
@@ -348,10 +351,10 @@ void main() {
     await t.answerPassword('sshairy-wrong-password');
     await t.until(
       'auth result',
-      () => find.text('Authentication failed').evaluate().isNotEmpty || find.byType(AlertDialog).evaluate().isNotEmpty,
+      () => find.text('Authentication failed').evaluate().isNotEmpty || find.byType(AppDialog).evaluate().isNotEmpty,
     );
     // Servers that fall back to keyboard-interactive ask again; never send a second wrong password.
-    if (find.byType(AlertDialog).evaluate().isNotEmpty) await t.tapAndPump(inDialog(find.text('Cancel')));
+    if (find.byType(AppDialog).evaluate().isNotEmpty) await t.tapAndPump(inDialog(find.text('Cancel')));
     await t.shot('auth-failed');
     await t.tapAndPump(find.text('Reconnect'));
 
@@ -365,7 +368,7 @@ void main() {
 
     await t.tapAndPump(find.byTooltip('Connect'));
     await t.untilPrompt();
-    expect(find.byType(AlertDialog), findsNothing, reason: 'saved password and trusted key need no prompts');
+    expect(find.byType(AppDialog), findsNothing, reason: 'saved password and trusted key need no prompts');
     await t.expectShellAlive(9);
     await t.closeTabByKeyboard();
 
@@ -400,7 +403,7 @@ void main() {
 
     await t.palette('Split right');
     await t.until('two panes', () => t.visibleTerminals.length == 2);
-    expect(find.byType(AlertDialog), findsNothing, reason: 'the split shares the first connection');
+    expect(find.byType(AppDialog), findsNothing, reason: 'the split shares the first connection');
     final [left, right] = t.visibleTerminals;
     await t.until('right prompt', () => right.buffer.getText().trim().endsWith(r'$'));
     expect(t.workspace.activeTab!.layout.focused, t.workspace.activeTab!.layout.leaves.last.pane);
@@ -423,7 +426,7 @@ void main() {
     await t.until('workspace saved', () => File('${dir.path}/workspace.json').readAsStringSync().contains('wshost'));
     await t.startApp(dir);
     await t.untilFound(find.widgetWithText(FilledButton, 'Connect'));
-    expect(find.byType(AlertDialog), findsNothing, reason: 'a restored tab must not dial by itself');
+    expect(find.byType(AppDialog), findsNothing, reason: 'a restored tab must not dial by itself');
     await t.shot('restored');
     await t.tapAndPump(find.widgetWithText(FilledButton, 'Connect'));
     await t.answerPassword(password);
@@ -440,7 +443,7 @@ void main() {
     await t.palette('Duplicate');
     await t.until('two tabs', () => t.workspace.tabs.length == 2);
     await t.untilPrompt();
-    expect(find.byType(AlertDialog), findsNothing, reason: 'the copy shares the connection');
+    expect(find.byType(AppDialog), findsNothing, reason: 'the copy shares the connection');
     await t.shot('tabs');
     await t.closeTabByKeyboard();
 
@@ -518,7 +521,7 @@ void main() {
     await t.tapAndPump(find.text('Edit'));
     await t.tapAndPump(find.text('Password'));
     await t.tapAndPump(find.text('Private key').last);
-    await t.tapAndPump(find.widgetWithText(DropdownButtonFormField<String?>, 'Private key'));
+    await t.tapAndPump(find.widgetWithText(AppSelect<String?>, 'Private key'));
     await t.tapAndPump(find.text('sshairy-it-key · ssh-ed25519').last);
     await t.shot('host-form-key');
     await t.tapAndPump(find.text('Save'));
@@ -527,16 +530,15 @@ void main() {
     await t.tapAndPump(find.byTooltip('Keys'));
     expect(find.text('Used by alpha'), findsOneWidget);
     await t.tapAndPump(find.descendant(of: find.byType(KeysPanel), matching: find.byTooltip('More')));
-    final delete = t.widget<PopupMenuItem<VoidCallback>>(find.widgetWithText(PopupMenuItem<VoidCallback>, 'Delete'));
-    expect(delete.enabled, isFalse);
+    final delete = t.widget<PopupRow>(find.ancestor(of: find.text('Delete'), matching: find.byType(PopupRow)));
+    expect(delete.onTap, isNull);
   });
 
   testWidgets('settings: theme, font size and language apply and persist', (t) async {
     t.testTextInput.register();
     await t.startApp(dir);
 
-    await t.tapAndPump(find.byTooltip('More').first);
-    await t.tapAndPump(find.text('Settings'));
+    await t.tapAndPump(find.byTooltip('Settings'));
     await t.tapAndPump(find.text('Dark'));
     expect(Theme.of(t.element(find.text('Theme'))).brightness, Brightness.dark);
     await t.shot('settings-dark');
@@ -629,7 +631,7 @@ void main() {
     await t.untilRow(1, 'renamed 改名');
     final before = t.entry(1, 'renamed 改名').mode! & 0x1FF;
     await t.menu(t.rowFinder(1, 'renamed 改名'), 'Permissions');
-    await t.tapAndPump(inDialog(find.byType(Checkbox)).last);
+    await t.tapAndPump(inDialog(find.byType(AppCheckbox)).last);
     await t.tapAndPump(inDialog(find.text('Save')));
     final after = before ^ 1;
     await t.until('mode changed', () => (t.entry(1, 'renamed 改名').mode! & 0x1FF) == after);

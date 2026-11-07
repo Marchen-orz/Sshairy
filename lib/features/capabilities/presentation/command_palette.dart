@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/dialog.dart';
+import '../../../design/popup.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../foundation/result.dart';
@@ -9,11 +11,8 @@ import '../application/palette.dart';
 import '../domain/capability.dart';
 
 /// docs/UI.md §5: at most 640×480, a little above centre; Esc returns focus to where it was.
-Future<void> showCommandPalette(BuildContext context) => showDialog<void>(
-      context: context,
-      barrierColor: Colors.black26,
-      builder: (_) => _CommandPalette(context),
-    );
+Future<void> showCommandPalette(BuildContext context) =>
+    showAppDialog<void>(context: context, builder: (_) => _CommandPalette(context));
 
 class _CommandPalette extends ConsumerStatefulWidget {
   const _CommandPalette(this.origin);
@@ -29,7 +28,7 @@ class _CommandPaletteState extends ConsumerState<_CommandPalette> {
   final _scroll = ScrollController();
   var _selected = 0;
 
-  static const _rowHeight = 40.0;
+  static const _rowHeight = 36.0;
 
   @override
   void dispose() {
@@ -77,64 +76,64 @@ class _CommandPaletteState extends ConsumerState<_CommandPalette> {
     final theme = Theme.of(context);
     final entries = _entries(l);
     if (_selected >= entries.length) _selected = 0;
-    return Dialog(
+    return Align(
       alignment: const Alignment(0, -0.5),
-      insetPadding: const EdgeInsets.all(Space.xl),
-      backgroundColor: theme.colorScheme.surfaceContainerHigh,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Radii.panel),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 480),
-        child: CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1, entries.length),
-            const SingleActivator(LogicalKeyboardKey.arrowUp): () => _move(-1, entries.length),
-          },
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Padding(
-              padding: const EdgeInsets.all(Space.sm),
-              child: TextField(
-                controller: _query,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: l.paletteHint,
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  filled: false,
-                ),
-                onChanged: (_) => setState(() => _selected = 0),
-                onSubmitted: (_) {
-                  if (entries.isNotEmpty) _run(entries[_selected]);
-                },
+      child: Padding(
+        padding: const EdgeInsets.all(Space.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640, maxHeight: 480),
+          child: PopupSurface(
+            radius: Radii.panel,
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1, entries.length),
+                const SingleActivator(LogicalKeyboardKey.arrowUp): () => _move(-1, entries.length),
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(Space.sm),
+                    child: TextField(
+                      controller: _query,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: l.paletteHint,
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        filled: false,
+                      ),
+                      onChanged: (_) => setState(() => _selected = 0),
+                      onSubmitted: (_) {
+                        if (entries.isNotEmpty) _run(entries[_selected]);
+                      },
+                    ),
+                  ),
+                  const Divider(),
+                  Flexible(
+                    child: entries.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(Space.lg),
+                            child: Text(l.noMatches, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                          )
+                        : ListView.builder(
+                            controller: _scroll,
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.symmetric(vertical: Space.xs),
+                            itemExtent: _rowHeight,
+                            itemCount: entries.length,
+                            itemBuilder: (context, i) =>
+                                _Row(entry: entries[i], selected: i == _selected, onTap: () => _run(entries[i])),
+                          ),
+                  ),
+                ],
               ),
             ),
-            const Divider(),
-            Flexible(
-              child: entries.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(Space.lg),
-                      child: Text(l.noMatches, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-                    )
-                  : ListView.builder(
-                      controller: _scroll,
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(vertical: Space.xs),
-                      itemExtent: _rowHeight,
-                      itemCount: entries.length,
-                      itemBuilder: (context, i) => _Row(
-                        entry: entries[i],
-                        selected: i == _selected,
-                        onTap: () => _run(entries[i]),
-                      ),
-                    ),
-            ),
-          ]),
-      ),
+          ),
+        ),
       ),
     );
   }
@@ -161,16 +160,24 @@ class _Row extends StatelessWidget {
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.md),
-            child: Row(children: [
-              Icon(entry.icon, size: 18, color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: Space.md),
-              Flexible(child: Text(entry.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-              if (entry.subtitle.isNotEmpty) ...[
-                const SizedBox(width: Space.sm),
-                Expanded(child: Text(entry.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted)),
-              ] else
-                const Spacer(),
-            ]),
+            child: Row(
+              children: [
+                Icon(
+                  entry.icon,
+                  size: 16,
+                  color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: Space.md),
+                Flexible(child: Text(entry.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                if (entry.subtitle.isNotEmpty) ...[
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(entry.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                  ),
+                ] else
+                  const Spacer(),
+              ],
+            ),
           ),
         ),
       ),

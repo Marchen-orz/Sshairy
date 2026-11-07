@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import 'dialog.dart';
 
 /// Asks for one line of text, such as a new name; pops with the text, or null on cancel.
 /// Owns its controller, so the closing animation never sees a disposed one.
@@ -38,19 +39,17 @@ class _TextPromptDialogState extends State<TextPromptDialog> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return AlertDialog(
+    return AppDialog(
+      width: 408,
       title: Text(widget.title),
-      content: SizedBox(
-        width: 360,
-        child: TextField(
-          controller: _text,
-          autofocus: true,
-          decoration: InputDecoration(hintText: widget.hint, errorText: _error),
-          onChanged: (_) {
-            if (_error != null) setState(() => _error = null);
-          },
-          onSubmitted: (_) => _submit(),
-        ),
+      content: TextField(
+        controller: _text,
+        autofocus: true,
+        decoration: InputDecoration(hintText: widget.hint, errorText: _error),
+        onChanged: (_) {
+          if (_error != null) setState(() => _error = null);
+        },
+        onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(l.cancel)),

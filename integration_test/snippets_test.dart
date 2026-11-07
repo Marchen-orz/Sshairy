@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:sshairy/app/composition.dart';
+import 'package:sshairy/design/dialog.dart';
 import 'package:sshairy/features/snippets/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/main.dart';
@@ -37,9 +38,7 @@ void main() {
 
     try {
       await start();
-      await tester.tap(find.byTooltip('More').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Snippets').last); // the menu entry; the navigation lists it too
+      await tester.tap(find.byTooltip('Snippets'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('New snippet'));
       await tester.pumpAndSettle();
@@ -65,15 +64,13 @@ void main() {
       await waitFor(() => editor.evaluate().isEmpty);
       await container.read(snippetsProvider.notifier).saved;
       await start();
-      await tester.tap(find.byTooltip('More').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Snippets').last); // the menu entry; the navigation lists it too
+      await tester.tap(find.byTooltip('Snippets'));
       await tester.pumpAndSettle();
       expect(find.text('Renamed check'), findsOneWidget);
       await tester.tap(find.byTooltip('Delete'));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(TextButton, 'Delete')),
+        find.descendant(of: find.byType(AppDialog), matching: find.widgetWithText(TextButton, 'Delete')),
       );
       await waitFor(() => find.text('Renamed check').evaluate().isEmpty);
       final json = jsonDecode(await File('${dir.path}/snippets.json').readAsString()) as Map;

@@ -1115,12 +1115,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get retryAction => 'Retry';
 
   @override
-  String get showHostTree => 'Show hosts';
-
-  @override
-  String get hideHostTree => 'Hide hosts';
-
-  @override
   String get resizeToolPanel => 'Resize tool panel';
 
   @override
@@ -1197,4 +1191,100 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get errSave =>
       'Could not save. Check access to the data directory and secure storage.';
+
+  @override
+  String get monitor => 'Server monitor';
+
+  @override
+  String get cpu => 'CPU';
+
+  @override
+  String get gpu => 'GPU';
+
+  @override
+  String get memory => 'Memory';
+
+  @override
+  String get swap => 'Swap';
+
+  @override
+  String get network => 'Network';
+
+  @override
+  String get disks => 'Disks';
+
+  @override
+  String get load => 'Load';
+
+  @override
+  String get uptime => 'Up';
+
+  @override
+  String cores(int count) {
+    return '$count cores';
+  }
+
+  @override
+  String uptimeDays(int days, int hours) {
+    return '${days}d ${hours}h';
+  }
+
+  @override
+  String uptimeHours(int hours, int minutes) {
+    return '${hours}h ${minutes}m';
+  }
+
+  @override
+  String get monitorUnsupported =>
+      'This server has no /proc, so there is nothing to show';
+
+  @override
+  String get monitorFailed => 'Could not read stats; retrying';
+
+  @override
+  String get monitorOffline => 'Shown once connected';
+
+  @override
+  String get uiFont => 'Interface font';
+
+  @override
+  String get uiFontSize => 'Interface font size';
+
+  @override
+  String get terminalFont => 'Terminal font';
+
+  @override
+  String get defaultFont => 'Default';
+
+  @override
+  String get searchFonts => 'Search fonts';
+
+  @override
+  String get workspaceSection => 'Workspace';
+
+  @override
+  String get filesDock => 'Files panel';
+
+  @override
+  String get dockLeft => 'Left';
+
+  @override
+  String get dockRight => 'Right';
+
+  @override
+  String get dockBottom => 'Bottom';
+
+  @override
+  String get dockPosition => 'Dock position';
+
+  @override
+  String get confirmQuit => 'Confirm before quitting';
+
+  @override
+  String get quitTitle => 'Quit sshairy?';
+
+  @override
+  String sessionsOpen(int count) {
+    return '$count sessions will be disconnected';
+  }
 }

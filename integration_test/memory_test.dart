@@ -9,9 +9,9 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:sshairy/design/dialog.dart';
 import 'package:vm_service/vm_service_io.dart';
 import 'package:xterm2/xterm.dart';
 
@@ -94,10 +94,10 @@ void main() {
           await t.answerPassword(password);
         } else {
           await t.until('prompt or password dialog', () {
-            return find.byType(AlertDialog).evaluate().isNotEmpty ||
+            return find.byType(AppDialog).evaluate().isNotEmpty ||
                 find.byType(TerminalView).hitTestable().evaluate().isNotEmpty;
           });
-          if (find.byType(AlertDialog).evaluate().isNotEmpty) await t.answerPassword(password);
+          if (find.byType(AppDialog).evaluate().isNotEmpty) await t.answerPassword(password);
         }
         await t.untilPrompt();
         await fill(n);
