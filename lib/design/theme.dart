@@ -23,6 +23,7 @@ abstract final class WorkspaceSize {
   static const wideBreakpoint = 1200.0, terminalMin = 480.0;
   static const toolPanel = 360.0, toolPanelMin = 300.0, toolPanelMax = 560.0;
   static const dockBottom = 260.0, dockBottomMin = 160.0, dockBottomMaxShare = 0.6;
+  static const directoryTree = 240.0;
   static const divider = 1.0, dividerGrab = 8.0, treeRow = 26.0, listRow = 34.0, control = 32.0;
 }
 

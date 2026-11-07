@@ -177,7 +177,8 @@ class ServerConnection implements Transport {
   }
 
   @override
-  Future<ShellChannel> openShell({required int cols, required int rows}) => throw UnimplementedError();
+  Future<ShellChannel> openShell({required int cols, required int rows, Map<String, String> environment = const {}}) =>
+      throw UnimplementedError();
   @override
   Future<FileSystem> openFiles() => throw UnimplementedError();
   @override

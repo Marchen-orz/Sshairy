@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +19,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
+import '../domain/directory.dart';
 import '../domain/insertion.dart';
 import '../presentation/confirm_insert.dart';
 import 'ime_caret.dart';
@@ -43,6 +45,11 @@ class TerminalSession extends ChangeNotifier {
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
     _terminal.onClipboardQuery = (_) => null;
+    _terminal.onCurrentDirectoryChange = (uri) {
+      _reported = parseOsc7(uri);
+      // The report comes with the prompt, so the command that changed directory has finished.
+      if (_directory.followed) _lookSoon(const [Duration(milliseconds: 50)]);
+    };
   }
 
   final SessionId id;
@@ -75,6 +82,16 @@ class TerminalSession extends ChangeNotifier {
   Timer? _reconnectTimer;
   var _attempts = 0;
   static const _backoff = [1, 2, 4, 8, 16];
+
+  /// The marker in this session's shell environment (docs/MODULES.md §3).
+  final _marker = [for (var i = 0; i < 8; i++) Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')].join();
+  late final _directory = _DirectoryNotifier(_following);
+  String? _reported;
+  final _lookups = <Timer>[];
+  var _looking = false;
+
+  /// The shell's working directory, looked up only while something listens; null until known.
+  ValueListenable<String?> get directory => _directory;
 
   set viewed(bool value) {
     if (_viewed == value) return;
@@ -113,7 +130,10 @@ class TerminalSession extends ChangeNotifier {
       current: () => canInsert && identical(_shell, shell) && identical(_lease, lease),
       send: () {
         _terminal.paste(text);
-        if (run) shell!.write(utf8.encode('\r'));
+        if (run) {
+          shell!.write(utf8.encode('\r'));
+          _entered();
+        }
       },
     ).whenComplete(() => _insertions.remove(dismiss));
   }
@@ -156,7 +176,11 @@ class TerminalSession extends ChangeNotifier {
       final (lease, shell) = await _connections.open(
         host,
         prompts,
-        (lease) => lease.openShell(cols: _terminal.viewWidth, rows: _terminal.viewHeight),
+        (lease) => lease.openShell(
+          cols: _terminal.viewWidth,
+          rows: _terminal.viewHeight,
+          environment: {directoryVariable: _marker},
+        ),
         cancel: cancel,
       );
       ownedShell = shell;
@@ -172,7 +196,10 @@ class TerminalSession extends ChangeNotifier {
       }
 
       shell.done.then((_) => ended(), onError: (Object _) => ended());
-      _terminal.onOutput = (data) => shell.write(utf8.encode(data));
+      _terminal.onOutput = (data) {
+        shell.write(utf8.encode(data));
+        if (data.contains('\r')) _entered();
+      };
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       shell.resize(_terminal.viewWidth, _terminal.viewHeight);
       final consumer = TerminalOutput([shell.stdout, shell.stderr], (data) {
@@ -190,6 +217,7 @@ class TerminalSession extends ChangeNotifier {
       );
       _attempts = 0;
       _set(SessionStatus.connected);
+      if (_directory.followed) _lookSoon(const [Duration(milliseconds: 400)]);
       await Future.any([shell.done, transportEnded, consumer.failed]).catchError((_) {});
       ended();
       // SSH's done can precede EOF delivery: parse the queued tail before ending this shell's generation.
@@ -234,6 +262,51 @@ class TerminalSession extends ChangeNotifier {
     }
   }
 
+  /// Enter may have run a `cd`: look once the shell has had time, and again for a slow one.
+  void _entered() {
+    if (_directory.followed) _lookSoon(const [Duration(milliseconds: 400), Duration(milliseconds: 1500)]);
+  }
+
+  void _following(bool on) {
+    if (on) {
+      _lookSoon(const [Duration.zero]);
+    } else {
+      _cancelLookups();
+    }
+  }
+
+  void _lookSoon(List<Duration> delays) {
+    _cancelLookups();
+    for (final d in delays) {
+      _lookups.add(Timer(d, _look));
+    }
+  }
+
+  void _cancelLookups() {
+    for (final t in _lookups) {
+      t.cancel();
+    }
+    _lookups.clear();
+  }
+
+  Future<void> _look() async {
+    final lease = _lease;
+    if (_closed || _looking || lease == null || lease.lost || !_directory.followed) return;
+    _looking = true;
+    String? found;
+    try {
+      final result = await lease.exec(directoryQuery(_marker), limit: 4096).timeout(const Duration(seconds: 5));
+      found = parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
+    } on Object {
+      found = null;
+    } finally {
+      _looking = false;
+    }
+    // A server that refused the marker or has no /proc may still report through OSC 7.
+    found ??= _reported;
+    if (!_closed && found != null) _directory.value = found;
+  }
+
   /// docs/MODULES.md §2: 1/2/4/8/16 s with jitter, at most five times, network errors only.
   void _scheduleReconnect() {
     if (_closed || !_autoReconnect() || _attempts >= _backoff.length) return;
@@ -271,6 +344,8 @@ class TerminalSession extends ChangeNotifier {
     _shellEnded = true;
     _dismissInsertions();
     _stopTimer();
+    _cancelLookups();
+    _directory.dispose();
     _connecting?.cancel();
     _outputQueue?.cancel();
     _terminal.onOutput = null;
@@ -280,6 +355,29 @@ class TerminalSession extends ChangeNotifier {
     _lease?.release();
     _lease = null;
     dispose();
+  }
+}
+
+/// Tells the session when the first listener arrives and the last one leaves, so lookups run only while followed.
+class _DirectoryNotifier extends ValueNotifier<String?> {
+  _DirectoryNotifier(this._following) : super(null);
+
+  final void Function(bool on) _following;
+
+  bool get followed => hasListeners;
+
+  @override
+  void addListener(VoidCallback listener) {
+    final first = !hasListeners;
+    super.addListener(listener);
+    if (first) _following(true);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    final had = hasListeners;
+    super.removeListener(listener);
+    if (had && !hasListeners) _following(false);
   }
 }
 

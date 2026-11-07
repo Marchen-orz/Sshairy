@@ -53,14 +53,27 @@ class _SshTransport implements Transport {
   @override
   bool get isClosed => _client.isClosed;
 
+  /// Set once the server refused an environment variable (sshd's AcceptEnv), so later shells skip the attempt.
+  var _environmentRefused = false;
+
   @override
-  Future<ShellChannel> openShell({required int cols, required int rows}) async => _SshShell(
-    await _channel(
-      _client.shell(
-        pty: SSHPtyConfig(type: 'xterm-256color', width: cols, height: rows),
-      ),
-    ),
-  );
+  Future<ShellChannel> openShell({
+    required int cols,
+    required int rows,
+    Map<String, String> environment = const {},
+  }) async {
+    final pty = SSHPtyConfig(type: 'xterm-256color', width: cols, height: rows);
+    if (environment.isNotEmpty && !_environmentRefused) {
+      try {
+        return _SshShell(await _channel(_client.shell(pty: pty, environment: environment)));
+      } on SSHChannelRequestError catch (e) {
+        // dartssh2 closes the channel on any refused request; only a refused variable is worth a second try.
+        if (!e.message.contains('environment')) rethrow;
+        _environmentRefused = true;
+      }
+    }
+    return _SshShell(await _channel(_client.shell(pty: pty)));
+  }
 
   @override
   Future<FileSystem> openFiles() async {

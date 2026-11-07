@@ -267,7 +267,8 @@ class TransportLease {
     if (!_lost.isCompleted) _lost.complete();
   }
 
-  Future<ShellChannel> openShell({required int cols, required int rows}) => _use().openShell(cols: cols, rows: rows);
+  Future<ShellChannel> openShell({required int cols, required int rows, Map<String, String> environment = const {}}) =>
+      _use().openShell(cols: cols, rows: rows, environment: environment);
 
   Future<ExecResult> exec(String command, {int limit = 1 << 20}) => _use().exec(command, limit: limit);
 

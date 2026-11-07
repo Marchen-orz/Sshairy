@@ -20,7 +20,11 @@ class FakeTransport implements Transport {
   bool get isClosed => _done.isCompleted;
 
   @override
-  Future<ShellChannel> openShell({required int cols, required int rows}) async {
+  Future<ShellChannel> openShell({
+    required int cols,
+    required int rows,
+    Map<String, String> environment = const {},
+  }) async {
     if (failShell) throw StateError('channel refused');
     shells++;
     return FakeShell();

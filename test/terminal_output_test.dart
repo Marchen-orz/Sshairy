@@ -45,7 +45,11 @@ class _Shell implements ShellChannel {
 class _Transport extends FakeTransport {
   final opened = <_Shell>[];
   @override
-  Future<ShellChannel> openShell({required int cols, required int rows}) async {
+  Future<ShellChannel> openShell({
+    required int cols,
+    required int rows,
+    Map<String, String> environment = const {},
+  }) async {
     final shell = _Shell();
     opened.add(shell);
     return shell;

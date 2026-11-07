@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +10,7 @@ import '../../settings/api.dart';
 import '../application/browser.dart';
 import '../application/file_systems.dart';
 import '../application/transfers.dart';
+import 'directory_tree.dart';
 import 'file_pane.dart';
 import 'transfers_panel.dart';
 
@@ -57,8 +59,14 @@ class _FilesPageState extends ConsumerState<FilesPage> {
 
 /// The terminal's side panel: one remote pane on [host], reopened when the focused pane moves to another host.
 class SideFilesPanel extends ConsumerStatefulWidget {
-  const SideFilesPanel({super.key, required this.host});
+  const SideFilesPanel({super.key, required this.host, this.tree = false, this.directory});
   final Host host;
+
+  /// Docked below: a directory tree beside the list.
+  final bool tree;
+
+  /// The terminal's working directory, which the panel follows while it is open (docs/MODULES.md §4).
+  final ValueListenable<String?>? directory;
 
   @override
   ConsumerState<SideFilesPanel> createState() => _SideFilesPanelState();
@@ -70,28 +78,64 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     showHidden: ref.read(settingsProvider).get(SettingKeys.showHidden),
   );
 
+  /// Where the terminal went while the browser could not follow yet.
+  String? _wanted;
+
   @override
   void initState() {
     super.initState();
+    widget.directory?.addListener(_follow);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _browser.open(widget.host, DialogPrompts(context));
+      if (mounted) _open();
     });
   }
 
   @override
   void didUpdateWidget(SideFilesPanel old) {
     super.didUpdateWidget(old);
-    if (old.host.id != widget.host.id) _browser.open(widget.host, DialogPrompts(context));
+    if (!identical(old.directory, widget.directory)) {
+      old.directory?.removeListener(_follow);
+      widget.directory?.addListener(_follow);
+    }
+    if (old.host.id != widget.host.id) {
+      _open();
+    } else if (!identical(old.directory, widget.directory)) {
+      _follow();
+    }
   }
 
   @override
   void dispose() {
+    widget.directory?.removeListener(_follow);
     _browser.dispose();
     super.dispose();
   }
 
+  Future<void> _open() async {
+    _wanted = null;
+    await _browser.open(widget.host, DialogPrompts(context), at: widget.directory?.value);
+    _catchUp();
+  }
+
+  void _follow() {
+    final to = widget.directory?.value;
+    if (to == null) return;
+    _wanted = to;
+    _catchUp();
+  }
+
+  void _catchUp() {
+    final to = _wanted;
+    if (to == null || !mounted || !_browser.ready || _browser.path.isEmpty) return;
+    _wanted = null;
+    if (to != _browser.path) _browser.go(to);
+  }
+
   @override
-  Widget build(BuildContext context) => FilePane(browser: _browser);
+  Widget build(BuildContext context) => FilePane(
+    browser: _browser,
+    sidebar: widget.tree ? DirectoryTree(browser: _browser) : null,
+  );
 }
 
 /// The transfer queue and edits, from the title bar or the palette.

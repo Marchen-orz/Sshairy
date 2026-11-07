@@ -9,7 +9,8 @@ abstract interface class Transport {
   Future<void> get done;
   bool get isClosed;
 
-  Future<ShellChannel> openShell({required int cols, required int rows});
+  /// [environment] goes with the pty request; a server that refuses it gets the shell without it.
+  Future<ShellChannel> openShell({required int cols, required int rows, Map<String, String> environment});
 
   /// An SFTP channel of its own; closing it leaves the transport and its other channels alone.
   Future<FileSystem> openFiles();

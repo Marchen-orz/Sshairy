@@ -36,13 +36,16 @@ class FileDrag {
 /// One directory listing with its toolbar (docs/MODULES.md §4). The two-pane page and the terminal's side panel
 /// both use it; with [other] set, items can be sent or dragged to that pane, otherwise downloads ask for a folder.
 class FilePane extends ConsumerStatefulWidget {
-  const FilePane({super.key, required this.browser, this.other, this.pickHost = false});
+  const FilePane({super.key, required this.browser, this.other, this.pickHost = false, this.sidebar});
 
   final FileBrowser browser;
   final FileBrowser? other;
 
   /// Shows a host chooser in the toolbar, for the two-pane page.
   final bool pickHost;
+
+  /// Left of the list, under the toolbar, once connected: the directory tree of the panel docked below.
+  final Widget? sidebar;
 
   @override
   ConsumerState<FilePane> createState() => _FilePaneState();
@@ -326,7 +329,18 @@ class _FilePaneState extends ConsumerState<FilePane> {
               children: [
                 _toolbar(context),
                 const Divider(),
-                Expanded(child: _body(context)),
+                Expanded(
+                  child: widget.sidebar == null || !b.ready
+                      ? _body(context)
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(width: WorkspaceSize.directoryTree, child: widget.sidebar),
+                            const VerticalDivider(width: WorkspaceSize.divider),
+                            Expanded(child: _body(context)),
+                          ],
+                        ),
+                ),
               ],
             ),
           ),

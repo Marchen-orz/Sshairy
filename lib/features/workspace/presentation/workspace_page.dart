@@ -359,7 +359,9 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
                 ),
               ],
-              panel: session != null ? SideFilesPanel(host: session.host) : const SizedBox.shrink(),
+              panel: session != null
+                  ? SideFilesPanel(host: session.host, tree: dock == FilesDock.bottom, directory: session.directory)
+                  : const SizedBox.shrink(),
               child: LayoutView(
                 root: tab.layout.root,
                 leaf: (l) => leaf(tab, l),
