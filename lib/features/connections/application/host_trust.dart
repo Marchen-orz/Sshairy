@@ -24,8 +24,12 @@ class HostTrustService {
   late KnownKeys _keys;
   Future<void> _pending = Future.value();
   final _endpointRevisions = <String, int>{};
+  var _invalidations = 0;
 
-  int get revision => _file.revision;
+  /// Counts only changes that take trust away (forgetting, replacing or removing a saved key). Adding a key for
+  /// the first time cannot make a transport that was verified before it less trusted, and it happens during the
+  /// very dial whose transport would otherwise never be reusable.
+  int get revision => _invalidations;
   Future<void> get saved => _pending.then((_) => _file.idle);
 
   static void _validate(Map<String, dynamic> json) {
@@ -116,15 +120,15 @@ class HostTrustService {
   /// Saved first: if the write fails, the state everyone reads is still the old one.
   Future<void> _persist(KnownKeys next, {String? forgotten}) async {
     await _file.write({'schemaVersion': 1, 'keys': next.entries});
+    var invalidated = false;
     for (final endpoint in {..._keys.entries.keys, ...next.entries.keys, ?forgotten}) {
       final before = _keys.entries[endpoint] ?? const <String, String>{};
       final after = next.entries[endpoint] ?? const <String, String>{};
-      if (endpoint == forgotten ||
-          before.length != after.length ||
-          before.entries.any((e) => after[e.key] != e.value)) {
-        _endpointRevisions.update(endpoint, (n) => n + 1, ifAbsent: () => 1);
-      }
+      final lost = endpoint == forgotten || before.entries.any((e) => after[e.key] != e.value);
+      if (lost || before.length != after.length) _endpointRevisions.update(endpoint, (n) => n + 1, ifAbsent: () => 1);
+      invalidated |= lost;
     }
+    if (invalidated) _invalidations++;
     _keys = next;
   }
 }

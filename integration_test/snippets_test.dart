@@ -39,7 +39,7 @@ void main() {
       await start();
       await tester.tap(find.byTooltip('More').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Snippets'));
+      await tester.tap(find.text('Snippets').last); // the menu entry; the navigation lists it too
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('New snippet'));
       await tester.pumpAndSettle();
@@ -67,7 +67,7 @@ void main() {
       await start();
       await tester.tap(find.byTooltip('More').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Snippets'));
+      await tester.tap(find.text('Snippets').last); // the menu entry; the navigation lists it too
       await tester.pumpAndSettle();
       expect(find.text('Renamed check'), findsOneWidget);
       await tester.tap(find.byTooltip('Delete'));

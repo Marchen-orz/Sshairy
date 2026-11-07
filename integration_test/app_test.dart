@@ -40,8 +40,22 @@ Finder inDialog(Finder f) => find.descendant(of: find.byType(AlertDialog), match
 extension on WidgetTester {
   Future<void> until(String what, bool Function() done, {int seconds = 30}) async {
     final end = DateTime.now().add(Duration(seconds: seconds));
-    while (!done()) {
-      if (DateTime.now().isAfter(end)) fail('timed out waiting for $what');
+    // A view that is briefly not there (a rebuild, an overlay) means "not yet", not an error.
+    bool ready() {
+      try {
+        return done();
+      } on StateError {
+        return false;
+      }
+    }
+
+    while (!ready()) {
+      if (DateTime.now().isAfter(end)) {
+        final texts = widgetList<Text>(find.byType(Text)).map((t) => t.data).whereType<String>().take(40).toList();
+        final slug = what.replaceAll(RegExp(r'\W+'), '-');
+        await shot('timeout-${slug.substring(0, min(40, slug.length))}');
+        fail('timed out waiting for $what; on screen: $texts');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 50));
       await pump();
     }
@@ -235,7 +249,17 @@ void main() {
     dir = await Directory.systemTemp.createTemp('sshairy-it');
     await File('${dir.path}/settings.json').writeAsString('{"locale":"en"}');
   });
-  tearDown(() => dir.delete(recursive: true));
+  tearDown(() async {
+    // The app can still hold its log file for a moment; the directory is a throwaway copy either way.
+    for (var i = 0; i < 20; i++) {
+      try {
+        await dir.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+  });
 
   testWidgets('host key: rejecting stops the attempt, a changed key is flagged', (t) async {
     t.testTextInput.register();
@@ -471,7 +495,7 @@ void main() {
     await t.expectShellAlive(9);
     await t.closeTabByKeyboard();
 
-    await t.tapAndPump(find.byTooltip('More'));
+    await t.tapAndPump(find.descendant(of: find.byType(Card), matching: find.byTooltip('More')));
     await t.tapAndPump(find.text('Delete'));
     await t.tapAndPump(inDialog(find.text('Delete')));
     await t.until('host removed', () => find.text('sshairy-it').evaluate().isEmpty);
@@ -532,7 +556,8 @@ void main() {
     await t.untilPrompt();
     await t.expectShellAlive(5);
 
-    await t.tap(find.text('sshairy-ws').hitTestable(), buttons: kSecondaryButton);
+    // The tab bar comes before the host tree, which lists the host under the same name.
+    await t.tap(find.text('sshairy-ws').hitTestable().first, buttons: kSecondaryButton);
     await t.pump(const Duration(milliseconds: 300));
     await t.tapAndPump(find.text('Rename'));
     await t.enterText(inDialog(find.byType(TextField)), 'prod');
@@ -617,8 +642,9 @@ void main() {
 
     await t.tapAndPump(find.descendant(of: find.byType(Card).at(1), matching: find.byTooltip('More')));
     await t.tapAndPump(find.text('Edit'));
-    await t.tapAndPump(find.text('Private key'));
-    await t.tapAndPump(find.byType(DropdownButtonFormField<String?>));
+    await t.tapAndPump(find.text('Password'));
+    await t.tapAndPump(find.text('Private key').last);
+    await t.tapAndPump(find.widgetWithText(DropdownButtonFormField<String?>, 'Private key'));
     await t.tapAndPump(find.text('sshairy-it-key · ssh-ed25519').last);
     await t.shot('host-form-key');
     await t.tapAndPump(find.text('Save'));

@@ -100,16 +100,17 @@ void main() {
     final password = SecretRef.hostPassword(const HostId('h'));
     expect(access.revision, 0);
     await access.remember(password, const Secret('first'));
-    expect(access.revision, 1);
+    expect(access.revision, 0, reason: 'a first save belongs to the dial that just authenticated');
     expect((await access.read(password))?.reveal(), 'first');
-    expect(access.revision, 1, reason: 'reads do not invalidate connections');
+    await access.remember(password, const Secret('first'));
+    expect(access.revision, 0, reason: 'reads and saving the same value do not invalidate connections');
     await access.remember(password, const Secret('second'));
-    expect(access.revision, 2);
+    expect(access.revision, 1, reason: 'a different value replaces what earlier connections used');
     await expectLater(access.remember(SecretRef.privateKey('k'), const Secret('not a key')), throwsArgumentError);
     expect(secrets.values.containsKey(SecretRef.privateKey('k')), isFalse);
     await c.read(hostCredentialCleanupProvider).clearHost(const HostId('h'), 'proxy');
     expect(await access.read(password), isNull);
-    expect(access.revision, greaterThan(2));
+    expect(access.revision, greaterThan(1));
   });
 
   test('key deletion shares the host-reference commit queue and rejects late references', () async {

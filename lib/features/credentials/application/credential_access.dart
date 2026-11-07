@@ -45,8 +45,11 @@ class _StoredCredentials implements ConnectionCredentials, HostCredentialCleanup
   @override
   Future<void> remember(SecretRef ref, Secret value) async {
     if (!ref.canRemember) throw ArgumentError('private keys are managed by the key store');
+    // A first save takes nothing away and happens in the very dial whose connection would otherwise never be
+    // reused; only replacing a different value counts as a change of credential.
+    final old = await _store.read(ref);
     await _store.write(ref, value);
-    _revision.changed();
+    if (old != null && old.reveal() != value.reveal()) _revision.changed();
   }
 
   @override
