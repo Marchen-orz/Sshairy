@@ -12,6 +12,7 @@ import '../features/settings/api.dart';
 import '../features/snippets/api.dart';
 import '../features/workspace/api.dart';
 import '../l10n/app_localizations.dart';
+import '../foundation/diagnostics.dart';
 
 enum _ExitFailureChoice { back, retry, quit }
 
@@ -68,8 +69,12 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             ref.read(workspaceProvider.notifier).saved,
           ]).timeout(const Duration(seconds: 5));
           ref.read(connectionManagerProvider).closeAll();
+          await _closeDiagnostics();
           return AppExitResponse.exit;
         } on Object {
+          ref
+              .read(diagnosticLogProvider)
+              .record(DiagnosticArea.application, DiagnosticAction.shutdown, DiagnosticOutcome.failed);
           if (!mounted) return AppExitResponse.cancel;
           setState(() => _draining = false);
           switch (await _failure()) {
@@ -91,6 +96,17 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
     } finally {
       _asking = false;
       if (mounted) setState(() => _draining = false);
+    }
+  }
+
+  Future<void> _closeDiagnostics() async {
+    final log = ref.read(diagnosticLogProvider);
+    log.record(DiagnosticArea.application, DiagnosticAction.shutdown, DiagnosticOutcome.succeeded);
+    // A diagnostic IO failure must not turn a successful business drain into a failed save.
+    try {
+      await log.close().timeout(const Duration(seconds: 1));
+    } on Object {
+      return;
     }
   }
 

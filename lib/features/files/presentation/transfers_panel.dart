@@ -7,6 +7,7 @@ import '../../../foundation/file_system.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../application/edits.dart';
+import '../application/file_systems.dart' show localFiles;
 import '../application/transfers.dart';
 import '../domain/transfer.dart';
 import 'file_text.dart';
@@ -324,7 +325,10 @@ class _EditRow extends ConsumerWidget {
       EditState.modified => l.esModified,
       EditState.uploading => l.esUploading,
       EditState.conflict => l.editConflict,
-      EditState.failed => fileErrorCode(l, e.error ?? ''),
+      EditState.failed =>
+        e.error == 'cleanupFailed'
+            ? l.editCleanupFailed(localFiles.style.parent(e.localPath))
+            : fileErrorCode(l, e.error ?? ''),
     };
     final warn = e.state == EditState.conflict || e.state == EditState.failed;
     return Padding(

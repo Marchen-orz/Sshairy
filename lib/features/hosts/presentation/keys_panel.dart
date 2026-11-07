@@ -20,7 +20,7 @@ class KeysPanel extends ConsumerWidget {
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     final keys = ref.watch(keysProvider);
-    final hosts = ref.watch(hostsProvider);
+    final library = ref.watch(hostLibraryProvider);
     final notifier = ref.read(keysProvider.notifier);
 
     Future<void> remove(SshKey key) async {
@@ -87,10 +87,7 @@ class KeysPanel extends ConsumerWidget {
               for (final key in keys)
                 Builder(
                   builder: (context) {
-                    final users = [
-                      for (final h in hosts)
-                        if (h.keyId == key.id) h.title,
-                    ];
+                    final users = library.keyReferences(key.id);
                     return Padding(
                       padding: const EdgeInsets.only(bottom: Space.md),
                       child: Row(

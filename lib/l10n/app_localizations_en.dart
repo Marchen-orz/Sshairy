@@ -905,6 +905,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String editCleanupFailed(String path) {
+    return 'Could not remove the local copy $path';
+  }
+
+  @override
   String get portForwarding => 'Port forwarding';
 
   @override
@@ -1106,4 +1111,88 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get retryAction => 'Retry';
+
+  @override
+  String get showHostTree => 'Show hosts';
+
+  @override
+  String get hideHostTree => 'Hide hosts';
+
+  @override
+  String get resizeToolPanel => 'Resize tool panel';
+
+  @override
+  String get configRestoreSnapshots => 'Restore a snapshot';
+
+  @override
+  String get configNoSnapshots => 'No valid snapshots';
+
+  @override
+  String get configRestore => 'Restore';
+
+  @override
+  String get configRestoreFailed =>
+      'Could not restore the snapshot. The current file was preserved.';
+
+  @override
+  String configSnapshotRevision(int revision) {
+    return 'Revision $revision';
+  }
+
+  @override
+  String inheritedFrom(String source) {
+    return 'Inherited from $source';
+  }
+
+  @override
+  String useInherited(String source) {
+    return 'Use the value from $source';
+  }
+
+  @override
+  String get inheritBuiltIn => 'Default';
+
+  @override
+  String get globalDefaults => 'Global defaults';
+
+  @override
+  String get identities => 'Identities';
+
+  @override
+  String get identity => 'Identity';
+
+  @override
+  String get customLogin => 'Custom';
+
+  @override
+  String get newIdentity => 'New identity';
+
+  @override
+  String get keyThenPassword => 'Key, then password';
+
+  @override
+  String get allowInteractive => 'Keyboard-interactive';
+
+  @override
+  String get newGroup => 'New group';
+
+  @override
+  String get editGroup => 'Edit group';
+
+  @override
+  String dissolveGroupConfirm(String name) {
+    return 'Dissolve $name? Its hosts move up a level and its default settings are discarded.';
+  }
+
+  @override
+  String get errGroupInvalid => 'That group path is taken or invalid.';
+
+  @override
+  String deleteIdentity(String name) {
+    return 'Delete identity $name?';
+  }
+
+  @override
+  String get errSave =>
+      'Could not save. Check access to the data directory and secure storage.';
 }

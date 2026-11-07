@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../../foundation/cancellation.dart';
+import '../../../foundation/diagnostics.dart';
 import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../hosts/api.dart';
@@ -21,7 +22,7 @@ enum LeasePurpose { terminal, files, forward, exec }
 /// docs/MODULES.md §2). Concurrent acquires join one dial; a transport without leases is parked for [park],
 /// then closed.
 class ConnectionManager {
-  ConnectionManager(Dial dial, {this.park = const Duration(seconds: 60), this.securityRevision})
+  ConnectionManager(Dial dial, {this.park = const Duration(seconds: 60), this.securityRevision, this.diagnostics})
     : _dial = ((route, prompts, cancel) => dial(route.first, prompts, cancel)),
       _hostById = null;
 
@@ -30,11 +31,13 @@ class ConnectionManager {
     this._hostById, {
     this.park = const Duration(seconds: 60),
     this.securityRevision,
+    this.diagnostics,
   });
 
   final RouteDial _dial;
   final Host? Function(HostId)? _hostById;
   final List<int> Function()? securityRevision;
+  final DiagnosticLog? diagnostics;
   Duration park;
   final _pool = <String, _Entry>{};
   final _detached = <_Entry>{};
@@ -45,8 +48,7 @@ class ConnectionManager {
     h.id.value,
     KnownKeys.endpoint(h.address, h.port),
     h.username,
-    h.auth.name,
-    h.keyId ?? h.keyPath ?? '',
+    h.policy.toJson(),
     h.jumpHostId?.value,
     h.proxy?.toJson(),
     h.legacy,
@@ -63,7 +65,12 @@ class ConnectionManager {
     ConnectPrompts prompts, {
     LeasePurpose purpose = LeasePurpose.terminal,
     CancellationToken? cancel,
-  }) async => acquireRoute(resolveRoute(host, _hostById ?? (_) => null), prompts, purpose: purpose, cancel: cancel);
+  }) async =>
+      acquireRoute(resolveRoute(_current(host), _hostById ?? (_) => null), prompts, purpose: purpose, cancel: cancel);
+
+  /// A saved host is taken from the library as it is now, so a reconnect picks up edits and inherited settings;
+  /// a connection that is already up keeps the configuration it was dialled with.
+  Host _current(Host host) => host.transient ? host : (_hostById?.call(host.id) ?? host);
 
   /// Internal routing entry point: a snapshot already checked by resolveRoute.
   Future<TransportLease> acquireRoute(
@@ -143,6 +150,8 @@ class ConnectionManager {
 
   _Entry _start(String key, List<Host> route, ConnectPrompts prompts) {
     final entry = _Entry(key, route.first);
+    final elapsed = Stopwatch()..start();
+    diagnostics?.record(DiagnosticArea.connection, DiagnosticAction.dial, DiagnosticOutcome.started);
     _pool[key] = entry;
     entry.ready = _dial(route, prompts, entry.dialCancel).then((t) {
       if (entry.dialCancel.isCancelled || _closed) {
@@ -153,7 +162,25 @@ class ConnectionManager {
       t.done.whenComplete(() => _forget(entry)).ignore();
       return t;
     });
-    entry.ready.then((_) {}, onError: (Object _) => _forget(entry));
+    entry.ready.then(
+      (_) => diagnostics?.record(
+        DiagnosticArea.connection,
+        DiagnosticAction.dial,
+        DiagnosticOutcome.succeeded,
+        elapsedMilliseconds: elapsed.elapsedMilliseconds,
+      ),
+      onError: (Object error) {
+        diagnostics?.record(
+          DiagnosticArea.connection,
+          DiagnosticAction.dial,
+          error is ConnectError && error.kind == ConnectFailure.cancelled
+              ? DiagnosticOutcome.cancelled
+              : DiagnosticOutcome.failed,
+          elapsedMilliseconds: elapsed.elapsedMilliseconds,
+        );
+        _forget(entry);
+      },
+    );
     return entry;
   }
 

@@ -1730,6 +1730,12 @@ abstract class AppLocalizations {
   /// **'Could not remove the temporary file {path}'**
   String leftoverPart(String path);
 
+  /// No description provided for @editCleanupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the local copy {path}'**
+  String editCleanupFailed(String path);
+
   /// No description provided for @portForwarding.
   ///
   /// In en, this message translates to:
@@ -2107,6 +2113,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Retry'**
   String get retryAction;
+
+  /// No description provided for @showHostTree.
+  ///
+  /// In en, this message translates to:
+  /// **'Show hosts'**
+  String get showHostTree;
+
+  /// No description provided for @hideHostTree.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide hosts'**
+  String get hideHostTree;
+
+  /// No description provided for @resizeToolPanel.
+  ///
+  /// In en, this message translates to:
+  /// **'Resize tool panel'**
+  String get resizeToolPanel;
+
+  /// No description provided for @configRestoreSnapshots.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore a snapshot'**
+  String get configRestoreSnapshots;
+
+  /// No description provided for @configNoSnapshots.
+  ///
+  /// In en, this message translates to:
+  /// **'No valid snapshots'**
+  String get configNoSnapshots;
+
+  /// No description provided for @configRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get configRestore;
+
+  /// No description provided for @configRestoreFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not restore the snapshot. The current file was preserved.'**
+  String get configRestoreFailed;
+
+  /// No description provided for @configSnapshotRevision.
+  ///
+  /// In en, this message translates to:
+  /// **'Revision {revision}'**
+  String configSnapshotRevision(int revision);
+
+  /// No description provided for @inheritedFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Inherited from {source}'**
+  String inheritedFrom(String source);
+
+  /// No description provided for @useInherited.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the value from {source}'**
+  String useInherited(String source);
+
+  /// No description provided for @inheritBuiltIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get inheritBuiltIn;
+
+  /// No description provided for @globalDefaults.
+  ///
+  /// In en, this message translates to:
+  /// **'Global defaults'**
+  String get globalDefaults;
+
+  /// No description provided for @identities.
+  ///
+  /// In en, this message translates to:
+  /// **'Identities'**
+  String get identities;
+
+  /// No description provided for @identity.
+  ///
+  /// In en, this message translates to:
+  /// **'Identity'**
+  String get identity;
+
+  /// No description provided for @customLogin.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get customLogin;
+
+  /// No description provided for @newIdentity.
+  ///
+  /// In en, this message translates to:
+  /// **'New identity'**
+  String get newIdentity;
+
+  /// No description provided for @keyThenPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Key, then password'**
+  String get keyThenPassword;
+
+  /// No description provided for @allowInteractive.
+  ///
+  /// In en, this message translates to:
+  /// **'Keyboard-interactive'**
+  String get allowInteractive;
+
+  /// No description provided for @newGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'New group'**
+  String get newGroup;
+
+  /// No description provided for @editGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit group'**
+  String get editGroup;
+
+  /// No description provided for @dissolveGroupConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Dissolve {name}? Its hosts move up a level and its default settings are discarded.'**
+  String dissolveGroupConfirm(String name);
+
+  /// No description provided for @errGroupInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That group path is taken or invalid.'**
+  String get errGroupInvalid;
+
+  /// No description provided for @deleteIdentity.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete identity {name}?'**
+  String deleteIdentity(String name);
+
+  /// No description provided for @errSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save. Check access to the data directory and secure storage.'**
+  String get errSave;
 }
 
 class _AppLocalizationsDelegate

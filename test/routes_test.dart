@@ -48,7 +48,7 @@ void main() {
         snapshots.add(route);
         return FakeTransport();
       },
-      (_) => jump,
+      (id) => id == jump.id ? jump : null,
       park: Duration.zero,
     );
     addTearDown(manager.closeAll);

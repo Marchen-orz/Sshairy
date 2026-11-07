@@ -31,6 +31,14 @@
 | [ROADMAP.md](ROADMAP.md) | 里程碑、当前进度、交接记录 |
 | [NETCATTY_REVIEW.md](NETCATTY_REVIEW.md) | 固定版本源码证据和取舍理由 |
 | [CORRECTION.md](CORRECTION.md) | 2026-11-06 纠偏与自绘窗口实施约束 |
+| [BRAND.md](BRAND.md) | GPT 生成图标的设计约束、来源与导出 |
+| [DESIGN_AUDIT.md](DESIGN_AUDIT.md) | 对照最早设计的复核、已确认边界和未修复缺陷 |
+| [HOST_INHERITANCE.md](HOST_INHERITANCE.md) | 分组、身份、全局默认值与三态继承 |
+| [CONFIG_RECOVERY.md](CONFIG_RECOVERY.md) | 配置迁移、进程锁与快照恢复 |
+| [DIAGNOSTICS.md](DIAGNOSTICS.md) | 结构化、脱敏的诊断日志 |
+| [EXTERNAL_EDITS.md](EXTERNAL_EDITS.md) | 外部编辑器、私有副本与清理 |
+| [TERMINAL_FLOW.md](TERMINAL_FLOW.md) | 终端输出的流控与背压 |
+| [WORKSPACE_LAYOUT.md](WORKSPACE_LAYOUT.md) | 工作区、主机树与工具面板布局 |
 
 每次先读本文件与 ROADMAP，再读对应专题。用户新指示优先于文档。发现代码、测试、文档冲突时记录并修订，不把待验证项当事实。涉及决策的修改同步更新对应规范，不机械要求每个代码变更都修改全套文档。
 

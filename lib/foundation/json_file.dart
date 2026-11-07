@@ -5,13 +5,33 @@ import 'dart:math';
 /// A failed read never means an empty configuration.
 enum JsonReadStatus { missing, ok, recovered, corrupt, unsupportedVersion, permissionDenied, ioError }
 
-enum JsonFileFailure { corrupt, unsupportedVersion, permissionDenied, diskFull, io, conflict, backupFailed }
+enum JsonFileFailure {
+  corrupt,
+  unsupportedVersion,
+  migrationFailed,
+  permissionDenied,
+  diskFull,
+  io,
+  conflict,
+  backupFailed,
+}
+
+typedef JsonMigration = Map<String, dynamic> Function(Map<String, dynamic> source);
+
+class JsonSnapshot {
+  const JsonSnapshot._(this.path, this.revision, this.created, this._bytes);
+  final String path;
+  final int revision;
+  final DateTime created;
+  final List<int> _bytes;
+}
 
 class JsonFileError implements Exception {
-  const JsonFileError(this.kind, this.path, {this.expectedRevision, this.actualRevision});
+  const JsonFileError(this.kind, this.path, {this.expectedRevision, this.actualRevision, this.recovery});
 
   final JsonFileFailure kind;
   final String path;
+  final JsonFile? recovery;
   final int? expectedRevision, actualRevision;
 
   @override
@@ -27,18 +47,21 @@ class JsonFile {
     this.interval = const Duration(minutes: 5),
     this.bytesCap = snapshotBytesCap,
     this.schemaVersion = 1,
+    this.migrations = const {},
     this.validate,
   });
 
   static const keepSnapshots = 10;
   static const snapshotBytesCap = 50 << 20;
   static final _writes = <String, Future<void>>{};
+  static final _locked = <String>{};
   static var _serial = 0;
 
   final String path;
   final bool backups;
   final Duration interval;
   final int bytesCap, schemaVersion;
+  final Map<int, JsonMigration> migrations;
   final void Function(Map<String, dynamic>)? validate;
   Future<void> _pending = Future.value();
   List<int>? _baseline;
@@ -82,14 +105,22 @@ class JsonFile {
       status = JsonReadStatus.ok;
       return document.data;
     } on JsonFileError catch (error) {
-      _block(error);
-      rethrow;
+      if (error.kind != JsonFileFailure.conflict) _block(error);
+      throw _withRecovery(error);
     } on FileSystemException catch (error) {
       final failure = _io(error);
       _block(failure);
-      throw failure;
+      throw _withRecovery(failure);
     }
   }
+
+  JsonFileError _withRecovery(JsonFileError error) => JsonFileError(
+    error.kind,
+    error.path,
+    expectedRevision: error.expectedRevision,
+    actualRevision: error.actualRevision,
+    recovery: error.kind == JsonFileFailure.unsupportedVersion || validate == null ? null : this,
+  );
 
   /// Includes the latest failure until a subsequent write succeeds; the internal scheduling queue still recovers.
   Future<void> get idle => _pending;
@@ -103,11 +134,15 @@ class JsonFile {
     } on Object {
       // Report encoding failures through the same ordered future as file failures.
     }
-    final key = _queueKey;
-    final next = (_writes[key] ?? Future<void>.value()).then((_) async {
+    return _enqueue(() async {
       if (payload == null) throw JsonFileError(JsonFileFailure.corrupt, path);
       await _commit((jsonDecode(payload) as Map).cast<String, dynamic>(), expectedRevision);
     });
+  }
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final key = _queueKey;
+    final next = (_writes[key] ?? Future<void>.value()).then((_) => operation());
     _pending = next;
     final tail = next.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     _writes[key] = tail;
@@ -119,9 +154,11 @@ class JsonFile {
 
   Future<void> _commit(Map<String, dynamic> data, int? expectedRevision) async {
     File? tmp;
+    RandomAccessFile? lock;
     try {
       if (_blocked case final error?) throw error;
       if (!_loaded) read();
+      lock = _lock();
       final current = _current();
       if (expectedRevision != null && expectedRevision != _revision) {
         throw JsonFileError(
@@ -131,7 +168,10 @@ class JsonFile {
           actualRevision: _revision,
         );
       }
-      final bytes = utf8.encode(const JsonEncoder.withIndent('  ').convert({...data, 'revision': _revision + 1}));
+      final bytes = utf8.encode(
+        const JsonEncoder.withIndent('  ')
+            .convert({...data, if (schemaVersion > 1) 'schemaVersion': schemaVersion, 'revision': _revision + 1}),
+      );
       final prepared = _inspect(bytes);
       tmp = File(_temporary(path));
       await tmp.writeAsBytes(bytes, flush: true);
@@ -142,7 +182,6 @@ class JsonFile {
       if (backups && current != null) await _snapshot(current);
       // Also reject an external edit that happened while the new file or backup was being prepared.
       _current();
-      // shortcut: separate processes can race after this check; require OS locking before supporting multiple writers.
       await tmp.rename(path);
       _accept(prepared);
       status = JsonReadStatus.ok;
@@ -154,6 +193,36 @@ class JsonFile {
       } on FileSystemException {
         // A leftover temporary file must not hide the actual save failure.
       }
+      _release(lock);
+    }
+  }
+
+  RandomAccessFile _lock() {
+    if (!_locked.add(_queueKey)) throw JsonFileError(JsonFileFailure.conflict, path);
+    RandomAccessFile? handle;
+    try {
+      handle = File('$path.lock').openSync(mode: FileMode.append);
+      try {
+        handle.lockSync(FileLock.exclusive, 0, 1);
+      } on FileSystemException catch (error) {
+        final failure = _io(error);
+        if (failure.kind != JsonFileFailure.io) throw failure;
+        throw JsonFileError(JsonFileFailure.conflict, path);
+      }
+      return handle;
+    } on Object {
+      handle?.closeSync();
+      _locked.remove(_queueKey);
+      rethrow;
+    }
+  }
+
+  void _release(RandomAccessFile? handle) {
+    if (handle == null) return;
+    try {
+      handle.closeSync();
+    } finally {
+      _locked.remove(_queueKey);
     }
   }
 
@@ -206,14 +275,29 @@ class JsonFile {
     try {
       final decoded = jsonDecode(utf8.decode(bytes));
       if (decoded is! Map<String, dynamic>) throw const FormatException('object required');
-      final version = decoded['schemaVersion'];
-      if (decoded.containsKey('schemaVersion') && (version is! int || version != schemaVersion)) {
+      final version = decoded.containsKey('schemaVersion') ? decoded['schemaVersion'] : 1;
+      if (version is! int || version < 1 || version > schemaVersion) {
         throw JsonFileError(JsonFileFailure.unsupportedVersion, path);
       }
       final revision = decoded.containsKey('revision') ? decoded['revision'] : 0;
       if (revision is! int || revision < 0) throw const FormatException('invalid revision');
-      validate?.call(decoded);
-      return _Document(bytes, decoded, revision);
+      var data = decoded;
+      for (var from = version; from < schemaVersion; from++) {
+        final migrate = migrations[from];
+        if (migrate == null) throw JsonFileError(JsonFileFailure.unsupportedVersion, path);
+        try {
+          data = {...migrate(data), 'schemaVersion': from + 1, 'revision': revision};
+        } on Object {
+          throw JsonFileError(JsonFileFailure.migrationFailed, path);
+        }
+      }
+      try {
+        validate?.call(data);
+      } on Object {
+        if (version < schemaVersion) throw JsonFileError(JsonFileFailure.migrationFailed, path);
+        rethrow;
+      }
+      return _Document(bytes, data, revision);
     } on JsonFileError {
       rethrow;
     } on Object {
@@ -234,24 +318,101 @@ class JsonFile {
       }
     }
     if (candidate == null) return null;
-    if (!_same(_readBytes(), damaged)) throw JsonFileError(JsonFileFailure.conflict, path);
-    // Keep the original until its protection copy and the replacement have both been read back successfully.
-    final protection = File('$path.corrupt-${DateTime.now().microsecondsSinceEpoch}-${_serial++}');
+    final lock = _lock();
+    try {
+      _replaceProtected(candidate, damaged, 'corrupt');
+      return candidate;
+    } finally {
+      _release(lock);
+    }
+  }
+
+  /// Only snapshots that pass this configuration's schema and domain checks may be offered for recovery.
+  List<JsonSnapshot> availableSnapshots() {
+    if (validate == null) return const [];
+    final valid = <JsonSnapshot>[];
+    for (final file in snapshots()) {
+      try {
+        final document = _inspect(file.readAsBytesSync());
+        valid.add(
+          JsonSnapshot._(
+            file.path,
+            document.revision,
+            DateTime.fromMillisecondsSinceEpoch(_parse(file)!.stamp),
+            document.bytes,
+          ),
+        );
+      } on JsonFileError {
+        continue;
+      } on FileSystemException {
+        continue;
+      }
+    }
+    return valid;
+  }
+
+  /// Explicit rollback still protects the current bytes and rejects a file changed while the user was choosing.
+  Future<void> restore(JsonSnapshot snapshot) {
+    final previous = _readBytes();
+    return _enqueue(() async {
+      RandomAccessFile? lock;
+      try {
+        lock = _lock();
+        if (validate == null || !snapshots().any((file) => file.path == snapshot.path)) {
+          throw JsonFileError(JsonFileFailure.corrupt, path);
+        }
+        if (!_same(previous, _readBytes())) throw JsonFileError(JsonFileFailure.conflict, path);
+        var currentRevision = 0;
+        if (previous != null) {
+          try {
+            currentRevision = _inspect(previous).revision;
+          } on JsonFileError catch (error) {
+            if (error.kind != JsonFileFailure.corrupt) rethrow;
+          }
+        }
+        final candidate = _inspect(File(snapshot.path).readAsBytesSync());
+        if (!_same(candidate.bytes, snapshot._bytes)) throw JsonFileError(JsonFileFailure.conflict, path);
+        final restored = _inspect(
+          utf8.encode(
+            const JsonEncoder.withIndent('  ').convert({
+              ...candidate.data,
+              'schemaVersion': schemaVersion,
+              'revision': max(currentRevision, candidate.revision) + 1,
+            }),
+          ),
+        );
+        _replaceProtected(restored, previous, 'before-restore');
+        _accept(restored);
+        status = JsonReadStatus.recovered;
+      } on FileSystemException catch (error) {
+        throw _io(error);
+      } finally {
+        _release(lock);
+      }
+    });
+  }
+
+  void _replaceProtected(_Document candidate, List<int>? previous, String reason) {
+    if (!_same(_readBytes(), previous)) throw JsonFileError(JsonFileFailure.conflict, path);
     final tmp = File(_temporary(path));
     try {
-      try {
-        protection.writeAsBytesSync(damaged, flush: true);
-        if (!_same(protection.readAsBytesSync(), damaged)) throw const FileSystemException('protection copy differs');
-      } on FileSystemException {
-        throw JsonFileError(JsonFileFailure.backupFailed, path);
+      if (previous != null) {
+        final protection = File('$path.$reason-${DateTime.now().microsecondsSinceEpoch}-${_serial++}');
+        try {
+          protection.writeAsBytesSync(previous, flush: true);
+          if (!_same(protection.readAsBytesSync(), previous)) {
+            throw const FileSystemException('protection copy differs');
+          }
+        } on FileSystemException {
+          throw JsonFileError(JsonFileFailure.backupFailed, path);
+        }
       }
       tmp.writeAsBytesSync(candidate.bytes, flush: true);
       final checked = tmp.readAsBytesSync();
       _inspect(checked);
       if (!_same(checked, candidate.bytes)) throw JsonFileError(JsonFileFailure.io, path);
-      if (!_same(_readBytes(), damaged)) throw JsonFileError(JsonFileFailure.conflict, path);
+      if (!_same(_readBytes(), previous)) throw JsonFileError(JsonFileFailure.conflict, path);
       tmp.renameSync(path);
-      return candidate;
     } finally {
       try {
         if (tmp.existsSync()) tmp.deleteSync();

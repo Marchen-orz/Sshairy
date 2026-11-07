@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/data_dir.dart';
+import '../../../foundation/diagnostics.dart';
 import '../../credentials/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
@@ -41,6 +42,7 @@ final connectionManagerProvider = Provider<ConnectionManager>((ref) {
     (id) => ref.read(hostsProvider.notifier).byId(id),
     park: Duration(seconds: ref.read(settingsProvider).get(SettingKeys.idleTtl)),
     securityRevision: () => [ref.read(hostTrustProvider).revision, ref.read(connectionCredentialsProvider).revision],
+    diagnostics: ref.read(diagnosticLogProvider),
   );
   ref.listen(settingsProvider.select((s) => s.get(SettingKeys.idleTtl)), (_, v) => manager.park = Duration(seconds: v));
   ref.onDispose(manager.closeAll);

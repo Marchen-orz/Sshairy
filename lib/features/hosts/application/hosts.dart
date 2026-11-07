@@ -6,31 +6,49 @@ import '../../../foundation/ids.dart' show HostId;
 import '../../../foundation/json_file.dart';
 import '../../credentials/api.dart';
 import '../domain/host.dart';
-import '../domain/host_validation.dart';
+import '../domain/host_library.dart';
 
 final hostsProvider = NotifierProvider<HostsNotifier, List<Host>>(HostsNotifier.new);
 
+/// Groups, identities and defaults beside the hosts; it changes whenever [hostsProvider] does.
+final hostLibraryProvider = Provider<HostLibrary>((ref) {
+  ref.watch(hostsProvider);
+  return ref.read(hostsProvider.notifier).library;
+});
+
+/// Owns hosts.json (docs/HOST_INHERITANCE.md). The observed state is the list of hosts, each carrying its effective
+/// values; [library] is the one immutable snapshot behind it, and every change replaces both together.
 class HostsNotifier extends Notifier<List<Host>> {
-  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/hosts.json', backups: true, validate: _validate);
+  late final JsonFile _file = JsonFile(
+    '${ref.read(dataDirProvider)}/hosts.json',
+    backups: true,
+    schemaVersion: 2,
+    migrations: {1: HostLibrary.migrateV1},
+    validate: _validate,
+  );
+  HostLibrary _library = HostLibrary();
 
   @override
   List<Host> build() {
-    final list = _file.read()?['hosts'] as List<dynamic>? ?? const [];
-    return [for (final j in list) Host.fromJson(j as Map<String, dynamic>)];
+    final json = _file.read();
+    _library = json == null ? HostLibrary() : HostLibrary.fromJson(json).normalized();
+    return _library.hosts;
+  }
+
+  HostLibrary get library {
+    // A subclass that only supplies hosts (tests) has no library of its own yet.
+    if (!identical(_library.hosts, state)) _library = HostLibrary.fromHosts(state);
+    return _library;
   }
 
   static void _validate(Map<String, dynamic> json) {
-    final entries = json['hosts'];
-    if (entries is! List) throw const FormatException('hosts must be a list');
-    final ids = <HostId>{};
-    for (final entry in entries) {
-      final host = Host.fromJson((entry as Map).cast<String, dynamic>());
-      validateHost(host);
-      if (!ids.add(host.id)) throw const FormatException('duplicate host id');
-    }
+    if (json['hosts'] is! List) throw const FormatException('hosts must be a list');
+    HostLibrary.fromJson(json).validate();
   }
 
   static HostId newId() => HostId(ids.newId());
+  static String newGroupId() => ids.newId();
+  static String newIdentityId() => ids.newId();
 
   /// Completes once every write issued so far has landed, surfacing any unresolved disk failure.
   Future<void> get saved => _pending.then((_) => _file.idle);
@@ -46,71 +64,76 @@ class HostsNotifier extends Notifier<List<Host>> {
     return next;
   }
 
-  Future<void> save(Host host, {int? expectedRevision}) => _change(() async {
-    validateHost(host);
-    Future<void> commit() async {
-      final old = byId(host.id);
-      final i = state.indexWhere((h) => h.id == host.id);
-      final next = i < 0 ? [...state, host] : ([...state]..[i] = host);
-      await _write(next, expectedRevision: expectedRevision);
-      state = next;
-      // Proxy credentials name their endpoint, so an orphan cannot be sent to the new proxy.
-      if (old != null && old.proxy?.key != host.proxy?.key) {
-        await ref.read(hostCredentialCleanupProvider).clearProxy(host.id, old.proxy?.key ?? '');
-      }
+  /// Validates the edited snapshot, writes it, then publishes it; a failure at any step publishes nothing. [edit]
+  /// returns null for "nothing to do". Unless [routes] is off, a change may not leave a host with a route that was
+  /// not already broken: a missing jump host, a loop, or more than eight hops.
+  Future<void> _apply(
+    HostLibrary? Function(HostLibrary current) edit, {
+    int? expectedRevision,
+    bool routes = true,
+    Future<void> Function(HostLibrary before)? after,
+  }) => _change(() async {
+    final current = library;
+    final edited = edit(current);
+    if (edited == null) return;
+    edited.validate();
+    final next = edited.normalized();
+    if (routes && next.routeProblems().difference(current.routeProblems()).isNotEmpty) {
+      throw ArgumentError('invalid route');
     }
 
-    if (host.keyId case final id?) {
-      await ref.read(keysProvider.notifier).withKeys([id], commit);
-    } else {
+    Future<void> commit() async {
+      await _file.write(next.toJson(), expectedRevision: expectedRevision);
+      _library = next;
+      state = next.hosts;
+      // Proxy credentials name their endpoint, so an orphan cannot be sent to the new proxy.
+      for (final host in next.hosts) {
+        final before = current.hostById(host.id)?.proxy;
+        if (before != null && before.key != host.proxy?.key) {
+          await ref.read(hostCredentialCleanupProvider).clearProxy(host.id, before.key);
+        }
+      }
+      await after?.call(current);
+    }
+
+    // A key must still exist when something starts to use it, and cannot be deleted while it is used.
+    final keys = next.keyIds.difference(current.keyIds);
+    if (keys.isEmpty) {
       await commit();
+    } else {
+      await ref.read(keysProvider.notifier).withKeys(keys, commit);
     }
   });
 
-  Future<void> importDrafts(List<Host> additions, {required int expectedRevision}) => _change(() async {
-    final combined = [...state, ...additions];
-    final ids = {for (final host in state) host.id};
+  Future<void> save(Host host, {int? expectedRevision}) =>
+      _apply((library) => library.withHost(host), expectedRevision: expectedRevision);
+
+  Future<void> importDrafts(List<Host> additions, {required int expectedRevision}) => _apply((library) {
+    final known = {for (final host in library.hosts) host.id};
     final endpoints = {
-      for (final host in state) (host.address.toLowerCase(), host.port, host.username, host.jumpHostId),
+      for (final host in library.hosts) (host.address.toLowerCase(), host.port, host.username, host.jumpHostId),
     };
+    var next = library;
     for (final host in additions) {
-      validateHost(host);
-      if (!ids.add(host.id) ||
-          !endpoints.add((host.address.toLowerCase(), host.port, host.username, host.jumpHostId))) {
+      next = next.withHost(host);
+      final added = next.hostById(host.id)!;
+      if (!known.add(host.id) ||
+          !endpoints.add((added.address.toLowerCase(), added.port, added.username, added.jumpHostId))) {
         throw ArgumentError('duplicate imported host');
       }
     }
-    final byId = {for (final host in combined) host.id: host};
-    for (final host in additions) {
-      final seen = <HostId>{};
-      Host? hop = host;
-      while (hop != null) {
-        if (!seen.add(hop.id) || seen.length > 8) throw ArgumentError('invalid jump chain');
-        final jump = hop.jumpHostId;
-        if (jump == null) break;
-        hop = byId[jump];
-        if (hop == null) throw ArgumentError('missing jump host');
-      }
-    }
-    await ref.read(keysProvider.notifier).withKeys(additions.map((h) => h.keyId).whereType<String>(), () async {
-      await _write(combined, expectedRevision: expectedRevision);
-      state = combined;
-    });
-  });
+    return next;
+  }, expectedRevision: expectedRevision);
 
   Future<void> setPinned(Host host, bool pinned) => _update(host.id, (current) => current.copyWith(pinned: pinned));
 
   /// Recorded when a session opens, for the "recent" order.
   Future<void> touch(HostId id) => _update(id, (current) => current.copyWith(lastUsed: DateTime.now()));
 
-  Future<void> _update(HostId id, Host Function(Host) update) => _change(() async {
-    final i = state.indexWhere((h) => h.id == id);
-    if (i < 0) return;
-    final next = [...state];
-    next[i] = update(state[i]);
-    await _write(next);
-    state = next;
-  });
+  Future<void> _update(HostId id, Host Function(Host) update) => _apply((library) {
+    final current = library.hostById(id);
+    return current == null ? null : library.withHost(update(current));
+  }, routes: false);
 
   /// A copy under [label] that shares the key but not the remembered password.
   Future<Host> duplicate(Host host, String label) async {
@@ -128,34 +151,79 @@ class HostsNotifier extends Notifier<List<Host>> {
       jumpHostId: host.jumpHostId,
       proxy: host.proxy,
       legacy: host.legacy,
+      groupId: host.groupId,
+      overrides: host.overrides,
+      authPolicy: host.authPolicy,
     );
     await save(copy);
     return copy;
   }
 
-  /// Moves every host in [from] or below it under [to]; an empty [to] dissolves the group and keeps its subgroups.
-  Future<void> renameGroup(String from, String to) => _change(() async {
-    final next = [
-      for (final h in state)
-        h.group == from || h.group.startsWith('$from/')
-            ? h.copyWith(group: normalizeGroup(to + h.group.substring(from.length)))
-            : h,
-    ];
-    await _write(next);
-    state = next;
+  /// Gives the group at path [from] the path [to] (parents are created); an empty [to] dissolves it and keeps what it
+  /// held. A path that already names another group is refused.
+  Future<void> renameGroup(String from, String to) => _apply((library) {
+    final id = library.groupIdFor(normalizeGroup(from));
+    if (id == null) return null;
+    final path = normalizeGroup(to);
+    return path.isEmpty ? library.withoutGroup(id) : library.withGroupMoved(id, path);
   });
 
-  Future<void> delete(Host host) => _change(() async {
-    final current = byId(host.id);
-    if (current == null) return;
-    final next = state.where((h) => h.id != host.id).toList();
-    await _write(next);
-    state = next;
-    await ref.read(hostCredentialCleanupProvider).clearHost(host.id, current.proxy?.key ?? '');
+  /// Creates the group at [path] and any missing parents.
+  Future<void> addGroup(String path) => _apply((library) {
+    final (next, _) = library.withGroupPath(path);
+    return identical(next, library) ? null : next;
   });
 
-  Future<void> _write(List<Host> hosts, {int? expectedRevision}) => _file.write({
-    'schemaVersion': 1,
-    'hosts': [for (final h in hosts) h.toJson()],
+  /// Creates the group at [path] with [defaults] in one write; a path that already names a group is refused.
+  Future<String> createGroup(String path, {ConnectionOverrides defaults = const ConnectionOverrides()}) async {
+    late String id;
+    await _apply((library) {
+      if (library.groupIdFor(normalizeGroup(path)) != null) throw ArgumentError.value(path, 'path', 'group exists');
+      final (next, created) = library.withGroupPath(path);
+      if (created == null) throw ArgumentError.value(path, 'path', 'empty path');
+      id = created;
+      return next.withGroup(next.groupById(created)!.copyWith(defaults: defaults));
+    });
+    return id;
+  }
+
+  /// Moves group [id] to [path] and/or replaces its [defaults] in one write; each is left alone when null.
+  Future<void> updateGroup(String id, {String? path, ConnectionOverrides? defaults, int? expectedRevision}) =>
+      _apply((library) {
+        var next = library;
+        if (library.groupById(id) == null) return null;
+        if (path != null && normalizeGroup(path) != library.groupPath(id)) next = next.withGroupMoved(id, path);
+        if (defaults != null) next = next.withGroup(next.groupById(id)!.copyWith(defaults: defaults));
+        return identical(next, library) ? null : next;
+      }, expectedRevision: expectedRevision);
+
+  Future<void> saveGroup(HostGroup group, {int? expectedRevision}) =>
+      _apply((library) => library.withGroup(group), expectedRevision: expectedRevision);
+
+  /// Subgroups and hosts move to the parent; the group's own defaults are discarded.
+  Future<void> deleteGroup(String id, {int? expectedRevision}) => _apply(
+    (library) => library.groupById(id) == null ? null : library.withoutGroup(id),
+    expectedRevision: expectedRevision,
+  );
+
+  Future<void> saveIdentity(HostIdentity identity, {int? expectedRevision}) => _apply((library) {
+    final old = library.identityById(identity.id);
+    return library.withIdentity(identity.copyWith(revision: old == null ? 0 : old.revision + 1));
   }, expectedRevision: expectedRevision);
+
+  /// Throws [IdentityInUse] while a host, group or the defaults still use it.
+  Future<void> deleteIdentity(String id, {int? expectedRevision}) => _apply(
+    (library) => library.identityById(id) == null ? null : library.withoutIdentity(id),
+    expectedRevision: expectedRevision,
+  );
+
+  Future<void> saveDefaults(ConnectionOverrides defaults, {int? expectedRevision}) =>
+      _apply((library) => library.withDefaults(defaults), expectedRevision: expectedRevision);
+
+  Future<void> delete(Host host) => _apply(
+    (library) => library.hostById(host.id) == null ? null : library.withoutHost(host.id),
+    routes: false,
+    after: (before) =>
+        ref.read(hostCredentialCleanupProvider).clearHost(host.id, before.hostById(host.id)?.proxy?.key ?? ''),
+  );
 }

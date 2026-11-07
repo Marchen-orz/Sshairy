@@ -175,14 +175,14 @@ class SshDialer {
     final host = route.first;
     if (cancel.isCancelled) throw const ConnectError(ConnectFailure.cancelled);
     final remember = <SecretRef, Secret>{};
-    final identities = host.auth == AuthKind.key ? await _loadKey(host, prompts, remember) : null;
-    final savedPassword = host.auth == AuthKind.password && !host.transient
-        ? await _secrets.read(host.passwordRef)
-        : null;
+    // Methods are offered in dartssh2's fixed order: key, then password, then keyboard-interactive.
+    final policy = host.policy;
+    final identities = policy.usesKey ? await _loadKey(host, policy, prompts, remember) : null;
+    final savedPassword = policy.usesPassword && !host.transient ? await _secrets.read(host.passwordRef) : null;
     var rejected = false, cancelled = false, passwordUsed = false;
 
     Future<String?> password() async {
-      if (host.auth != AuthKind.password || passwordUsed) return null;
+      if (!policy.usesPassword || passwordUsed) return null;
       passwordUsed = true;
       if (savedPassword != null) return savedPassword.reveal();
       final a = await prompts.secret(
@@ -244,6 +244,32 @@ class SshDialer {
       releaseRoute();
       throw const ConnectError(ConnectFailure.cancelled);
     }
+
+    Future<List<String>?> challenge(SSHUserInfoRequest req) async {
+      final answers = <String>[];
+      for (final p in req.prompts) {
+        // Servers with password login disabled often ask for the password this way.
+        if (!p.echo && p.promptText.toLowerCase().contains('password') && !passwordUsed) {
+          final value = await password();
+          if (value != null) {
+            answers.add(value);
+            continue;
+          }
+          if (cancelled) return null;
+        }
+        final text = [req.instruction, p.promptText].where((s) => s.trim().isNotEmpty).join('\n');
+        final a = await prompts.secret(
+          SecretRequest(SecretKind.challenge, text: text, echo: p.echo, target: host.target),
+        );
+        if (a == null) {
+          cancelled = true;
+          return null;
+        }
+        answers.add(a.value.reveal());
+      }
+      return answers;
+    }
+
     final client = SSHClient(
       socket,
       username: host.username,
@@ -256,30 +282,7 @@ class SshDialer {
         return ok;
       },
       onPasswordRequest: password,
-      onUserInfoRequest: (req) async {
-        final answers = <String>[];
-        for (final p in req.prompts) {
-          // Servers with password login disabled often ask for the password this way.
-          if (!p.echo && p.promptText.toLowerCase().contains('password') && !passwordUsed) {
-            final value = await password();
-            if (value != null) {
-              answers.add(value);
-              continue;
-            }
-            if (cancelled) return null;
-          }
-          final text = [req.instruction, p.promptText].where((s) => s.trim().isNotEmpty).join('\n');
-          final a = await prompts.secret(
-            SecretRequest(SecretKind.challenge, text: text, echo: p.echo, target: host.target),
-          );
-          if (a == null) {
-            cancelled = true;
-            return null;
-          }
-          answers.add(a.value.reveal());
-        }
-        return answers;
-      },
+      onUserInfoRequest: policy.allowInteractive ? challenge : null,
     );
     cancel.whenCancelled.then((_) {
       client.close();
@@ -307,17 +310,22 @@ class SshDialer {
 
   /// An imported key from the secure store, or else the key file; an imported key's passphrase is remembered
   /// with the key, so every host using it shares it.
-  Future<List<SSHKeyPair>> _loadKey(Host host, ConnectPrompts prompts, Map<SecretRef, Secret> remember) async {
+  Future<List<SSHKeyPair>> _loadKey(
+    Host host,
+    AuthPolicy policy,
+    ConnectPrompts prompts,
+    Map<SecretRef, Secret> remember,
+  ) async {
     final String pem;
     final SecretRef? passphraseRef;
-    if (host.keyId case final id?) {
+    if (policy.keyId case final id?) {
       final key = _keyById(id);
       final stored = key == null ? null : await _secrets.read(key.privateRef);
       if (stored == null) throw const ConnectError(ConnectFailure.keyFile, 'key not found');
       pem = stored.reveal();
       passphraseRef = key!.passphraseRef;
     } else {
-      var path = host.keyPath ?? '';
+      var path = policy.keyPath ?? '';
       if (path.startsWith('~')) {
         path = (Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '') + path.substring(1);
       }

@@ -1,0 +1,230 @@
+import 'dart:io';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/app/composition.dart';
+import 'package:sshairy/features/capabilities/api.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
+import 'package:sshairy/features/hosts/api.dart';
+import 'package:sshairy/foundation/data_dir.dart';
+import 'package:sshairy/foundation/ids.dart';
+import 'package:sshairy/foundation/result.dart';
+
+import 'keys_test.dart' show MemorySecrets;
+
+void main() {
+  late Directory dir;
+  late ProviderContainer container;
+  late CapabilityDispatcher dispatcher;
+
+  setUp(() {
+    dir = Directory.systemTemp.createTempSync('sshairy-host-capabilities-');
+    container = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        secretStoreProvider.overrideWithValue(MemorySecrets()),
+        ...appOverrides(),
+      ],
+    );
+    dispatcher = container.read(capabilityDispatcherProvider);
+  });
+
+  tearDown(() async {
+    await container.read(hostsProvider.notifier).saved.then((_) {}, onError: (Object _) {});
+    container.dispose();
+    await dir.delete(recursive: true);
+  });
+
+  Future<Result<Object?>> call(String id, [Map<String, Object?> args = const {}]) =>
+      dispatcher.dispatch(id, args, RequestContext(Origin.palette));
+
+  Future<Map<String, Object?>> ok(String id, [Map<String, Object?> args = const {}]) async {
+    final result = await call(id, args);
+    expect(result, isA<Ok<Object?>>(), reason: '$id: ${result is Err ? result.error : ''}');
+    return ((result as Ok<Object?>).value as Map).cast();
+  }
+
+  Future<void> refused(String id, Map<String, Object?> args, String code) async {
+    final result = await call(id, args);
+    expect(result, isA<Err<Object?>>(), reason: id);
+    expect((result as Err<Object?>).error.code, code, reason: '${result.error}');
+  }
+
+  Host stored(String id) => container.read(hostsProvider.notifier).byId(HostId(id))!;
+
+  group('groups and defaults', () {
+    test('a host created in a group follows it, and an update that does not name a field keeps it inherited', () async {
+      await ok('hostDefaults.update', {
+        'username': 'root',
+        'methods': ['password'],
+        'port': 2200,
+      });
+      final group = await ok('group.create', {'path': 'lab', 'port': 2300, 'jumpHostId': '', 'legacy': true});
+      expect(group['inherit'], ['login', 'proxy']);
+      expect(group['jumpHostId'], '', reason: 'a disabled jump host reads back as an empty id');
+
+      final created = await ok('host.create', {'address': 'a.example', 'group': 'lab'});
+      final id = created['id']! as String;
+      expect((created['port'], created['username'], created['group'], created['legacy']), (2300, 'root', 'lab', true));
+      expect(created['inherit'], ['port', 'login', 'jump', 'proxy', 'legacy']);
+
+      await ok('host.update', {'hostId': id, 'label': 'renamed', 'pinned': true});
+      await ok('group.update', {'groupId': group['id'], 'port': 2400});
+      expect(stored(id).port, 2400, reason: 'a rename must not freeze what the host inherits');
+      expect(stored(id).label, 'renamed');
+
+      await ok('host.update', {'hostId': id, 'port': 2022});
+      await ok('group.update', {'groupId': group['id'], 'port': 2500});
+      expect(stored(id).port, 2022);
+      final back = await ok('host.update', {
+        'hostId': id,
+        'inherit': ['port'],
+      });
+      expect(back['port'], 2500);
+      expect(back['inherit'], contains('port'));
+    });
+
+    test('groups can be listed, moved, given defaults again and dissolved without losing hosts', () async {
+      await ok('hostDefaults.update', {'username': 'root'});
+      final prod = await ok('group.create', {'path': 'prod/web', 'port': 2201});
+      await ok('host.create', {'address': 'h.example', 'group': 'prod/web'});
+
+      final listed = ((await call('group.list') as Ok<Object?>).value as List).cast<Map>();
+      expect(listed.map((g) => g['path']), unorderedEquals(['prod', 'prod/web']));
+
+      final moved = await ok('group.update', {'groupId': prod['id'], 'path': 'edge/web'});
+      expect(moved['path'], 'edge/web');
+      expect(moved['port'], 2201, reason: 'moving keeps the defaults');
+      expect(container.read(hostsProvider).single.group, 'edge/web');
+
+      await refused('group.create', {'path': 'edge/web'}, 'invalidArgument');
+      await refused('group.update', {'groupId': 'nope'}, 'notFound');
+
+      expect(await call('group.delete', {'groupId': prod['id']}), isA<Ok<Object?>>());
+      expect(container.read(hostsProvider).single.group, 'edge');
+      expect(container.read(hostsProvider).single.port, 22, reason: 'dissolving drops the group defaults');
+    });
+
+    test('a host cannot be created while no layer provides a login', () async {
+      await refused('host.create', {'address': 'a.example'}, 'invalidArgument');
+      expect(container.read(hostsProvider), isEmpty);
+    });
+  });
+
+  group('identities', () {
+    test('an identity can be created, used by hosts, edited, and only deleted once nothing uses it', () async {
+      final identity = await ok('identity.create', {'label': 'ops', 'username': 'ops'});
+      final id = identity['id']! as String;
+      expect(identity['revision'], 0);
+
+      final host = await ok('host.create', {'address': 'a.example', 'identityId': id});
+      expect((host['username'], host['identityId']), ('ops', id));
+      await refused('identity.delete', {'identityId': id}, 'inUse');
+
+      final edited = await ok('identity.update', {'identityId': id, 'username': 'operator'});
+      expect((edited['username'], edited['revision']), ('operator', 1));
+      expect(edited['usedBy'], ['a.example']);
+      expect(stored(host['id']! as String).username, 'operator');
+
+      await ok('host.update', {'hostId': host['id'], 'username': 'own'});
+      expect(await call('identity.delete', {'identityId': id}), isA<Ok<Object?>>());
+      expect(((await call('identity.list') as Ok<Object?>).value as List), isEmpty);
+    });
+
+    test('an identity excludes inline login fields and must exist', () async {
+      await ok('hostDefaults.update', {'username': 'root'});
+      final identity = await ok('identity.create', {'label': 'ops', 'username': 'ops'});
+      await refused('host.create', {
+        'address': 'a.example',
+        'identityId': identity['id'],
+        'username': 'also',
+      }, 'invalidArgument');
+      await refused('host.create', {'address': 'a.example', 'identityId': 'missing'}, 'notFound');
+      await refused('identity.create', {'label': '', 'username': 'u'}, 'invalidArgument');
+      await refused('identity.update', {'identityId': 'missing'}, 'notFound');
+    });
+  });
+
+  group('validation', () {
+    test('conflicting, unknown and dangling arguments are refused without changing anything', () async {
+      await ok('hostDefaults.update', {'username': 'root'});
+      final host = await ok('host.create', {'address': 'a.example'});
+      final id = host['id']! as String;
+      final before = container.read(hostsProvider.notifier).revision;
+
+      await refused('host.update', {
+        'hostId': id,
+        'port': 2200,
+        'inherit': ['port'],
+      }, 'invalidArgument');
+      await refused('host.update', {
+        'hostId': id,
+        'inherit': ['colour'],
+      }, 'invalidArgument');
+      await refused('host.update', {'hostId': id, 'jumpHostId': 'missing'}, 'invalidArgument');
+      await refused('host.update', {'hostId': id, 'jumpHostId': id}, 'invalidArgument');
+      await refused('host.update', {'hostId': id, 'port': 70000}, 'invalidArgument');
+      await refused('host.update', {
+        'hostId': id,
+        'methods': ['password', 'key'],
+      }, 'invalidArgument');
+      await refused('host.update', {
+        'hostId': id,
+        'methods': ['key'],
+      }, 'invalidArgument');
+      await refused('host.update', {'hostId': id, 'auth': 'key', 'keyId': 'missing'}, 'notFound');
+      await refused('host.update', {
+        'hostId': id,
+        'auth': 'password',
+        'methods': ['password'],
+      }, 'invalidArgument');
+      await refused('host.update', {
+        'hostId': id,
+        'proxy': {'kind': 'ftp', 'address': 'p', 'port': 1},
+      }, 'invalidArgument');
+      await refused('host.update', {'hostId': 'missing'}, 'notFound');
+      expect(container.read(hostsProvider.notifier).revision, before);
+    });
+
+    test('key then password with interaction off is stored and read back without a key path', () async {
+      final host = await ok('host.create', {
+        'address': 'a.example',
+        'username': 'root',
+        'methods': ['key', 'password'],
+        'keyPath': '~/.ssh/id_ed25519',
+        'allowInteractive': false,
+      });
+      expect(host['methods'], ['key', 'password']);
+      expect(host['allowInteractive'], false);
+      expect(host.containsKey('keyPath'), isFalse, reason: 'key paths stay out of capability results');
+      final policy = stored(host['id']! as String).policy;
+      expect(policy.methods, [AuthKind.key, AuthKind.password]);
+      expect((policy.keyPath, policy.allowInteractive), ('~/.ssh/id_ed25519', false));
+
+      final back = await ok('host.update', {'hostId': host['id'], 'auth': 'password'});
+      expect(back['methods'], ['password']);
+      expect(stored(host['id']! as String).policy.keyPath, isNull);
+    });
+
+    test('the agent cannot reach any of them until a later review exposes them', () async {
+      for (final id in [
+        'host.create',
+        'host.update',
+        'host.delete',
+        'group.create',
+        'group.update',
+        'group.delete',
+        'identity.create',
+        'identity.update',
+        'identity.delete',
+        'hostDefaults.update',
+        'hostDefaults.get',
+        'group.list',
+        'identity.list',
+      ]) {
+        final result = await dispatcher.dispatch(id, {}, RequestContext(Origin.agent));
+        expect((result as Err<Object?>).error.code, 'notExposed', reason: id);
+      }
+    });
+  });
+}

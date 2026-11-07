@@ -98,6 +98,12 @@ const maxEditSize = 64 * 1024 * 1024;
 
 final editsProvider = NotifierProvider<ExternalEdits, List<ExternalEdit>>(ExternalEdits.new);
 
+/// The local deletion port is separate so locked-editor failures can be verified without changing OS permissions.
+final editCleanupProvider = Provider<Future<void> Function(String)>((_) => (path) async {
+  final directory = Directory(path);
+  if (await directory.exists()) await directory.delete(recursive: true);
+});
+
 /// Owns edit copies and their watchers (docs/CONTRACTS.md §2).
 class ExternalEdits extends Notifier<List<ExternalEdit>> {
   late final String _root = '${ref.read(dataDirProvider)}${Platform.pathSeparator}edits';
@@ -109,6 +115,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       for (final entry in json['edits'] as List) {
         final edit = ExternalEdit.fromJson((entry as Map).cast<String, dynamic>());
         if (!ids.add(edit.id)) throw const FormatException('duplicate edit');
+        if (!_ownsCopy(edit)) throw const FormatException('invalid edit copy');
       }
     },
   );
@@ -119,6 +126,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   /// Saves while an upload runs are caught up afterwards, so an older upload never has the last word.
   final _uploading = <String>{};
   final _again = <String>{};
+  final _finishing = <String, Future<void>>{};
   var _closing = false;
   Completer<void>? _uploadsIdle;
 
@@ -135,13 +143,10 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     final saved = _file.read()?['edits'] as List<dynamic>? ?? const [];
     final edits = <ExternalEdit>[];
     for (final j in saved) {
-      try {
-        final e = ExternalEdit.fromJson((j as Map).cast());
-        // A copy that is gone has nothing to recover.
-        if (File(e.localPath).existsSync()) edits.add(e);
-      } on Object {
-        continue;
-      }
+      final e = ExternalEdit.fromJson((j as Map).cast());
+      _checkCopy(e);
+      // A copy that is gone has nothing to recover.
+      if (File(e.localPath).existsSync()) edits.add(e);
     }
     Future.microtask(() {
       for (final e in edits) {
@@ -182,6 +187,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     if (_closing) return const Err(AppError('closing'));
     final existing = state.where((e) => e.host == host.id && e.remotePath == remotePath).firstOrNull;
     if (existing != null) {
+      _checkCopy(existing);
       await openFile(existing.localPath);
       return const Ok(null);
     }
@@ -194,6 +200,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     }
     final id = newId();
     final dir = Directory('$_root${Platform.pathSeparator}$id');
+    var registered = false;
     try {
       final remote = await handle.fs.stat(remotePath);
       if (remote == null || remote.kind != FileKind.file) return const Err(AppError('notAFile'));
@@ -211,12 +218,14 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
         baseline: remote,
       );
       _set([...state, edit]);
+      registered = true;
+      await saved;
       _remember(edit);
       _watch(edit);
       await openFile(local);
       return const Ok(null);
     } on Object catch (e) {
-      await dir.delete(recursive: true).then((_) {}, onError: (Object _) {});
+      if (!registered) await dir.delete(recursive: true).then((_) {}, onError: (Object _) {});
       return Err(e is FsError ? AppError(e.kind.name, detail: e.detail) : AppError('failed', detail: '$e'));
     } finally {
       handle.release();
@@ -237,7 +246,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   /// Uploads the local copy over the remote file if that is still the one downloaded; otherwise marks a
   /// conflict. [force] overwrites anyway, [asCopy] uploads beside it and keeps editing the copy.
   Future<void> upload(String id, {bool force = false, bool asCopy = false}) async {
-    if (_closing) return;
+    if (_closing || _finishing.containsKey(id)) return;
     if (_uploading.contains(id)) {
       _again.add(id);
       return;
@@ -249,6 +258,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     _change(id, (e) => e.copyWith(state: EditState.uploading, error: () => null));
     FsHandle? handle;
     try {
+      _checkCopy(edit);
       final host = _pool.host(edit.host);
       if (host == null) throw const OpFailure('hostMissing');
       handle = await _pool.acquire(host.id, _prompts);
@@ -295,11 +305,13 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
 
   /// Throws the local changes away and downloads the remote file again.
   Future<void> redownload(String id) async {
+    if (_closing || _finishing.containsKey(id) || _uploading.contains(id)) return;
     final edit = _byId(id);
     final host = edit == null ? null : _pool.host(edit.host);
     if (edit == null || host == null) return;
     FsHandle? handle;
     try {
+      _checkCopy(edit);
       handle = await _pool.acquire(host.id, _prompts);
       final remote = await handle.fs.stat(edit.remotePath);
       if (remote == null) throw const FsError(FsFailure.notFound);
@@ -317,18 +329,66 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   }
 
   /// Ends the edit and removes the local copy; the caller confirms first when it holds unsaved changes.
-  Future<void> finish(String id) async {
+  Future<void> finish(String id) => _finishing.putIfAbsent(
+    id, () => _finishCopy(id).whenComplete(() { _finishing.remove(id); }),
+  );
+
+  Future<void> _finishCopy(String id) async {
+    // No new upload for this copy may start while its in-flight upload and watcher are being stopped.
+    await _uploadsIdle?.future;
     final edit = _byId(id);
     if (edit == null) return;
     await _watchers.remove(id)?.cancel();
     _debounce.remove(id)?.cancel();
+    _again.remove(id);
+    try {
+      _checkCopy(edit);
+      final cleanup = ref.read(editCleanupProvider);
+      for (var attempt = 0; ; attempt++) {
+        try {
+          await cleanup(File(edit.localPath).parent.path);
+          break;
+        } on Object {
+          if (attempt == 2) rethrow;
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          _checkCopy(edit);
+        }
+      }
+    } on Object {
+      _change(id, (e) => e.copyWith(state: EditState.failed, autoUpload: false, error: () => 'cleanupFailed'));
+      await saved;
+      return;
+    }
+    _localStamp.remove(id);
     _set([
       for (final e in state)
         if (e.id != id) e,
     ]);
-    final dir = File(edit.localPath).parent;
-    // Windows may still hold the file open in the editor; a leftover copy is retried on the next finish.
-    await dir.delete(recursive: true).then((_) {}, onError: (Object _) {});
+    await saved;
+  }
+
+  bool _ownsCopy(ExternalEdit edit) {
+    if (!RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(edit.id)) return false;
+    final style = localFiles.style;
+    final name = style.name(edit.localPath);
+    if (name.isEmpty || name == '.' || name == '..') return false;
+    String canonical(String path) {
+      final absolute = File(path).absolute.uri.normalizePath().toFilePath();
+      return Platform.isWindows ? absolute.toLowerCase() : absolute;
+    }
+    final directory = style.join(_root, edit.id);
+    return canonical(File(edit.localPath).parent.path) == canonical(directory) &&
+        canonical(edit.localPath) == canonical(style.join(directory, name));
+  }
+
+  void _checkCopy(ExternalEdit edit) {
+    if (!_ownsCopy(edit)) throw const FormatException('invalid edit copy');
+    final directory = FileSystemEntity.typeSync(File(edit.localPath).parent.path, followLinks: false);
+    final file = FileSystemEntity.typeSync(edit.localPath, followLinks: false);
+    if ((directory != FileSystemEntityType.directory && directory != FileSystemEntityType.notFound) ||
+        (file != FileSystemEntityType.file && file != FileSystemEntityType.notFound)) {
+      throw const OpFailure('partInvalid');
+    }
   }
 
   ConnectPrompts get _prompts => ref.read(transfersProvider.notifier).ui?.prompts ?? const NoPrompts();
@@ -350,6 +410,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   }
 
   Future<void> _changed(String id) async {
+    if (_finishing.containsKey(id)) return;
     final edit = _byId(id);
     if (edit == null) return;
     final now = await _stamp(edit.localPath);

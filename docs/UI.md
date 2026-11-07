@@ -79,7 +79,7 @@ onAccent 取白色或 #0B1220 中与 accent 对比度更高的一个，不让白
 
 这是自有配色，不声称已通过全部对比度测试。正文对比度至少 4.5:1，重要控件边界/焦点至少 3:1。
 
-应用图标：由 Codex 独立重绘，源文件 `assets/brand/icon.svg`。饱满的终端精灵轮廓，屏幕上的 `>` 与光标兼作表情，简洁连接节点表达 SSH；移除旧版三根电路呆毛。`windows/runner/resources/app_icon.ico` 与应用内 PNG 从同一 SVG 导出，16–256 px 检查轮廓和提示符，明暗背景预览验证；不复制 Netcatty 的代码或素材。
+应用图标：按用户要求通过 GPT Image 2 生成，采用冰青色风灵轮廓，`>_` 为终端识别元素；去掉机器人机壳、线缆、腮红等细节。原始生成图与提示词在 `output/imagegen/`，透明 PNG 母版为 `assets/brand/icon-source.png`，不宣称是矢量源。应用内 PNG、Windows ICO 和 macOS 图标由 `tool/render_icon.py` 同源导出；`assets/brand/preview.png` 提供明暗背景与 16/24/32/48/64/128 px 预览，ICO 含 256 px。生成与边缘处理说明见 BRAND。未使用 Netcatty 的代码或素材。
 
 - 间距：4/8/12/16/24/32；圆角：6 控件、10 卡片、12 面板/弹层；不为每处单独发明半径。
 - 字体：系统 UI 字体及系统 CJK fallback；正文 14，次级 12，标题 18。关键操作/地址不低于 12。终端默认等宽 14，可选择系统已安装字体，包体只附确有必要且许可清晰的字体。

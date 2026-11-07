@@ -182,7 +182,7 @@ List<Capability> fileCapabilities(Ref ref) {
       (a, _) async {
         final id = transferArg(a);
         if (transfers().byId(id) == null) return const Err(AppError('notFound', detail: 'transfer'));
-        transfers().cancel(id);
+        await transfers().cancel(id);
         return const Ok(null);
       },
     ),

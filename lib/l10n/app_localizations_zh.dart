@@ -880,6 +880,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String editCleanupFailed(String path) {
+    return '无法删除本地副本 $path';
+  }
+
+  @override
   String get portForwarding => '端口转发';
 
   @override
@@ -1076,4 +1081,86 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get retryAction => '重试';
+
+  @override
+  String get showHostTree => '显示主机';
+
+  @override
+  String get hideHostTree => '隐藏主机';
+
+  @override
+  String get resizeToolPanel => '调整工具面板宽度';
+
+  @override
+  String get configRestoreSnapshots => '恢复快照';
+
+  @override
+  String get configNoSnapshots => '没有有效快照';
+
+  @override
+  String get configRestore => '恢复';
+
+  @override
+  String get configRestoreFailed => '无法恢复快照，当前文件已保留。';
+
+  @override
+  String configSnapshotRevision(int revision) {
+    return '修订 $revision';
+  }
+
+  @override
+  String inheritedFrom(String source) {
+    return '继承自 $source';
+  }
+
+  @override
+  String useInherited(String source) {
+    return '改用 $source 的值';
+  }
+
+  @override
+  String get inheritBuiltIn => '默认';
+
+  @override
+  String get globalDefaults => '全局默认值';
+
+  @override
+  String get identities => '身份';
+
+  @override
+  String get identity => '身份';
+
+  @override
+  String get customLogin => '自定义';
+
+  @override
+  String get newIdentity => '新建身份';
+
+  @override
+  String get keyThenPassword => '密钥，再密码';
+
+  @override
+  String get allowInteractive => '键盘交互验证';
+
+  @override
+  String get newGroup => '新建分组';
+
+  @override
+  String get editGroup => '编辑分组';
+
+  @override
+  String dissolveGroupConfirm(String name) {
+    return '解散 $name？其中的主机会移到上一级，该分组的默认设置将被丢弃。';
+  }
+
+  @override
+  String get errGroupInvalid => '分组路径已被占用或无效。';
+
+  @override
+  String deleteIdentity(String name) {
+    return '删除身份 $name？';
+  }
+
+  @override
+  String get errSave => '无法保存，请检查数据目录和安全存储的访问权限。';
 }

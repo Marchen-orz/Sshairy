@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../foundation/ids.dart';
-import '../../foundation/result.dart';
 import '../../features/capabilities/api.dart';
-import '../../features/credentials/api.dart';
 import '../../features/hosts/api.dart';
+import 'host_library.dart';
 
-/// Host metadata for callers outside the vault: no secret references, no key paths.
+/// Host metadata for callers outside the vault: effective values, no secret references, no key paths.
 Map<String, Object?> hostDto(Host h) => {
   'id': h.id.value,
   'label': h.label,
@@ -15,137 +14,81 @@ Map<String, Object?> hostDto(Host h) => {
   'port': h.port,
   'username': h.username,
   'auth': h.auth.name,
-  if (h.keyId != null) 'keyId': h.keyId,
+  ...policyDto(h.policy),
+  'identityId': ?h.overrides?.authentication.value?.identityId,
   'group': h.group,
+  'groupId': ?h.groupId,
   'tags': h.tags,
   'pinned': h.pinned,
-  if (h.jumpHostId != null) 'jumpHostId': h.jumpHostId!.value,
-  if (h.proxy != null) 'proxy': h.proxy!.toJson(),
+  'jumpHostId': ?h.jumpHostId?.value,
+  'proxy': ?h.proxy?.toJson(),
   'legacy': h.legacy,
+  if (h.overrides != null) 'inherit': inheritedFields(h.overrides!),
   if (h.lastUsed != null) 'lastUsed': h.lastUsed!.toUtc().toIso8601String(),
 };
 
 const _hostFields = {
   'label': {'type': 'string'},
   'address': {'type': 'string'},
-  'port': {'type': 'integer', 'minimum': 1, 'maximum': 65535},
-  'username': {'type': 'string'},
-  'auth': {
-    'type': 'string',
-    'enum': ['password', 'key'],
-  },
-  'keyPath': {'type': 'string'},
-  'keyId': {'type': 'string', 'description': 'An imported key from key.list; used instead of keyPath.'},
   'group': {'type': 'string', 'description': 'Slash-separated path such as prod/web; empty for none.'},
   'tags': {
     'type': 'array',
     'items': {'type': 'string'},
   },
   'pinned': {'type': 'boolean'},
-  'jumpHostId': {'type': 'string', 'description': 'Saved jump host ID; empty clears it.'},
-  'proxy': {
-    'type': ['object', 'null'],
-    'properties': {
-      'kind': {
-        'type': 'string',
-        'enum': ['socks5', 'http'],
-      },
-      'address': {'type': 'string'},
-      'port': {'type': 'integer', 'minimum': 1, 'maximum': 65535},
-      'username': {'type': 'string'},
-    },
-    'required': ['kind', 'address', 'port'],
-    'additionalProperties': false,
-  },
-  'legacy': {'type': 'boolean'},
+  ...connectionFields,
 };
 
 List<Capability> hostCapabilities(Ref ref) {
   HostsNotifier hosts() => ref.read(hostsProvider.notifier);
 
-  Result<Host> build(Args a, Host? existing) {
+  /// The host the call describes. Fields that are not given keep what [existing] has, and a new host inherits
+  /// whatever its group and the global defaults provide.
+  Host build(Args a, Host? existing) {
     final address = a.optional<String>('address')?.trim() ?? existing?.address ?? '';
-    final username = a.optional<String>('username')?.trim() ?? existing?.username ?? '';
-    final port = a.optional<int>('port') ?? existing?.port ?? 22;
-    if (address.isEmpty || username.isEmpty) return const Err(AppError('invalidArgument', detail: 'address, username'));
-    if (port < 1 || port > 65535) return const Err(AppError('invalidArgument', detail: 'port'));
-    final auth = AuthKind.values.asNameMap()[a.optional<String>('auth')] ?? existing?.auth ?? AuthKind.password;
-    var keyPath = a.optional<String>('keyPath') ?? existing?.keyPath;
-    var keyId = a.optional<String>('keyId') ?? existing?.keyId;
-    // Naming one way to find the key drops the other.
-    if (a.raw.containsKey('keyPath')) keyId = null;
-    if (a.raw.containsKey('keyId')) keyPath = null;
-    if (keyId != null && ref.read(keysProvider.notifier).byId(keyId) == null) {
-      return const Err(AppError('notFound', detail: 'keyId'));
-    }
-    if (auth == AuthKind.key && keyId == null && (keyPath == null || keyPath.trim().isEmpty)) {
-      return const Err(AppError('invalidArgument', detail: 'keyPath'));
-    }
+    if (address.isEmpty) throw const Rejected('invalidArgument', 'address');
     final tags = a.raw['tags'];
     if (tags != null && (tags is! List || tags.any((t) => t is! String))) {
-      return const Err(AppError('invalidArgument', detail: 'tags'));
+      throw const Rejected('invalidArgument', 'tags');
     }
-    final jumpValue = a.optional<String>('jumpHostId');
-    final jump = jumpValue == null
-        ? existing?.jumpHostId
-        : jumpValue.isEmpty
-        ? null
-        : HostId(jumpValue);
-    if (jump != null && (hosts().byId(jump) == null || jump == existing?.id)) {
-      return const Err(AppError('invalidArgument', detail: 'jumpHostId'));
-    }
-    Proxy? proxy = existing?.proxy;
-    if (a.has('proxy')) {
-      final raw = a.raw['proxy'];
-      if (raw == null) {
-        proxy = null;
-      } else if (raw is Map &&
-          raw['kind'] is String &&
-          raw['address'] is String &&
-          raw['port'] is int &&
-          (raw['username'] == null || raw['username'] is String)) {
-        final kind = ProxyKind.values.asNameMap()[raw['kind']];
-        final address = (raw['address'] as String).trim();
-        final port = raw['port'] as int;
-        if (kind == null || address.isEmpty || port < 1 || port > 65535) {
-          return const Err(AppError('invalidArgument', detail: 'proxy'));
-        }
-        proxy = Proxy(kind, address, port, username: raw['username'] as String? ?? '');
-      } else {
-        return const Err(AppError('invalidArgument', detail: 'proxy'));
-      }
-    }
-    return Ok(
-      Host(
-        id: existing?.id ?? HostsNotifier.newId(),
-        label: a.optional<String>('label')?.trim() ?? existing?.label ?? '',
-        address: address,
-        port: port,
-        username: username,
-        auth: auth,
-        keyPath: auth == AuthKind.key && keyId == null ? keyPath!.trim() : null,
-        keyId: auth == AuthKind.key ? keyId : null,
-        group: normalizeGroup(a.optional<String>('group') ?? existing?.group ?? ''),
-        tags: tags == null ? existing?.tags ?? const [] : parseTags((tags as List).join(',')),
-        pinned: a.optional<bool>('pinned') ?? existing?.pinned ?? false,
-        lastUsed: existing?.lastUsed,
-        jumpHostId: jump,
-        proxy: proxy,
-        legacy: a.optional<bool>('legacy') ?? existing?.legacy ?? false,
-      ),
+    final base = existing == null ? const ConnectionOverrides() : existing.overrides ?? explicitConnection(existing);
+    final overrides = patchConnection(
+      ref,
+      a,
+      base,
+      login: existing == null ? null : (username: existing.username, policy: existing.policy),
+      self: existing?.id,
+    );
+    // Naming a group path moves the host there, creating the group if needed.
+    final path = a.optional<String>('group');
+    final moved = path != null && normalizeGroup(path) != (existing?.group ?? '');
+    return Host(
+      id: existing?.id ?? HostsNotifier.newId(),
+      label: a.optional<String>('label')?.trim() ?? existing?.label ?? '',
+      address: address,
+      // Placeholders: the library resolves every connection setting from [overrides].
+      username: existing?.username ?? '',
+      group: moved ? normalizeGroup(path) : existing?.group ?? '',
+      groupId: moved ? null : existing?.groupId,
+      tags: tags == null ? existing?.tags ?? const [] : parseTags((tags as List).join(',')),
+      pinned: a.optional<bool>('pinned') ?? existing?.pinned ?? false,
+      lastUsed: existing?.lastUsed,
+      overrides: overrides,
     );
   }
 
-  Result<Host> find(Args a) {
-    final host = hosts().byId(HostId(a.require<String>('hostId')));
-    return host == null ? const Err(AppError('notFound', detail: 'host')) : Ok(host);
+  Host find(Args a) => hosts().byId(HostId(a.require<String>('hostId'))) ?? (throw const Rejected('notFound', 'host'));
+
+  Future<Object?> save(Host host) async {
+    await hosts().save(host);
+    return hostDto(hosts().byId(host.id)!);
   }
 
   return [
     FunctionCapability(
       'host.list',
       Effect.query,
-      (_, _) async => Ok([for (final h in ref.read(hostsProvider)) hostDto(h)]),
+      guarded((_) async => [for (final h in ref.read(hostsProvider)) hostDto(h)]),
     ),
     FunctionCapability(
       'host.create',
@@ -153,13 +96,9 @@ List<Capability> hostCapabilities(Ref ref) {
       inputSchema: const {
         'type': 'object',
         'properties': _hostFields,
-        'required': ['address', 'username'],
+        'required': ['address'],
       },
-      (a, _) async {
-        final host = build(a, null);
-        if (host is Ok<Host>) await hosts().save(host.value);
-        return host is Ok<Host> ? Ok(hostDto(host.value)) : host;
-      },
+      guarded((a) => save(build(a, null))),
     ),
     FunctionCapability(
       'host.update',
@@ -172,13 +111,7 @@ List<Capability> hostCapabilities(Ref ref) {
         },
         'required': ['hostId'],
       },
-      (a, _) async {
-        final existing = find(a);
-        if (existing is! Ok<Host>) return existing;
-        final host = build(a, existing.value);
-        if (host is Ok<Host>) await hosts().save(host.value);
-        return host is Ok<Host> ? Ok(hostDto(host.value)) : host;
-      },
+      guarded((a) => save(build(a, find(a)))),
     ),
     FunctionCapability(
       'host.delete',
@@ -190,12 +123,10 @@ List<Capability> hostCapabilities(Ref ref) {
         },
         'required': ['hostId'],
       },
-      (a, _) async {
-        final existing = find(a);
-        if (existing is! Ok<Host>) return existing;
-        await hosts().delete(existing.value);
-        return const Ok(null);
-      },
+      guarded((a) async {
+        await hosts().delete(find(a));
+        return null;
+      }),
     ),
   ];
 }

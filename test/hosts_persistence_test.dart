@@ -67,6 +67,7 @@ void main() {
   test('invalid host or proxy never publishes, persists, or clears credentials', () async {
     await hosts.save(original);
     final before = File('${dir.path}/hosts.json').readAsStringSync();
+    final stored = hosts.byId(original.id)!.toJson();
     for (final patch in <Map<String, dynamic>>[
       {'id': ''},
       {'address': 'bad host'},
@@ -86,7 +87,7 @@ void main() {
     ]) {
       await expectLater(hosts.save(changed(patch)), throwsArgumentError);
     }
-    expect(hosts.byId(original.id)!.toJson(), original.toJson());
+    expect(hosts.byId(original.id)!.toJson(), stored);
     expect(File('${dir.path}/hosts.json').readAsStringSync(), before);
     expect(secrets.deleted, isEmpty);
   });
@@ -147,14 +148,15 @@ void main() {
 
   test('failed disk writes do not publish any mutation or delete secrets', () async {
     await hosts.save(original);
+    final stored = hosts.byId(original.id)!.toJson();
     final block = File('${dir.path}/backups')..writeAsStringSync('blocked');
     await expectLater(hosts.save(original.copyWith(label: 'lost')), throwsA(isA<JsonFileError>()));
     await expectLater(hosts.setPinned(original, true), throwsA(isA<JsonFileError>()));
     await expectLater(hosts.touch(original.id), throwsA(isA<JsonFileError>()));
     await expectLater(hosts.renameGroup('prod', 'lost'), throwsA(isA<JsonFileError>()));
     await expectLater(hosts.delete(original), throwsA(isA<JsonFileError>()));
-    expect(hosts.byId(original.id)!.toJson(), original.toJson());
-    expect(persisted().single, original.toJson());
+    expect(hosts.byId(original.id)!.toJson(), stored);
+    expect(persisted().single, stored);
     expect(secrets.deleted, isEmpty);
     block.deleteSync();
     await hosts.save(original.copyWith(label: 'recovered'));

@@ -6,10 +6,10 @@
 
 | 项 | 状态 |
 |---|---|
-| 阶段 | M0 进行中；第一版可运行；M2 文件工作流已有主体 |
+| 阶段 | M1–M3 已有主要实现；M0 技术验收与一期验收未收齐，非 AI 功能尚未全部完成 |
 | 工具链 | Flutter 3.47.9 stable（c197ca5199）、Dart 3.13.7、Visual Studio C++ 工具 |
 | 已实际运行 | `integration_test/app_test.dart` 在 Windows 11 上连 Ubuntu 24.04 服务器，七个流程全过（含终端搜索、断线自动重连、标签重命名和复制、删除信任记录、SFTP 与传输）；Release 版能启动 |
-| 下一步 | M3；作者亲测 E-04、外部编辑（F-05）、OS 拖入和关窗确认；补 E-05、E-06、E-12、E-01、E-02 和 P-01、P-02 |
+| 下一步 | 先修 DESIGN_AUDIT 确认的三项续传缺陷并补回归测试；再补原始 UI 导航/面板、终端流控与真实环境验收（含 E-04、F-05、窗口关闭、L/R/D、F-04、性能基线） |
 
 第一版已实际运行的范围（不代表对应 M1 项完成，所以下面没有勾选）：快速连接、主机增删改、主机密钥未知/拒绝/变化、密码输入与记住、错误密码、多标签、关闭标签不影响其他会话、断线后重连、Ctrl+C（含有选区时）、多行粘贴确认、主题/语言/字号/主题色、命令面板打开主机与执行动作、同主机分屏、Alt+方向键切换焦点、关闭分屏、重启后恢复为未连接标签、终端搜索（计数、上下跳转、无结果）、服务端结束会话后自动重连、标签右键重命名、命令面板复制标签（共享连接不再要密码）、设置里删除信任记录。
 
@@ -27,10 +27,10 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 作者决定先做能运行的第一版，基本功能可用后再补齐。下列偏离 DESIGN、MODULES、CLAUDE.md 的地方是有意的：
 
 - Capability 目录有 host.list/create/update/delete、session.open/close/reconnect、workspace.split/focus（可带 view: files）/renameTab/duplicateTab、settings.get/patch（schema 由 SettingDef 生成）、file.list/stat/mkdir/rename/delete、transfer.list/enqueue/cancel/retry（都不开放给 AI）；还没有 revision、审批和审计。界面按钮仍直接调用 notifier，命令面板经 dispatcher。
-- ConnectionManager 在拨号前解析不可变的完整跳板链，池 key 包含每跳主机 ID、端点、用户名、认证方式、密钥引用、代理和算法策略；还没有凭据/信任 revision。停泊时长、连接超时和保活取自设置。没有脱敏日志。
+- ConnectionManager 在拨号前解析不可变的完整跳板链，池 key 包含每跳主机 ID、端点、用户名、认证方式、密钥引用、代理和算法策略，以及凭据/信任 revision（上轮纠偏已补）。停泊时长、连接超时和保活取自设置。脱敏日志尚未实现。
 - 终端输出同步解析，应用层没有流控；E-03 只证明库支持背压，T-03 仍未做。
 - 主机有分组路径、标签、置顶和最近连接，没有 Group 对象、继承和 Identity；密码在首次连接时输入并可选记住，表单里没有密码字段。
-- 左侧导航尚未完整实现；Windows 正按用户新要求改为自绘标题栏（ADR-12），详见 CORRECTION。
+- 左侧导航尚未完整实现；Windows 自绘标题栏（ADR-12）已实现并编译启动，完整交互未验收，详见 CORRECTION。本轮设计复核与未修复缺陷见 DESIGN_AUDIT。
 
 ## M0 技术验证
 
@@ -63,11 +63,11 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] foundation：ID、Result、AppError、取消、脱敏日志
 - [ ] design：tokens、Light/Dark、基础组件、i18n（zh、en）
 - [ ] 窗口外壳与标签栏（E-11 结果决定标题栏方案）
-- [ ] 配置存储：单写队列、revision、迁移、备份（D-01）：单写队列、读回验证、revision/expectedRevision、损坏与未来版本的类型化错误和写保护、快照（最近 10 份、5 分钟间隔、50 MiB）、损坏文件经校验快照恢复有单元测试（`test/json_file_test.dart`）；各配置文件的领域校验回调已接入，启动时读取失败显示保留原文件的修复页（`lib/app/configuration.dart`）。迁移框架、恢复界面和多实例防护未做，见 SECURITY §4“当前实现”
+- [ ] 配置存储：单写队列、revision、迁移、备份（D-01）：单写队列、读回验证、revision/expectedRevision、损坏与未来版本的类型化错误和写保护、快照（最近 10 份、5 分钟间隔、50 MiB）、损坏文件经校验快照恢复有单元测试（`test/json_file_test.dart`）；各配置文件的领域校验回调已接入，启动时读取失败显示保留原文件的修复页（`lib/app/configuration.dart`）。逐版迁移、启动恢复入口和跨进程写锁已实现并有测试（`test/json_file_test.dart`、`test/configuration_recovery_test.dart`），恢复页未在真实窗口运行，见 SECURITY §4“当前实现”和 CONFIG_RECOVERY
 - [ ] ShutdownCoordinator：有传输或未上传的编辑时先确认（`app/shutdown.dart`），集成测试经 `handleRequestAppExit` 确认对话框和“取消”；点窗口关闭按钮是否走到这里未亲测：活动转发也计入确认；停止或保存失败时提供重试/返回/仍要退出，不冒充已完成（`test/app_lifecycle_test.dart`）；取消退出后队列恢复接收新任务
 
 主机与凭据：
-- [ ] 主机、分组、身份、继承解析（H-01）
+- [x] 主机、分组、身份、继承解析（H-01）：独立 Group/Identity/全局默认值、schema 1→2 迁移、三态继承解析与来源、串行编辑与密钥引用检查有单元测试；主机/组/全局默认值/身份/主机库的编辑界面有 widget 测试（`test/host_editor_test.dart`）；group/identity/hostDefaults 与 host 能力有测试（`test/host_capabilities_test.dart`），均不对 AI 开放。真实服务器上的 key→password、keyboard-interactive、密钥加载未验；已知限制见 HOST_INHERITANCE
 - [ ] 持久化与坏数据恢复（H-02）
 - [ ] 主机库：网格/列表、搜索、排序、置顶、最近连接、快速连接（H-03）：分组筛选、按标签搜索、置顶、列表视图已在集成测试中确认；拖拽排序未做
 - [ ] SecretRef 与系统凭据存储，无明文降级（D-02）
@@ -116,7 +116,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] SSH config 导入：draft 预览与未支持项报告：解析、计划（跳板依赖、已存在与冲突分类）和 revision 校验提交有单元测试（`test/ssh_config_test.dart`）；文件选择器、Include 展开和抽屉界面未在真实窗口运行
 - [x] known_hosts 导入：解析、哈希匹配（对照 `ssh-keygen -H` 的输出）、冲突不覆盖、串行落盘和预览对话框有单元/组件测试；文件选择器和真实窗口未运行
 - [ ] 密钥生成：Ed25519，ssh-keygen 能读出同样的公钥和指纹；登录未测
-- [ ] 暂停与断点续传（F-04）：单文件暂停/续传、checkpoint 持久化与重启恢复、源与 `.part` 校验、取消/重试清理、目标锁有单元测试（`test/files_test.dart`，全部走本机文件系统）；传输面板的暂停/继续按钮和 `transfer.pause`/`transfer.resume` 能力已接线。真实服务器上的 SFTP 续传、哈希一致性与大文件暂停未验证
+- [ ] 暂停与断点续传（F-04）：单文件暂停/续传、checkpoint 持久化与重启恢复、源与 `.part` 校验、取消/重试清理、目标锁有单元测试（`test/files_test.dart`，全部走本机文件系统）；传输面板的暂停/继续按钮和 `transfer.pause`/`transfer.resume` 能力已接线。真实服务器上的 SFTP 续传、哈希一致性与大文件暂停未验证；复核发现的“保留两者 (2)”判断、源类型变化处理、恢复 ID 路径约束三项缺陷已修复并有回归测试（见 DESIGN_AUDIT），仍未经真实服务器验证，本项不视为已完成
 - [ ] 10 GB 传输（P-03）
 - [x] README 写明已测环境和无保障声明
 - [ ] 确定 LICENSE；审计依赖、字体、图标许可
@@ -160,4 +160,6 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | 开发助手 | 片段搜索、增删改、串行持久化与命令面板入口；与剪贴板共用受控插入，运行/控制字符确认绑定原 shell。Windows 无连接 CRUD/重启恢复集成通过，79 项单元测试通过，flutter analyze 无问题，imports ok | 真实 SSH 片段发送未测；SSH config、known_hosts 导入与转发规则管理继续实施 |
 | 2026-11-06 | 开发助手 | Windows 本地打包（Release、ZIP、101 个依赖许可证清单、SHA256，已核对 ZIP 内容）；片段确认窗口随取消、断线、关闭而关闭；`tool/check_imports.dart` 增加 feature 循环依赖与 `package:sshairy/` 绕过检测 | 包未签名；许可证未定，不宣称 MIT。其他平台未打包 |
 | 2026-11-06 | 开发助手 | known_hosts 导入（预览、冲突报告、哈希名只匹配已保存主机）；HostTrustService 的信任、遗忘、导入改为串行并先落盘后发布。110 项单元测试通过，flutter analyze 无问题，imports ok | 文件选择器与窗口里的导入流程未实际运行；`@revoked` 只计数 |
-| 2026-11-06 | 开发助手 | 纠偏（capability 登记移到 app/、凭据 API 收窄、池键加 securityRevision、JsonFile 保护、统一退出、启动配置门）；SSH config 导入（解析、计划、提交，9 项单元测试）；转发规则面板；片段编辑改抽屉。F-04 单文件暂停/续传（checkpoint、恢复校验、清理、目标锁，`test/files_test.dart`）。200 项单元测试通过，analyze 与 imports 干净 | 无边框窗口（ADR-12）、新图标、冰蓝配色已实现但未在真实窗口亲测；暂停/续传未经真实服务器验证（SFTP 侧 `append` 已实现，本机 `FileMode.append` 修正过截断问题）；全部未提交 |
+| 2026-11-06 | 开发助手 | 纠偏（capability 登记移到 app/、凭据 API 收窄、池键加 securityRevision、JsonFile 保护、统一退出、启动配置门）；SSH config 导入（解析、计划、提交，9 项单元测试）；转发规则面板；片段编辑改抽屉。F-04 单文件暂停/续传（checkpoint、恢复校验、清理、目标锁，`test/files_test.dart`）。200 项单元测试通过，analyze 与 imports 干净 | 无边框窗口（ADR-12）、新图标、冰蓝配色已实现但未在真实窗口亲测；暂停/续传未经真实服务器验证（SFTP 侧 `append` 已实现，本机 `FileMode.append` 修正过截断问题）；该轮随后已分主题本地提交（至 db45d93），未推送 |
+| 2026-11-06 | 开发助手 | 对照最早设计与参考复核：架构纠偏主要边界已落实；3 个本机探针确认续传缺陷，尚未修复，详见 DESIGN_AUDIT。修订 SECURITY/ROADMAP/MODULES 的滞后描述。通过 imagegen + 配置回退实际调用 GPT Image 2 重做 logo，保留原图与提示词，导出透明母版/应用 PNG/Windows ICO/macOS 图标；Windows debug 构建成功。正式 200 项测试、analyze、imports 通过 | 先修三项续传问题再补原始 UI 和流控。新图标已替换；本轮变更未提交。未连接服务器，未新增窗口手动验收 |
+| 2026-11-07 | 开发助手 | H-01 完成：主机、分组、全局默认值共用 ConnectionEditor（每项链接图标、继承来源提示），分组/默认值/身份抽屉，空组与解散确认；group.*/identity.*/hostDefaults.* 能力，host.* 沿用同一字段词汇并带 `inherit`；传输续传三项缺陷修复并补回归测试。全量 284 项测试通过，flutter analyze 无问题，imports ok。widget 测试发现并修了一个真实缺陷：链接的登录（无上层可继承）仍被必填校验，导致分组无法保存 | 真实服务器上的 key→password、keyboard-interactive、密钥加载未验；已知限制见 HOST_INHERITANCE（不合并同路径组、解散丢默认值、跳板被删后悬挂引用、折叠路由区的校验错误不可见）；本轮变更尚未提交，未推送 |

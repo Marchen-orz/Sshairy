@@ -9,6 +9,7 @@ import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
 import 'capabilities/hosts.dart';
+import 'capabilities/host_library.dart';
 import 'capabilities/credentials.dart';
 import 'capabilities/workspace.dart';
 import 'capabilities/files.dart';
@@ -20,10 +21,7 @@ import 'capabilities/forwarding.dart';
 List<Override> appOverrides() => [
   keyReferencesProvider.overrideWith(
     (ref) =>
-        (id) => [
-          for (final host in ref.read(hostsProvider))
-            if (host.keyId == id) host.title,
-        ],
+        (id) => ref.read(hostsProvider.notifier).library.keyReferences(id),
   ),
   snippetInsertionProvider.overrideWith(
     (ref) => (text, {required run, cancel}) async {
@@ -42,6 +40,7 @@ List<Override> appOverrides() => [
   capabilityDispatcherProvider.overrideWith(
     (ref) => CapabilityDispatcher([
       ...hostCapabilities(ref),
+      ...hostLibraryCapabilities(ref),
       ...keyCapabilities(ref),
       ...workspaceCapabilities(ref),
       ...settingsCapabilities(ref),

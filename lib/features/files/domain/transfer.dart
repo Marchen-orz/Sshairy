@@ -43,8 +43,14 @@ class FileEnd {
 
 /// The hidden file a paused transfer stages in, beside its target (docs/SECURITY.md §5): the target's name and
 /// this transfer's ID, so a restored history can never name some other file to touch.
-String partPathFor(PathStyle style, String target, TransferId id) =>
-    style.join(style.parent(target), '.${style.name(target)}.${id.value}.part');
+final _safeTransferId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
+
+bool _validTransferId(TransferId id) => _safeTransferId.hasMatch(id.value);
+
+String partPathFor(PathStyle style, String target, TransferId id) {
+  if (!_validTransferId(id)) throw const FormatException('invalid transfer id');
+  return style.join(style.parent(target), '.${style.name(target)}.${id.value}.part');
+}
 
 Map<String, Object?> _entryJson(FileEntry e) => {
   'kind': e.kind.name,
@@ -120,7 +126,7 @@ class TransferCheckpoint {
 /// Why [cp] cannot be resumed for [t], or null when it can. Structural only: no file system is touched, so a
 /// passing check still has to be followed by stats of the source and the part.
 String? checkpointProblem(Transfer t, TransferCheckpoint cp, PathStyle style) {
-  if (!cp.settled) return 'partInvalid';
+  if (!cp.settled || cp.source.kind != FileKind.file) return 'partInvalid';
   if (!partDerived(t, cp, style)) return 'partInvalid';
   if (cp.offset < 0 || cp.source.size == null || cp.offset > cp.source.size!) return 'partInvalid';
   return null;
@@ -129,15 +135,17 @@ String? checkpointProblem(Transfer t, TransferCheckpoint cp, PathStyle style) {
 /// Whether the checkpoint's part is the one this transfer owns: beside a target that is either the original
 /// path or a legal keep-both name of it. This is what gates cleanup, so restored JSON never deletes by path.
 bool partDerived(Transfer t, TransferCheckpoint cp, PathStyle style) {
+  if (!_validTransferId(t.id)) return false;
   final original = t.target.path;
   if (style.parent(cp.target) != style.parent(original)) return false;
+  if (style.parent(cp.part) != style.parent(cp.target)) return false;
   if (cp.part != partPathFor(style, cp.target, t.id)) return false;
   final name = style.name(cp.target), originalName = style.name(original);
   if (name == originalName) return true;
   for (var n = 1; n < 1000; n++) {
     final candidate = keepBothName(originalName, n, directory: false);
     if (candidate == name) return true;
-    if (candidate.length >= name.length) return false;
+    if (candidate.length > name.length) return false;
   }
   return false;
 }
@@ -267,8 +275,10 @@ class Transfer {
   /// A transfer that was still active when saved did not finish: it comes back interrupted, never running.
   factory Transfer.fromJson(Map<String, dynamic> j) {
     final saved = TransferState.values.byName(j['state'] as String);
+    final id = TransferId(j['id'] as String);
+    if (!_validTransferId(id)) throw const FormatException('invalid transfer id');
     return Transfer(
-      id: TransferId(j['id'] as String),
+      id: id,
       batch: j['batch'] as String,
       source: FileEnd.fromJson((j['source'] as Map).cast()),
       target: FileEnd.fromJson((j['target'] as Map).cast()),
@@ -283,17 +293,10 @@ class Transfer {
       detail: j['detail'] as String? ?? '',
       finished: j['finished'] == null ? null : DateTime.parse(j['finished'] as String),
       directory: j['directory'] as bool? ?? false,
-      // A checkpoint that no longer parses is dropped, not the whole history: the transfer just restarts.
-      checkpoint: j['checkpoint'] == null ? null : _tryCheckpoint((j['checkpoint'] as Map).cast<String, dynamic>()),
+      checkpoint: j['checkpoint'] == null
+          ? null
+          : TransferCheckpoint.fromJson((j['checkpoint'] as Map).cast<String, dynamic>()),
     );
-  }
-
-  static TransferCheckpoint? _tryCheckpoint(Map<String, dynamic> j) {
-    try {
-      return TransferCheckpoint.fromJson(j);
-    } on Object {
-      return null;
-    }
   }
 }
 

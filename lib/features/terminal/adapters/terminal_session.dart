@@ -19,6 +19,7 @@ import '../../settings/api.dart';
 import '../domain/insertion.dart';
 import '../presentation/confirm_insert.dart';
 import 'ime_caret.dart';
+import 'terminal_output.dart';
 
 part 'terminal_pane.dart';
 part 'terminal_search.dart';
@@ -54,6 +55,8 @@ class TerminalSession extends ChangeNotifier {
   ConnectError? error;
   ShellChannel? _shell;
   TransportLease? _lease;
+  TerminalOutput? _outputQueue;
+  CancellationToken? _connecting;
   var _closed = false;
   var _shellEnded = true;
   final _insertions = <CancellationToken>{};
@@ -136,6 +139,11 @@ class TerminalSession extends ChangeNotifier {
       return;
     }
     _prompts = prompts;
+    final cancel = CancellationToken();
+    _connecting = cancel;
+    ShellChannel? ownedShell;
+    TransportLease? ownedLease;
+    TerminalOutput? output;
     status = SessionStatus.connecting;
     error = null;
     notifyListeners();
@@ -144,49 +152,72 @@ class TerminalSession extends ChangeNotifier {
         host,
         prompts,
         (lease) => lease.openShell(cols: _terminal.viewWidth, rows: _terminal.viewHeight),
+        cancel: cancel,
       );
+      ownedShell = shell;
+      ownedLease = lease;
+      if (_closed) return;
       _lease = lease;
-      if (_closed) return shell.close();
       _shell = shell;
       _shellEnded = false;
       void ended() {
+        if (!identical(_shell, shell)) return;
         _shellEnded = true;
-        if (identical(_shell, shell)) _dismissInsertions();
+        _dismissInsertions();
       }
 
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) => shell.write(utf8.encode(data));
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       shell.resize(_terminal.viewWidth, _terminal.viewHeight);
-      // shortcut: output is parsed synchronously as it arrives; add a time-sliced queue if E-02 shows UI stalls.
-      for (final stream in [shell.stdout, shell.stderr]) {
-        stream.cast<List<int>>().transform(const Utf8Decoder(allowMalformed: true)).listen(_output);
-      }
+      final consumer = TerminalOutput([shell.stdout, shell.stderr], (data) {
+        if (!_closed && identical(_shell, shell)) _output(data);
+      });
+      output = consumer;
+      _outputQueue = consumer;
+      final transportEnded = lease.done.then(
+        (_) {
+          output?.finishInput();
+        },
+        onError: (Object _) {
+          output?.finishInput();
+        },
+      );
       _attempts = 0;
       _set(SessionStatus.connected);
-      await Future.any([shell.done, lease.done]).catchError((_) {});
+      await Future.any([shell.done, transportEnded, consumer.failed]).catchError((_) {});
+      ended();
+      // SSH's done can precede EOF delivery: parse the queued tail before ending this shell's generation.
+      await consumer.done;
+      if (consumer.error case final e?) throw ConnectError(ConnectFailure.network, '$e');
       // A shell that ended on its own (`exit`) leaves the transport up; only a lost transport is retried.
-      await Future<void>.delayed(Duration.zero);
       final lost = lease.lost;
       _set(SessionStatus.disconnected);
-      if (lost) _scheduleReconnect();
+      if (lost && status == SessionStatus.disconnected) _scheduleReconnect();
     } on ConnectError catch (e) {
       error = e;
       _set(SessionStatus.failed);
-      if (e.kind == ConnectFailure.network && _attempts > 0) {
+      if (e.kind == ConnectFailure.network && _attempts > 0 && status == SessionStatus.failed) {
         _scheduleReconnect();
       }
     } on Object catch (e) {
       error = ConnectError(ConnectFailure.network, '$e');
       _set(SessionStatus.failed);
     } finally {
-      _terminal.onOutput = null;
-      _terminal.onResize = null;
-      _dismissInsertions();
-      _shell?.close();
-      _shell = null;
-      _lease?.release();
-      _lease = null;
+      output?.cancel();
+      if (identical(_outputQueue, output)) _outputQueue = null;
+      output = null;
+      if (identical(_connecting, cancel)) _connecting = null;
+      if (identical(_shell, ownedShell)) {
+        _terminal.onOutput = null;
+        _terminal.onResize = null;
+        _dismissInsertions();
+        _shell = null;
+        _shellEnded = true;
+      }
+      ownedShell?.close();
+      ownedLease?.release();
+      if (identical(_lease, ownedLease)) _lease = null;
     }
   }
 
@@ -235,8 +266,14 @@ class TerminalSession extends ChangeNotifier {
     _shellEnded = true;
     _dismissInsertions();
     _stopTimer();
+    _connecting?.cancel();
+    _outputQueue?.cancel();
+    _terminal.onOutput = null;
+    _terminal.onResize = null;
     _shell?.close();
+    _shell = null;
     _lease?.release();
+    _lease = null;
     dispose();
   }
 }

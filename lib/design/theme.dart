@@ -11,6 +11,12 @@ abstract final class Radii {
   static const control = 6.0, card = 10.0, panel = 12.0;
 }
 
+abstract final class WorkspaceSize {
+  static const navigation = 224.0, navigationCollapsed = 56.0, navigationBreakpoint = 1200.0;
+  static const toolPanel = 360.0, toolPanelMin = 300.0, toolPanelMax = 560.0, terminalMin = 480.0;
+  static const divider = 1.0, dividerGrab = 8.0, treeRow = 30.0, tabMin = 120.0, tabMax = 220.0;
+}
+
 /// Accent presets from docs/UI.md §2; each has one shade per brightness.
 enum Accent {
   blue(Color(0xFF06ADC8), Color(0xFF5ADDEB)),

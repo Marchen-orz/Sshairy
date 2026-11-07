@@ -52,4 +52,4 @@ flutter test
 
 计划开源，项目许可证尚未确定，当前不声明 MIT 授权。发行前还需完成许可证选择与完整依赖审计。第三方组件保留各自许可，说明见 [DEPENDENCIES](docs/DEPENDENCIES.md)。
 
-图标是本项目自有设计，SVG 源文件位于 [assets/brand/icon.svg](assets/brand/icon.svg)。只参考 Netcatty 的产品设计，未采用其 GPL 代码或品牌素材。
+图标通过 GPT Image 2 生成，透明 PNG 母版位于 [assets/brand/icon-source.png](assets/brand/icon-source.png)，生成说明与提示词见 [BRAND](docs/BRAND.md)。只参考 Netcatty 的产品设计，未采用其 GPL 代码或品牌素材。

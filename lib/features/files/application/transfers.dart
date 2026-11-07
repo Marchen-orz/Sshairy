@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/data_dir.dart';
+import '../../../foundation/diagnostics.dart';
 import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/json_file.dart';
@@ -137,6 +138,7 @@ class TransferManager extends Notifier<List<Transfer>> {
     final job = _jobs[id];
     if (job != null) {
       job.stop.cancel();
+      await job.finished.future;
       return;
     }
     final t = byId(id);
@@ -227,6 +229,7 @@ class TransferManager extends Notifier<List<Transfer>> {
   }
 
   Future<void> _run(_Job job) async {
+    ref.read(diagnosticLogProvider).record(DiagnosticArea.transfer, DiagnosticAction.copy, DiagnosticOutcome.started);
     final t = job.transfer;
     FsHandle? src, dst;
     FileEntry? entry;
@@ -241,7 +244,14 @@ class TransferManager extends Notifier<List<Transfer>> {
       entry = await src.fs.stat(t.source.path);
       if (entry == null) throw const OpFailure('sourceMissing');
       final copy = _Copy(this, job, src.fs, dst.fs);
-      if (entry.isDir) {
+      if (t.checkpoint case final cp?) {
+        job.resuming = true;
+        job.singleFile = true;
+        job.directory = false;
+        job.total = cp.source.size;
+        job.totalFiles = 1;
+        await copy.resumeFile(t.source.path, entry, cp);
+      } else if (entry.isDir) {
         job.directory = true;
         job.singleFile = false;
         await copy.directory(t.source.path, t.target.path);
@@ -250,12 +260,7 @@ class TransferManager extends Notifier<List<Transfer>> {
         job.directory = false;
         job.total = entry.size;
         job.totalFiles = 1;
-        if (t.checkpoint case final cp?) {
-          job.resuming = true;
-          await copy.resumeFile(t.source.path, entry, cp);
-        } else {
-          await copy.file(t.source.path, t.target.path, entry);
-        }
+        await copy.file(t.source.path, t.target.path, entry);
       } else {
         throw const OpFailure('unsupportedType');
       }
@@ -298,6 +303,9 @@ class TransferManager extends Notifier<List<Transfer>> {
       settled: true,
     );
     job.state = TransferState.paused;
+    ref
+        .read(diagnosticLogProvider)
+        .record(DiagnosticArea.transfer, DiagnosticAction.pause, DiagnosticOutcome.succeeded);
     job.phase = null;
     _replace(job.snapshot().copyWith(error: () => null, speed: 0));
   }
@@ -342,6 +350,7 @@ class TransferManager extends Notifier<List<Transfer>> {
   Future<bool> _discardPart(_Job job, FsHandle? dst) async {
     final cp = job.checkpoint;
     if (cp == null) return true;
+    if (!partDerived(job.transfer, cp, styleOf(job.transfer.target.host))) return false;
     final fs = dst?.fs;
     if (fs == null) return false;
     try {
@@ -364,6 +373,17 @@ class TransferManager extends Notifier<List<Transfer>> {
       : _finish(job, TransferState.failed, error: 'leftoverPart', detail: job.checkpoint?.part ?? '');
 
   void _finish(_Job job, TransferState s, {String? error, String detail = ''}) {
+    ref
+        .read(diagnosticLogProvider)
+        .record(
+          DiagnosticArea.transfer,
+          DiagnosticAction.copy,
+          s == TransferState.completed
+              ? DiagnosticOutcome.succeeded
+              : s == TransferState.cancelled
+              ? DiagnosticOutcome.cancelled
+              : DiagnosticOutcome.failed,
+        );
     job.state = s;
     job.phase = null;
     // Completed means the part was published; a failure keeps the checkpoint so remove/retry can clean it.

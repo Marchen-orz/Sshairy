@@ -320,6 +320,164 @@ void main() {
     expect(File('${dir.path}/hosts.json').readAsStringSync(), 'broken');
   });
 
+  test('schema migrations convert in memory and preserve the old document until a protected save', () async {
+    final source = File('${dir.path}/hosts.json')..writeAsStringSync('{"schemaVersion":1,"revision":7,"old":4}');
+    final original = source.readAsStringSync();
+    final file = JsonFile(
+      source.path,
+      schemaVersion: 3,
+      backups: true,
+      validate: validate,
+      migrations: {
+        1: (data) => {'n': data['old']},
+        2: (data) => {...data, 'n': (data['n'] as int) + 1},
+      },
+    );
+    final converted = file.read()!;
+    expect(converted, {'schemaVersion': 3, 'revision': 7, 'n': 5});
+    expect(source.readAsStringSync(), original);
+    await file.write(converted, expectedRevision: 7);
+    expect(jsonDecode(source.readAsStringSync()), {'schemaVersion': 3, 'revision': 8, 'n': 5});
+    expect(file.snapshots().single.readAsStringSync(), original);
+  });
+
+  test('failed or missing migrations never recover over or change a readable old document', () async {
+    final source = File('${dir.path}/hosts.json')..writeAsStringSync('{"schemaVersion":1,"revision":7,"old":4}');
+    final original = source.readAsStringSync();
+    final failed = JsonFile(
+      source.path,
+      schemaVersion: 2,
+      backups: true,
+      validate: validate,
+      migrations: {1: (_) => throw const FormatException('cannot convert')},
+    );
+    expect(failed.read, throwsA(failure(JsonFileFailure.migrationFailed)));
+    await expectLater(failed.write({'n': 2}), throwsA(failure(JsonFileFailure.migrationFailed)));
+    expect(source.readAsStringSync(), original);
+    final missing = JsonFile(source.path, schemaVersion: 2, validate: validate);
+    expect(missing.read, throwsA(failure(JsonFileFailure.unsupportedVersion)));
+    final invalid = JsonFile(
+      source.path,
+      schemaVersion: 2,
+      validate: validate,
+      migrations: {
+        1: (_) => {'n': 'bad'},
+      },
+    );
+    expect(invalid.read, throwsA(failure(JsonFileFailure.migrationFailed)));
+    expect(source.readAsStringSync(), original);
+    expect(JsonFile(source.path).read()?['old'], 4);
+  });
+
+  test('explicit snapshot restore protects the current revision and invalidates stale readers', () async {
+    final file = open();
+    await file.write({'n': 1});
+    await file.write({'n': 2});
+    final selected = file.availableSnapshots().single;
+    expect(selected.revision, 1);
+    final stale = open()..read();
+    await file.restore(selected);
+    expect(disk(), {'schemaVersion': 1, 'n': 1, 'revision': 3});
+    final protected = dir.listSync().where((entry) => entry.path.contains('.before-restore-')).single as File;
+    expect(jsonDecode(protected.readAsStringSync()), {'n': 2, 'revision': 2});
+    await expectLater(stale.write({'n': 9}), throwsA(failure(JsonFileFailure.conflict)));
+  });
+
+  test('explicit recovery releases a corruption block without inventing an empty library', () async {
+    final first = open();
+    await first.write({'n': 1});
+    await first.write({'n': 2});
+    final source = File('${dir.path}/hosts.json')..writeAsStringSync('damaged');
+    final file = JsonFile(source.path, validate: validate);
+    JsonFileError? error;
+    try {
+      file.read();
+    } on JsonFileError catch (caught) {
+      error = caught;
+    }
+    expect(error?.kind, JsonFileFailure.corrupt);
+    expect(error?.recovery, same(file));
+    await file.restore(file.availableSnapshots().single);
+    expect(file.read()?['n'], 1);
+    expect(file.revision, 2);
+    final protected = dir.listSync().where((entry) => entry.path.contains('.before-restore-')).single as File;
+    expect(protected.readAsStringSync(), 'damaged');
+    await file.write({'n': 3});
+    expect(file.revision, 3);
+  });
+
+  test('changed or invalid snapshots and files changed after a restore request are preserved', () async {
+    final file = open();
+    await file.write({'n': 1});
+    await file.write({'n': 2});
+    final selected = file.availableSnapshots().single;
+    File(selected.path).writeAsStringSync('{"n":"bad","revision":1}');
+    expect(file.availableSnapshots(), isEmpty);
+    await expectLater(file.restore(selected), throwsA(failure(JsonFileFailure.corrupt)));
+    expect(disk()['n'], 2);
+    File(selected.path).writeAsStringSync('{"n":1,"revision":1}');
+    final restoring = file.restore(file.availableSnapshots().single);
+    File('${dir.path}/hosts.json').writeAsStringSync('{"n":9,"revision":2}');
+    await expectLater(restoring, throwsA(failure(JsonFileFailure.conflict)));
+    expect(disk()['n'], 9);
+  });
+
+  test('a failed protection copy aborts explicit restore before replacing current bytes', () async {
+    final name = '${List.filled(230, 'y').join()}.json';
+    final path = '${dir.path}/$name';
+    final source = File(path)..writeAsStringSync('{"n":2,"revision":2}');
+    Directory('${dir.path}/backups').createSync();
+    File('${dir.path}/backups/$name.1.bak').writeAsStringSync('{"n":1,"revision":1}');
+    final file = JsonFile(path, validate: validate);
+    file.read();
+    await expectLater(file.restore(file.availableSnapshots().single), throwsA(failure(JsonFileFailure.backupFailed)));
+    expect(source.readAsStringSync(), '{"n":2,"revision":2}');
+    expect(file.revision, 2);
+  });
+
+  Future<Process> lockInAnotherProcess() async {
+    final process = await Process.start('dart', [
+      'test/support/json_lock_probe.dart',
+      '${dir.path}/hosts.json',
+    ], runInShell: Platform.isWindows);
+    final errors = process.stderr.transform(utf8.decoder).join();
+    final ready = await process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .first
+        .timeout(const Duration(seconds: 30));
+    expect(ready, 'locked');
+    addTearDown(() async {
+      process.stdin.writeln('release');
+      await process.stdin.flush();
+      expect(await process.exitCode.timeout(const Duration(seconds: 10)), 0);
+      expect(await errors, isEmpty);
+      await process.stdin.close();
+    });
+    return process;
+  }
+
+  test('a separate process holding the OS lock prevents a commit without changing current bytes', () async {
+    final file = open();
+    await file.write({'n': 1});
+    await lockInAnotherProcess();
+    await expectLater(file.write({'n': 2}), throwsA(failure(JsonFileFailure.conflict)));
+    expect(disk(), {'n': 1, 'revision': 1});
+  });
+
+  test('automatic and selected recovery also respect the separate process lock', () async {
+    final first = open();
+    await first.write({'n': 1});
+    await first.write({'n': 2});
+    File('${dir.path}/hosts.json').writeAsStringSync('damaged');
+    final file = open();
+    final snapshot = file.availableSnapshots().single;
+    await lockInAnotherProcess();
+    expect(file.read, throwsA(failure(JsonFileFailure.conflict)));
+    await expectLater(file.restore(snapshot), throwsA(failure(JsonFileFailure.conflict)));
+    expect(File('${dir.path}/hosts.json').readAsStringSync(), 'damaged');
+  });
+
   test('queued writes capture input when issued rather than reading a later mutation', () async {
     final file = open();
     final value = {'n': 1};

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
+import '../../../design/tool_panel.dart';
 import '../../../design/window_chrome.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
@@ -33,6 +34,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   final _paneKeys = <PaneId, GlobalKey>{};
   final _paneFocus = <PaneId, FocusNode>{};
   var _overlayOpen = false;
+  bool? _showHostTree;
+  final _hostTreeKey = GlobalKey();
 
   /// Tabs showing the files panel beside their terminals.
   final _sideFiles = <TabId>{};
@@ -73,6 +76,125 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   void _openSnippets() => _overlay(() => showSideDrawer<void>(context, (_) => const SnippetsPanel()));
   void _openForwarding() => _overlay(() => showSideDrawer<void>(context, (_) => const ForwardingPanel()));
   void _openPalette() => _overlay(() => widget.openPalette(context));
+  void _openKeys() => _overlay(() => showSideDrawer<void>(context, (_) => const KeysPanel()));
+  void _openTrust() => _overlay(
+    () => showSideDrawer<void>(
+      context,
+      (context) => Column(
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              tooltip: AppLocalizations.of(context).closePane,
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close),
+            ),
+          ),
+          Expanded(child: SingleChildScrollView(child: trustSettingsSection.build(context))),
+        ],
+      ),
+    ),
+  );
+
+  Widget _body({
+    required bool vault,
+    required WorkspaceState state,
+    required Map<SessionId, TerminalSession> sessions,
+    required Widget child,
+  }) {
+    final l = AppLocalizations.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= WorkspaceSize.navigationBreakpoint;
+        final showTree = _showHostTree ?? wide;
+        final active = state.activeTab;
+        final current = active == null ? null : sessions[active.layout.focusedLeaf.session];
+        final tree = KeyedSubtree(
+          key: _hostTreeKey,
+          child: HostTree(
+            activeHost: current?.host.id,
+            onConnect: (host) {
+              if (!wide) setState(() => _showHostTree = false);
+              _workspace.openHost(host);
+            },
+            status: (host) {
+              final matching = sessions.values.where((s) => s.host.id == host.id).toList();
+              return ListenableBuilder(
+                listenable: Listenable.merge(matching),
+                builder: (_, _) => SessionStatusIcon(
+                  matching.any((s) => s.status == SessionStatus.connected)
+                      ? SessionStatus.connected
+                      : matching.firstOrNull?.status ?? SessionStatus.idle,
+                ),
+              );
+            },
+          ),
+        );
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (vault)
+                  _LibraryNavigation(
+                    compact: !wide,
+                    onHosts: _workspace.showVault,
+                    onKeys: _openKeys,
+                    onForwarding: _openForwarding,
+                    onSnippets: _openSnippets,
+                    onTrust: _openTrust,
+                  ),
+                if (active != null && showTree && wide) ...[
+                  SizedBox(width: WorkspaceSize.navigation, child: tree),
+                  const VerticalDivider(width: WorkspaceSize.divider),
+                ],
+                Expanded(key: const ValueKey('workspace-content'), child: child),
+              ],
+            ),
+            if (active != null && showTree && !wide) ...[
+              ModalBarrier(
+                color: Colors.black26,
+                dismissible: true,
+                semanticsLabel: l.hideHostTree,
+                onDismiss: () => setState(() => _showHostTree = false),
+              ),
+              Positioned(
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: WorkspaceSize.navigation,
+                child: CallbackShortcuts(
+                  bindings: {
+                    const SingleActivator(LogicalKeyboardKey.escape): () => setState(() => _showHostTree = false),
+                  },
+                  child: FocusScope(
+                    autofocus: true,
+                    child: Material(
+                      color: Theme.of(context).colorScheme.surfaceContainerLow,
+                      child: Column(
+                        children: [
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: IconButton(
+                              tooltip: l.hideHostTree,
+                              icon: const Icon(Icons.close),
+                              onPressed: () => setState(() => _showHostTree = false),
+                            ),
+                          ),
+                          Expanded(child: tree),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
 
   late final _bindings = <SingleActivator, VoidCallback>{
     const SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true): () => _workspace.showVault(),
@@ -244,17 +366,36 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                       child: Image.asset('assets/brand/icon.png', width: 24, height: 24, semanticLabel: 'sshairy'),
                     ),
                   ),
-                  _Tab(
-                    selected: vault,
-                    onTap: _workspace.showVault,
-                    leading: const Icon(Icons.dns_outlined, size: 16),
-                    title: l.hosts,
+                  if (state.activeTab != null)
+                    IconButton(
+                      tooltip:
+                          (_showHostTree ?? (MediaQuery.sizeOf(context).width >= WorkspaceSize.navigationBreakpoint))
+                          ? l.hideHostTree
+                          : l.showHostTree,
+                      onPressed: () => setState(
+                        () => _showHostTree =
+                            !(_showHostTree ??
+                                (MediaQuery.sizeOf(context).width >= WorkspaceSize.navigationBreakpoint)),
+                      ),
+                      icon: const Icon(Icons.view_sidebar_outlined, size: 18),
+                    ),
+                  SizedBox(
+                    width: WorkspaceSize.tabMin,
+                    child: _Tab(
+                      selected: vault,
+                      onTap: _workspace.showVault,
+                      leading: const Icon(Icons.dns_outlined, size: 16),
+                      title: l.hosts,
+                    ),
                   ),
-                  _Tab(
-                    selected: state.files,
-                    onTap: _workspace.showFiles,
-                    leading: const Icon(Icons.folder_copy_outlined, size: 16),
-                    title: l.sftp,
+                  SizedBox(
+                    width: WorkspaceSize.tabMin,
+                    child: _Tab(
+                      selected: state.files,
+                      onTap: _workspace.showFiles,
+                      leading: const Icon(Icons.folder_copy_outlined, size: 16),
+                      title: l.sftp,
+                    ),
                   ),
                   Expanded(
                     child: DesktopDragRegion(
@@ -354,57 +495,132 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             const Divider(),
             Expanded(
               // Not IndexedStack: its wrappers are unkeyed, so closing a middle tab would rebuild the panes after it.
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Visibility.maintain(
-                    key: const ValueKey('vault'),
-                    visible: vault,
-                    child: ExcludeFocus(
-                      excluding: !vault,
-                      child: VaultPage(active: vault, onConnect: _workspace.openHost),
-                    ),
-                  ),
-                  if (_filesBuilt)
+              child: _body(
+                vault: vault,
+                state: state,
+                sessions: sessions,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
                     Visibility.maintain(
-                      key: const ValueKey('files'),
-                      visible: state.files,
-                      child: IgnorePointer(
-                        ignoring: !state.files,
-                        child: ExcludeFocus(excluding: !state.files, child: const FilesPage()),
+                      key: const ValueKey('vault'),
+                      visible: vault,
+                      child: ExcludeFocus(
+                        excluding: !vault,
+                        child: VaultPage(active: vault, onConnect: _workspace.openHost),
                       ),
                     ),
-                  for (final tab in state.tabs)
-                    Visibility.maintain(
-                      key: ValueKey(tab.id),
-                      visible: state.active == tab.id,
-                      child: IgnorePointer(
-                        ignoring: state.active != tab.id,
-                        child: ExcludeFocus(
-                          excluding: state.active != tab.id,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                child: LayoutView(
-                                  root: tab.layout.root,
-                                  leaf: (l) => leaf(tab, l),
-                                  onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
-                                ),
+                    if (_filesBuilt)
+                      Visibility.maintain(
+                        key: const ValueKey('files'),
+                        visible: state.files,
+                        child: IgnorePointer(
+                          ignoring: !state.files,
+                          child: ExcludeFocus(excluding: !state.files, child: const FilesPage()),
+                        ),
+                      ),
+                    for (final tab in state.tabs)
+                      Visibility.maintain(
+                        key: ValueKey(tab.id),
+                        visible: state.active == tab.id,
+                        child: IgnorePointer(
+                          ignoring: state.active != tab.id,
+                          child: ExcludeFocus(
+                            excluding: state.active != tab.id,
+                            child: ToolPanel(
+                              open: _sideFiles.contains(tab.id) && sessions[tab.layout.focusedLeaf.session] != null,
+                              onClose: () => setState(() => _sideFiles.remove(tab.id)),
+                              closeLabel: l.closePane,
+                              resizeLabel: l.resizeToolPanel,
+                              panel: sessions[tab.layout.focusedLeaf.session] != null
+                                  ? SideFilesPanel(host: sessions[tab.layout.focusedLeaf.session]!.host)
+                                  : const SizedBox.shrink(),
+                              child: LayoutView(
+                                root: tab.layout.root,
+                                leaf: (l) => leaf(tab, l),
+                                onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
                               ),
-                              if (_sideFiles.contains(tab.id) ? sessions[tab.layout.focusedLeaf.session] : null
-                                  case final s?) ...[
-                                const VerticalDivider(width: 1),
-                                SizedBox(width: 360, child: SideFilesPanel(host: s.host)),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LibraryNavigation extends StatelessWidget {
+  const _LibraryNavigation({
+    required this.compact,
+    required this.onHosts,
+    required this.onKeys,
+    required this.onForwarding,
+    required this.onSnippets,
+    required this.onTrust,
+  });
+
+  final bool compact;
+  final VoidCallback onHosts, onKeys, onForwarding, onSnippets, onTrust;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final items = [
+      (l.hosts, Icons.dns_outlined, onHosts),
+      (l.keys, Icons.key_outlined, onKeys),
+      (l.portForwarding, Icons.route_outlined, onForwarding),
+      (l.snippets, Icons.code, onSnippets),
+      (l.trustedKeys, Icons.verified_user_outlined, onTrust),
+    ];
+    return SizedBox(
+      width: compact ? WorkspaceSize.navigationCollapsed : WorkspaceSize.navigation,
+      child: ColoredBox(
+        color: scheme.surfaceContainerLow,
+        child: ListView(
+          padding: const EdgeInsets.all(Space.sm),
+          children: [
+            for (final (label, icon, action) in items)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.xs),
+                child: Tooltip(
+                  message: label,
+                  child: Material(
+                    color: action == onHosts ? scheme.primary.withValues(alpha: .12) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(Radii.control),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: action,
+                      child: Semantics(
+                        label: compact ? label : null,
+                        selected: action == onHosts,
+                        child: SizedBox(
+                          height: 40,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: compact ? 0 : Space.md),
+                            child: Row(
+                              mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                              children: [
+                                Icon(icon, size: 20),
+                                if (!compact) ...[
+                                  const SizedBox(width: Space.md),
+                                  Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                ],
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -539,7 +755,7 @@ class _Tab extends StatelessWidget {
             onDoubleTap: onDoubleTap,
             onSecondaryTapUp: onSecondaryTap == null ? null : (d) => onSecondaryTap!(d.globalPosition),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 96, maxWidth: 220),
+              constraints: const BoxConstraints(minWidth: WorkspaceSize.tabMin, maxWidth: WorkspaceSize.tabMax),
               child: SizedBox(
                 height: 30,
                 child: Padding(

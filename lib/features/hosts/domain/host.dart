@@ -1,35 +1,8 @@
 import '../../../foundation/ids.dart';
 import '../../../foundation/secret.dart';
+import 'connection_options.dart';
 
-enum AuthKind { password, key }
-
-enum ProxyKind { socks5, http }
-
-/// How the first hop reaches its server. The password is asked for when the proxy wants one.
-class Proxy {
-  const Proxy(this.kind, this.address, this.port, {this.username = ''});
-
-  final ProxyKind kind;
-  final String address, username;
-  final int port;
-
-  /// Identifies the route for connection sharing; never holds the password.
-  String get key => '${kind.name}://$username@$address:$port';
-
-  factory Proxy.fromJson(Map<String, dynamic> j) => Proxy(
-    ProxyKind.values.asNameMap()[j['kind']] ?? ProxyKind.socks5,
-    j['address'] as String,
-    j['port'] as int,
-    username: j['username'] as String? ?? '',
-  );
-
-  Map<String, dynamic> toJson() => {
-    'kind': kind.name,
-    'address': address,
-    'port': port,
-    if (username.isNotEmpty) 'username': username,
-  };
-}
+export 'connection_options.dart';
 
 /// Saved connection target. Secrets are never fields; they are looked up by [passwordRef]/[passphraseRef], and an
 /// imported key by [keyId].
@@ -50,6 +23,9 @@ class Host {
     this.jumpHostId,
     this.proxy,
     this.legacy = false,
+    this.groupId,
+    this.overrides,
+    this.authPolicy,
   });
 
   final HostId id;
@@ -77,6 +53,18 @@ class Host {
 
   /// Allows SHA-1 key exchange and host key signatures and CBC ciphers, for this host only.
   final bool legacy;
+  final String? groupId;
+  final ConnectionOverrides? overrides;
+
+  /// A resolved policy, or the explicit legacy method for a standalone host.
+  final AuthPolicy? authPolicy;
+  AuthPolicy get policy =>
+      authPolicy ??
+      AuthPolicy(
+        methods: [auth],
+        keyId: auth == AuthKind.key ? keyId : null,
+        keyPath: auth == AuthKind.key && keyId == null ? keyPath : null,
+      );
 
   /// Quick-connect hosts are not saved, so nothing about them is remembered.
   bool get transient => id.value.isEmpty;
@@ -86,7 +74,15 @@ class Host {
   SecretRef get passphraseRef => SecretRef.hostPassphrase(id);
   SecretRef get proxyRef => SecretRef.hostProxy(id, proxy?.key ?? '');
 
-  Host copyWith({bool? pinned, DateTime? lastUsed, String? group, HostId? id, String? label}) => Host(
+  Host copyWith({
+    bool? pinned,
+    DateTime? lastUsed,
+    String? group,
+    HostId? id,
+    String? label,
+    String? Function()? groupId,
+    ConnectionOverrides? Function()? overrides,
+  }) => Host(
     id: id ?? this.id,
     label: label ?? this.label,
     address: address,
@@ -102,6 +98,9 @@ class Host {
     jumpHostId: jumpHostId,
     proxy: proxy,
     legacy: legacy,
+    groupId: groupId == null ? this.groupId : groupId(),
+    overrides: overrides == null ? this.overrides : overrides(),
+    authPolicy: authPolicy,
   );
 
   factory Host.fromJson(Map<String, dynamic> j) => Host(
@@ -126,6 +125,9 @@ class Host {
     },
     proxy: j['proxy'] is Map<String, dynamic> ? Proxy.fromJson(j['proxy'] as Map<String, dynamic>) : null,
     legacy: j['legacy'] as bool? ?? false,
+    groupId: j['groupId'] as String?,
+    overrides: j['overrides'] == null ? null : ConnectionOverrides.fromJson((j['overrides'] as Map).cast()),
+    authPolicy: j['authPolicy'] == null ? null : AuthPolicy.fromJson((j['authPolicy'] as Map).cast()),
   );
 
   Map<String, dynamic> toJson() => {
@@ -144,6 +146,9 @@ class Host {
     if (jumpHostId != null) 'jumpHostId': jumpHostId!.value,
     if (proxy != null) 'proxy': proxy!.toJson(),
     if (legacy) 'legacy': true,
+    if (groupId != null) 'groupId': groupId,
+    if (overrides != null) 'overrides': overrides!.toJson(),
+    if (authPolicy != null) 'authPolicy': authPolicy!.toJson(),
   };
 }
 

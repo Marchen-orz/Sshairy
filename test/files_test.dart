@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/app/configuration.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/files/adapters/local_fs.dart';
 import 'package:sshairy/features/files/application/file_ops.dart';
@@ -156,6 +157,48 @@ void main() {
         t('q'),
       ];
       expect(pruneHistory(all, now, max: 3).map((x) => x.id.value), ['d0', 'd1', 'd2', 'q']);
+    });
+
+    test('every allocated keep-both suffix is resumable on both path styles', () {
+      for (final style in PathStyle.values) {
+        final root = style == PathStyle.windows ? r'C:\dst' : '/dst';
+        for (final name in ['a.txt', '.bashrc', 'Makefile', 'archive.tar.gz', '中文 名.txt']) {
+          final original = style.join(root, name);
+          final transfer = t('safe-id', path: original);
+          for (final n in [1, 2, 9, 10, 11, 99, 100, 101, 999, 1000]) {
+            final actual = style.join(root, keepBothName(name, n, directory: false));
+            final cp = TransferCheckpoint(
+              offset: 2,
+              source: FileEntry(name, FileKind.file, size: 4),
+              target: actual,
+              part: partPathFor(style, actual, transfer.id),
+              settled: true,
+            );
+            expect(checkpointProblem(transfer, cp, style), n < 1000 ? isNull : 'partInvalid', reason: '$style $actual');
+            expect(partDerived(transfer, cp, style), n < 1000, reason: 'cleanup: $actual');
+          }
+        }
+      }
+    });
+
+    test('unsafe historical IDs cannot create or own a part on either path style', () {
+      for (final style in PathStyle.values) {
+        final target = style == PathStyle.windows ? r'C:\safe\a.txt' : '/safe/a.txt';
+        for (final id in ['', 'x/../../outside', r'x\..\..\outside', '..', 'x:y', 'x\u0000y', 'x\ny', 'a' * 129]) {
+          final transfer = t(id, path: target);
+          final cp = TransferCheckpoint(
+            offset: 1,
+            source: FileEntry('a.txt', FileKind.file, size: 2),
+            target: target,
+            part: style.join(style.parent(target), '.a.txt.$id.part'),
+            settled: true,
+          );
+          expect(partDerived(transfer, cp, style), isFalse);
+          expect(checkpointProblem(transfer, cp, style), 'partInvalid');
+          expect(() => partPathFor(style, target, transfer.id), throwsFormatException);
+          expect(() => Transfer.fromJson(transfer.copyWith(checkpoint: () => cp).toJson()), throwsFormatException);
+        }
+      }
     });
 
     test('speed over a window', () {
@@ -391,6 +434,29 @@ void main() {
       return id;
     }
 
+    test('invalid recovery records preserve history and enter the configuration gate', () {
+      for (final invalidId in [true, false]) {
+        craftPark(2, [1, 2, 3]);
+        final history = (jsonDecode(File(at('transfers.json')).readAsStringSync()) as Map).cast<String, dynamic>();
+        final transfer = history['transfers'][0] as Map;
+        if (invalidId) {
+          transfer['id'] = 'x/../../outside';
+        } else {
+          (transfer['checkpoint'] as Map)['offset'] = 'not a length';
+        }
+        final original = jsonEncode(history);
+        File(at('transfers.json')).writeAsStringSync(original);
+        final c2 = fresh();
+        try {
+          expect(c2.read(configurationCheckProvider)?.file, 'transfers.json');
+          expect(File(at('transfers.json')).readAsStringSync(), original);
+          expect(File(at('dst/big.bin')).existsSync(), isFalse);
+        } finally {
+          c2.dispose();
+        }
+      }
+    });
+
     test('copies a file and a directory', () async {
       manager().enqueue(from: null, paths: [at('src/a.txt'), at('src/sub')], to: null, targetDir: at('dst'));
       final done = await settle();
@@ -535,6 +601,73 @@ void main() {
       expect(invalid.state, TransferState.failed);
       expect(invalid.error, 'partInvalid');
       await m3.saved;
+    });
+
+    test('a file replaced by a directory fails before copying and keeps its part', () async {
+      final bytes = List<int>.generate(100, (i) => i);
+      final id = craftPark(40, bytes);
+      final part = partPathFor(TransferManager.styleOf(null), at('dst/big.bin'), id);
+      File(at('src/big.bin')).deleteSync();
+      Directory(at('src/big.bin')).createSync();
+      File(at('src/big.bin/child.txt')).writeAsStringSync('new directory content');
+      final c2 = fresh();
+      addTearDown(c2.dispose);
+      final m2 = c2.read(transfersProvider.notifier)..ui = ui;
+      m2.resume(id);
+      for (var i = 0; i < 500 && m2.byId(id)!.state.active; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(m2.byId(id)!.state, TransferState.failed);
+      expect(m2.byId(id)!.error, 'sourceChanged');
+      expect(m2.byId(id)!.checkpoint, isNotNull);
+      expect(File(part).readAsBytesSync(), bytes.sublist(0, 40));
+      expect(Directory(at('dst/big.bin')).existsSync(), isFalse);
+      expect(ui.asked, isEmpty);
+      await m2.remove(id);
+      expect(File(part).existsSync(), isFalse);
+      expect(m2.byId(id), isNull);
+      await m2.saved;
+    });
+
+    test('later keep-both targets resume and clean up without touching existing copies', () async {
+      final bytes = List<int>.generate(100, (i) => i);
+      for (final resume in [true, false]) {
+        final id = craftPark(40, bytes);
+        final style = TransferManager.styleOf(null);
+        final original = at('dst/big.bin');
+        final actual = at('dst/big (2).bin');
+        final oldPart = partPathFor(style, original, id);
+        final part = partPathFor(style, actual, id);
+        File(oldPart).renameSync(part);
+        File(original).writeAsStringSync('original');
+        File(at('dst/big (1).bin')).writeAsStringSync('first copy');
+        final history = (jsonDecode(File(at('transfers.json')).readAsStringSync()) as Map).cast<String, dynamic>();
+        final checkpoint = history['transfers'][0]['checkpoint'] as Map;
+        checkpoint['target'] = actual;
+        checkpoint['part'] = part;
+        File(at('transfers.json')).writeAsStringSync(jsonEncode(history));
+        final c2 = fresh();
+        final m2 = c2.read(transfersProvider.notifier)..ui = ui;
+        try {
+          if (resume) {
+            m2.resume(id);
+            for (var i = 0; i < 500 && m2.byId(id)!.state.active; i++) {
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+            }
+            expect(m2.byId(id)!.state, TransferState.completed);
+            expect(File(actual).readAsBytesSync(), bytes);
+          } else {
+            await m2.remove(id);
+            expect(m2.byId(id), isNull);
+          }
+          expect(File(part).existsSync(), isFalse);
+          expect(File(original).readAsStringSync(), 'original');
+          expect(File(at('dst/big (1).bin')).readAsStringSync(), 'first copy');
+          await m2.saved;
+        } finally {
+          c2.dispose();
+        }
+      }
     });
 
     test('an unsettled checkpoint is not resumable; retry starts over and cleans up', () async {
