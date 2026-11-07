@@ -173,6 +173,8 @@ abstract final class SettingKeys {
 
   static const showMonitor = BoolSetting('showMonitor', true);
 
+  /// Seconds between monitor samples; the panel offers 1, 2, 3, 5 and 10.
+  static const monitorInterval = IntSetting('monitorInterval', 3, 1, 10);
   static const filesDock = EnumSetting('filesDock', FilesDock.right, FilesDock.values);
   static const navigationExpanded = BoolSetting('navigationExpanded', false);
   static const navigationWidth = DoubleSetting(
@@ -210,6 +212,7 @@ abstract final class SettingKeys {
     hostView,
     hostOrder,
     showMonitor,
+    monitorInterval,
     filesDock,
     navigationExpanded,
     navigationWidth,

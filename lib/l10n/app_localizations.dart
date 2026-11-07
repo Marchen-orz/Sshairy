@@ -2449,6 +2449,174 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count} sessions will be disconnected'**
   String sessionsOpen(int count);
+
+  /// No description provided for @monitorInterval.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh interval'**
+  String get monitorInterval;
+
+  /// No description provided for @copyAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy address'**
+  String get copyAddress;
+
+  /// No description provided for @monitorSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get monitorSystem;
+
+  /// No description provided for @processes.
+  ///
+  /// In en, this message translates to:
+  /// **'Processes'**
+  String get processes;
+
+  /// No description provided for @showAllProcesses.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all processes'**
+  String get showAllProcesses;
+
+  /// No description provided for @allInterfaces.
+  ///
+  /// In en, this message translates to:
+  /// **'All interfaces'**
+  String get allInterfaces;
+
+  /// No description provided for @diskFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Free / size'**
+  String get diskFree;
+
+  /// No description provided for @processUser.
+  ///
+  /// In en, this message translates to:
+  /// **'User'**
+  String get processUser;
+
+  /// No description provided for @processResident.
+  ///
+  /// In en, this message translates to:
+  /// **'Resident'**
+  String get processResident;
+
+  /// No description provided for @processState.
+  ///
+  /// In en, this message translates to:
+  /// **'State'**
+  String get processState;
+
+  /// No description provided for @processThreads.
+  ///
+  /// In en, this message translates to:
+  /// **'Threads'**
+  String get processThreads;
+
+  /// No description provided for @processElapsed.
+  ///
+  /// In en, this message translates to:
+  /// **'Running'**
+  String get processElapsed;
+
+  /// No description provided for @processCommand.
+  ///
+  /// In en, this message translates to:
+  /// **'Command'**
+  String get processCommand;
+
+  /// No description provided for @searchProcesses.
+  ///
+  /// In en, this message translates to:
+  /// **'Search processes'**
+  String get searchProcesses;
+
+  /// No description provided for @copyPid.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy PID'**
+  String get copyPid;
+
+  /// No description provided for @copyCommand.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy command'**
+  String get copyCommand;
+
+  /// No description provided for @terminateProcess.
+  ///
+  /// In en, this message translates to:
+  /// **'End process'**
+  String get terminateProcess;
+
+  /// No description provided for @killProcess.
+  ///
+  /// In en, this message translates to:
+  /// **'Force end'**
+  String get killProcess;
+
+  /// No description provided for @terminateConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'End {name} (PID {pid})?'**
+  String terminateConfirm(String name, int pid);
+
+  /// No description provided for @killConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Force {name} (PID {pid}) to end? It gets no chance to save its work.'**
+  String killConfirm(String name, int pid);
+
+  /// No description provided for @signalFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not end the process: {detail}'**
+  String signalFailed(String detail);
+
+  /// No description provided for @tasks.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tasks'**
+  String tasks(int count);
+
+  /// No description provided for @gpuTemperature.
+  ///
+  /// In en, this message translates to:
+  /// **'Temperature'**
+  String get gpuTemperature;
+
+  /// No description provided for @gpuPower.
+  ///
+  /// In en, this message translates to:
+  /// **'Power / limit'**
+  String get gpuPower;
+
+  /// No description provided for @gpuFan.
+  ///
+  /// In en, this message translates to:
+  /// **'Fan'**
+  String get gpuFan;
+
+  /// No description provided for @gpuCoreClock.
+  ///
+  /// In en, this message translates to:
+  /// **'Core clock'**
+  String get gpuCoreClock;
+
+  /// No description provided for @gpuMemoryClock.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory clock'**
+  String get gpuMemoryClock;
+
+  /// No description provided for @gpuMemory.
+  ///
+  /// In en, this message translates to:
+  /// **'VRAM'**
+  String get gpuMemory;
 }
 
 class _AppLocalizationsDelegate

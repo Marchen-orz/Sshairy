@@ -3,42 +3,93 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../foundation/result.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../domain/stats.dart';
 
 enum MonitorState { waiting, live, offline, unsupported, failed }
 
+/// SIGTERM asks a process to exit; SIGKILL cannot be caught.
+enum ProcessSignal { term, kill }
+
 /// Polls one connected host with [statsCommand] over an exec lease (docs/MODULES.md §8, ADR-14). It never dials:
 /// with no live connection to the host it reports [MonitorState.offline] and looks again on the next tick.
 class ServerMonitor extends ChangeNotifier {
-  ServerMonitor(this._connections, this.host, {this.interval = const Duration(seconds: 3)});
+  ServerMonitor(this._connections, this.host, {Duration interval = const Duration(seconds: 3)})
+    : _interval = interval; // ignore: prefer_initializing_formals, a private named parameter is not allowed
 
   final ConnectionManager _connections;
   final Host host;
-  final Duration interval;
 
   static const historyLength = 60;
   static const _timeout = Duration(seconds: 10);
-  static const _limit = 256 * 1024;
+  static const _limit = 1 << 20;
+
+  /// The key of the history summed over every interface but `lo`.
+  static const allInterfaces = '';
 
   var state = MonitorState.waiting;
   StatsSnapshot? snapshot;
 
-  /// Oldest first, at most [historyLength]; 0–1 for cpu and memory, bytes per second for the network.
-  final cpu = <double>[], memory = <double>[], rx = <double>[], tx = <double>[];
+  /// Oldest first, at most [historyLength]; 0–1 for cpu and memory.
+  final cpu = <double>[], memory = <double>[];
+
+  /// Bytes per second by interface, [allInterfaces] for the sum.
+  final rx = <String, List<double>>{}, tx = <String, List<double>>{};
+
+  /// Utilization, 0–1, by [Gpu.id].
+  final gpuUtilization = <String, List<double>>{};
 
   TransportLease? _lease;
   Timer? _timer;
   StatsSample? _previous;
   DateTime? _previousAt;
-  var _running = false, _busy = false, _disposed = false;
+  Duration _interval;
+  var _running = false, _busy = false, _disposed = false, _gpuVisible = false, _processViews = 0;
 
   bool get running => _running;
+  Duration get interval => _interval;
+
+  /// A new interval applies from the next tick; a shorter one cuts the current wait short.
+  set interval(Duration value) {
+    if (value == _interval) return;
+    _interval = value;
+    if (_running && _timer != null) {
+      _timer!.cancel();
+      _timer = Timer(value, _tick);
+    }
+  }
+
+  /// The graphics queries are slower than the rest, so they run only while the GPU page is shown.
+  set gpuVisible(bool value) {
+    if (value == _gpuVisible) return;
+    _gpuVisible = value;
+    if (value) refresh();
+  }
+
+  /// Adds owners and command lines to every sample until the returned callback is called.
+  VoidCallback watchProcesses() {
+    _processViews++;
+    refresh();
+    var done = false;
+    return () {
+      if (done) return;
+      done = true;
+      _processViews--;
+    };
+  }
 
   void start() {
     if (_running || _disposed) return;
     _running = true;
+    _tick();
+  }
+
+  /// Samples now instead of at the next tick, unless a sample is already on its way.
+  void refresh() {
+    if (!_running || _busy) return;
+    _timer?.cancel();
     _tick();
   }
 
@@ -69,32 +120,41 @@ class ServerMonitor extends ChangeNotifier {
       await _poll();
     } finally {
       _busy = false;
-      if (_running && state != MonitorState.unsupported) _timer = Timer(interval, _tick);
+      if (_running && state != MonitorState.unsupported) _timer = Timer(_interval, _tick);
     }
   }
 
-  Future<void> _poll() async {
+  Future<TransportLease?> _acquire() async {
     var lease = _lease;
-    if (lease == null || lease.lost) {
-      _drop();
-      if (!_connections.hosts.any((h) => h.id == host.id)) return _set(MonitorState.offline);
-      try {
-        lease = await _connections.acquire(host, const _Refuse(), purpose: LeasePurpose.exec);
-      } on Object {
-        return _set(MonitorState.offline);
-      }
-      if (!_running) return lease.release();
-      _lease = lease;
-      lease.done.then((_) {
-        if (identical(_lease, lease)) {
-          _drop();
-          _set(MonitorState.offline);
-        }
-      });
+    if (lease != null && !lease.lost) return lease;
+    _drop();
+    if (!_connections.hosts.any((h) => h.id == host.id)) return null;
+    try {
+      lease = await _connections.acquire(host, const _Refuse(), purpose: LeasePurpose.exec);
+    } on Object {
+      return null;
     }
+    if (!_running) {
+      lease.release();
+      return null;
+    }
+    _lease = lease;
+    lease.done.then((_) {
+      if (identical(_lease, lease)) {
+        _drop();
+        _set(MonitorState.offline);
+      }
+    });
+    return lease;
+  }
+
+  Future<void> _poll() async {
+    final lease = await _acquire();
+    if (lease == null) return _set(MonitorState.offline);
     final ExecResult result;
     try {
-      result = await lease.exec(statsCommand, limit: _limit).timeout(_timeout);
+      final command = statsCommand(processes: _processViews > 0, gpu: _gpuVisible);
+      result = await lease.exec(command, limit: _limit).timeout(_timeout);
     } on Object {
       if (lease.lost) {
         _drop();
@@ -121,10 +181,41 @@ class ServerMonitor extends ChangeNotifier {
 
     push(cpu, snap.cpu);
     push(memory, snap.memory);
-    push(rx, snap.rxPerSecond);
-    push(tx, snap.txPerSecond);
+    push(rx.putIfAbsent(allInterfaces, () => []), snap.rxPerSecond);
+    push(tx.putIfAbsent(allInterfaces, () => []), snap.txPerSecond);
+    for (final MapEntry(key: name, value: rate) in snap.interfaceRates.entries) {
+      push(rx.putIfAbsent(name, () => []), rate.rx);
+      push(tx.putIfAbsent(name, () => []), rate.tx);
+    }
+    for (final g in sample.gpus) {
+      push(gpuUtilization.putIfAbsent(g.id, () => []), g.utilization);
+    }
     state = MonitorState.live;
     if (!_disposed) notifyListeners();
+  }
+
+  /// Sends [signal] to [pid] on the host, over the same lease as the samples (docs/MODULES.md §8). Not a
+  /// capability: only the process window calls it, after the user confirmed. The command is built from an integer
+  /// and an enum; pids 0 and 1 and negative ones, which address groups or init, are refused.
+  Future<Result<void>> signal(int pid, ProcessSignal signal) async {
+    if (pid <= 1) return Err(AppError('invalidArgument', detail: '$pid'));
+    final lease = await _acquire();
+    if (lease == null) return const Err(AppError('offline'));
+    final name = switch (signal) {
+      ProcessSignal.term => 'TERM',
+      ProcessSignal.kill => 'KILL',
+    };
+    final ExecResult result;
+    try {
+      result = await lease.exec('kill -s $name $pid', limit: 4096).timeout(_timeout);
+    } on Object catch (e) {
+      return Err(AppError('failed', detail: '$e', retryable: true));
+    }
+    if (result.exitCode != 0) {
+      return Err(AppError('failed', detail: utf8.decode(result.stderr, allowMalformed: true).trim()));
+    }
+    refresh();
+    return const Ok(null);
   }
 
   @override

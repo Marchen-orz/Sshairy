@@ -1269,4 +1269,96 @@ class AppLocalizationsZh extends AppLocalizations {
   String sessionsOpen(int count) {
     return '$count 个会话将断开';
   }
+
+  @override
+  String get monitorInterval => '刷新间隔';
+
+  @override
+  String get copyAddress => '复制地址';
+
+  @override
+  String get monitorSystem => '系统';
+
+  @override
+  String get processes => '进程';
+
+  @override
+  String get showAllProcesses => '查看全部进程';
+
+  @override
+  String get allInterfaces => '全部网卡';
+
+  @override
+  String get diskFree => '可用 / 大小';
+
+  @override
+  String get processUser => '用户';
+
+  @override
+  String get processResident => '常驻';
+
+  @override
+  String get processState => '状态';
+
+  @override
+  String get processThreads => '线程';
+
+  @override
+  String get processElapsed => '运行时长';
+
+  @override
+  String get processCommand => '命令';
+
+  @override
+  String get searchProcesses => '搜索进程';
+
+  @override
+  String get copyPid => '复制 PID';
+
+  @override
+  String get copyCommand => '复制命令';
+
+  @override
+  String get terminateProcess => '结束进程';
+
+  @override
+  String get killProcess => '强制结束';
+
+  @override
+  String terminateConfirm(String name, int pid) {
+    return '结束 $name（PID $pid）？';
+  }
+
+  @override
+  String killConfirm(String name, int pid) {
+    return '强制结束 $name（PID $pid）？进程没有机会保存数据。';
+  }
+
+  @override
+  String signalFailed(String detail) {
+    return '未能结束进程：$detail';
+  }
+
+  @override
+  String tasks(int count) {
+    return '$count 个任务';
+  }
+
+  @override
+  String get gpuTemperature => '温度';
+
+  @override
+  String get gpuPower => '功耗 / 上限';
+
+  @override
+  String get gpuFan => '风扇';
+
+  @override
+  String get gpuCoreClock => '核心频率';
+
+  @override
+  String get gpuMemoryClock => '显存频率';
+
+  @override
+  String get gpuMemory => '显存';
 }

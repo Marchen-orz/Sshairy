@@ -1302,4 +1302,96 @@ class AppLocalizationsEn extends AppLocalizations {
   String sessionsOpen(int count) {
     return '$count sessions will be disconnected';
   }
+
+  @override
+  String get monitorInterval => 'Refresh interval';
+
+  @override
+  String get copyAddress => 'Copy address';
+
+  @override
+  String get monitorSystem => 'System';
+
+  @override
+  String get processes => 'Processes';
+
+  @override
+  String get showAllProcesses => 'Show all processes';
+
+  @override
+  String get allInterfaces => 'All interfaces';
+
+  @override
+  String get diskFree => 'Free / size';
+
+  @override
+  String get processUser => 'User';
+
+  @override
+  String get processResident => 'Resident';
+
+  @override
+  String get processState => 'State';
+
+  @override
+  String get processThreads => 'Threads';
+
+  @override
+  String get processElapsed => 'Running';
+
+  @override
+  String get processCommand => 'Command';
+
+  @override
+  String get searchProcesses => 'Search processes';
+
+  @override
+  String get copyPid => 'Copy PID';
+
+  @override
+  String get copyCommand => 'Copy command';
+
+  @override
+  String get terminateProcess => 'End process';
+
+  @override
+  String get killProcess => 'Force end';
+
+  @override
+  String terminateConfirm(String name, int pid) {
+    return 'End $name (PID $pid)?';
+  }
+
+  @override
+  String killConfirm(String name, int pid) {
+    return 'Force $name (PID $pid) to end? It gets no chance to save its work.';
+  }
+
+  @override
+  String signalFailed(String detail) {
+    return 'Could not end the process: $detail';
+  }
+
+  @override
+  String tasks(int count) {
+    return '$count tasks';
+  }
+
+  @override
+  String get gpuTemperature => 'Temperature';
+
+  @override
+  String get gpuPower => 'Power / limit';
+
+  @override
+  String get gpuFan => 'Fan';
+
+  @override
+  String get gpuCoreClock => 'Core clock';
+
+  @override
+  String get gpuMemoryClock => 'Memory clock';
+
+  @override
+  String get gpuMemory => 'VRAM';
 }
