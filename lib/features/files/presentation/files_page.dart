@@ -2,7 +2,8 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../design/side_drawer.dart';
+import '../../../design/popup.dart';
+import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
@@ -138,8 +139,15 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   );
 }
 
-/// The transfer queue and edits, from the title bar or the palette.
-Future<void> showTransfers(BuildContext context) => showSideDrawer<void>(context, (_) => const TransfersPanel());
+/// The transfer queue and edits as a popover under [anchor]; closing it leaves transfers running. Without an
+/// anchor (the palette) it opens at the title bar's right edge, where the button is.
+Future<void> showTransfers(BuildContext context, {Rect? anchor}) => showAnchoredPopup<void>(
+  context: context,
+  anchor: anchor ?? Rect.fromLTWH(MediaQuery.sizeOf(context).width, WorkspaceSize.titleBar, 0, 0),
+  width: WorkspaceSize.flyoutWide,
+  maxHeight: 520,
+  builder: (_) => const PopupSurface(padding: EdgeInsets.all(Space.md), child: TransfersPanel()),
+);
 
 /// The title-bar button: shows how much is running.
 class TransfersButton extends ConsumerWidget {
@@ -151,7 +159,7 @@ class TransfersButton extends ConsumerWidget {
     final active = ref.watch(transfersProvider.select((ts) => ts.where((t) => t.state.active).length));
     return IconButton(
       tooltip: l.transfers,
-      onPressed: () => showTransfers(context),
+      onPressed: () => showTransfers(context, anchor: anchorOf(context)),
       icon: Badge(isLabelVisible: active > 0, label: Text('$active'), child: const Icon(Icons.swap_vert, size: 16)),
     );
   }

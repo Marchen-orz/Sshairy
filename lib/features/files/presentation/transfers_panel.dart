@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
 import '../../../design/menu.dart';
@@ -133,9 +134,8 @@ class TransfersPanel extends ConsumerWidget {
     final transfers = ref.watch(transfersProvider).reversed.toList();
     final edits = ref.watch(editsProvider);
     final manager = ref.read(transfersProvider.notifier);
-    final muted = Theme.of(context).textTheme.bodySmall
-        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
@@ -149,9 +149,10 @@ class TransfersPanel extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: Space.sm),
-        if (transfers.isEmpty && edits.isEmpty) Text(l.none, style: muted),
-        Expanded(
+        if (transfers.isEmpty && edits.isEmpty) BrandHint(pose: BrandPose.sftpTransfer, label: l.none, size: 88),
+        Flexible(
           child: ListView(
+            shrinkWrap: true,
             children: [
               for (final e in edits) _EditRow(e),
               if (edits.isNotEmpty && transfers.isNotEmpty) const Divider(height: Space.xl),
