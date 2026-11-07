@@ -54,7 +54,8 @@ List<PaletteEntry> settingsPaletteEntries(PaletteContext c) {
       title: l.settings,
       icon: Icons.settings_outlined,
       run: () async {
-        if (c.context.mounted) await showSideDrawer<void>(c.context, (_) => const SettingsPanel());
+        if (!c.context.mounted) return;
+        await showFlyout<void>(c.context, (_) => const SettingsPanel(), width: WorkspaceSize.flyoutWide);
       },
     ),
     entry('${l.theme}: ${l.themeLight}', Icons.light_mode_outlined, {'themeMode': 'light'}),

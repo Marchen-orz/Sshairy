@@ -1,0 +1,226 @@
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'theme.dart';
+
+enum DockSide { left, right, bottom }
+
+/// A resizable panel docked to one side of the main view (docs/WORKSPACE_LAYOUT.md). A left or right panel that
+/// would squeeze the main view below [WorkspaceSize.terminalMin] covers it instead.
+class DockPanel extends StatefulWidget {
+  const DockPanel({
+    super.key,
+    required this.child,
+    required this.panel,
+    required this.open,
+    required this.onClose,
+    required this.closeLabel,
+    required this.resizeLabel,
+    this.side = DockSide.right,
+    this.actions = const [],
+  });
+
+  final Widget child, panel;
+  final bool open;
+  final DockSide side;
+  final VoidCallback onClose;
+  final String closeLabel, resizeLabel;
+
+  /// Extra buttons in the panel's header, before close.
+  final List<Widget> actions;
+
+  @override
+  State<DockPanel> createState() => _DockPanelState();
+}
+
+class _DockPanelState extends State<DockPanel> {
+  final _panelKey = GlobalKey();
+  final _focus = FocusNode();
+  var _width = WorkspaceSize.toolPanel;
+  var _height = WorkspaceSize.dockBottom;
+  double? _guide;
+
+  bool get _vertical => widget.side == DockSide.bottom;
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  (double, double) _range(BoxConstraints c) => _vertical
+      ? (
+          WorkspaceSize.dockBottomMin,
+          max(WorkspaceSize.dockBottomMin, c.maxHeight * WorkspaceSize.dockBottomMaxShare),
+        )
+      : (WorkspaceSize.toolPanelMin, WorkspaceSize.toolPanelMax);
+
+  double _clamp(double v, BoxConstraints c) {
+    final (lo, hi) = _range(c);
+    return v.clamp(lo, hi).toDouble();
+  }
+
+  void _resize(double v, BoxConstraints c) => setState(() {
+    if (_vertical) {
+      _height = _clamp(v, c);
+    } else {
+      _width = _clamp(v, c);
+    }
+  });
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final scheme = Theme.of(context).colorScheme;
+      final extent = _vertical ? _clamp(_height, constraints) : _width;
+      final overlay =
+          !_vertical && constraints.maxWidth < _width + WorkspaceSize.terminalMin + WorkspaceSize.divider;
+      final size = min(extent, _vertical ? constraints.maxHeight : constraints.maxWidth);
+      final panel = KeyedSubtree(
+        key: _panelKey,
+        child: Material(
+          color: scheme.surface,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: WorkspaceSize.control,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ...widget.actions,
+                    IconButton(
+                      tooltip: widget.closeLabel,
+                      onPressed: widget.onClose,
+                      icon: const Icon(Icons.close, size: 16),
+                    ),
+                    const SizedBox(width: Space.xs),
+                  ],
+                ),
+              ),
+              Expanded(child: widget.panel),
+            ],
+          ),
+        ),
+      );
+      final divider = _vertical
+          ? const Divider(height: WorkspaceSize.divider)
+          : const VerticalDivider(width: WorkspaceSize.divider);
+      final docked = widget.open && !overlay;
+      final main = Expanded(child: widget.child);
+      final sized = _vertical ? SizedBox(height: size, child: panel) : SizedBox(width: size, child: panel);
+      final children = switch (widget.side) {
+        DockSide.left => [if (docked) ...[sized, divider], main],
+        DockSide.right || DockSide.bottom => [main, if (docked) ...[divider, sized]],
+      };
+      final step = Space.xl;
+      // Moving toward the main view grows the panel.
+      final growKey = switch (widget.side) {
+        DockSide.left => LogicalKeyboardKey.arrowRight,
+        DockSide.right => LogicalKeyboardKey.arrowLeft,
+        DockSide.bottom => LogicalKeyboardKey.arrowUp,
+      };
+      final shrinkKey = switch (widget.side) {
+        DockSide.left => LogicalKeyboardKey.arrowLeft,
+        DockSide.right => LogicalKeyboardKey.arrowRight,
+        DockSide.bottom => LogicalKeyboardKey.arrowDown,
+      };
+      double drag(DragUpdateDetails d) => switch (widget.side) {
+        DockSide.left => d.delta.dx,
+        DockSide.right => -d.delta.dx,
+        DockSide.bottom => -d.delta.dy,
+      };
+      final grab = WorkspaceSize.dividerGrab;
+      Positioned place({required double offset, required double thickness, required Widget child}) =>
+          switch (widget.side) {
+            DockSide.left => Positioned(top: 0, bottom: 0, left: offset, width: thickness, child: child),
+            DockSide.right => Positioned(top: 0, bottom: 0, right: offset, width: thickness, child: child),
+            DockSide.bottom => Positioned(left: 0, right: 0, bottom: offset, height: thickness, child: child),
+          };
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          _vertical
+              ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)
+              : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+          if (widget.open && overlay) ...[
+            ModalBarrier(
+              color: Colors.black26,
+              dismissible: true,
+              onDismiss: widget.onClose,
+              semanticsLabel: widget.closeLabel,
+            ),
+            place(
+              offset: 0,
+              thickness: size,
+              child: CallbackShortcuts(
+                bindings: {const SingleActivator(LogicalKeyboardKey.escape): widget.onClose},
+                child: FocusScope(autofocus: true, child: panel),
+              ),
+            ),
+          ],
+          if (widget.open)
+            place(
+              offset: size - grab / 2,
+              thickness: grab,
+              child: Semantics(
+                label: widget.resizeLabel,
+                value: '${extent.round()}',
+                increasedValue: '${_clamp(extent + step, constraints).round()}',
+                decreasedValue: '${_clamp(extent - step, constraints).round()}',
+                onIncrease: () => _resize(extent + step, constraints),
+                onDecrease: () => _resize(extent - step, constraints),
+                child: MouseRegion(
+                  cursor: _vertical ? SystemMouseCursors.resizeRow : SystemMouseCursors.resizeColumn,
+                  child: Focus(
+                    focusNode: _focus,
+                    onFocusChange: (_) => setState(() {}),
+                    onKeyEvent: (_, event) {
+                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                      if (event.logicalKey == growKey) {
+                        _resize(extent + step, constraints);
+                        return KeyEventResult.handled;
+                      }
+                      if (event.logicalKey == shrinkKey) {
+                        _resize(extent - step, constraints);
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTapDown: (_) => _focus.requestFocus(),
+                      onDoubleTap: () =>
+                          _resize(_vertical ? WorkspaceSize.dockBottom : WorkspaceSize.toolPanel, constraints),
+                      onPanStart: (_) {
+                        _focus.requestFocus();
+                        setState(() => _guide = extent);
+                      },
+                      onPanUpdate: (d) => setState(() => _guide = _clamp(_guide! + drag(d), constraints)),
+                      onPanEnd: (_) {
+                        final next = _guide!;
+                        _guide = null;
+                        _resize(next, constraints);
+                      },
+                      onPanCancel: () => setState(() => _guide = null),
+                      child: _focus.hasFocus
+                          ? ColoredBox(color: scheme.primary.withValues(alpha: .3))
+                          : const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (widget.open && _guide != null)
+            place(
+              offset: _guide!,
+              thickness: 2,
+              child: IgnorePointer(child: ColoredBox(color: scheme.primary)),
+            ),
+        ],
+      );
+    },
+  );
+}

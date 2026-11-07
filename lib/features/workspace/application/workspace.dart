@@ -78,9 +78,12 @@ class Workspace extends Notifier<WorkspaceState> {
   /// An empty or blank [title] goes back to the host's name.
   void rename(TabId id, String? title) {
     final t = title?.trim();
-    _set(state.withTabs([
-      for (final tab in state.tabs) tab.id == id ? WorkspaceTab(id, tab.layout, title: t == null || t.isEmpty ? null : t) : tab,
-    ]));
+    _set(
+      state.withTabs([
+        for (final tab in state.tabs)
+          tab.id == id ? WorkspaceTab(id, tab.layout, title: t == null || t.isEmpty ? null : t) : tab,
+      ]),
+    );
   }
 
   void showVault() => _set(WorkspaceState(tabs: state.tabs));
@@ -235,9 +238,11 @@ class Workspace extends Notifier<WorkspaceState> {
 
   static Layout _rebind(Layout layout, SessionId from, SessionId to) {
     PaneNode visit(PaneNode n) => switch (n) {
-          Leaf(:final pane, :final session) => Leaf(pane, session == from ? to : session),
-          PaneSplit(:final axis, :final children, :final ratios) => PaneSplit(axis, [for (final c in children) visit(c)], ratios),
-        };
+      Leaf(:final pane, :final session) => Leaf(pane, session == from ? to : session),
+      PaneSplit(:final axis, :final children, :final ratios) => PaneSplit(axis, [
+        for (final c in children) visit(c),
+      ], ratios),
+    };
     return Layout.fromJson({'root': visit(layout.root).toJson(), 'focused': layout.focused.value});
   }
 }

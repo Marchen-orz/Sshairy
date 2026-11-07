@@ -5,7 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
-import 'package:sshairy/design/tool_panel.dart';
+import 'package:sshairy/design/dock_panel.dart';
+import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/workspace/presentation/workspace_page.dart';
 import 'package:sshairy/foundation/data_dir.dart';
@@ -31,7 +32,7 @@ class _TestAssets extends CachingAssetBundle {
 }
 
 void main() {
-  testWidgets('library navigation collapses at the minimum window size without hiding actions', (tester) async {
+  testWidgets('the icon rail keeps every page and panel at the minimum window size', (tester) async {
     final dir = Directory.systemTemp.createTempSync('sshairy-layout-');
     addTearDown(() => dir.deleteSync(recursive: true));
     await tester.binding.setSurfaceSize(const Size(1400, 800));
@@ -39,7 +40,7 @@ void main() {
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [dataDirProvider.overrideWithValue(dir.path)],
+        overrides: [dataDirProvider.overrideWithValue(dir.path), hostsProvider.overrideWith(_Hosts.new)],
         child: DefaultAssetBundle(
           bundle: _TestAssets(),
           child: MaterialApp(
@@ -53,18 +54,31 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Keys'), findsOneWidget);
-    expect(find.byTooltip('Keys'), findsOneWidget, reason: 'one key-library entry');
-    expect(find.byTooltip('Trusted host keys'), findsOneWidget);
-    await tester.binding.setSurfaceSize(const Size(960, 640));
-    await tester.pumpAndSettle();
-    expect(find.text('Keys'), findsNothing);
-    expect(find.byTooltip('Keys'), findsOneWidget);
-    expect(find.byTooltip('Trusted host keys'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    for (final label in ['Hosts', 'SFTP', 'Keys', 'Trusted host keys', 'Snippets', 'Settings']) {
+      expect(find.byTooltip(label), findsOneWidget, reason: label);
+    }
+    expect(find.byTooltip('Server monitor'), findsNothing, reason: 'no terminal tab is open');
     await tester.binding.setSurfaceSize(const Size(800, 600));
     await tester.pumpAndSettle();
+    expect(find.byTooltip('Keys'), findsOneWidget);
     expect(find.byTooltip('New connection'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Quick connect lists the library under the + button.
+    await tester.tap(find.byTooltip('New connection'));
+    await tester.pumpAndSettle();
+    expect(find.text('web-1'), findsWidgets);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    // Panels open as flyouts beside the rail and close with Escape.
+    await tester.tap(find.byTooltip('Trusted host keys'));
+    await tester.pumpAndSettle();
+    final flyout = find.descendant(of: find.byType(PopupSurface), matching: find.text('Trusted host keys'));
+    expect(flyout, findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(flyout, findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -100,7 +114,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('tool panel preserves editor state when moving over a narrow main view; Escape closes it', (
+  testWidgets('dock panel preserves editor state when moving over a narrow main view; Escape closes it', (
     tester,
   ) async {
     var open = true;
@@ -118,7 +132,7 @@ void main() {
                 return SizedBox(
                   width: width,
                   height: 500,
-                  child: ToolPanel(
+                  child: DockPanel(
                     open: open,
                     onClose: () => setState(() => open = false),
                     closeLabel: 'Close panel',
@@ -143,7 +157,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byKey(mainKey)).width, 780);
     expect(find.text('unsent draft'), findsOneWidget);
-    expect(find.descendant(of: find.byType(ToolPanel), matching: find.byType(ModalBarrier)), findsOneWidget);
+    expect(find.descendant(of: find.byType(DockPanel), matching: find.byType(ModalBarrier)), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(open, isFalse);
@@ -152,7 +166,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('tool panel commits a bounded width on release and supports keyboard resizing', (tester) async {
+  testWidgets('dock panel commits a bounded width on release and supports keyboard resizing', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     const mainKey = ValueKey('main');
@@ -160,7 +174,7 @@ void main() {
       MaterialApp(
         theme: buildTheme(Brightness.dark),
         home: Scaffold(
-          body: ToolPanel(
+          body: DockPanel(
             open: true,
             onClose: () {},
             closeLabel: 'Close panel',
@@ -188,6 +202,34 @@ void main() {
     await tester.drag(handle, const Offset(500, 0));
     await tester.pump();
     expect(tester.getSize(find.byKey(mainKey)).width, 1299, reason: '300 px minimum');
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a bottom dock panel takes a bounded height', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const mainKey = ValueKey('main');
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Scaffold(
+          body: DockPanel(
+            open: true,
+            side: DockSide.bottom,
+            onClose: () {},
+            closeLabel: 'Close panel',
+            resizeLabel: 'Resize panel',
+            panel: const Text('files'),
+            child: const SizedBox(key: mainKey),
+          ),
+        ),
+      ),
+    );
+    expect(tester.getSize(find.byKey(mainKey)).height, 439);
+    await tester.drag(find.bySemanticsLabel('Resize panel'), const Offset(0, -600));
+    await tester.pump();
+    expect(tester.getSize(find.byKey(mainKey)).height, closeTo(279, 1), reason: '60 % of the height at most');
     await tester.pump(const Duration(milliseconds: 400));
     expect(tester.takeException(), isNull);
   });

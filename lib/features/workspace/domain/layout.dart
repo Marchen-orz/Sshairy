@@ -9,14 +9,14 @@ sealed class PaneNode {
   Map<String, Object?> toJson();
 
   static PaneNode fromJson(Map<String, Object?> j) => switch (j['type']) {
-        'leaf' => Leaf(PaneId(j['pane']! as String), SessionId(j['session']! as String)),
-        'split' => PaneSplit(
-            SplitAxis.values.byName(j['axis']! as String),
-            [for (final c in j['children']! as List<Object?>) fromJson((c! as Map).cast())],
-            [for (final r in j['ratios']! as List<Object?>) (r! as num).toDouble()],
-          ),
-        _ => throw FormatException('unknown pane node ${j['type']}'),
-      };
+    'leaf' => Leaf(PaneId(j['pane']! as String), SessionId(j['session']! as String)),
+    'split' => PaneSplit(
+      SplitAxis.values.byName(j['axis']! as String),
+      [for (final c in j['children']! as List<Object?>) fromJson((c! as Map).cast())],
+      [for (final r in j['ratios']! as List<Object?>) (r! as num).toDouble()],
+    ),
+    _ => throw FormatException('unknown pane node ${j['type']}'),
+  };
 }
 
 final class Leaf extends PaneNode {
@@ -38,11 +38,11 @@ final class PaneSplit extends PaneNode {
 
   @override
   Map<String, Object?> toJson() => {
-        'type': 'split',
-        'axis': axis.name,
-        'children': [for (final c in children) c.toJson()],
-        'ratios': ratios,
-      };
+    'type': 'split',
+    'axis': axis.name,
+    'children': [for (final c in children) c.toJson()],
+    'ratios': ratios,
+  };
 }
 
 /// Immutable; every change returns a new layout that keeps the invariants: unique panes, no empty or
@@ -87,7 +87,13 @@ class Layout {
           if (i >= 0 && a == axis) {
             // Same direction: the new pane takes half of the target's share instead of nesting.
             final half = ratios[i] / 2;
-            return PaneSplit(a, [...children]..insert(i + 1, added), [...ratios]..[i] = half..insert(i + 1, half));
+            return PaneSplit(
+              a,
+              [...children]..insert(i + 1, added),
+              [...ratios]
+                ..[i] = half
+                ..insert(i + 1, half),
+            );
           }
           return PaneSplit(a, [for (final c in children) visit(c)], ratios);
       }
@@ -137,11 +143,9 @@ class Layout {
         return PaneSplit(n.axis, n.children, [for (final r in clamped) r / sum]);
       }
       final i = path[depth];
-      return PaneSplit(
-        n.axis,
-        [for (var k = 0; k < n.children.length; k++) k == i ? visit(n.children[k], depth + 1) : n.children[k]],
-        n.ratios,
-      );
+      return PaneSplit(n.axis, [
+        for (var k = 0; k < n.children.length; k++) k == i ? visit(n.children[k], depth + 1) : n.children[k],
+      ], n.ratios);
     }
 
     return Layout._(visit(root, 0), focused);
