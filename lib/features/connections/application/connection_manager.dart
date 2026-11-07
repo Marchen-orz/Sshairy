@@ -159,7 +159,13 @@ class ConnectionManager {
         throw const ConnectError(ConnectFailure.cancelled);
       }
       entry.transport = t;
-      t.done.whenComplete(() => _forget(entry)).ignore();
+      // The only listener on the transport's done: a future cannot drop listeners, so each lease has its own.
+      t.done.whenComplete(() {
+        _forget(entry);
+        for (final lease in [...entry.leases]) {
+          lease._markLost();
+        }
+      }).ignore();
       return t;
     });
     entry.ready.then(
@@ -248,12 +254,18 @@ class TransportLease {
   /// The transport was already up when this lease was taken.
   final bool reused;
   var _released = false;
+  final _lost = Completer<void>();
 
   Host get host => _entry.host;
 
-  /// Completes when the transport is lost.
-  Future<void> get done => _transport.done;
+  /// Completes when the transport is lost. Listeners live and die with this lease, not with the shared transport,
+  /// so what they capture (a closed terminal and its scrollback) is not kept alive by a long-lived connection.
+  Future<void> get done => _lost.future;
   bool get lost => _transport.isClosed;
+
+  void _markLost() {
+    if (!_lost.isCompleted) _lost.complete();
+  }
 
   Future<ShellChannel> openShell({required int cols, required int rows}) => _use().openShell(cols: cols, rows: rows);
 

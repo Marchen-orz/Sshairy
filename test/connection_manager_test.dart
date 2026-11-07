@@ -227,6 +227,27 @@ void main() {
     expect(gates, hasLength(2));
   });
 
+  test('every lease still held hears of a lost transport, a released one does not', () async {
+    final m = ConnectionManager(dial);
+    addTearDown(m.closeAll);
+    final first = m.acquire(host, prompts);
+    await pumpEventQueue();
+    gates.single.complete();
+    final a = await first;
+    final b = await m.acquire(host, prompts), c = await m.acquire(host, prompts);
+    final heard = <String>[];
+    a.done.then((_) => heard.add('a'));
+    b.done.then((_) => heard.add('b'));
+    c.done.then((_) => heard.add('c'));
+    b.release();
+    await pumpEventQueue();
+    expect(heard, isEmpty);
+    dialled.single.close();
+    await pumpEventQueue();
+    expect(heard, unorderedEquals(['a', 'c']), reason: 'listeners go with their lease, not with the transport');
+    expect(b.lost, isTrue);
+  });
+
   test('a failed dial is not kept', () async {
     var calls = 0;
     final m = ConnectionManager((h, p, c) async {

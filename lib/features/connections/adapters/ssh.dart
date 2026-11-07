@@ -34,7 +34,7 @@ class _SshShell implements ShellChannel {
   @override
   void resize(int cols, int rows) => _session.resizeTerminal(cols, rows);
   @override
-  void close() => _session.close();
+  void close() => _session.channel.destroy();
 }
 
 class _SshTransport implements Transport {
@@ -126,7 +126,7 @@ class _SshTransport implements Transport {
     try {
       return await opening.timeout(_channelTimeout);
     } on TimeoutException {
-      opening.then((s) => s.close()).ignore();
+      opening.then((s) => s.channel.destroy()).ignore();
       throw const ConnectError(ConnectFailure.network, 'channel open timed out');
     }
   }

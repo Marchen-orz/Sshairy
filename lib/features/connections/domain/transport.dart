@@ -33,6 +33,9 @@ abstract interface class ShellChannel {
   Future<void> get done;
   void write(Uint8List data);
   void resize(int cols, int rows);
+
+  /// Ends the channel in both directions at once, so the server hangs up the shell. Closing only our side would
+  /// leave a login shell running (a pty does not end on EOF) and the channel registered until the connection ends.
   void close();
 }
 
