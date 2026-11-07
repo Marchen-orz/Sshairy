@@ -51,7 +51,8 @@ SwapFree: 750000 kB
 100
 @@df
 Filesystem 1024-blocks Used Available Capacity Mounted on
-/dev/vda2 41152812 20576406 18663036 53% /
+/dev/vda2 ext4 41152812 20576406 18663036 53% /
+/dev/vdb1 xfs 104857600 10485760 94371840 10% /data
 @@proc
 1 S 0 500 1 1 3000 systemd
 400 R 1 ${1000 + _ticks} 4 9000 25600 worker
@@ -115,6 +116,9 @@ void main() {
     expect(find.text('worker'), findsOneWidget);
     expect(find.text('100'), findsOneWidget, reason: 'one busy core is 100% in top');
     expect(find.text('/'), findsOneWidget);
+    expect(find.text('/dev/vda2'), findsOneWidget);
+    expect(find.text('/data'), findsOneWidget);
+    expect(find.text('/dev/vdb1'), findsOneWidget);
     expect(find.text('GPU'), findsNothing);
     expect(find.text('3s'), findsOneWidget);
     expect(tester.takeException(), isNull);

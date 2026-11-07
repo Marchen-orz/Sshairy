@@ -111,6 +111,37 @@ void main() {
     expect(s.disks.first.availableKib, 18663036, reason: 'df reserves blocks for root, so free is not size - used');
   });
 
+  test('typed df retains separate partitions and data volumes under system directories', () {
+    final s = parseStats(
+      sample(
+        df: [
+          '/dev/nvme0n1p2 ext4 1000000 400000 550000 43% /',
+          '/dev/nvme0n1p1 vfat 100000 10000 90000 10% /boot/efi',
+          '/dev/sdb1 xfs 2000000 1000000 1000000 50% /data',
+          '/dev/sdc1 ext4 3000000 500000 2500000 17% /run/media/u/data disk',
+          '/dev/sdb1 xfs 2000000 1000000 1000000 50% /srv/bind',
+          'tmpfs tmpfs 10000 1000 9000 10% /run',
+          'proc proc 100 0 100 0% /proc',
+          '/dev/loop0 squashfs 65536 65536 0 100% /snap/core/1',
+        ].join('\n'),
+      ),
+    );
+    expect(s.disks.map((d) => (d.device, d.mount, d.fsType)), [
+      ('/dev/nvme0n1p2', '/', 'ext4'),
+      ('/dev/nvme0n1p1', '/boot/efi', 'vfat'),
+      ('/dev/sdb1', '/data', 'xfs'),
+      ('/dev/sdc1', '/run/media/u/data disk', 'ext4'),
+    ]);
+    expect(s.disks.first.availableKib, 550000);
+    expect(s.disks.last.availableKib, 2500000);
+  });
+
+  test('legacy df keeps block devices mounted under run/media', () {
+    final s = parseStats(sample(df: '/dev/sdb1 1000 100 900 10% /run/media/u/disk'));
+    expect(s.disks.single.device, '/dev/sdb1');
+    expect(s.disks.single.mount, '/run/media/u/disk');
+  });
+
   group('processes', () {
     // pid state ppid ticks threads start resident-pages name, as the awk fragment prints them.
     const before =

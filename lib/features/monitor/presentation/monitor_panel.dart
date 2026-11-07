@@ -414,7 +414,10 @@ class _Content extends ConsumerWidget {
               ),
               for (final d in s.disks)
                 Tooltip(
-                  message: '${formatBytes(d.usedKib * 1024)} / ${formatBytes(d.totalKib * 1024)}',
+                  message: [
+                    [d.device, d.fsType, d.mount].where((s) => s.isNotEmpty).join(' · '),
+                    '${formatBytes(d.usedKib * 1024)} / ${formatBytes(d.totalKib * 1024)}',
+                  ].join('\n'),
                   child: Padding(
                     padding: const EdgeInsets.only(top: Space.xs),
                     child: Column(
@@ -423,11 +426,18 @@ class _Content extends ConsumerWidget {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                d.mount,
-                                style: theme.textTheme.bodySmall,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    d.mount,
+                                    style: theme.textTheme.bodySmall,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (d.device.isNotEmpty)
+                                    Text(d.device, style: muted, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ],
                               ),
                             ),
                             Text(

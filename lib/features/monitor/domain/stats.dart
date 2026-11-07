@@ -27,7 +27,7 @@ const _base =
     'echo @@up; cat /proc/uptime; '
     'echo @@net; cat /proc/net/dev; '
     'echo @@conf; getconf PAGESIZE 2>/dev/null; getconf CLK_TCK 2>/dev/null; '
-    'echo @@df; df -kPl 2>/dev/null; '
+    'echo @@df; df -kPTl 2>/dev/null || df -kPl 2>/dev/null; '
     'echo @@proc; $_processes'
     'echo @@gpus; command -v nvidia-smi >/dev/null 2>&1 && echo nvidia; '
     'for d in /sys/class/drm/card[0-9]*; do case \$d in *-*) continue;; esac; '
@@ -69,9 +69,9 @@ class CpuTimes {
 }
 
 class Disk {
-  const Disk(this.mount, this.usedKib, this.totalKib, [int? availableKib])
+  const Disk(this.mount, this.usedKib, this.totalKib, [int? availableKib, this.device = '', this.fsType = ''])
     : availableKib = availableKib ?? totalKib - usedKib;
-  final String mount;
+  final String mount, device, fsType;
   final int usedKib, totalKib, availableKib;
   double get fraction => totalKib == 0 ? 0 : usedKib / totalKib;
 }
@@ -227,7 +227,35 @@ class StatsSnapshot {
   }
 }
 
-const _skipFs = {'tmpfs', 'devtmpfs', 'overlay', 'squashfs', 'udev', 'none', 'shm', 'efivarfs'};
+const _skipFs = {
+  'tmpfs',
+  'devtmpfs',
+  'overlay',
+  'squashfs',
+  'udev',
+  'none',
+  'shm',
+  'efivarfs',
+  'proc',
+  'sysfs',
+  'devpts',
+  'cgroup',
+  'cgroup2',
+  'securityfs',
+  'debugfs',
+  'tracefs',
+  'pstore',
+  'ramfs',
+  'hugetlbfs',
+  'fusectl',
+  'mqueue',
+  'autofs',
+  'binfmt_misc',
+  'rpc_pipefs',
+  'nsfs',
+  'bpf',
+  'configfs',
+};
 const _systemMounts = ['/dev', '/run', '/sys', '/proc', '/snap'];
 final _space = RegExp(r'\s+');
 
@@ -300,16 +328,20 @@ StatsSample parseStats(String output) {
   final disks = <Disk>[];
   final seen = <String>{};
   for (final line in of('df')) {
-    final f = line.split(_space);
+    final f = line.trim().split(_space);
     if (f.length < 6) continue;
-    final total = int.tryParse(f[1]), used = int.tryParse(f[2]), free = int.tryParse(f[3]);
-    if (total == null || used == null || total == 0) continue;
-    final fs = f[0], mount = f.sublist(5).join(' ');
-    if (_skipFs.contains(fs) || fs.startsWith('/dev/loop')) continue;
-    if (_systemMounts.any((m) => mount == m || mount.startsWith('$m/'))) continue;
+    final typed = int.tryParse(f[1]) == null;
+    final offset = typed ? 1 : 0;
+    if (f.length < 6 + offset) continue;
+    final total = int.tryParse(f[1 + offset]), used = int.tryParse(f[2 + offset]), free = int.tryParse(f[3 + offset]);
+    if (total == null || used == null || total <= 0) continue;
+    final fs = f[0], type = typed ? f[1] : '', mount = f.sublist(5 + offset).join(' ');
+    if (_skipFs.contains(fs) || _skipFs.contains(type) || fs.startsWith('/dev/loop')) continue;
+    // Real data volumes can live under /run/media; filter by type when df provides it.
+    if (!typed && !fs.startsWith('/dev/') && _systemMounts.any((m) => mount == m || mount.startsWith('$m/'))) continue;
     // A device mounted twice (bind mounts) counts once.
     if (!seen.add(fs)) continue;
-    disks.add(Disk(mount, used, total, free));
+    disks.add(Disk(mount, used, total, free, fs, type));
   }
 
   final processes = <int, ProcessStat>{};
