@@ -1,0 +1,68 @@
+{
+  "blue": {
+    "source": "01-IceBlue-Mint",
+    "assets": {
+      "mark.png": "mascot/mascot-head.png",
+      "mascot.png": "mascot/mascot-full-body.png",
+      "logo-light.png": "logos/primary-horizontal.png",
+      "logo-dark.png": "dark/logos/primary-horizontal.png",
+      "breeze-light.png": "decorations/breeze.png",
+      "breeze-dark.png": "dark/decorations/breeze.png"
+    }
+  },
+  "green": {
+    "source": "02-MintGreen",
+    "assets": {
+      "mark.png": "mascot/mascot-head.png",
+      "mascot.png": "mascot/mascot-full-body.png",
+      "logo-light.png": "logos/primary-horizontal.png",
+      "logo-dark.png": "dark/logos/primary-horizontal.png",
+      "breeze-light.png": "decorations/breeze.png",
+      "breeze-dark.png": "dark/decorations/breeze.png"
+    }
+  },
+  "violet": {
+    "source": "03-Violet",
+    "assets": {
+      "mark.png": "mascot/mascot-head.png",
+      "mascot.png": "mascot/mascot-full-body.png",
+      "logo-light.png": "logos/primary-horizontal.png",
+      "logo-dark.png": "dark/logos/primary-horizontal.png",
+      "breeze-light.png": "decorations/breeze.png",
+      "breeze-dark.png": "dark/decorations/breeze.png"
+    }
+  },
+  "orange": {
+    "source": "04-SunsetOrange",
+    "assets": {
+      "mark.png": "mascot/mascot-head.png",
+      "mascot.png": "mascot/mascot-full-body.png",
+      "logo-light.png": "logos/primary-horizontal.png",
+      "logo-dark.png": "dark/logos/primary-horizontal.png",
+      "breeze-light.png": "decorations/breeze.png",
+      "breeze-dark.png": "dark/decorations/breeze.png"
+    }
+  },
+  "deepSea": {
+    "source": "05-DeepSeaBlue",
+    "assets": {
+      "mark.png": "mascot/mascot-head.png",
+      "mascot.png": "mascot/mascot-full-body.png",
+      "logo-light.png": "logos/primary-horizontal.png",
+      "logo-dark.png": "dark/logos/primary-horizontal.png",
+      "breeze-light.png": "decorations/breeze.png",
+      "breeze-dark.png": "dark/decorations/breeze.png"
+    }
+  },
+  "pink": {
+    "source": "06-SakuraPink",
+    "assets": {
+      "mark.png": "mascot/mascot-head.png",
+      "mascot.png": "mascot/mascot-full-body.png",
+      "logo-light.png": "logos/primary-horizontal.png",
+      "logo-dark.png": "dark/logos/primary-horizontal.png",
+      "breeze-light.png": "decorations/breeze.png",
+      "breeze-dark.png": "dark/decorations/breeze.png"
+    }
+  }
+}

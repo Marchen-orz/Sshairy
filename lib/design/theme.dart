@@ -3,6 +3,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'brand_palette.dart';
+export 'brand_palette.dart';
+
 /// Spacing and radius tokens from docs/UI.md §2.
 abstract final class Space {
   static const xs = 4.0, sm = 8.0, md = 12.0, lg = 16.0, xl = 24.0, xxl = 32.0;
@@ -57,20 +60,6 @@ class MonoFont extends ThemeExtension<MonoFont> {
 /// [base] in the terminal font.
 TextStyle mono(BuildContext context, [TextStyle? base]) => MonoFont.of(context).apply(base);
 
-/// Accent presets from docs/UI.md §2; each has one shade per brightness.
-enum Accent {
-  blue(Color(0xFF06ADC8), Color(0xFF5ADDEB)),
-  green(Color(0xFF087F5B), Color(0xFF34D399)),
-  violet(Color(0xFF6D4AE0), Color(0xFFA78BFA)),
-  orange(Color(0xFFC2410C), Color(0xFFFB923C));
-
-  const Accent(this.light, this.dark);
-
-  final Color light, dark;
-
-  Color of(Brightness b) => b == Brightness.light ? light : dark;
-}
-
 const _onAccentDark = Color(0xFF0B1220);
 
 /// White or a near-black, whichever reads better on [c].
@@ -80,7 +69,10 @@ Color onColor(Color c) {
     return (max(x, y) + 0.05) / (min(x, y) + 0.05);
   }
 
-  return contrast(c, const Color(0xFFFFFFFF)) >= contrast(c, _onAccentDark) ? const Color(0xFFFFFFFF) : _onAccentDark;
+  final chosen = contrast(c, const Color(0xFFFFFFFF)) >= contrast(c, _onAccentDark)
+      ? const Color(0xFFFFFFFF)
+      : _onAccentDark;
+  return contrast(c, chosen) >= 4.5 ? chosen : Colors.black;
 }
 
 /// The soft shadow under floating surfaces: dialogs, menus, flyouts.
@@ -100,33 +92,42 @@ ThemeData buildTheme(
   String? fontFamily,
   String? monoFamily,
 ]) {
-  final light = brightness == Brightness.light;
-  Color c(int l, int d) => Color(light ? l : d);
-  final primary = accent.of(brightness);
+  final palette = accent.palette(brightness);
+  final primary = palette.controlPrimary;
   final scheme = ColorScheme(
     brightness: brightness,
-    surface: c(0xFFFFFFFF, 0xFF18252D),
-    surfaceContainerLowest: c(0xFFF4F8FA, 0xFF10191E),
-    surfaceContainerLow: c(0xFFEAF2F5, 0xFF142129),
-    surfaceContainer: c(0xFFF0F5F7, 0xFF1A2A32),
-    surfaceContainerHigh: c(0xFFFFFFFF, 0xFF1E3039),
-    surfaceContainerHighest: c(0xFFE3EDF0, 0xFF263A44),
-    onSurface: c(0xFF16323E, 0xFFE3F2F4),
-    onSurfaceVariant: c(0xFF536D78, 0xFF9AB6C1),
-    outlineVariant: c(0xFFD5E5E9, 0xFF30454F),
-    outline: c(0xFFB0BDCD, 0xFF4B5869),
+    surface: palette.surface,
+    surfaceContainerLowest: palette.background,
+    surfaceContainerLow: palette.sidebar,
+    surfaceContainer: Color.lerp(palette.surface, palette.raised, .5),
+    surfaceContainerHigh: palette.raised,
+    surfaceContainerHighest: palette.selection,
+    onSurface: palette.text,
+    onSurfaceVariant: palette.textSecondary,
+    outlineVariant: palette.borderSubtle,
+    outline: palette.borderControl,
     primary: primary,
     onPrimary: onColor(primary),
-    secondary: primary,
-    onSecondary: onColor(primary),
-    error: c(0xFFB42332, 0xFFFF8792),
-    onError: c(0xFFFFFFFF, 0xFF2A0A0E),
-    tertiary: c(0xFF865400, 0xFFF5C66B),
-    onTertiary: c(0xFFFFFFFF, 0xFF2A1D00),
+    primaryContainer: palette.selection,
+    onPrimaryContainer: palette.onSelection,
+    secondary: palette.accentInk,
+    onSecondary: onColor(palette.accentInk),
+    secondaryContainer: palette.selection,
+    onSecondaryContainer: palette.onSelection,
+    error: palette.danger,
+    onError: onColor(palette.danger),
+    tertiary: palette.warning,
+    onTertiary: onColor(palette.warning),
   );
   final f = fontSize.clamp(AppFonts.uiSizeMin, AppFonts.uiSizeMax).toDouble();
   final small = max(11.0, f - 1);
-  TextStyle text(double size, [FontWeight? weight]) => TextStyle(fontSize: size, fontWeight: weight, letterSpacing: 0);
+  TextStyle text(double size, [FontWeight? weight]) => TextStyle(
+    fontSize: size,
+    fontWeight: weight,
+    letterSpacing: 0,
+    fontFamily: fontFamily ?? AppFonts.ui,
+    fontFamilyFallback: AppFonts.cjk,
+  );
   final controlShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control));
   const controlSize = Size(56, WorkspaceSize.control);
   const buttonPadding = EdgeInsets.symmetric(horizontal: 14);
@@ -147,7 +148,7 @@ ThemeData buildTheme(
     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     // Desktop feedback is the hover and pressed tint; no ripple.
     splashFactory: NoSplash.splashFactory,
-    extensions: [MonoFont(monoFamily ?? AppFonts.mono)],
+    extensions: [palette, MonoFont(monoFamily ?? AppFonts.mono)],
     iconTheme: IconThemeData(size: 18, color: scheme.onSurface),
     textTheme: TextTheme(
       titleLarge: text(f + 5, FontWeight.w600),
@@ -176,7 +177,7 @@ ThemeData buildTheme(
         padding: buttonPadding,
         shape: controlShape,
         textStyle: buttonText,
-        side: BorderSide(color: scheme.outlineVariant),
+        side: BorderSide(color: scheme.outline),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -208,8 +209,8 @@ ThemeData buildTheme(
       fillColor: scheme.surface,
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       hintStyle: TextStyle(color: scheme.onSurfaceVariant),
-      border: border(scheme.outlineVariant),
-      enabledBorder: border(scheme.outlineVariant),
+      border: border(scheme.outline),
+      enabledBorder: border(scheme.outline),
       disabledBorder: border(scheme.outlineVariant.withValues(alpha: .5)),
       focusedBorder: border(scheme.primary, 1.5),
       errorBorder: border(scheme.error),
@@ -272,10 +273,7 @@ ThemeData buildTheme(
       waitDuration: const Duration(milliseconds: 500),
       padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
       textStyle: text(small).copyWith(color: scheme.surface),
-      decoration: BoxDecoration(
-        color: scheme.onSurface.withValues(alpha: .92),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      decoration: BoxDecoration(color: scheme.onSurface.withValues(alpha: .92), borderRadius: BorderRadius.circular(6)),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,

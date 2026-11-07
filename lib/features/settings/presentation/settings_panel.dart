@@ -1,11 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/controls.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
+import '../../../design/theme_names.dart';
 import '../../../foundation/data_dir.dart';
 import '../../../foundation/open_external.dart';
 import '../../../l10n/app_localizations.dart';
@@ -61,7 +64,10 @@ class SettingsPanel extends ConsumerWidget {
             onChanged: (v) => notifier.set(d, v),
           ),
         ),
-        SizedBox(width: Space.xl, child: Text('${settings.get(d).round()}', textAlign: TextAlign.end)),
+        SizedBox(
+          width: Space.xl,
+          child: Text('${settings.get(d).round()}', textAlign: TextAlign.end),
+        ),
       ],
     );
 
@@ -109,23 +115,7 @@ class SettingsPanel extends ConsumerWidget {
           ),
           _Field.stacked(
             l.accent,
-            Wrap(
-              spacing: Space.sm,
-              children: [
-                for (final a in Accent.values)
-                  _Swatch(
-                    color: a.of(theme.brightness),
-                    label: switch (a) {
-                      Accent.blue => l.accentBlue,
-                      Accent.green => l.accentGreen,
-                      Accent.violet => l.accentViolet,
-                      Accent.orange => l.accentOrange,
-                    },
-                    selected: settings.accent == a,
-                    onTap: () => notifier.set(SettingKeys.accent, a),
-                  ),
-              ],
-            ),
+            _ThemeGrid(selected: settings.accent, onChanged: (a) => notifier.set(SettingKeys.accent, a)),
           ),
           _Field.stacked(
             l.language,
@@ -212,6 +202,10 @@ class SettingsPanel extends ConsumerWidget {
         ]),
         for (final s in extra) _Section(s.title(l), [s.build(context)]),
         _Section(l.about, [
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: Space.md),
+            child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
+          ),
           _Field(l.version, Text(appVersion, style: theme.textTheme.bodyMedium)),
           _Field(
             l.dataDir,
@@ -274,7 +268,11 @@ class _Field extends StatelessWidget {
       child: stacked
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [text, const SizedBox(height: Space.sm), child],
+              children: [
+                text,
+                const SizedBox(height: Space.sm),
+                child,
+              ],
             )
           : Row(
               children: [
@@ -304,40 +302,225 @@ class _Choice<T> extends StatelessWidget {
   );
 }
 
-class _Swatch extends StatelessWidget {
-  const _Swatch({required this.color, required this.label, required this.selected, required this.onTap});
+/// The six themes as a 3×2 grid of previews; rows share a height so cards line up when a long name wraps.
+class _ThemeGrid extends StatelessWidget {
+  const _ThemeGrid({required this.selected, required this.onChanged});
 
-  final Color color;
-  final String label;
+  final Accent selected;
+  final ValueChanged<Accent> onChanged;
+
+  static const columns = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = [
+      for (final a in Accent.values) _ThemeCard(accent: a, selected: a == selected, onTap: () => onChanged(a)),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < cards.length; i += columns) ...[
+          if (i > 0) const SizedBox(height: Space.sm),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var j = i; j < i + columns; j++) ...[
+                  if (j > i) const SizedBox(width: Space.sm),
+                  Expanded(child: j < cards.length ? cards[j] : const SizedBox.shrink()),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ThemeCard extends StatefulWidget {
+  const _ThemeCard({required this.accent, required this.selected, required this.onTap});
+
+  final Accent accent;
   final bool selected;
   final VoidCallback onTap;
 
   @override
+  State<_ThemeCard> createState() => _ThemeCardState();
+}
+
+class _ThemeCardState extends State<_ThemeCard> {
+  var _hovered = false, _focused = false;
+
+  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: label,
-      child: Semantics(
-        label: label,
-        selected: selected,
-        button: true,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 26,
-            height: 26,
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: selected ? color : scheme.outlineVariant, width: 2),
-            ),
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final label = widget.accent.label(AppLocalizations.of(context));
+    final selected = widget.selected;
+    return Semantics(
+      label: label,
+      button: true,
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      onTap: widget.onTap,
+      child: FocusableActionDetector(
+        mouseCursor: SystemMouseCursors.click,
+        onShowHoverHighlight: (v) => setState(() => _hovered = v),
+        onShowFocusHighlight: (v) => setState(() => _focused = v),
+        actions: {ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) => widget.onTap())},
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: ExcludeSemantics(
             child: DecoratedBox(
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              child: selected ? Icon(Icons.check, size: 14, color: onColor(color)) : null,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(Radii.card + 2),
+                border: Border.all(color: _focused ? scheme.primary : Colors.transparent, width: 2),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(Space.sm),
+                decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(Radii.card)),
+                foregroundDecoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(Radii.card),
+                  border: Border.all(
+                    color: selected
+                        ? scheme.primary
+                        : _hovered
+                        ? scheme.outline
+                        : scheme.outlineVariant,
+                    width: selected ? 2 : 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ThemeMock(widget.accent.palette(theme.brightness)),
+                    const SizedBox(height: Space.sm),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            label,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurface),
+                          ),
+                        ),
+                        const SizedBox(width: Space.xs),
+                        SizedBox.square(
+                          dimension: 16,
+                          child: selected
+                              ? DecoratedBox(
+                                  decoration: BoxDecoration(color: scheme.primary, shape: BoxShape.circle),
+                                  child: Icon(Icons.check_rounded, size: 12, color: scheme.onPrimary),
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A miniature of the shell in [p]: sidebar, title line, and a panel with text lines and a primary button.
+class _ThemeMock extends StatelessWidget {
+  const _ThemeMock(this.p);
+
+  final BrandPalette p;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar(Color color, double width, [double height = 3]) => Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(height / 2)),
+    );
+    return Container(
+      height: 48,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: p.background,
+        borderRadius: BorderRadius.circular(Radii.control - 2),
+        border: Border.all(color: p.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 24,
+            padding: const EdgeInsets.all(6),
+            color: p.sidebar,
+            child: Column(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: p.selection, borderRadius: BorderRadius.circular(3)),
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(color: p.accent, shape: BoxShape.circle),
+                  ),
+                ),
+                const SizedBox(height: Space.xs),
+                bar(p.textSecondary, 12),
+                const SizedBox(height: Space.xs),
+                bar(p.textSecondary, 12),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  bar(p.text, 32, 4),
+                  const SizedBox(height: Space.xs),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: p.borderSubtle),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [bar(p.textSecondary, 26), const SizedBox(height: 3), bar(p.textSecondary, 16)],
+                            ),
+                          ),
+                          Container(
+                            width: 14,
+                            height: 8,
+                            decoration: BoxDecoration(color: p.primary, borderRadius: BorderRadius.circular(4)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -40,37 +40,24 @@ M4 右侧增加 AI 页签，沿用文件面板的停靠约束。未实现模块�
 
 使用 ThemeExtension/不可变 token 对象，按语义命名，不在业务 Widget 写散落色值。品牌图标颜色与 ANSI 色是明确例外，走单独映射。
 
-| role | Light | Dark |
-|---|---|---|
-| background | #F4F8FA | #10191E |
-| sidebar | #EAF2F5 | #142129 |
-| surface | #FFFFFF | #18252D |
-| elevated | #FFFFFF | #1E3039 |
-| border | #D5E5E9 | #30454F |
-| text | #16323E | #E3F2F4 |
-| textMuted | #536D78 | #9AB6C1 |
-| accent | 见下表 | 见下表 |
-| onAccent | 按对比度计算 | 按对比度计算 |
-| danger | #B42332 | #FF8792 |
-| warning | #865400 | #F5C66B |
-| focus | accent | accent |
+2026-11-07 起整套配色采用作者的 `Sshairy-Brand-Asset-Pack/`，替换此前四个强调色预设。六套主题复用相同布局和组件，每套都有独立浅色/深色；详细素材约束见 BRAND。
 
-中性色带一点冷蓝，配合默认蓝色 accent。accent 在设置里从预设中选，Light/Dark 各用一档：
+| 主题（持久化值） | 浅色品牌主色 | 深色品牌主色 | 深色背景 |
+|---|---|---|---|
+| 冰蓝薄荷（blue，默认） | #2E6EF7 | #5AB6FF | #0B1420 |
+| 薄荷绿（green） | #168A6A | #54D6AE | #0C1916 |
+| 紫罗兰（violet） | #7353C7 | #B79AFF | #14111E |
+| 日落橙（orange） | #D86B30 | #FFAE70 | #1D1510 |
+| 深海蓝（deepSea） | #19559E | #71AAE0 | #0A131F |
+| 樱花粉（pink） | #C4548E | #F4A1CB | #1D121A |
 
-| accent | Light | Dark |
-|---|---|---|
-| 冰蓝（默认） | #06ADC8 | #5ADDEB |
-| 绿 | #087F5B | #34D399 |
-| 紫 | #6D4AE0 | #A78BFA |
-| 橙 | #C2410C | #FB923C |
+深色 background/sidebar/surface/raised、边框、文字、选择色、状态色与终端 ANSI 使用各套 `dark/theme-dark.json` 的精确 token。浅色包只提供八个品牌色：background 使用 surface，面板使用 white，侧栏从 surface 与 mist 混合；文字使用 ink，边框和次级文字从 ink 与白色派生。品牌色用于图形与预览，交互主色必要时沿同一色调加深，保证小字对比度。错误、成功、警告保留独立红/绿/黄色语义。
 
-onAccent 取白色或 #0B1220 中与 accent 对比度更高的一个，不让白字叠浅色。不提供任意取色器：预设能保证两种模式下的对比度。
+设置以 3×2 的同结构预览卡呈现六套主题，预览跟随当前明暗。切换后背景、组件、终端和应用内 Logo 一起更新，原有明暗/跟随系统设置不变。正文目标至少 4.5:1，焦点和重要控件边界至少 3:1；不把素材包的对比度报告当作整个应用的验收结论。
 
-终端配色跟随明暗模式（ANSI 色是 tokens 的例外，单独映射在 `lib/design/terminal_palette.dart`）：背景 Light #FFFFFF / Dark #10151C，光标为 accent，选区为 accent 加透明度。Light 下 ANSI white 用灰色，避免白字落在白底上。
+终端使用当前主题的 terminal-bg/terminal-fg/terminal-cursor 与选择色；浅色使用白底和 ink，ANSI white 使用可见灰色。搜索高亮同时定义前景，不能让浅色字落在浅色高亮底上。
 
-这是自有配色，不声称已通过全部对比度测试。正文对比度至少 4.5:1，重要控件边界/焦点至少 3:1。
-
-应用图标：按用户要求通过 GPT Image 2 生成，采用冰青色风灵轮廓，`>_` 为终端识别元素；去掉机器人机壳、线缆、腮红等细节。原始生成图与提示词在 `output/imagegen/`，透明 PNG 母版为 `assets/brand/icon-source.png`，不宣称是矢量源。应用内 PNG、Windows ICO 和 macOS 图标由 `tool/render_icon.py` 同源导出；`assets/brand/preview.png` 提供明暗背景与 16/24/32/48/64/128 px 预览，ICO 含 256 px。生成与边缘处理说明见 BRAND。未使用 Netcatty 的代码或素材。
+品牌图形使用对应主题与明暗的素材；图标栏用紧凑角色，主机库空状态用小幅完整角色与低调风线，设置关于区显示提供的横版 Logo。实际终端、文件和监控数据区不放装饰水印。平台静态安装图标使用官方默认冰蓝薄荷素材，应用内图形随主题切换。导入与缩小由 `tool/import_brand.py` 完成，不修改原始包。
 
 - 间距：4/8/12/16/24/32；圆角：8 控件、12 卡片、14 面板/浮层/对话框，开关与分段控件用胶囊形；不为每处单独发明半径。
 - 字体：界面字体可选系统已安装字体，默认 Windows 用 Segoe UI 配 Microsoft YaHei UI 显示中文（显式 fallback，不让系统挑到日文字形）；界面字号默认 13，范围 11–18，次级 = 字号 − 1（不低于 11），标题 = 字号 + 3。终端字体默认 Cascadia Mono，中文回落 Microsoft YaHei UI；终端字号默认 14，范围 8–32。字体列表来自系统枚举，终端只列等宽字体。界面里的等宽文字（指纹、路径、权限）用终端字体。包体不附带字体。

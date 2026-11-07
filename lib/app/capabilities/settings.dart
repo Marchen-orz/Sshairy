@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/side_drawer.dart';
 import '../../design/theme.dart';
+import '../../design/theme_names.dart';
 import '../../foundation/result.dart';
 import '../../features/capabilities/api.dart';
 import '../../features/settings/api.dart';
@@ -61,12 +62,6 @@ List<PaletteEntry> settingsPaletteEntries(PaletteContext c) {
     entry('${l.theme}: ${l.themeLight}', Icons.light_mode_outlined, {'themeMode': 'light'}),
     entry('${l.theme}: ${l.themeDark}', Icons.dark_mode_outlined, {'themeMode': 'dark'}),
     entry('${l.theme}: ${l.themeSystem}', Icons.brightness_auto_outlined, {'themeMode': 'system'}),
-    for (final (a, name) in [
-      (Accent.blue, l.accentBlue),
-      (Accent.green, l.accentGreen),
-      (Accent.violet, l.accentViolet),
-      (Accent.orange, l.accentOrange),
-    ])
-      entry('${l.accent}: $name', Icons.palette_outlined, {'accent': a.name}),
+    for (final a in Accent.values) entry('${l.accent}: ${a.label(l)}', Icons.palette_outlined, {'accent': a.name}),
   ];
 }

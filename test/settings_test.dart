@@ -11,7 +11,13 @@ import 'package:sshairy/foundation/secret.dart';
 
 void main() {
   test('Settings falls back on bad values', () {
-    final s = Settings.fromJson({'themeMode': 'neon', 'fontSize': 999, 'locale': 'fr', 'renderer': 'vulkan', 'accent': 'pink'});
+    final s = Settings.fromJson({
+      'themeMode': 'neon',
+      'fontSize': 999,
+      'locale': 'fr',
+      'renderer': 'vulkan',
+      'accent': 'unknownTheme',
+    });
     expect(s.themeMode, ThemeMode.system);
     expect(s.fontSize, SettingKeys.fontSize.defaultValue);
     expect(s.locale, isNull);

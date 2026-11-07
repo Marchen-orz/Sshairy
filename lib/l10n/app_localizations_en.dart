@@ -180,19 +180,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get restartToApply => 'Takes effect after restart';
 
   @override
-  String get accent => 'Accent color';
+  String get accent => 'Color theme';
 
   @override
-  String get accentBlue => 'Blue';
+  String get themeNameBlue => 'Ice Blue · Mint';
 
   @override
-  String get accentGreen => 'Green';
+  String get themeNameGreen => 'Mint Green';
 
   @override
-  String get accentViolet => 'Violet';
+  String get themeNameViolet => 'Violet';
 
   @override
-  String get accentOrange => 'Orange';
+  String get themeNameOrange => 'Sunset Orange';
+
+  @override
+  String get themeNameDeepSea => 'Deep Sea Blue';
+
+  @override
+  String get themeNamePink => 'Sakura Pink';
 
   @override
   String get commandPalette => 'Command palette';

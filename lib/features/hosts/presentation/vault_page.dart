@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/dialog.dart';
 import '../../../design/double_click.dart';
 import '../../../design/menu.dart';
@@ -277,7 +278,11 @@ class _VaultPageState extends ConsumerState<VaultPage> {
           ],
           Expanded(
             child: matches.isEmpty
-                ? (query.isEmpty || quick != null ? const SizedBox.shrink() : Center(child: Text(l.noMatches)))
+                ? (query.isEmpty
+                      ? const BrandEmptyState()
+                      : quick != null
+                      ? const SizedBox.shrink()
+                      : Center(child: Text(l.noMatches)))
                 : view == HostView.list
                 ? ListView.separated(
                     itemCount: matches.length,

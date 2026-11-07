@@ -36,4 +36,9 @@ flutter:
   uses-material-design: true
   generate: true
   assets:
-    - assets/brand/icon.png
+    - assets/brand/blue/
+    - assets/brand/green/
+    - assets/brand/violet/
+    - assets/brand/orange/
+    - assets/brand/deepSea/
+    - assets/brand/pink/

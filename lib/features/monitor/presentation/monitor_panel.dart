@@ -157,7 +157,7 @@ class _Content extends StatelessWidget {
               children: [
                 _Headline(label: l.memory, value: _percent(snap.memory)),
                 const SizedBox(height: Space.sm),
-                _Bar(snap.memory, color: scheme.tertiary),
+                _Bar(snap.memory, color: scheme.secondary),
                 const SizedBox(height: Space.xs),
                 Text(
                   '${_bytes((s.memTotalKib - s.memAvailableKib) * 1024)} / ${_bytes(s.memTotalKib * 1024)}',
@@ -169,7 +169,7 @@ class _Content extends StatelessWidget {
                     label: l.swap,
                     fraction: snap.swap,
                     detail: '${_bytes((s.swapTotalKib - s.swapFreeKib) * 1024)} / ${_bytes(s.swapTotalKib * 1024)}',
-                    color: scheme.tertiary,
+                    color: scheme.secondary,
                   ),
                 ],
               ],
@@ -215,7 +215,7 @@ class _Content extends StatelessWidget {
                       label: l.memory,
                       fraction: f,
                       detail: '${_bytes(g.memoryUsedMib! << 20)} / ${_bytes(g.memoryTotalMib! << 20)}',
-                      color: scheme.tertiary,
+                      color: scheme.secondary,
                     ),
                   ],
                 ],

@@ -308,6 +308,6 @@ TerminalTheme _terminalTheme(TerminalPalette p) {
     brightWhite: a[15],
     searchHitBackground: p.searchHit,
     searchHitBackgroundCurrent: p.searchHitCurrent,
-    searchHitForeground: const Color(0xFF10151C),
+    searchHitForeground: p.searchHitForeground,
   );
 }

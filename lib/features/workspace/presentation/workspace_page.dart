@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/dialog.dart';
 import '../../../design/dock_panel.dart';
 import '../../../design/double_click.dart';
@@ -447,11 +448,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             IconRail(
-              header: DesktopDragRegion(
-                child: Center(
-                  child: Image.asset('assets/brand/icon.png', width: 22, height: 22, semanticLabel: 'sshairy'),
-                ),
-              ),
+              header: DesktopDragRegion(child: Center(child: const BrandMark())),
               groups: [
                 [
                   RailItem(icon: Icons.dns_outlined, label: l.hosts, selected: vault, onTap: _workspace.showVault),

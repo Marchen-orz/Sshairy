@@ -52,4 +52,4 @@ flutter test
 
 计划开源，项目许可证尚未确定，当前不声明 MIT 授权。发行前还需完成许可证选择与完整依赖审计。第三方组件保留各自许可，说明见 [DEPENDENCIES](docs/DEPENDENCIES.md)。
 
-图标通过 GPT Image 2 生成，透明 PNG 母版位于 [assets/brand/icon-source.png](assets/brand/icon-source.png)，生成说明与提示词见 [BRAND](docs/BRAND.md)。只参考 Netcatty 的产品设计，未采用其 GPL 代码或品牌素材。
+界面使用作者提供的六套品牌主题（冰蓝薄荷、薄荷绿、紫罗兰、日落橙、深海蓝、樱花粉），每套都有浅色、深色和对应 Logo；在设置的“配色方案”中切换。来源、资源导入和图标说明见 [BRAND](docs/BRAND.md)。只参考 Netcatty 的产品设计，未采用其 GPL 代码或品牌素材。

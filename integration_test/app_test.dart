@@ -542,9 +542,12 @@ void main() {
     await t.tapAndPump(find.text('Dark'));
     expect(Theme.of(t.element(find.text('Theme'))).brightness, Brightness.dark);
     await t.shot('settings-dark');
-    await t.tapAndPump(find.byTooltip('Green'));
-    expect(Theme.of(t.element(find.text('Theme'))).colorScheme.primary, Accent.green.dark);
-    await t.tapAndPump(find.byTooltip('Blue'));
+    await t.tapAndPump(find.text('Mint Green'));
+    expect(
+      Theme.of(t.element(find.text('Theme'))).colorScheme.primary,
+      Accent.green.palette(Brightness.dark).controlPrimary,
+    );
+    await t.tapAndPump(find.text('Ice Blue · Mint'));
     await t.tapAndPump(find.text('Impeller'));
     expect(find.text('Takes effect after restart'), findsOneWidget);
     await t.shot('settings-renderer');

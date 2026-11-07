@@ -419,32 +419,44 @@ abstract class AppLocalizations {
   /// No description provided for @accent.
   ///
   /// In en, this message translates to:
-  /// **'Accent color'**
+  /// **'Color theme'**
   String get accent;
 
-  /// No description provided for @accentBlue.
+  /// No description provided for @themeNameBlue.
   ///
   /// In en, this message translates to:
-  /// **'Blue'**
-  String get accentBlue;
+  /// **'Ice Blue · Mint'**
+  String get themeNameBlue;
 
-  /// No description provided for @accentGreen.
+  /// No description provided for @themeNameGreen.
   ///
   /// In en, this message translates to:
-  /// **'Green'**
-  String get accentGreen;
+  /// **'Mint Green'**
+  String get themeNameGreen;
 
-  /// No description provided for @accentViolet.
+  /// No description provided for @themeNameViolet.
   ///
   /// In en, this message translates to:
   /// **'Violet'**
-  String get accentViolet;
+  String get themeNameViolet;
 
-  /// No description provided for @accentOrange.
+  /// No description provided for @themeNameOrange.
   ///
   /// In en, this message translates to:
-  /// **'Orange'**
-  String get accentOrange;
+  /// **'Sunset Orange'**
+  String get themeNameOrange;
+
+  /// No description provided for @themeNameDeepSea.
+  ///
+  /// In en, this message translates to:
+  /// **'Deep Sea Blue'**
+  String get themeNameDeepSea;
+
+  /// No description provided for @themeNamePink.
+  ///
+  /// In en, this message translates to:
+  /// **'Sakura Pink'**
+  String get themeNamePink;
 
   /// No description provided for @commandPalette.
   ///
