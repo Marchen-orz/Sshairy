@@ -1,0 +1,10 @@
+Use case: logo-brand
+Asset type: original application icon for sshairy, a lightweight desktop SSH and SFTP client.
+Primary request: Design one polished, distinctive, quietly adorable brand symbol that combines an airy little spirit with a terminal command prompt. It should feel like an excellent independent developer tool, elegant and friendly rather than a toy robot.
+Subject: A single compact floating cyan spirit, shaped like a softly rounded wind droplet with one short, gracefully curled tail. Its face is just a bold deep-ink greater-than symbol and a small horizontal cursor: >_ . The prompt is integrated into the spirit itself, not inside a screen or computer enclosure. The expression is smart, calm and a little playful. The airy shape conveys lightweight software; the prompt conveys SSH.
+Style/medium: Professional minimal vector-style logo rendered as a clean bitmap. Flat color, optically balanced curves, confident silhouette, restrained negative space, two or three broad shapes at most. A refined asymmetric silhouette, front-facing without perspective. No outline around the body. No tiny details.
+Composition/framing: One isolated centered symbol occupying around 78 percent of a square canvas, generous clean margins, recognizable at 24 pixels. No app tile or surrounding badge. All parts joined into one coherent silhouette.
+Color palette: bright saturated ice-cyan / turquoise body, near-black blue-green prompt, very limited colors. Flat pure white background, perfectly uniform right to the canvas edges, so the exterior background can be separated for an application icon.
+Text: only the two terminal symbols >_ integrated as the face, no letters or product name.
+Constraints: Make a genuinely new original logo. No existing brand mascots, no borrowed logos. Crisp smooth edges. No faux transparent checkerboard.
+Avoid: computer monitor, robot head, glass screen, frame, legs, arms, blush cheeks, cable, plug, antenna, circuit lines, lock, shield, cloud cluster, sparkles, gradients, highlights, glossy material, 3D rendering, shadows, texture, mockup, presentation board, multiple designs, watermark, text labels.

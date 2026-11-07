@@ -1,28 +1,66 @@
-"""Render the original SVG with a locally installed Edge and export desktop icons.
+"""Export desktop icons and a size preview from the selected GPT-generated PNG.
 
-Development tools only: Python, Pillow and Playwright. No network requests.
-Usage: python -I tool/render_icon.py <repository> [--browser <executable>]
+Development tool only: Python and Pillow. No network requests.
+Usage: python -I tool/render_icon.py <repository> [--source <png>]
 """
 import argparse
-import io
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
-from playwright.sync_api import sync_playwright
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+
+def flat_pixels(image):
+    get_pixels = getattr(image, "get_flattened_data", image.getdata)
+    return get_pixels()
+
+
+def remove_background(image):
+    """Remove only the connected near-white exterior; preserve enclosed white details."""
+    rgb = image.convert("RGB")
+    mask = Image.new("L", image.size)
+    mask.putdata([255 if min(pixel) >= 235 else 0 for pixel in flat_pixels(rgb)])
+    for corner in ((0, 0), (image.width - 1, 0), (0, image.height - 1), (image.width - 1, image.height - 1)):
+        ImageDraw.floodfill(mask, corner, 128)
+    mask = mask.point(lambda value: 0 if value == 128 else 255)
+    interior = mask.filter(ImageFilter.MinFilter(3))
+    pixels = []
+    for color, keep, solid in zip(flat_pixels(rgb), flat_pixels(mask), flat_pixels(interior)):
+        if not keep:
+            pixels.append((0, 0, 0, 0))
+        elif solid or color[0] < 35:
+            pixels.append((*color, 255))
+        else:
+            # The cyan outline has a low red channel. Unmatte its one-pixel white fringe so the transparent
+            # icon does not acquire a pale halo on the dark application surface.
+            alpha = min(1.0, (255 - color[0]) / 245)
+            foreground = tuple(max(0, min(255, round((v - 255 * (1 - alpha)) / alpha))) for v in color)
+            pixels.append((*foreground, round(255 * alpha)))
+    result = Image.new("RGBA", image.size)
+    result.putdata(pixels)
+    return result
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("repository", type=Path)
-parser.add_argument("--browser", default="C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe")
+parser.add_argument("--source", type=Path)
+parser.add_argument("--remove-white-background", action="store_true")
 args = parser.parse_args()
 root = args.repository.resolve()
 brand = root / "assets/brand"
-svg = (brand / "icon.svg").read_text(encoding="utf-8")
-with sync_playwright() as playwright:
-    browser = playwright.chromium.launch(executable_path=args.browser, headless=True)
-    page = browser.new_page(viewport={"width": 512, "height": 512}, device_scale_factor=1)
-    page.set_content('<html><body style="margin:0;background:transparent">' + svg + "</body></html>")
-    image = Image.open(io.BytesIO(page.locator("svg").screenshot(omit_background=True))).convert("RGBA")
-    browser.close()
+source = args.source or brand / "icon-source.png"
+image = Image.open(source).convert("RGBA")
+if image.width != image.height:
+    raise ValueError("The icon source must be square")
+if args.remove_white_background:
+    image = remove_background(image)
+    bounds = image.getbbox()
+    if bounds is None:
+        raise ValueError("The source contains no visible symbol")
+    symbol = image.crop(bounds)
+    symbol.thumbnail((850, 850), Image.Resampling.LANCZOS)
+    image = Image.new("RGBA", (1024, 1024))
+    image.alpha_composite(symbol, ((1024 - symbol.width) // 2, (1024 - symbol.height) // 2))
+    image.save(brand / "icon-source.png")
 image.save(brand / "icon.png")
 image.save(root / "windows/runner/resources/app_icon.ico", sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
 # Existing platform assets share the same source even when the runner is not tested here.
