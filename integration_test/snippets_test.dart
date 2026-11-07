@@ -15,7 +15,8 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('snippet CRUD persists in the real Windows app without a connection', (tester) async {
     final dir = await Directory.systemTemp.createTemp('sshairy-snippets-ui-');
-    await File('${dir.path}/settings.json').writeAsString(jsonEncode({'schemaVersion': 1, 'locale': 'en'}));
+    await File('${dir.path}/settings.json')
+        .writeAsString(jsonEncode({'schemaVersion': 1, 'locale': 'en', 'importOffered': true}));
     Future<void> waitFor(bool Function() ready) async {
       for (var i = 0; i < 100; i++) {
         await tester.pump(const Duration(milliseconds: 50));

@@ -1047,12 +1047,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get windowClose => 'Close window';
 
   @override
-  String get sshConfigImport => 'Import SSH config';
-
-  @override
-  String get sshConfigPick => 'Choose config';
-
-  @override
   String get sshConfigExisting => 'Already saved';
 
   @override
@@ -1062,12 +1056,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String sshConfigImported(int count) {
     return 'Imported $count hosts';
   }
-
-  @override
-  String get sshConfigChanged => 'Hosts changed; choose the config again';
-
-  @override
-  String get sshConfigFailed => 'Could not import the config';
 
   @override
   String get sshConfigMalformed => 'Invalid syntax';
@@ -1394,4 +1382,32 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gpuMemory => 'VRAM';
+
+  @override
+  String get importHosts => 'Import hosts';
+
+  @override
+  String get importFromFile => 'From file';
+
+  @override
+  String get importNoGroup => 'No group';
+
+  @override
+  String get importChanged => 'Hosts changed; open the source again';
+
+  @override
+  String get importFailed => 'Could not read the hosts';
+
+  @override
+  String get importNotSsh => 'Not an SSH session';
+
+  @override
+  String get importNoAddress => 'No address';
+
+  @override
+  String get importUnreadable => 'Could not read this file';
+
+  @override
+  String get importPpk =>
+      'PuTTY .ppk key not used; convert it to OpenSSH format first';
 }

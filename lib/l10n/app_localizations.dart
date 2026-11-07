@@ -1988,18 +1988,6 @@ abstract class AppLocalizations {
   /// **'Close window'**
   String get windowClose;
 
-  /// No description provided for @sshConfigImport.
-  ///
-  /// In en, this message translates to:
-  /// **'Import SSH config'**
-  String get sshConfigImport;
-
-  /// No description provided for @sshConfigPick.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose config'**
-  String get sshConfigPick;
-
   /// No description provided for @sshConfigExisting.
   ///
   /// In en, this message translates to:
@@ -2017,18 +2005,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Imported {count} hosts'**
   String sshConfigImported(int count);
-
-  /// No description provided for @sshConfigChanged.
-  ///
-  /// In en, this message translates to:
-  /// **'Hosts changed; choose the config again'**
-  String get sshConfigChanged;
-
-  /// No description provided for @sshConfigFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not import the config'**
-  String get sshConfigFailed;
 
   /// No description provided for @sshConfigMalformed.
   ///
@@ -2617,6 +2593,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'VRAM'**
   String get gpuMemory;
+
+  /// No description provided for @importHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Import hosts'**
+  String get importHosts;
+
+  /// No description provided for @importFromFile.
+  ///
+  /// In en, this message translates to:
+  /// **'From file'**
+  String get importFromFile;
+
+  /// No description provided for @importNoGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'No group'**
+  String get importNoGroup;
+
+  /// No description provided for @importChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Hosts changed; open the source again'**
+  String get importChanged;
+
+  /// No description provided for @importFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the hosts'**
+  String get importFailed;
+
+  /// No description provided for @importNotSsh.
+  ///
+  /// In en, this message translates to:
+  /// **'Not an SSH session'**
+  String get importNotSsh;
+
+  /// No description provided for @importNoAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'No address'**
+  String get importNoAddress;
+
+  /// No description provided for @importUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read this file'**
+  String get importUnreadable;
+
+  /// No description provided for @importPpk.
+  ///
+  /// In en, this message translates to:
+  /// **'PuTTY .ppk key not used; convert it to OpenSSH format first'**
+  String get importPpk;
 }
 
 class _AppLocalizationsDelegate

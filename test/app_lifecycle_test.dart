@@ -75,7 +75,8 @@ void main() {
   setUp(() {
     _events.clear();
     dir = Directory.systemTemp.createTempSync('sshairy-lifecycle-');
-    File('${dir.path}/settings.json').writeAsStringSync(jsonEncode({'schemaVersion': 1, 'locale': 'en'}));
+    File('${dir.path}/settings.json')
+        .writeAsStringSync(jsonEncode({'schemaVersion': 1, 'locale': 'en', 'importOffered': true}));
   });
   tearDown(() async {
     // A pending configuration write can still hold a file briefly after the test body ends.

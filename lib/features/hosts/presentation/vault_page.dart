@@ -17,8 +17,8 @@ import '../domain/host_library.dart';
 import 'group_panel.dart';
 import 'host_form.dart';
 import 'identities_panel.dart';
+import 'import_dialog.dart';
 import 'keys_panel.dart';
-import 'ssh_config_import_panel.dart';
 
 const _gridTile = 320.0, _gridRow = 64.0;
 
@@ -39,14 +39,33 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   /// The group being shown; empty for every host.
   var _group = '';
 
+  /// The setting lands only after its write, so this keeps a second offer from opening meanwhile.
+  var _offered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _offerImport());
+  }
+
   @override
   void didUpdateWidget(VaultPage old) {
     super.didUpdateWidget(old);
     if (widget.active && !old.active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.active) _searchFocus.requestFocus();
+        _offerImport();
       });
     }
+  }
+
+  /// Once, on an empty vault (docs/HOST_IMPORT.md).
+  void _offerImport() {
+    if (_offered || !mounted || !widget.active || ref.read(settingsProvider).get(SettingKeys.importOffered)) return;
+    if (ref.read(hostsProvider).isNotEmpty) return;
+    _offered = true;
+    ref.read(settingsProvider.notifier).set(SettingKeys.importOffered, true);
+    showImportDialog(context, welcome: true);
   }
 
   @override
@@ -220,9 +239,9 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                 icon: const Icon(Icons.create_new_folder_outlined, size: 18),
               ),
               IconButton(
-                tooltip: l.sshConfigImport,
-                onPressed: () => showSideDrawer<void>(context, (_) => const SshConfigImportPanel()),
-                icon: const Icon(Icons.download_outlined, size: 18),
+                tooltip: l.importHosts,
+                onPressed: () => showImportDialog(context),
+                icon: const Icon(Icons.input_rounded, size: 18),
               ),
               AppMenuButton<Widget>(
                 tooltip: l.more,

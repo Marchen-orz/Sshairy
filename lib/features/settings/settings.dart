@@ -189,6 +189,8 @@ abstract final class SettingKeys {
 
   static const showHidden = BoolSetting('showHidden', false);
 
+  /// The import dialog has opened by itself once, for an empty host library (docs/HOST_IMPORT.md).
+  static const importOffered = BoolSetting('importOffered', false, agentExposed: false);
   static const transferConcurrency = IntSetting('transferConcurrency', 3, 1, 8);
 
   static const List<SettingDef<Object?>> all = [
@@ -218,6 +220,7 @@ abstract final class SettingKeys {
     navigationWidth,
     confirmQuit,
     showHidden,
+    importOffered,
     transferConcurrency,
   ];
 

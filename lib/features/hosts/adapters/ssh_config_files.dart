@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:file_selector/file_selector.dart' as selector;
-
 import '../domain/ssh_config.dart';
 
 class SshConfigFile {
@@ -11,14 +9,6 @@ class SshConfigFile {
 
   final String name, home, username;
   final SshConfigInput input;
-}
-
-Future<SshConfigFile?> pickSshConfig() async {
-  final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
-  final ssh = Directory('$home/.ssh');
-  final selected = await selector.openFile(initialDirectory: ssh.existsSync() ? ssh.path : null);
-  if (selected == null) return null;
-  return readSshConfig(selected.path);
 }
 
 /// Expands only relative Includes inside the selected config's directory tree. No commands or key files are read.

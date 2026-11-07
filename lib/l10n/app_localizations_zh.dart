@@ -1020,12 +1020,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get windowClose => '关闭窗口';
 
   @override
-  String get sshConfigImport => '导入 SSH config';
-
-  @override
-  String get sshConfigPick => '选择配置';
-
-  @override
   String get sshConfigExisting => '已保存';
 
   @override
@@ -1035,12 +1029,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String sshConfigImported(int count) {
     return '已导入 $count 台主机';
   }
-
-  @override
-  String get sshConfigChanged => '主机库已变化，请重新选择配置';
-
-  @override
-  String get sshConfigFailed => '无法导入配置';
 
   @override
   String get sshConfigMalformed => '语法无效';
@@ -1361,4 +1349,31 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get gpuMemory => '显存';
+
+  @override
+  String get importHosts => '导入主机';
+
+  @override
+  String get importFromFile => '从文件导入';
+
+  @override
+  String get importNoGroup => '不放入分组';
+
+  @override
+  String get importChanged => '主机库已变化，请重新选择来源';
+
+  @override
+  String get importFailed => '无法读取主机';
+
+  @override
+  String get importNotSsh => '不是 SSH 会话';
+
+  @override
+  String get importNoAddress => '缺少地址';
+
+  @override
+  String get importUnreadable => '无法读取此文件';
+
+  @override
+  String get importPpk => '未使用 PuTTY .ppk 密钥，请先转换为 OpenSSH 格式';
 }

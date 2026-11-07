@@ -1,5 +1,6 @@
 // What the integration tests that drive the whole app against a real server share (docs/TESTING.md §2).
 // Credentials come only from the environment; SSHAIRY_TEST_SHOTS=<dir> saves screenshots there.
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -69,6 +70,17 @@ extension AppDriver on WidgetTester {
   }
 
   Future<void> startApp(Directory dir) async {
+    // The first-run import offer would cover the vault; tests that want it seed `importOffered: false` themselves.
+    final settings = File('${dir.path}/settings.json');
+    Object? seeded;
+    try {
+      seeded = settings.existsSync() ? jsonDecode(settings.readAsStringSync()) : <String, dynamic>{};
+    } on FormatException {
+      seeded = null;
+    }
+    if (seeded is Map<String, dynamic> && !seeded.containsKey('importOffered')) {
+      await settings.writeAsString(jsonEncode({...seeded, 'importOffered': true}));
+    }
     await pumpWidget(
       RepaintBoundary(
         key: boundary,

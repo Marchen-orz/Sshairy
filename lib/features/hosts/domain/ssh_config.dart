@@ -22,6 +22,10 @@ enum SshConfigIssueKind {
   identity,
   extraIdentity,
   hostLimit,
+  notSsh,
+  noAddress,
+  unreadable,
+  ppk,
 }
 
 class SshConfigLine {
@@ -140,6 +144,8 @@ class SshConfigHost {
     this.keyPath,
     this.jumps = const [],
     this.issues = const [],
+    this.group = '',
+    this._id,
   });
 
   final String alias, address, username, file;
@@ -147,6 +153,13 @@ class SshConfigHost {
   final String? keyPath;
   final List<String> jumps;
   final List<SshConfigIssue> issues;
+
+  /// The folder the source program kept it in, `/`-separated; empty for SSH config.
+  final String group;
+  final String? _id;
+
+  /// Tells drafts apart when another program allows the same name twice; SSH config aliases are unique already.
+  String get key => _id ?? alias;
   bool get blocked => issues.isNotEmpty;
 }
 

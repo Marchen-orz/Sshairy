@@ -11,6 +11,7 @@ class SshImportDraft {
   final List<Host> additions;
   final List<SshConfigIssue> issues;
   bool get selectable => host != null && existing == null && issues.isEmpty;
+  String get key => source.key;
 }
 
 class SshImportPlan {
@@ -22,7 +23,7 @@ class SshImportPlan {
   /// Dependency jumps are included once, before their dependents, even when their own checkbox was not selected.
   List<Host> additions(Set<String> selected) => {
     for (final draft in drafts)
-      if (draft.selectable && selected.contains(draft.source.alias))
+      if (draft.selectable && selected.contains(draft.key))
         for (final host in draft.additions) host.id: host,
   }.values.toList();
 }
@@ -45,8 +46,9 @@ _Jump? _jump(String text) {
   return _Jump(raw.startsWith('[') ? raw.substring(1, raw.length - 1) : raw, match[1], port);
 }
 
-/// Produces new metadata only. Existing hosts are reused as jumps or shown as conflicts, never edited.
-SshImportPlan planSshConfig(SshConfig config, List<Host> saved, {required HostId Function() newId}) {
+/// Produces new metadata only. Existing hosts are reused as jumps or shown as conflicts, never edited. New hosts go
+/// into [group], keeping the source's own folders below it.
+SshImportPlan planSshConfig(SshConfig config, List<Host> saved, {required HostId Function() newId, String group = ''}) {
   final sources = {for (final host in config.hosts) host.alias.toLowerCase(): host};
   final generated = <String, Host>{};
   final newHosts = <HostId, Host>{};
@@ -73,7 +75,7 @@ SshImportPlan planSshConfig(SshConfig config, List<Host> saved, {required HostId
       auth: clone?.auth ?? (source.keyPath == null ? AuthKind.password : AuthKind.key),
       keyPath: clone?.keyPath ?? source.keyPath,
       keyId: clone?.keyId,
-      group: clone?.group ?? '',
+      group: clone?.group ?? normalizeGroup([group, source.group].where((g) => g.isNotEmpty).join('/')),
       tags: clone?.tags ?? const [],
       jumpHostId: upstream,
       proxy: upstream == null ? clone?.proxy : null,
@@ -102,6 +104,7 @@ SshImportPlan planSshConfig(SshConfig config, List<Host> saved, {required HostId
           file: source.file,
           line: source.line,
           issues: source.issues,
+          group: source.group,
         ),
         visited,
         depth,
