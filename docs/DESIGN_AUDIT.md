@@ -60,18 +60,31 @@
 
 - **UI 布局**：2026-11-07 起终端工作区已接入主机树（`workspace_page.dart` 的 `HostTree`）。评估当时指出的整页切换、片段和转发放在更多菜单仍以现有布局为准；工具栏收敛和编辑抽屉符合纠偏要求，但不等于原始信息架构已完成，也未做新的窗口手动验收。
 - **面板自适应**：`workspace_page.dart:398` 的文件侧栏固定 360，没有 300–560 可调宽度及空间不足转覆盖面板的逻辑。最小 960 窗口可给主终端留下空间，但分屏或大字时没有规范要求的自适应行为。
-- **终端流控**：已按 TERMINAL_FLOW 实现应用层有界队列、水位和时间切片并有单元测试；库背压与队列测试不能等同 T-03 已完成，高输出下 Ctrl+C、最小化和实际内存仍需 Windows/Ubuntu 实测。
+- **终端流控**：已按 TERMINAL_FLOW 实现应用层有界队列、水位和时间切片并有单元测试；库背压与队列测试不能等同 T-03 已完成，高输出下 Ctrl+C、最小化和实际内存仍需 Windows/Ubuntu 实测。2026-11-07 已在真实服务器测了内存有界、隐藏标签继续接收和 Ctrl+C（TERMINAL_FLOW）；最小化和真实触发 SSH 窗口背压没有测。
 - **配置恢复与迁移**：JsonFile 已有 revision、写保护、自动快照恢复、逐版迁移和启动恢复入口（CONFIG_RECOVERY）；hosts.json 已有 schema 1→2 迁移。
 - **主机模型**：已实现独立 Group、Identity、全局默认值与继承解析（HOST_INHERITANCE），含编辑界面与 Capability；真实服务器上的 key→password、keyboard-interactive、密钥加载未验。
-- **验收**：本轮未连接服务器，未测真实转发 L/R/D、SFTP 续传哈希、10 GB 传输、多会话日常内存和全部无边框窗口交互。200 MB 仍是目标，不作为当前运行结论。
+- **验收**：评估当时未连接服务器。2026-11-07 起已在真实服务器测了 L/R/D 转发、SFTP 续传哈希、密钥登录、外部编辑（app 一侧）和 Profile 构建下的多会话内存（TESTING §6）。仍未测：10 GB 传输、keyboard-interactive、窗口拖动/Snap/DPI/最小化、真实输入法、作者自己的外部编辑器，以及 Release 构建按任务管理器口径的内存。200 MB 仍是目标，不作为当前运行结论。
 
 ## 文档一致性
 
 本轮发现 SECURITY §4“当前实现”仍写着“无 revision”“坏文件当空数据”“备份失败不阻止保存”，ROADMAP“第一版简化”仍写“池键没有凭据/信任 revision”，MODULES §5 仍称转发入口和退出流程待接线；这些描述已落后代码。本轮同步修订当前状态，保留未完成与未验收项，不通过放宽原始硬约束消除缺陷。
 
+## 真实服务器测试发现的缺陷（已修复）
+
+2026-11-07 在作者的服务器上跑集成测试时发现，均已修复并有回归覆盖：
+
+1. 首次信任主机密钥、首次保存凭据会递增池的安全修订，刚建立的连接无法复用（CONTRACTS §2）。
+2. 已关闭的会话被共享连接持有：每个租约都往 transport 的 `done` 上挂监听，Future 摘不掉监听，所以已关闭的终端和回滚缓冲随连接一直活着。改为每个租约自己的 `done`（`test/connection_manager_test.dart`）。
+3. 关标签页不挂断远端 shell：只发 EOF 不会让 pty 登录 shell 退出，进程和 channel 留到连接结束。改为双向关闭 channel；真实服务器上 3 秒内 shell 消失（`ShellChannel.close`，CONTRACTS §2）。
+4. 主机被别的主机用作跳板时仍可删除，留下悬挂引用：删除前检查，返回 `HostInUse`（`test/host_library_test.dart`）。
+5. 本进程内第二个监听同一端口的转发规则被归为泛泛的“绑定失败”，因为 Dart 不经操作系统直接拒绝（错误码 -1）：现在归为“端口已被占用”（`test/forward_runtime_test.dart`、`forward_test.dart`）。
+6. 双击靠 `onDoubleTap` 会让单击等约 300 ms：主机卡片和工作区标签改为按时间判断的 `DoubleClick`。文件栏的行仍有这 300 ms 延迟。
+
 ## 验证记录
 
-2026-11-07：`flutter test --no-pub` 全量 284 项通过；`flutter analyze --no-pub` 无问题；`dart run tool/check_imports.dart` imports ok。新增 host_library/host_inheritance/host_capabilities/host_editor 与 external_edits 测试已含在内。仍未连接真实服务器，也未做新的窗口手动验收。
+2026-11-07（真实服务器测试之后）：`flutter test --no-pub` 全量 294 项通过；`flutter analyze --no-pub` 无问题；`dart run tool/check_imports.dart` imports ok。`integration_test/` 下 app、auth、routes、snippets、keys、forward、transfer、edits 逐个跑通，memory 在 Profile 构建下通过。测试结束后服务器上 `~/sshairy-test` 不存在、`authorized_keys` 大小与权限与测试前一致、没有测试端口的监听。
+
+2026-11-07（此前）：`flutter test --no-pub` 全量 284 项通过；`flutter analyze --no-pub` 无问题；`dart run tool/check_imports.dart` imports ok。新增 host_library/host_inheritance/host_capabilities/host_editor 与 external_edits 测试已含在内。仍未连接真实服务器，也未做新的窗口手动验收。
 
 以下为 2026-11-06 评估当时的记录：
 

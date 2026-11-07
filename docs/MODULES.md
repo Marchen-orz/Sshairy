@@ -171,7 +171,7 @@ running → pausing → paused → preparing（M3 增量）
 
 约束：每条规则最多接收 128 个并发连接（包括握手和拨号中的连接），超出的直接关闭并记 limit；SOCKS5 握手及本机目标 TCP 拨号最多等待 15 s。错误发生在单个转发连接时只关闭该连接，规则继续监听并保留最近错误。停止确认失败时保留转发租约与失败状态，禁止直接重新启动、编辑或删除规则；只有确认解除监听或 SSH transport 已断开后才释放租约，断开后再次停止即可收尾。转发能力（forward.list/save/delete/start/stop）均不向 AI 开放（`agentExposed` 为 false）。
 
-接线已完成：工作区更多菜单、命令面板、应用退出时的 `shutdown()` 与启动时的 `autoStart()` 已由组合层接入；真实服务器上的 L/R/D 通路、端口冲突、断线重连与 UI 行为尚未验证。已有 `test/forwarding_test.dart`（SOCKS5 解析、relay 半关闭与挂断、租约与状态生命周期、重连、128 上限、暴露确认与持久化）和 `test/app_lifecycle_test.dart` 的退出协调测试；模拟通道不等于真实通路验收。
+接线已完成：工作区更多菜单、命令面板、应用退出时的 `shutdown()` 与启动时的 `autoStart()` 已由组合层接入；真实服务器（2026-11-07，`integration_test/forward_test.dart`）上验证了 L/R/D 通路与哈希、回环默认不在局域网地址应答、本进程已占用的端口报“端口已被占用”（Dart 对本进程内的重复监听不经操作系统直接拒绝，错误码 -1，已按此归类；别的进程占用则是系统错误码）、远端端口 0 由服务器选定、停止后两端端口释放、退出收束；断线重连与规则面板的界面行为尚未验证。已有 `test/forwarding_test.dart`（SOCKS5 解析、relay 半关闭与挂断、租约与状态生命周期、重连、128 上限、暴露确认与持久化）和 `test/app_lifecycle_test.dart` 的退出协调测试；模拟通道不等于真实通路验收。
 
 验收：R-01 L/R/D 正反向通路；R-02 stop/重连/共享资源；R-03 loopback 与端口冲突。
 

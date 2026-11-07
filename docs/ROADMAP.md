@@ -8,12 +8,12 @@
 |---|---|
 | 阶段 | M1–M3 已有主要实现；M0 技术验收与一期验收未收齐，非 AI 功能尚未全部完成 |
 | 工具链 | Flutter 3.47.9 stable（c197ca5199）、Dart 3.13.7、Visual Studio C++ 工具 |
-| 已实际运行 | `integration_test/app_test.dart` 在 Windows 11 上连 Ubuntu 24.04 服务器，七个流程全过（含终端搜索、断线自动重连、标签重命名和复制、删除信任记录、SFTP 与传输）；Release 版能启动 |
-| 下一步 | 先修 DESIGN_AUDIT 确认的三项续传缺陷并补回归测试；再补原始 UI 导航/面板、终端流控与真实环境验收（含 E-04、F-05、窗口关闭、L/R/D、F-04、性能基线） |
+| 已实际运行 | 2026-11-07 在 Windows 11 上连作者的 Ubuntu 服务器逐个跑集成测试，全部通过：`app_test`（8 个流程，含 T-03 持续输出）、`auth_test`、`routes_test`、`snippets_test`（不连服务器）、`keys_test`（文件/导入/加密密钥登录，临时公钥已移除）、`forward_test`（L/R/D）、`transfer_test`（往返哈希、暂停续传、退出后恢复、256 MiB/10 GiB 稀疏文件 30 秒取消、1 万条目录）、`edits_test`（外部编辑 app 一侧）；`memory_test` 在 Profile 构建下通过。数字见 TESTING §6；Release 版能启动 |
+| 下一步 | 补原始 UI 导航/面板；真实环境还差：keyboard-interactive（服务器关闭）、窗口拖动/Snap/DPI/最小化、真实输入法、作者自己的外部编辑器、10 GB 传输、Release 构建的任务管理器内存口径 |
 
 第一版已实际运行的范围（不代表对应 M1 项完成，所以下面没有勾选）：快速连接、主机增删改、主机密钥未知/拒绝/变化、密码输入与记住、错误密码、多标签、关闭标签不影响其他会话、断线后重连、Ctrl+C（含有选区时）、多行粘贴确认、主题/语言/字号/主题色、命令面板打开主机与执行动作、同主机分屏、Alt+方向键切换焦点、关闭分屏、重启后恢复为未连接标签、终端搜索（计数、上下跳转、无结果）、服务端结束会话后自动重连、标签右键重命名、命令面板复制标签（共享连接不再要密码）、设置里删除信任记录。
 
-未测：私钥和加密私钥登录、keyboard-interactive、真实网络中断（只测了服务端结束会话）、窗口缩放时的远端尺寸更新、大量输出时的界面卡顿、链接打开、右键菜单、选中复制、光标形状、未读标记。
+未测：keyboard-interactive（服务器关闭了该认证方式）、真实网络中断（只测了服务端结束会话）、窗口缩放时的远端尺寸更新、大量输出时的界面卡顿（只测了内存和事件循环停顿，没有测帧率）、链接打开、右键菜单、选中复制、光标形状、窗口最小化、真实输入法、作者自己的外部编辑器。
 
 D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘密写入 `%APPDATA%\dev.sshairy\sshairy\flutter_secure_storage.dat`，文件头是 DPAPI 密文，绑定当前 Windows 用户；凭据管理器里没有对应条目。集成测试断言数据目录的文件都不含密码明文。
 
@@ -50,7 +50,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | E-03 背压 | 暂停读取后服务器停在 3136 KiB，恢复后 28 MiB 收全（`tool/m0_probe.dart`） | 通过；dartssh2 可用，应用层流控留给 T-03 |
 | E-04 中文输入法 | 候选框跟随光标：作者用百度输入法确认正常（1944056），集成测试检查 IME 位置 | 选词、退格、标点等其余项未单独确认 |
 | E-08 主机密钥 | 回调延迟 3 秒确认正常，rekey 期间不断流；拒绝后未发送认证数据，库报 `SSHAuthAbortError`；指纹与 OpenSSH 一致。应用内拒绝后不弹密码框、不写信任记录，密钥变化时不提供“仅本次” | 通过 |
-| E-05 多会话内存 | 未开始 | |
+| E-05 多会话内存 | Profile 构建、5 个会话（回滚满）加 SFTP 面板：RSS 约 220 MiB，四轮全部关闭再重开为 223 / 220 / 235 / 227 MiB，不持续增长；每轮关闭后 5 个终端全部可回收（`integration_test/memory_test.dart`） | 总 RSS 含测试驱动，不是任务管理器的私有工作集；没有 Release 数据，没有 Netcatty 对照；发现并修复了两个缺陷（关闭的会话被连接持有、关标签不挂断远端 shell） |
 | E-12 启动与帧耗时 | 空闲内存已测（TESTING §6）：Impeller 下 240–300 MB，大头是渲染缓冲 | 改为默认 Skia（ADR-11），Release 空闲约 90–140 MB；启动和帧耗时未测 |
 | E-01、E-02 顺带检查 | 未开始 | |
 
@@ -67,11 +67,11 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] ShutdownCoordinator：有传输或未上传的编辑时先确认（`app/shutdown.dart`），集成测试经 `handleRequestAppExit` 确认对话框和“取消”；点窗口关闭按钮是否走到这里未亲测：活动转发也计入确认；停止或保存失败时提供重试/返回/仍要退出，不冒充已完成（`test/app_lifecycle_test.dart`）；取消退出后队列恢复接收新任务
 
 主机与凭据：
-- [x] 主机、分组、身份、继承解析（H-01）：独立 Group/Identity/全局默认值、schema 1→2 迁移、三态继承解析与来源、串行编辑与密钥引用检查有单元测试；主机/组/全局默认值/身份/主机库的编辑界面有 widget 测试（`test/host_editor_test.dart`）；group/identity/hostDefaults 与 host 能力有测试（`test/host_capabilities_test.dart`），均不对 AI 开放。真实服务器（2026-11-07）上验证了：服务器拒绝密钥后回落到密码（key→password）、只配密钥时认证失败且不索要密码、仅密码且关闭 keyboard-interactive 登录（`integration_test/auth_test.dart`）；成功的密钥登录（要改 authorized_keys）和 keyboard-interactive（取决于服务器是否开启）未验；已知限制见 HOST_INHERITANCE
+- [x] 主机、分组、身份、继承解析（H-01）：独立 Group/Identity/全局默认值、schema 1→2 迁移、三态继承解析与来源、串行编辑与密钥引用检查有单元测试；主机/组/全局默认值/身份/主机库的编辑界面有 widget 测试（`test/host_editor_test.dart`）；group/identity/hostDefaults 与 host 能力有测试（`test/host_capabilities_test.dart`），均不对 AI 开放。真实服务器（2026-11-07）上验证了：服务器拒绝密钥后回落到密码（key→password）、只配密钥时认证失败且不索要密码、仅密码且关闭 keyboard-interactive 登录（`integration_test/auth_test.dart`）；成功的密钥登录见下面 H-04；keyboard-interactive 未验（服务器关闭了该认证方式）；已知限制见 HOST_INHERITANCE
 - [ ] 持久化与坏数据恢复（H-02）
 - [ ] 主机库：网格/列表、搜索、排序、置顶、最近连接、快速连接（H-03）：分组筛选、按标签搜索、置顶、列表视图已在集成测试中确认；拖拽排序未做
 - [ ] SecretRef 与系统凭据存储，无明文降级（D-02）
-- [ ] 密钥导入、引用与加密私钥（H-04）：导入 ssh-keygen 生成的 Ed25519/RSA/ECDSA 加密私钥、指纹与 ssh-keygen 一致有单元测试；用导入的密钥登录服务器未测（需要改服务器的 authorized_keys，按 TESTING §2 先问作者）
+- [ ] 密钥导入、引用与加密私钥（H-04）：导入 ssh-keygen 生成的 Ed25519/RSA/ECDSA 加密私钥、指纹与 ssh-keygen 一致有单元测试；作者允许临时往服务器的 `authorized_keys` 加测试公钥后，`integration_test/keys_test.dart` 验证了：OpenSSH 生成的 Ed25519、RSA 3072、ECDSA P-256 文件密钥与导入密钥登录；加密密钥按记住/未记住口令决定是否提问；错误口令得到密钥文件错误；应用生成的密钥登录；公钥移除后认证失败。没有验证错误口令后的界面重试，也不知道作者自己的密钥类型，所以不勾选
 
 连接：
 - [ ] HostTrustService、trust 数据、确认对话框（C-01）：已独立为 HostTrustService，所有拨号经它校验
@@ -80,7 +80,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [ ] 保活、断线、手动与可选自动重连（C-04）：自动重连在服务端结束会话时已确认；保活和真实断网未测
 
 终端与外壳：
-- [ ] TerminalSessionManager、model 与 view 分离、流控（T-03）
+- [ ] TerminalSessionManager、model 与 view 分离、流控（T-03）：真实服务器持续输出下内存有界（+9–30 MiB）、隐藏标签继续接收、Ctrl+C 能结束输出，数字见 TERMINAL_FLOW；链路（约 3 Mbit/s）比消费端慢，队列峰值没到 1 MiB 高水位，SSH 窗口背压没有被真实触发；窗口最小化后继续接收没有测，所以不勾选。关闭标签现在会挂断远端 shell（此前登录 shell 会留在服务器上）
 - [ ] 多标签、搜索、复制粘贴、字体、URL（T-01）：搜索、重命名、复制标签已在服务器上确认；URL 只有单元测试
 - [ ] 输入策略、IME、快捷键上下文（T-02）
 - [ ] 标签生命周期（W-02 的 M1 部分）
@@ -92,7 +92,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 ## M2 文件工作流
 
 开始时：
-- [ ] E-06、E-07 结果写入此处，据此确定并发和 channel 策略：E-07 通过（上传中取消，终端照常、远端不留 `.part`）；E-06 未做，大小待作者定。当前策略见 MODULES §4“当前实现”
+- [ ] E-06、E-07 结果写入此处，据此确定并发和 channel 策略：E-07 通过（上传中取消，终端照常、远端不留 `.part`）；E-06 用 256 MiB 上传和 10 GiB 稀疏文件下载各跑 30 秒后取消测过（TESTING §6：占满链路时终端往返从 64–67 ms 升到 1.1–2.9 s，内存有界），没有按作者定的大小跑完整传输，策略没有据此改动。当前策略见 MODULES §4“当前实现”
 
 功能：
 - [ ] SFTP 浏览：单栏与双栏共用组件、键盘操作（F-01）：终端侧栏和双栏页、中文和带空格的名字、Enter/F2/Delete 已在服务器上确认；方向键、按名跳转、Ctrl+A 未测
@@ -101,7 +101,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [x] .part 发布、大小校验、冲突处理（F-02）：上传下载哈希一致、取消不留 `.part`、同名“保留两者”在服务器上确认；替换、合并、跳过和“本批都这样”只有单元测试
 - [ ] 目录传输：扫描上限、逐项冲突：下载含中文名的目录在服务器上确认；上限和逐项冲突只有单元测试
 - [ ] OS 拖入上传：已实现（desktop_drop），未测
-- [ ] 外部编辑：临时副本、watcher、冲突、恢复（F-05）：已实现，未运行；需要作者用自己的编辑器试
+- [ ] 外部编辑：临时副本、watcher、冲突、恢复（F-05）：app 一侧已在真实服务器上跑通（`integration_test/edits_test.dart`：原子替换和原地写入被发现、手动与自动上传、连续保存以最后一次为准、冲突时覆盖/重新下载/另存副本、非法文件名、退出后恢复），编辑器由测试扮演；作者自己的编辑器还没试，所以不勾选
 - [ ] 传输历史：保存、重启后进行中的变为“已中断”、200 条/30 天裁剪只有单元测试
 - [ ] P-01a/c/e/f、P-03 记录
 
@@ -110,14 +110,14 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [x] 分屏树与焦点（W-01）：`test/layout_test.dart`
 - [x] 布局恢复（W-02 的 M3 部分）：workspace.json 只存布局、主机 ID 和标签名；重启后恢复为未连接，不自己拨号；`test/workspace_test.dart` 通过，服务器集成测试 `workspace: palette, split panes, restore after restart` 此前通过，之后的改动没有重跑
 - [ ] 跳板链、SOCKS5/HTTP 代理、legacy 按主机启用（C-01、C-04 的 M3 部分）：路由已实现；`integration_test/routes_test.dart` 在 Windows/Ubuntu 通过双跳（服务器自身 loopback）、每跳校验、共享跳板、direct-tcpip 和远端转发取消；循环/缺失/链上限/改跳板后不复用与 RSA 信任别名有单元测试。代理和 legacy 没有对应真实环境，未验证
-- [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）：L/R/D、SOCKS5、规则面板、暴露确认、退出收束和单元测试（`test/forwarding_test.dart`，模拟通道）已实现并接入工具栏与命令面板；真实服务器上的通路、端口冲突和界面行为未验证
+- [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）：L/R/D、SOCKS5、规则面板、暴露确认、退出收束和单元测试（`test/forwarding_test.dart`，模拟通道）已实现并接入工具栏与命令面板；真实服务器上 L/R/D 通路与哈希、端口占用提示、停止后端口释放已在 `integration_test/forward_test.dart` 验证（走管理器，不经界面）；规则面板的点击流程和断线重连未验证，所以不勾选
 - [ ] Windows 无系统顶栏的自绘窗口（ADR-12）：原生保留缩放/DPI/Snap 语义，Flutter 绘制标签行与窗口按钮，关闭经统一退出协调；组件与命中区有单元测试（`test/desktop_window_test.dart`），原生 C++ 已编译通过；拖动、Snap、DPI 切换与真实 WM_CLOSE 取消未在运行中的窗口亲测；macOS/Linux 仍用系统外框
 - [x] 片段：搜索与增删改、持久化、插入/运行、命令面板入口；Windows 无连接界面集成通过，受控插入与 shell 生命周期用模拟通道验证，真实 SSH 片段发送未测
 - [ ] SSH config 导入：draft 预览与未支持项报告：解析、计划（跳板依赖、已存在与冲突分类）和 revision 校验提交有单元测试（`test/ssh_config_test.dart`）；文件选择器、Include 展开和抽屉界面未在真实窗口运行
 - [x] known_hosts 导入：解析、哈希匹配（对照 `ssh-keygen -H` 的输出）、冲突不覆盖、串行落盘和预览对话框有单元/组件测试；文件选择器和真实窗口未运行
-- [ ] 密钥生成：Ed25519，ssh-keygen 能读出同样的公钥和指纹；登录未测
-- [ ] 暂停与断点续传（F-04）：单文件暂停/续传、checkpoint 持久化与重启恢复、源与 `.part` 校验、取消/重试清理、目标锁有单元测试（`test/files_test.dart`，全部走本机文件系统）；传输面板的暂停/继续按钮和 `transfer.pause`/`transfer.resume` 能力已接线。真实服务器上的 SFTP 续传、哈希一致性与大文件暂停未验证；复核发现的“保留两者 (2)”判断、源类型变化处理、恢复 ID 路径约束三项缺陷已修复并有回归测试（见 DESIGN_AUDIT），仍未经真实服务器验证，本项不视为已完成
-- [ ] 10 GB 传输（P-03）
+- [x] 密钥生成：Ed25519，ssh-keygen 能读出同样的公钥和指纹；应用生成的密钥写入服务器的 `authorized_keys` 后登录成功（`integration_test/keys_test.dart`，临时公钥带标记，结束后移除并核对大小与权限）
+- [x] 暂停与断点续传（F-04）：单文件暂停/续传、checkpoint 持久化与重启恢复、源与 `.part` 校验、取消/重试清理、目标锁有单元测试（`test/files_test.dart`，全部走本机文件系统）；传输面板的暂停/继续按钮和 `transfer.pause`/`transfer.resume` 能力已接线。2026-11-07 在真实服务器上（`integration_test/transfer_test.dart`）验证：上传暂停于 3.4–3.9 MiB/12 MiB、下载暂停于 2.1–2.3 MiB/10 MiB，续传后哈希一致；传输中退出后文件停在 paused，重启后续传，哈希一致；源文件变化后拒绝续传。只验证了几十 MiB 的文件，大文件暂停和 10 GB 没有验证；复核发现的“保留两者 (2)”判断、源类型变化处理、恢复 ID 路径约束三项缺陷已修复并有回归测试（见 DESIGN_AUDIT）
+- [ ] 10 GB 传输（P-03）：只测了上万条目目录（列出 5.5–5.9 s，内存有界）和 256 MiB 上传/10 GiB 稀疏下载 30 秒内内存有界、可取消；链路约 3 Mbit/s，10 GB 要 7 小时以上，未做完整传输
 - [x] README 写明已测环境和无保障声明
 - [ ] 确定 LICENSE；审计依赖、字体、图标许可
 - [x] Windows 本地打包：Release 构建、完整 runner ZIP、101 个依赖许可证清单和 SHA256 已验证；未签名，正式发行仍待许可证确认。其他平台未验证
@@ -164,3 +164,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-06 | 开发助手 | 对照最早设计与参考复核：架构纠偏主要边界已落实；3 个本机探针确认续传缺陷，尚未修复，详见 DESIGN_AUDIT。修订 SECURITY/ROADMAP/MODULES 的滞后描述。通过 imagegen + 配置回退实际调用 GPT Image 2 重做 logo，保留原图与提示词，导出透明母版/应用 PNG/Windows ICO/macOS 图标；Windows debug 构建成功。正式 200 项测试、analyze、imports 通过 | 先修三项续传问题再补原始 UI 和流控。新图标已替换；本轮变更未提交。未连接服务器，未新增窗口手动验收 |
 | 2026-11-07 | 开发助手 | H-01 完成：主机、分组、全局默认值共用 ConnectionEditor（每项链接图标、继承来源提示），分组/默认值/身份抽屉，空组与解散确认；group.*/identity.*/hostDefaults.* 能力，host.* 沿用同一字段词汇并带 `inherit`；传输续传三项缺陷修复并补回归测试。全量 284 项测试通过，flutter analyze 无问题，imports ok。widget 测试发现并修了一个真实缺陷：链接的登录（无上层可继承）仍被必填校验，导致分组无法保存 | 真实服务器上的 key→password、keyboard-interactive、密钥加载未验；已知限制见 HOST_INHERITANCE（不合并同路径组、解散丢默认值、跳板被删后悬挂引用、折叠路由区的校验错误不可见）；本轮变更尚未提交，未推送 |
 | 2026-11-07 | 开发助手 | 用作者提供的测试服务器跑集成测试（凭证只经环境变量，日志里核对过没有出现）：app_test 7 项、routes_test、snippets_test、新增 auth_test 通过。发现并修复真实缺陷：首次信任主机密钥和首次保存凭据会递增池的安全修订，使刚建立的连接无法复用（退出 shell 后重连、分屏、同主机新标签都会再次要密码）；修订现在只在收回信任或凭据时递增（CONTRACTS、CORRECTION 已写明，host_trust_test、keys_test 覆盖）。集成测试其余失败是跟不上新界面（主机树使名称出现两次、认证方式改下拉框、日志文件占用清理），已改测试。285 项单元测试、analyze、imports 通过 | 没有试成功的密钥登录（要改 authorized_keys，需作者同意）和 keyboard-interactive；10 GB 传输、窗口手动验收、真实输入法和外部编辑器未做；同一条命令连续跑多个集成测试文件时第二个文件可能启动失败，分开跑；本轮变更尚未提交，未推送 |
+| 2026-11-07 | 开发助手 | 作者允许临时往 `authorized_keys` 加测试公钥和超过 1 GB 的流量后，测完剩下的并修了测出的问题：新增 keys/forward/transfer/edits/memory 集成测试（`integration_test/support/` 放共用驱动），连真实服务器逐个跑通；`memory_test` 在 Profile 构建下通过。修复：关闭的会话被共享连接持有（每个租约自己的 `done`）；关标签不挂断远端 shell（`ShellChannel.close` 双向关闭，3 秒内远端 shell 消失）；被用作跳板的主机不能删除（`HostInUse`）并从路由区定位；双击改为按时间判断（`DoubleClick`）；本进程内重复监听同一端口归为“端口已被占用”。294 项单元测试、analyze、imports 通过；数字与未测项见 TESTING §6、TERMINAL_FLOW、DESIGN_AUDIT | 测试服务器链路约 3 Mbit/s，10 GB 传输和 T-03 的真实背压没法测；Profile 内存是总 RSS 不是任务管理器口径；keyboard-interactive（服务器关闭）、窗口拖动/Snap/DPI/最小化、真实输入法、作者自己的外部编辑器未测；文件栏的行单击仍有约 300 ms 延迟；`vm_service` 加为开发依赖（内存测试用）；每个测试文件分开跑；本轮变更按主题本地提交，未推送 |
