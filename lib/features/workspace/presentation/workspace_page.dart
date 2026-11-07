@@ -344,23 +344,33 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
               onClose: () => setState(() => _sideFiles.remove(tab.id)),
               closeLabel: l.closePane,
               resizeLabel: l.resizeToolPanel,
-              actions: [
-                AppMenuButton<FilesDock>(
-                  tooltip: l.dockPosition,
-                  icon: const Icon(Icons.space_dashboard_outlined, size: 16),
-                  items: () => [
-                    for (final (side, label) in [
-                      (FilesDock.left, l.dockLeft),
-                      (FilesDock.right, l.dockRight),
-                      (FilesDock.bottom, l.dockBottom),
-                    ])
-                      AppMenuItem(value: side, label: label, checked: side == dock),
-                  ],
-                  onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
-                ),
-              ],
+              showHeader: false,
               panel: session != null
-                  ? SideFilesPanel(host: session.host, tree: dock == FilesDock.bottom, directory: session.directory)
+                  ? SideFilesPanel(
+                      host: session.host,
+                      tree: dock == FilesDock.bottom,
+                      directory: session.directory,
+                      toolbarActions: [
+                        AppMenuButton<FilesDock>(
+                          tooltip: l.dockPosition,
+                          icon: const Icon(Icons.space_dashboard_outlined, size: 16),
+                          items: () => [
+                            for (final (side, label) in [
+                              (FilesDock.left, l.dockLeft),
+                              (FilesDock.right, l.dockRight),
+                              (FilesDock.bottom, l.dockBottom),
+                            ])
+                              AppMenuItem(value: side, label: label, checked: side == dock),
+                          ],
+                          onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
+                        ),
+                        IconButton(
+                          tooltip: l.closePane,
+                          onPressed: () => setState(() => _sideFiles.remove(tab.id)),
+                          icon: const Icon(Icons.close, size: 16),
+                        ),
+                      ],
+                    )
                   : const SizedBox.shrink(),
               child: LayoutView(
                 root: tab.layout.root,

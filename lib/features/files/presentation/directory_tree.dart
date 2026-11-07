@@ -130,14 +130,13 @@ class _DirectoryTreeState extends State<DirectoryTree> {
         final current = path == b.path;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: Space.xs),
-          child: InkWell(
+          // Keep selection and ink on the row's own material so the viewport clips both while scrolling.
+          child: Material(
+            color: current ? scheme.primary.withValues(alpha: .14) : Colors.transparent,
             borderRadius: BorderRadius.circular(Radii.control),
-            onTap: () => current ? _toggle(path) : b.go(path),
-            child: Ink(
-              decoration: BoxDecoration(
-                color: current ? scheme.primary.withValues(alpha: .14) : null,
-                borderRadius: BorderRadius.circular(Radii.control),
-              ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(Radii.control),
+              onTap: () => current ? _toggle(path) : b.go(path),
               child: Row(
                 children: [
                   SizedBox(width: depth * _indent),

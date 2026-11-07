@@ -60,7 +60,13 @@ class _FilesPageState extends ConsumerState<FilesPage> {
 
 /// The terminal's side panel: one remote pane on [host], reopened when the focused pane moves to another host.
 class SideFilesPanel extends ConsumerStatefulWidget {
-  const SideFilesPanel({super.key, required this.host, this.tree = false, this.directory});
+  const SideFilesPanel({
+    super.key,
+    required this.host,
+    this.tree = false,
+    this.directory,
+    this.toolbarActions = const [],
+  });
   final Host host;
 
   /// Docked below: a directory tree beside the list.
@@ -68,6 +74,8 @@ class SideFilesPanel extends ConsumerStatefulWidget {
 
   /// The terminal's working directory, which the panel follows while it is open (docs/MODULES.md §4).
   final ValueListenable<String?>? directory;
+
+  final List<Widget> toolbarActions;
 
   @override
   ConsumerState<SideFilesPanel> createState() => _SideFilesPanelState();
@@ -136,6 +144,7 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   Widget build(BuildContext context) => FilePane(
     browser: _browser,
     sidebar: widget.tree ? DirectoryTree(browser: _browser) : null,
+    toolbarActions: widget.toolbarActions,
   );
 }
 

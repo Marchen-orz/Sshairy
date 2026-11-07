@@ -20,6 +20,7 @@ class DockPanel extends StatefulWidget {
     required this.resizeLabel,
     this.side = DockSide.right,
     this.actions = const [],
+    this.showHeader = true,
   });
 
   final Widget child, panel;
@@ -30,6 +31,9 @@ class DockPanel extends StatefulWidget {
 
   /// Extra buttons in the panel's header, before close.
   final List<Widget> actions;
+
+  /// False when the panel puts docking and close actions in its own toolbar.
+  final bool showHeader;
 
   @override
   State<DockPanel> createState() => _DockPanelState();
@@ -51,10 +55,7 @@ class _DockPanelState extends State<DockPanel> {
   }
 
   (double, double) _range(BoxConstraints c) => _vertical
-      ? (
-          WorkspaceSize.dockBottomMin,
-          max(WorkspaceSize.dockBottomMin, c.maxHeight * WorkspaceSize.dockBottomMaxShare),
-        )
+      ? (WorkspaceSize.dockBottomMin, max(WorkspaceSize.dockBottomMin, c.maxHeight * WorkspaceSize.dockBottomMaxShare))
       : (WorkspaceSize.toolPanelMin, WorkspaceSize.toolPanelMax);
 
   double _clamp(double v, BoxConstraints c) {
@@ -75,8 +76,7 @@ class _DockPanelState extends State<DockPanel> {
     builder: (context, constraints) {
       final scheme = Theme.of(context).colorScheme;
       final extent = _vertical ? _clamp(_height, constraints) : _width;
-      final overlay =
-          !_vertical && constraints.maxWidth < _width + WorkspaceSize.terminalMin + WorkspaceSize.divider;
+      final overlay = !_vertical && constraints.maxWidth < _width + WorkspaceSize.terminalMin + WorkspaceSize.divider;
       final size = min(extent, _vertical ? constraints.maxHeight : constraints.maxWidth);
       final panel = KeyedSubtree(
         key: _panelKey,
@@ -85,21 +85,22 @@ class _DockPanelState extends State<DockPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(
-                height: WorkspaceSize.control,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    ...widget.actions,
-                    IconButton(
-                      tooltip: widget.closeLabel,
-                      onPressed: widget.onClose,
-                      icon: const Icon(Icons.close, size: 16),
-                    ),
-                    const SizedBox(width: Space.xs),
-                  ],
+              if (widget.showHeader)
+                SizedBox(
+                  height: WorkspaceSize.control,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ...widget.actions,
+                      IconButton(
+                        tooltip: widget.closeLabel,
+                        onPressed: widget.onClose,
+                        icon: const Icon(Icons.close, size: 16),
+                      ),
+                      const SizedBox(width: Space.xs),
+                    ],
+                  ),
                 ),
-              ),
               Expanded(child: widget.panel),
             ],
           ),
@@ -112,8 +113,14 @@ class _DockPanelState extends State<DockPanel> {
       final main = Expanded(child: widget.child);
       final sized = _vertical ? SizedBox(height: size, child: panel) : SizedBox(width: size, child: panel);
       final children = switch (widget.side) {
-        DockSide.left => [if (docked) ...[sized, divider], main],
-        DockSide.right || DockSide.bottom => [main, if (docked) ...[divider, sized]],
+        DockSide.left => [
+          if (docked) ...[sized, divider],
+          main,
+        ],
+        DockSide.right || DockSide.bottom => [
+          main,
+          if (docked) ...[divider, sized],
+        ],
       };
       final step = Space.xl;
       // Moving toward the main view grows the panel.

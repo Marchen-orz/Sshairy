@@ -36,7 +36,14 @@ class FileDrag {
 /// One directory listing with its toolbar (docs/MODULES.md §4). The two-pane page and the terminal's side panel
 /// both use it; with [other] set, items can be sent or dragged to that pane, otherwise downloads ask for a folder.
 class FilePane extends ConsumerStatefulWidget {
-  const FilePane({super.key, required this.browser, this.other, this.pickHost = false, this.sidebar});
+  const FilePane({
+    super.key,
+    required this.browser,
+    this.other,
+    this.pickHost = false,
+    this.sidebar,
+    this.toolbarActions = const [],
+  });
 
   final FileBrowser browser;
   final FileBrowser? other;
@@ -46,6 +53,9 @@ class FilePane extends ConsumerStatefulWidget {
 
   /// Left of the list, under the toolbar, once connected: the directory tree of the panel docked below.
   final Widget? sidebar;
+
+  /// Docking and close controls share the path toolbar instead of a separate panel header.
+  final List<Widget> toolbarActions;
 
   @override
   ConsumerState<FilePane> createState() => _FilePaneState();
@@ -359,52 +369,65 @@ class _FilePaneState extends ConsumerState<FilePane> {
       icon: Icon(i, size: 16),
     );
     final ready = b.ready;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.xs),
-      child: Row(
-        children: [
-          if (widget.pickHost) _HostPicker(browser: b),
-          icon(l.back, Icons.arrow_back, ready && b.canBack ? b.back : null),
-          icon(l.forward, Icons.arrow_forward, ready && b.canForward ? b.forward : null),
-          icon(l.up, Icons.arrow_upward, ready ? b.up : null),
-          const SizedBox(width: Space.xs),
-          Expanded(child: ready ? _path(theme) : const SizedBox.shrink()),
-          const SizedBox(width: Space.xs),
-          SizedBox(
-            width: 120,
-            height: 28,
-            child: TextField(
-              controller: _filter,
-              enabled: ready,
-              onChanged: b.setFilter,
-              style: theme.textTheme.bodySmall,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: l.filter,
-                prefixIcon: const Icon(Icons.filter_list, size: 16),
-                prefixIconConstraints: const BoxConstraints(minWidth: 28),
-                contentPadding: const EdgeInsets.symmetric(vertical: Space.sm),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = widget.toolbarActions.isNotEmpty && constraints.maxWidth < 560;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.xs),
+          child: Row(
+            children: [
+              if (widget.pickHost) _HostPicker(browser: b),
+              if (!compact) ...[
+                icon(l.back, Icons.arrow_back, ready && b.canBack ? b.back : null),
+                icon(l.forward, Icons.arrow_forward, ready && b.canForward ? b.forward : null),
+              ],
+              icon(l.up, Icons.arrow_upward, ready ? b.up : null),
+              const SizedBox(width: Space.xs),
+              Expanded(child: ready ? _path(theme) : const SizedBox.shrink()),
+              const SizedBox(width: Space.xs),
+              SizedBox(
+                width: compact ? 80 : 120,
+                height: 28,
+                child: TextField(
+                  controller: _filter,
+                  enabled: ready,
+                  onChanged: b.setFilter,
+                  style: theme.textTheme.bodySmall,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: l.filter,
+                    prefixIcon: const Icon(Icons.filter_list, size: 16),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 28),
+                    contentPadding: const EdgeInsets.symmetric(vertical: Space.sm),
+                  ),
+                ),
               ),
-            ),
-          ),
-          icon(l.refresh, Icons.refresh, ready ? b.refresh : null),
-          AppMenuButton<VoidCallback>(
-            tooltip: l.more,
-            enabled: ready,
-            icon: const Icon(Icons.more_horiz, size: 16),
-            onSelected: (run) => run(),
-            items: () => [
-              AppMenuItem(value: _newFolder, label: l.newFolder),
-              if (!b.local) AppMenuItem(value: _uploadPicked, label: l.uploadFiles),
-              AppMenuItem(checked: b.showHidden, value: b.toggleHidden, label: l.hiddenFiles),
-              AppMenuItem(
-                value: () => Clipboard.setData(ClipboardData(text: b.path)),
-                label: l.copyPath,
+              icon(l.refresh, Icons.refresh, ready ? b.refresh : null),
+              AppMenuButton<VoidCallback>(
+                tooltip: l.more,
+                enabled: ready,
+                icon: const Icon(Icons.more_horiz, size: 16),
+                onSelected: (run) => run(),
+                items: () => [
+                  if (compact) ...[
+                    AppMenuItem(value: b.back, label: l.back, icon: Icons.arrow_back, enabled: b.canBack),
+                    AppMenuItem(value: b.forward, label: l.forward, icon: Icons.arrow_forward, enabled: b.canForward),
+                    const AppMenuDivider(),
+                  ],
+                  AppMenuItem(value: _newFolder, label: l.newFolder),
+                  if (!b.local) AppMenuItem(value: _uploadPicked, label: l.uploadFiles),
+                  AppMenuItem(checked: b.showHidden, value: b.toggleHidden, label: l.hiddenFiles),
+                  AppMenuItem(
+                    value: () => Clipboard.setData(ClipboardData(text: b.path)),
+                    label: l.copyPath,
+                  ),
+                ],
               ),
+              ...widget.toolbarActions,
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

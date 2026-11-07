@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/design/dock_panel.dart';
+import 'package:sshairy/design/menu.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/files/api.dart' show SideFilesPanel;
@@ -200,33 +204,64 @@ void main() {
   });
 
   group('panel', () {
-    Future<(_Files, ValueNotifier<String?>)> pump(WidgetTester tester, {required bool tree, String? at}) async {
-      final files = _Files({
-        '/': ['home', 'srv'],
-        '/home': ['u'],
-        '/home/u': ['docs'],
-        '/home/u/docs': [],
-        '/srv': ['app'],
-        '/srv/app': [],
-      });
+    const panelKey = ValueKey('file-panel');
+
+    Future<(_Files, ValueNotifier<String?>)> pump(
+      WidgetTester tester, {
+      required bool tree,
+      String? at,
+      Map<String, List<String>>? folders,
+      List<Widget> toolbarActions = const [],
+      DockSide? dock,
+      double width = 1200,
+    }) async {
+      final files = _Files(
+        folders ??
+            {
+              '/': ['home', 'srv'],
+              '/home': ['u'],
+              '/home/u': ['docs'],
+              '/home/u/docs': [],
+              '/srv': ['app'],
+              '/srv/app': [],
+            },
+      );
       final server = _Server()..files = files;
       final manager = ConnectionManager((_, _, _) async => server, park: Duration.zero);
       final directory = ValueNotifier<String?>(at);
       final dir = Directory.systemTemp.createTempSync('sshairy-tree-');
       addTearDown(() => dir.deleteSync(recursive: true));
-      await tester.binding.setSurfaceSize(const Size(1200, 400));
+      await tester.binding.setSurfaceSize(Size(width, 400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      final panel = SideFilesPanel(host: host, tree: tree, directory: directory, toolbarActions: toolbarActions);
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [dataDirProvider.overrideWithValue(dir.path), connectionManagerProvider.overrideWithValue(manager)],
+          overrides: [
+            dataDirProvider.overrideWithValue(dir.path),
+            connectionManagerProvider.overrideWithValue(manager),
+          ],
           child: MaterialApp(
             theme: buildTheme(Brightness.light),
             locale: const Locale('en'),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(
-              body: SideFilesPanel(host: host, tree: tree, directory: directory),
+            home: RepaintBoundary(
+              key: panelKey,
+              child: Scaffold(
+                body: dock == null
+                    ? panel
+                    : DockPanel(
+                        open: true,
+                        side: dock,
+                        showHeader: false,
+                        onClose: () {},
+                        closeLabel: 'Close panel',
+                        resizeLabel: 'Resize panel',
+                        panel: panel,
+                        child: const SizedBox.expand(),
+                      ),
+              ),
             ),
           ),
         ),
@@ -260,9 +295,92 @@ void main() {
       expect(find.text('srv.txt'), findsOneWidget);
       directory.value = '/home/u';
       await tester.pumpAndSettle();
-      expect(find.text('srv.txt'), findsOneWidget, reason: 'an unchanged terminal directory does not pull the panel back');
+      expect(
+        find.text('srv.txt'),
+        findsOneWidget,
+        reason: 'an unchanged terminal directory does not pull the panel back',
+      );
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('scrolling the selected folder above the viewport does not paint over the toolbar', (tester) async {
+      final names = [for (var i = 0; i < 40; i++) 'folder${i.toString().padLeft(2, '0')}'];
+      await pump(tester, tree: true, at: '/folder00', folders: {'/': names, for (final name in names) '/$name': []});
+      final list = find.descendant(of: find.byType(DirectoryTree), matching: find.byType(ListView));
+      final viewportTop = tester.getTopLeft(list).dy;
+      final selected = inTree('folder00');
+      final scroll = tester.widget<ListView>(list).controller!;
+      final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(panelKey));
+
+      Future<List<int>> toolbarPixels() async {
+        final image = await boundary.toImage(pixelRatio: 1);
+        try {
+          final bytes = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!.buffer.asUint8List();
+          return [
+            for (var y = 0; y < viewportTop.floor(); y++)
+              ...bytes.sublist(y * image.width * 4, (y * image.width + WorkspaceSize.directoryTree.toInt()) * 4),
+          ];
+        } finally {
+          image.dispose();
+        }
+      }
+
+      final before = (await tester.runAsync(toolbarPixels))!;
+      final selectedBounds = tester.getRect(selected);
+      scroll.jumpTo(selectedBounds.center.dy - viewportTop - 2);
+      await tester.pumpAndSettle();
+      expect(selectedBounds.top - scroll.offset, lessThan(viewportTop));
+      expect(selectedBounds.bottom - scroll.offset, greaterThan(viewportTop));
+      final after = (await tester.runAsync(toolbarPixels))!;
+      expect(after, before, reason: 'selection and ink stay inside the scrolled content');
+    });
+
+    for (final (dock, width) in [(DockSide.bottom, 1200.0), (DockSide.right, 300.0)]) {
+      testWidgets('$dock keeps docking and close in the file toolbar at width $width', (tester) async {
+        var closed = false;
+        DockSide? chosen;
+        await pump(
+          tester,
+          tree: dock == DockSide.bottom,
+          dock: dock,
+          width: width,
+          toolbarActions: [
+            AppMenuButton<DockSide>(
+              tooltip: 'Dock position',
+              icon: const Icon(Icons.space_dashboard_outlined, size: 16),
+              items: () => [const AppMenuItem(value: DockSide.left, label: 'Left')],
+              onSelected: (side) => chosen = side,
+            ),
+            IconButton(tooltip: 'Close panel', onPressed: () => closed = true, icon: const Icon(Icons.close, size: 16)),
+          ],
+        );
+        final refresh = find.byTooltip('Refresh');
+        final position = find.byTooltip('Dock position');
+        final close = find.byTooltip('Close panel');
+        expect(close, findsOneWidget, reason: 'there is no second panel header');
+        expect(tester.getCenter(position).dy, tester.getCenter(refresh).dy);
+        expect(tester.getCenter(close).dy, tester.getCenter(refresh).dy);
+        expect(tester.getTopLeft(close).dy - tester.getTopLeft(find.byType(SideFilesPanel)).dy, Space.xs);
+        expect(tester.takeException(), isNull, reason: 'the narrow toolbar fits');
+
+        if (width < 560) {
+          expect(find.byTooltip('Back'), findsNothing);
+          await tester.tap(find.byTooltip('More'));
+          await tester.pumpAndSettle();
+          expect(find.text('Back'), findsOneWidget);
+          expect(find.text('Forward'), findsOneWidget);
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(position);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Left'));
+        await tester.pumpAndSettle();
+        expect(chosen, DockSide.left);
+        await tester.tap(close);
+        expect(closed, isTrue);
+      });
+    }
 
     testWidgets('docked at the side the panel has no tree', (tester) async {
       await pump(tester, tree: false);
