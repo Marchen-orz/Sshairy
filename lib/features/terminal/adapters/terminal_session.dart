@@ -83,6 +83,9 @@ class TerminalSession extends ChangeNotifier {
     }
   }
 
+  /// Received from the shell but not yet parsed into the model.
+  int get pendingOutputBytes => _outputQueue?.pendingBytes ?? 0;
+
   bool get canReconnect => _prompts != null && status != SessionStatus.connecting && status != SessionStatus.connected;
 
   bool get canInsert =>

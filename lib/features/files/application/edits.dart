@@ -98,11 +98,16 @@ const maxEditSize = 64 * 1024 * 1024;
 
 final editsProvider = NotifierProvider<ExternalEdits, List<ExternalEdit>>(ExternalEdits.new);
 
+/// Opens a copy in the program the system picks; separate so the edit flow can run without launching one.
+final fileOpenerProvider = Provider<Future<bool> Function(String)>((_) => openFile);
+
 /// The local deletion port is separate so locked-editor failures can be verified without changing OS permissions.
-final editCleanupProvider = Provider<Future<void> Function(String)>((_) => (path) async {
-  final directory = Directory(path);
-  if (await directory.exists()) await directory.delete(recursive: true);
-});
+final editCleanupProvider = Provider<Future<void> Function(String)>(
+  (_) => (path) async {
+    final directory = Directory(path);
+    if (await directory.exists()) await directory.delete(recursive: true);
+  },
+);
 
 /// Owns edit copies and their watchers (docs/CONTRACTS.md §2).
 class ExternalEdits extends Notifier<List<ExternalEdit>> {
@@ -188,7 +193,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     final existing = state.where((e) => e.host == host.id && e.remotePath == remotePath).firstOrNull;
     if (existing != null) {
       _checkCopy(existing);
-      await openFile(existing.localPath);
+      await ref.read(fileOpenerProvider)(existing.localPath);
       return const Ok(null);
     }
     _pool.remember(host);
@@ -222,7 +227,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       await saved;
       _remember(edit);
       _watch(edit);
-      await openFile(local);
+      await ref.read(fileOpenerProvider)(local);
       return const Ok(null);
     } on Object catch (e) {
       if (!registered) await dir.delete(recursive: true).then((_) {}, onError: (Object _) {});
@@ -234,7 +239,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
 
   Future<void> reopen(String id) async {
     final e = _byId(id);
-    if (e != null) await openFile(e.localPath);
+    if (e != null) await ref.read(fileOpenerProvider)(e.localPath);
   }
 
   void setAutoUpload(String id, bool on) {
@@ -330,7 +335,10 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
 
   /// Ends the edit and removes the local copy; the caller confirms first when it holds unsaved changes.
   Future<void> finish(String id) => _finishing.putIfAbsent(
-    id, () => _finishCopy(id).whenComplete(() { _finishing.remove(id); }),
+    id,
+    () => _finishCopy(id).whenComplete(() {
+      _finishing.remove(id);
+    }),
   );
 
   Future<void> _finishCopy(String id) async {
@@ -376,6 +384,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       final absolute = File(path).absolute.uri.normalizePath().toFilePath();
       return Platform.isWindows ? absolute.toLowerCase() : absolute;
     }
+
     final directory = style.join(_root, edit.id);
     return canonical(File(edit.localPath).parent.path) == canonical(directory) &&
         canonical(edit.localPath) == canonical(style.join(directory, name));
