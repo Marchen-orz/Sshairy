@@ -193,8 +193,9 @@ SettingDefinition 统一记录 key/type/default/range/effect/applyMode/agentExpo
 
 | 分区 | 首期设置与行为 |
 |---|---|
-| 外观 | system/light/dark、强调色（预设，默认蓝，UI §2）、界面字号与缩放；即时预览，可取消。Windows 渲染器 Skia/Impeller（ADR-11），重启生效 |
-| 终端 | 字体/字号（初值 14 logical px）、光标、回滚、选中复制（默认关）、右键行为、粘贴确认 |
+| 外观 | system/light/dark、强调色（预设，默认蓝，UI §2）、界面字体（系统已安装字体，默认 Segoe UI + Microsoft YaHei UI）与界面字号（默认 13，11–18）；即时生效。Windows 渲染器 Skia/Impeller（ADR-11），重启生效 |
+| 终端 | 字体（系统等宽字体，默认 Cascadia Mono）/字号（初值 14 logical px）、光标、回滚、选中复制（默认关）、右键行为、粘贴确认 |
+| 工作区 | 显示服务器监控（默认开）、文件面板停靠（左/右/下，默认右）、退出前确认（默认开，不开放给 AI） |
 | 连接 | 超时、保活、idle TTL、自动重连；标明下次连接生效 |
 | 文件 | 并发、隐藏文件、默认外部程序；覆盖默认询问；自动上传默认关 |
 | 快捷键 | 按上下文修改、冲突检测、恢复默认 |
@@ -205,9 +206,19 @@ SettingDefinition 统一记录 key/type/default/range/effect/applyMode/agentExpo
 
 命令面板负责主机/会话/已注册能力搜索，AI 阶段新增“交给 AI”明确动作；**搜索不到时不自动把文本发给模型**。
 
-一期单主窗口，设置作为窗口内页面/抽屉；多窗口、托盘、自动更新不作为首版前置。退出经 ShutdownCoordinator，不因关窗让上传、编辑稿或配置悄悄丢失。
+一期单主窗口，设置作为窗口内浮层；多窗口、托盘、自动更新不作为首版前置。退出经 ShutdownCoordinator，不因关窗让上传、编辑稿或配置悄悄丢失；`confirmQuit` 开着时每次退出都先确认，并列出将断开的会话数。
 
 Windows 打包：`tool/package_windows.ps1` 构建 Release，将完整 runner 输出、README 和第三方许可证清单打成带时间戳的 ZIP（`dist/`，不覆盖旧包）。`tool/write_notices.dart` 从已解析的依赖读取 LICENSE/NOTICE，缺失时失败而非遗漏。当前只供本地验证，不代表已签名或正式发行；项目许可证未确定前不宣称 MIT 授权。
 
 验收：S-01 范围与 applyMode；U-01 键盘/焦点/视觉；D-01 关闭/持久化。
 
+## 8. monitor：服务器监控（2026-11-07 加入，原列在 M5）
+
+终端标签左侧的监控面板（UI §1）。只读，不是 Capability，也不开放给 AI。
+
+- 数据来源：在该 pane 的主机已连接时，向 ConnectionManager 取 `LeasePurpose.exec` 租约（与终端共用同一条连接，不另行拨号；需要询问主机密钥或口令时一律拒绝，显示不可用），每 3 秒执行一条固定的只读命令：读 `/proc/stat`、`/proc/meminfo`、`/proc/loadavg`、`/proc/uptime`、`/proc/net/dev`、`/proc/cpuinfo` 的处理器数、`df -kP`，有 `nvidia-smi` 时查询 GPU 名称、利用率、显存与温度。命令是常量，不拼接任何主机、路径或用户输入。输出上限 256 KiB。
+- 解析（`monitor/domain/stats.dart`，纯 Dart，有单元测试）：CPU 利用率与网络速率按两次采样的差值计算；网络合计除 `lo` 外的接口；磁盘去掉 tmpfs、devtmpfs、overlay、squashfs 与 `/dev/loop*`、`/snap/` 挂载；最近 60 个采样画折线。非 Linux（没有 `/proc`）显示不支持。
+- 生命周期：面板显示且所在标签激活时轮询；标签切走、面板关闭或会话断开时停止并归还租约，因而不会让本该停泊关闭的连接一直活着。单次执行超过 10 秒视为失败，连续失败时保留上次数据并标出。
+- GPU 只支持 NVIDIA（nvidia-smi）；其他 GPU 不显示该块，不显示假数据。
+
+验收：解析与差值计算有单元测试；在作者的 Ubuntu 服务器上实际显示需实机验收。

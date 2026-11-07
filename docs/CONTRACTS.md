@@ -37,6 +37,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | SFTP 浏览 channel | 浏览会话控制器 | 关闭浏览器时释放自己的 lease |
 | 传输 channel / 文件句柄 / .part | TransferManager 中的 task | 完成/取消/失败后按 checkpoint 策略清理 |
 | 转发 listener 与 accepted sockets | ForwardManager | stop 必须解除监听并收束连接，之后归还 lease |
+| 监控 exec 租约 | 监控面板的 ServerMonitor | 面板卸载、标签切走、会话断开时停止轮询并归还；只在主机已连接时取用，不自己拨号 |
 | 文件 watcher / 临时副本 | ExternalEditManager | 用户结束编辑或退出处理完成；失败稿保留 |
 | Auth/host-key challenge | ConnectionAttempt | 完成、取消、超时或 generation 过期时失效 |
 | AI stream / tool jobs | AgentRuntime | 单 turn 终态后清理；持续 job 需显式归属与上限 |

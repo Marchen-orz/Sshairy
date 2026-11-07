@@ -130,6 +130,8 @@ v0.3 · 2026-11-06。sshairy 是开源软件，主要供作者自用，不提供
 | 2026-11-06 | 1944056 | sshairy 无会话，Skia，同上 | 117 / 132 / 119 MB（GPU 共享 53 / 73 / 53） | 同上；据此定 ADR-11 |
 | 2026-11-06 | ADR-11 实现后 | sshairy 无会话，Release，设置为 Skia（默认） | 88 / 107 / 137 MB（GPU 共享 59 / 79 / 60） | Release 构建，私有工作集 |
 | 2026-11-06 | ADR-11 实现后 | sshairy 无会话，Release，设置为 Impeller | 239 / 295 / 235 MB（GPU 共享 188 / 253 / 189） | 证实 runner 按设置切换；集成测试在 Skia 下四个流程全过 |
+| 2026-11-07 | 工作区重排后（未提交） | sshairy 无会话，Release，Skia，默认窗口 / 最大化 | 124 / 156 MB | 私有工作集；200% 缩放屏 |
+| 2026-11-07 | 同上 | sshairy 无会话，Debug 构建直接启动 exe | 260–267 MB | 作者看到的 270–350 MB 来自 `flutter run` 的 Debug（JIT、VM service），不代表 Release |
 
 2026-11-07 起的记录来自 Windows 11 经公网连作者的 Ubuntu 服务器（链路约 3 Mbit/s 下行、5 Mbit/s 上行），由 `integration_test/` 的测试输出（REPORT 行）。链路慢，大小和时长按“能判断哈希、暂停、取消和内存是否有界”选，不追求吞吐。
 

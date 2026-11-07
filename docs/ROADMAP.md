@@ -9,7 +9,7 @@
 | 阶段 | M1–M3 已有主要实现；M0 技术验收与一期验收未收齐，非 AI 功能尚未全部完成 |
 | 工具链 | Flutter 3.47.9 stable（c197ca5199）、Dart 3.13.7、Visual Studio C++ 工具 |
 | 已实际运行 | 2026-11-07 在 Windows 11 上连作者的 Ubuntu 服务器逐个跑集成测试，全部通过：`app_test`（8 个流程，含 T-03 持续输出）、`auth_test`、`routes_test`、`snippets_test`（不连服务器）、`keys_test`（文件/导入/加密密钥登录，临时公钥已移除）、`forward_test`（L/R/D）、`transfer_test`（往返哈希、暂停续传、退出后恢复、256 MiB/10 GiB 稀疏文件 30 秒取消、1 万条目录）、`edits_test`（外部编辑 app 一侧）；`memory_test` 在 Profile 构建下通过。数字见 TESTING §6；Release 版能启动 |
-| 下一步 | 补原始 UI 导航/面板；真实环境还差：keyboard-interactive（服务器关闭）、窗口拖动/Snap/DPI/最小化、真实输入法、作者自己的外部编辑器、10 GB 传输、Release 构建的任务管理器内存口径 |
+| 下一步 | 作者验收新界面（图标栏、浮层、快速连接、监控面板、文件停靠、字体与字号）和关闭确认；真实环境还差：keyboard-interactive（服务器关闭）、窗口拖动/Snap/DPI/最小化、真实输入法、作者自己的外部编辑器、10 GB 传输、Release 构建的任务管理器内存口径 |
 
 第一版已实际运行的范围（不代表对应 M1 项完成，所以下面没有勾选）：快速连接、主机增删改、主机密钥未知/拒绝/变化、密码输入与记住、错误密码、多标签、关闭标签不影响其他会话、断线后重连、Ctrl+C（含有选区时）、多行粘贴确认、主题/语言/字号/主题色、命令面板打开主机与执行动作、同主机分屏、Alt+方向键切换焦点、关闭分屏、重启后恢复为未连接标签、终端搜索（计数、上下跳转、无结果）、服务端结束会话后自动重连、标签右键重命名、命令面板复制标签（共享连接不再要密码）、设置里删除信任记录。
 
@@ -111,7 +111,9 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 - [x] 布局恢复（W-02 的 M3 部分）：workspace.json 只存布局、主机 ID 和标签名；重启后恢复为未连接，不自己拨号；`test/workspace_test.dart` 通过，服务器集成测试 `workspace: palette, split panes, restore after restart` 此前通过，之后的改动没有重跑
 - [ ] 跳板链、SOCKS5/HTTP 代理、legacy 按主机启用（C-01、C-04 的 M3 部分）：路由已实现；`integration_test/routes_test.dart` 在 Windows/Ubuntu 通过双跳（服务器自身 loopback）、每跳校验、共享跳板、direct-tcpip 和远端转发取消；循环/缺失/链上限/改跳板后不复用与 RSA 信任别名有单元测试。代理和 legacy 没有对应真实环境，未验证
 - [ ] 端口转发 L/R/D 与规则管理（R-01、R-02、R-03）：L/R/D、SOCKS5、规则面板、暴露确认、退出收束和单元测试（`test/forwarding_test.dart`，模拟通道）已实现并接入工具栏与命令面板；真实服务器上 L/R/D 通路与哈希、端口占用提示、停止后端口释放已在 `integration_test/forward_test.dart` 验证（走管理器，不经界面）；规则面板的点击流程和断线重连未验证，所以不勾选
-- [ ] Windows 无系统顶栏的自绘窗口（ADR-12）：原生保留缩放/DPI/Snap 语义，Flutter 绘制标签行与窗口按钮，关闭经统一退出协调；组件与命中区有单元测试（`test/desktop_window_test.dart`），原生 C++ 已编译通过；拖动、Snap、DPI 切换与真实 WM_CLOSE 取消未在运行中的窗口亲测；macOS/Linux 仍用系统外框
+- [ ] Windows 无系统顶栏的自绘窗口（ADR-12）：原生保留缩放/DPI/Snap 语义，Flutter 绘制标签行与窗口按钮，关闭经统一退出协调；组件与命中区有单元测试（`test/desktop_window_test.dart`），原生 C++ 已编译通过；2026-11-07 在运行中的窗口里向窗口投递非客户区点击，最大化按钮命中为 HTMAXBUTTON，最大化与还原都生效（作者此前报告点击无反应）；WM_CLOSE（Alt+F4、任务栏、系统菜单）改由原生转给 Dart 的统一退出，此前投递 WM_CLOSE 会不经确认直接退出，改后只有单元测试，真实窗口里的确认弹窗未亲测；拖动、Snap 布局浮层、DPI 切换未测；macOS/Linux 仍用系统外框
+- [ ] 自有弹层与选择控件、图标栏与浮层、快速连接、可停靠文件面板（ADR-13、WORKSPACE_LAYOUT）：组件测试覆盖浮层 Esc、快速连接、停靠限宽与拖动；界面字体、UI/终端字号设置已实现；作者的调试实例里看到新界面运行，其余交互待作者验收
+- [ ] 服务器监控面板（ADR-14、MODULES §8）：解析与速率有单元测试（`test/monitor_test.dart`）；作者服务器上 CPU、内存、交换、网络、磁盘、运行时长实时显示；GPU 无测试环境
 - [x] 片段：搜索与增删改、持久化、插入/运行、命令面板入口；Windows 无连接界面集成通过，受控插入与 shell 生命周期用模拟通道验证，真实 SSH 片段发送未测
 - [ ] SSH config 导入：draft 预览与未支持项报告：解析、计划（跳板依赖、已存在与冲突分类）和 revision 校验提交有单元测试（`test/ssh_config_test.dart`）；文件选择器、Include 展开和抽屉界面未在真实窗口运行
 - [x] known_hosts 导入：解析、哈希匹配（对照 `ssh-keygen -H` 的输出）、冲突不覆盖、串行落盘和预览对话框有单元/组件测试；文件选择器和真实窗口未运行
@@ -138,7 +140,7 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 
 ## M5 按反馈扩展
 
-不预先排期，用户需求或反馈确认后才开始。候选：本地 PTY、ssh-agent、证书、公钥分发、应用锁、广播输入、关键词高亮、服务器监控、远程到远程复制、加密可移植备份、AI 远程文件写入与自动模式。
+不预先排期，用户需求或反馈确认后才开始。候选：本地 PTY、ssh-agent、证书、公钥分发、应用锁、广播输入、关键词高亮、远程到远程复制、加密可移植备份、AI 远程文件写入与自动模式。
 
 ## 交接记录
 
@@ -165,3 +167,4 @@ D-02 Windows 后端（已验证）：flutter_secure_storage_windows 4.2.2 把秘
 | 2026-11-07 | 开发助手 | H-01 完成：主机、分组、全局默认值共用 ConnectionEditor（每项链接图标、继承来源提示），分组/默认值/身份抽屉，空组与解散确认；group.*/identity.*/hostDefaults.* 能力，host.* 沿用同一字段词汇并带 `inherit`；传输续传三项缺陷修复并补回归测试。全量 284 项测试通过，flutter analyze 无问题，imports ok。widget 测试发现并修了一个真实缺陷：链接的登录（无上层可继承）仍被必填校验，导致分组无法保存 | 真实服务器上的 key→password、keyboard-interactive、密钥加载未验；已知限制见 HOST_INHERITANCE（不合并同路径组、解散丢默认值、跳板被删后悬挂引用、折叠路由区的校验错误不可见）；本轮变更尚未提交，未推送 |
 | 2026-11-07 | 开发助手 | 用作者提供的测试服务器跑集成测试（凭证只经环境变量，日志里核对过没有出现）：app_test 7 项、routes_test、snippets_test、新增 auth_test 通过。发现并修复真实缺陷：首次信任主机密钥和首次保存凭据会递增池的安全修订，使刚建立的连接无法复用（退出 shell 后重连、分屏、同主机新标签都会再次要密码）；修订现在只在收回信任或凭据时递增（CONTRACTS、CORRECTION 已写明，host_trust_test、keys_test 覆盖）。集成测试其余失败是跟不上新界面（主机树使名称出现两次、认证方式改下拉框、日志文件占用清理），已改测试。285 项单元测试、analyze、imports 通过 | 没有试成功的密钥登录（要改 authorized_keys，需作者同意）和 keyboard-interactive；10 GB 传输、窗口手动验收、真实输入法和外部编辑器未做；同一条命令连续跑多个集成测试文件时第二个文件可能启动失败，分开跑；本轮变更尚未提交，未推送 |
 | 2026-11-07 | 开发助手 | 作者允许临时往 `authorized_keys` 加测试公钥和超过 1 GB 的流量后，测完剩下的并修了测出的问题：新增 keys/forward/transfer/edits/memory 集成测试（`integration_test/support/` 放共用驱动），连真实服务器逐个跑通；`memory_test` 在 Profile 构建下通过。修复：关闭的会话被共享连接持有（每个租约自己的 `done`）；关标签不挂断远端 shell（`ShellChannel.close` 双向关闭，3 秒内远端 shell 消失）；被用作跳板的主机不能删除（`HostInUse`）并从路由区定位；双击改为按时间判断（`DoubleClick`）；本进程内重复监听同一端口归为“端口已被占用”。294 项单元测试、analyze、imports 通过；数字与未测项见 TESTING §6、TERMINAL_FLOW、DESIGN_AUDIT | 测试服务器链路约 3 Mbit/s，10 GB 传输和 T-03 的真实背压没法测；Profile 内存是总 RSS 不是任务管理器口径；keyboard-interactive（服务器关闭）、窗口拖动/Snap/DPI/最小化、真实输入法、作者自己的外部编辑器未测；文件栏的行单击仍有约 300 ms 延迟；`vm_service` 加为开发依赖（内存测试用）；每个测试文件分开跑；本轮变更按主题本地提交，未推送 |
+| 2026-11-07 | 开发助手 | 按作者要求重做界面：自有对话框/菜单/下拉/开关/分段（ADR-13），图标栏 + 二级浮层取代导航列，顶栏 `+` 快速连接，终端标签内监控面板（ADR-14，exec 租约、只读命令、不拨号），文件面板可停靠左/右/下；界面字体（中文回退到微软雅黑）与 UI/终端字号设置，整体尺寸收紧。修复：最大化按钮点击无反应（原生 HTMAXBUTTON 点击由 runner 执行）；系统关闭不经确认直接退出（WM_CLOSE 转给 Dart 统一退出，`confirmQuit` 默认开）。查明作者看到的 270–350 MB 是 `flutter run` Debug，Release 为 124/156 MB（TESTING §6）。303 项单元测试、analyze、imports 通过；集成测试已改到新组件但本轮未运行 | 作者在用调试实例，验证只用投递给本窗口的消息和 PrintWindow，不发真实键鼠；真实窗口的关闭确认、Snap 布局浮层、拖动与 DPI 待作者亲测；集成测试要连服务器重跑；文件面板窄宽时面包屑截断、CPU 曲线低负载时贴底可再调；本轮变更按主题本地提交，未推送 |
