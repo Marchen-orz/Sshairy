@@ -7,21 +7,26 @@ import 'package:yaml/yaml.dart';
 
 import '../domain/host_import.dart';
 import '../domain/ssh_config.dart';
+import 'finalshell_locations.dart';
 import 'ssh_config_files.dart';
 
 /// Hosts read from one source, not yet planned.
 class ImportRead {
-  const ImportRead(this.name, this.format, this.config);
+  const ImportRead(this.name, this.format, this.config, {this._path});
 
   final String name;
   final ImportFormat format;
   final SshConfig config;
+  final String? _path;
+  String get path => _path ?? name;
 }
 
 /// Reads other programs' session stores and files (docs/HOST_IMPORT.md): only text and PuTTY's registry key,
 /// within the size limits; nothing is executed but `reg.exe query` with fixed arguments.
 class HostImportFiles {
-  const HostImportFiles();
+  const HostImportFiles({this.finalShellLocations = const FinalShellLocations()});
+
+  final FinalShellLocations finalShellLocations;
 
   static String get _home => Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
   static String get _user => Platform.environment['USERNAME'] ?? Platform.environment['USER'] ?? '';
@@ -32,7 +37,7 @@ class HostImportFiles {
 
   /// Where each program keeps its sessions by default, in the order to try.
   List<String> defaults(ImportFormat format) {
-    final home = _home, appData = _env('APPDATA'), local = _env('LOCALAPPDATA');
+    final home = _home, appData = _env('APPDATA');
     String join(String a, String b) => '$a${Platform.pathSeparator}$b';
     return switch (format) {
       ImportFormat.openssh => [join(join(home, '.ssh'), 'config')],
@@ -43,11 +48,7 @@ class HostImportFiles {
         for (final docs in [join(home, 'Documents'), join(home, r'OneDrive\Documents'), join(home, r'OneDrive\文档')])
           ..._xshell(join(docs, 'NetSarang Computer')),
       ],
-      ImportFormat.finalshell => [
-        if (local != null) join(local, r'finalshell\conn'),
-        join(home, 'Library/FinalShell/conn'),
-        join(home, '.finalshell/conn'),
-      ],
+      ImportFormat.finalshell => finalShellLocations.defaults,
       ImportFormat.tabby => [
         if (appData != null) join(appData, r'tabby\config.yaml'),
         join(home, 'Library/Application Support/tabby/config.yaml'),
@@ -78,8 +79,19 @@ class HostImportFiles {
   /// Reads [format] from its default place; null when it is not there.
   Future<ImportRead?> readDefault(ImportFormat format) async {
     if (format == ImportFormat.putty) return hasRegistry ? _registry() : null;
-    final path = found(format);
-    return path == null ? null : read(format, path);
+    final paths = format == ImportFormat.finalshell ? await finalShellLocations.candidates() : defaults(format);
+    ImportRead? unreadable;
+    for (final path in paths) {
+      try {
+        if (FileSystemEntity.typeSync(path, followLinks: false) == FileSystemEntityType.notFound) continue;
+        final result = await read(format, path);
+        if (result.config.hosts.isNotEmpty) return result;
+        if (result.config.issues.isNotEmpty) unreadable ??= result;
+      } on FileSystemException {
+        continue;
+      }
+    }
+    return unreadable;
   }
 
   /// Asks for a file, or a folder for [folders], and reads it as [format]; null [format] sniffs the file.
@@ -125,14 +137,16 @@ class HostImportFiles {
             if (file.name.toLowerCase().endsWith('_connect_config.json')) file,
         ], defaultUser: _user),
       };
-      return ImportRead(name, f, config);
+      return ImportRead(name, f, config, path: Directory(path).absolute.path);
     }
-    if (format == ImportFormat.openssh) return ImportRead(name, ImportFormat.openssh, await _openssh(path));
+    if (format == ImportFormat.openssh) {
+      return ImportRead(name, ImportFormat.openssh, await _openssh(path), path: File(path).absolute.path);
+    }
     final ImportText file;
     try {
       file = ImportText(name, decodeImportText(await _bytes(File(path))));
     } on FileSystemException {
-      return ImportRead(name, format ?? ImportFormat.openssh, _unreadable(name));
+      return ImportRead(name, format ?? ImportFormat.openssh, _unreadable(name), path: File(path).absolute.path);
     }
     final f = format ?? sniffImport(name, file.text) ?? ImportFormat.openssh;
     final config = switch (f) {
@@ -145,7 +159,7 @@ class HostImportFiles {
       ImportFormat.tabby => parseTabby(_yaml(file.text), name, defaultUser: _user),
       ImportFormat.csv => parseCsvHosts(file, defaultUser: _user),
     };
-    return ImportRead(name, f, config);
+    return ImportRead(name, f, config, path: File(path).absolute.path);
   }
 
   SshConfig _unreadable(String name) =>
@@ -170,7 +184,12 @@ class HostImportFiles {
     }
     if (result.exitCode != 0) return null;
     final output = result.stdout as String;
-    return ImportRead('PuTTY', ImportFormat.putty, parsePuttyQuery(output, defaultUser: _user));
+    return ImportRead(
+      'PuTTY',
+      ImportFormat.putty,
+      parsePuttyQuery(output, defaultUser: _user),
+      path: r'HKCU\Software\SimonTatham\PuTTY\Sessions',
+    );
   }
 
   ImportFormat _sniffFolder(List<ImportText> files) {
