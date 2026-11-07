@@ -33,6 +33,8 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
     if (!_windows) return;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'state') _update(call.arguments);
+      // Alt+F4, the taskbar and the system menu take the same confirmed path as the close button.
+      if (call.method == 'closeRequested') await close();
     });
     try {
       _update(await _channel.invokeMethod<Object?>('initialize'));

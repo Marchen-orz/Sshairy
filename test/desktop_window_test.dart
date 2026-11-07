@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -64,6 +65,18 @@ void main() {
     expect(await window.close(), AppExitResponse.cancel);
   });
 
+  test('a native close request takes the same path as the close button', () async {
+    final closing = _ClosingWindow(channel);
+    addTearDown(closing.dispose);
+    await closing.initialize();
+    await messenger.handlePlatformMessage(
+      channel.name,
+      const StandardMethodCodec().encodeMethodCall(const MethodCall('closeRequested')),
+      (_) {},
+    );
+    expect(await closing.closed.future.timeout(const Duration(seconds: 1)), isTrue);
+  });
+
   test('other desktop runners do not invoke an absent native channel', () async {
     final other = DesktopWindow(channel: channel, windows: false);
     addTearDown(other.dispose);
@@ -113,4 +126,16 @@ void main() {
     // Unmount before the adapter is disposed, clearing its native hit-test rectangle.
     await tester.pumpWidget(const SizedBox.shrink());
   });
+}
+
+class _ClosingWindow extends DesktopWindow {
+  _ClosingWindow(MethodChannel channel) : super(channel: channel, windows: true);
+
+  final closed = Completer<bool>();
+
+  @override
+  Future<AppExitResponse> close() async {
+    closed.complete(true);
+    return AppExitResponse.cancel;
+  }
 }

@@ -128,13 +128,13 @@ class _WindowButton extends StatelessWidget {
     return Tooltip(
       message: label,
       child: SizedBox(
-        width: 44,
-        height: 40,
+        width: 40,
+        height: 36,
         child: TextButton(
           onPressed: onPressed,
           style: ButtonStyle(
             padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-            minimumSize: const WidgetStatePropertyAll(Size(44, 40)),
+            minimumSize: const WidgetStatePropertyAll(Size(40, 36)),
             shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
             backgroundColor: WidgetStateProperty.resolveWith((states) {
               if (destructive && states.contains(WidgetState.hovered)) return scheme.error;
@@ -145,7 +145,7 @@ class _WindowButton extends StatelessWidget {
               return scheme.onSurface;
             }),
           ),
-          child: Semantics(label: label, child: Icon(icon, size: 15)),
+          child: Semantics(label: label, child: Icon(icon, size: 14)),
         ),
       ),
     );

@@ -5,9 +5,50 @@
 #include <windowsx.h>
 
 #include <cmath>
+#include <map>
 #include <optional>
+#include <string>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+
+std::string Utf8(const std::wstring& text) {
+  const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
+                                       nullptr, 0, nullptr, nullptr);
+  std::string out(size, '\0');
+  WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), size,
+                      nullptr, nullptr);
+  return out;
+}
+
+int CALLBACK CollectFont(const LOGFONTW* font, const TEXTMETRICW* metric, DWORD, LPARAM data) {
+  // Names starting with '@' are the vertical-writing variants of CJK fonts.
+  if (font->lfFaceName[0] == L'@') return 1;
+  auto& fonts = *reinterpret_cast<std::map<std::wstring, bool>*>(data);
+  // The TMPF_FIXED_PITCH bit is set for variable-pitch fonts, despite its name.
+  const bool mono = (metric->tmPitchAndFamily & TMPF_FIXED_PITCH) == 0;
+  fonts.emplace(font->lfFaceName, mono);
+  return 1;
+}
+
+// Installed font families as [name, monospaced] pairs.
+flutter::EncodableList SystemFonts() {
+  std::map<std::wstring, bool> fonts;
+  LOGFONTW query = {};
+  query.lfCharSet = DEFAULT_CHARSET;
+  const HDC dc = GetDC(nullptr);
+  EnumFontFamiliesExW(dc, &query, CollectFont, reinterpret_cast<LPARAM>(&fonts), 0);
+  ReleaseDC(nullptr, dc);
+  flutter::EncodableList list;
+  for (const auto& [name, mono] : fonts) {
+    list.push_back(flutter::EncodableValue(
+        flutter::EncodableList{flutter::EncodableValue(Utf8(name)), flutter::EncodableValue(mono)}));
+  }
+  return list;
+}
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -83,7 +124,12 @@ void FlutterWindow::HandleWindowMethod(
   const auto& method = call.method_name();
   const HWND window = GetHandle();
   if (method == "initialize") {
+    dart_handles_close_ = true;
     result->Success(flutter::EncodableValue(WindowState()));
+    return;
+  }
+  if (method == "fonts") {
+    result->Success(flutter::EncodableValue(SystemFonts()));
     return;
   }
   if (method == "minimize") {
@@ -163,6 +209,21 @@ LRESULT FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   if (message == WM_NCCALCSIZE || message == WM_NCHITTEST ||
       message == WM_GETMINMAXINFO) {
     return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+  }
+  // Without a system frame DefWindowProc neither draws nor acts on the maximize button, so the click reported
+  // over Flutter's button (HTMAXBUTTON keeps Snap Layouts) is carried out here.
+  if (wparam == HTMAXBUTTON) {
+    if (message == WM_NCLBUTTONDOWN || message == WM_NCLBUTTONDBLCLK) return 0;
+    if (message == WM_NCLBUTTONUP) {
+      ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE);
+      return 0;
+    }
+  }
+  // Alt+F4, the taskbar and the system menu ask Dart, which confirms and shuts down as the close button does and
+  // quits the message loop itself. The engine's own close handling let the window go without asking.
+  if (message == WM_CLOSE && dart_handles_close_ && window_channel_) {
+    window_channel_->InvokeMethod("closeRequested", nullptr);
+    return 0;
   }
   if (flutter_controller_) {
     std::optional<LRESULT> result =

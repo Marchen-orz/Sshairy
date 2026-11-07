@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../design/dialog.dart';
 import '../features/connections/api.dart';
 import '../features/credentials/api.dart';
 import '../features/files/api.dart';
@@ -10,9 +11,10 @@ import '../features/forwarding/api.dart';
 import '../features/hosts/api.dart';
 import '../features/settings/api.dart';
 import '../features/snippets/api.dart';
+import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
-import '../l10n/app_localizations.dart';
 import '../foundation/diagnostics.dart';
+import '../l10n/app_localizations.dart';
 
 enum _ExitFailureChoice { back, retry, quit }
 
@@ -52,7 +54,14 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
       final running = transfers.activeCount;
       final unsaved = edits.unsavedCount;
       final tunnels = ref.read(forwardsProvider).where((f) => f.active).length;
-      if ((running > 0 || unsaved > 0 || tunnels > 0) && !await _confirm(running, unsaved, tunnels)) {
+      final sessions = ref
+          .read(terminalSessionsProvider)
+          .values
+          .where((s) => s.status == SessionStatus.connected || s.status == SessionStatus.connecting)
+          .length;
+      // Work that would be lost always asks; otherwise the confirmQuit setting decides.
+      final ask = running > 0 || unsaved > 0 || tunnels > 0 || ref.read(settingsProvider).get(SettingKeys.confirmQuit);
+      if (ask && !await _confirm(running, unsaved, tunnels, sessions)) {
         return AppExitResponse.cancel;
       }
       while (mounted) {
@@ -110,21 +119,22 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
     }
   }
 
-  Future<bool> _confirm(int running, int unsaved, int tunnels) async {
+  Future<bool> _confirm(int running, int unsaved, int tunnels, int sessions) async {
     if (!mounted) return false;
     final l = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
-    return await showDialog<bool>(
+    final lines = [
+      if (sessions > 0) l.sessionsOpen(sessions),
+      if (running > 0) l.transfersRunning(running),
+      if (unsaved > 0) l.editsUnsaved(unsaved),
+      if (tunnels > 0) l.forwardsRunning(tunnels),
+      if (running > 0 || unsaved > 0) l.quitNote,
+    ];
+    return await showAppDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: Text(
-              [
-                if (running > 0) l.transfersRunning(running),
-                if (unsaved > 0) l.editsUnsaved(unsaved),
-                if (tunnels > 0) l.forwardsRunning(tunnels),
-              ].join('\n'),
-            ),
-            content: Text(l.quitNote),
+          builder: (context) => AppDialog(
+            title: Text(l.quitTitle),
+            content: lines.isEmpty ? null : Text(lines.join('\n')),
             actions: [
               TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
               TextButton(
@@ -140,10 +150,10 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
 
   Future<_ExitFailureChoice> _failure() async {
     final l = AppLocalizations.of(context);
-    return await showDialog<_ExitFailureChoice>(
+    return await showAppDialog<_ExitFailureChoice>(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
+          builder: (context) => AppDialog(
             content: Text(l.quitFailed),
             actions: [
               TextButton(

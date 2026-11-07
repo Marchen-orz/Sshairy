@@ -39,6 +39,8 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> window_channel_;
   std::optional<RECT> maximize_button_;
   bool maximize_hovered_ = false;
+  // Set once Dart listens on the window channel; from then on Dart decides whether a close request quits.
+  bool dart_handles_close_ = false;
 
   // The project to run.
   flutter::DartProject project_;
