@@ -15,9 +15,12 @@ class IoForwardRuntime implements ForwardRuntime {
     try {
       return _Listener(await ServerSocket.bind(address, port));
     } on SocketException catch (e) {
-      // Linux, macOS and Windows number the same causes differently.
+      // Linux, macOS and Windows number the same causes differently. Dart itself refuses, without asking the OS
+      // (code -1), a second listener on an address and port this process already listens on, such as two rules.
+      final inThisProcess = e.osError?.errorCode == -1 && (e.osError?.message.contains('shared') ?? false);
       final code = switch (e.osError?.errorCode) {
         98 || 48 || 10048 => ForwardErrors.addressInUse,
+        _ when inThisProcess => ForwardErrors.addressInUse,
         13 || 10013 => ForwardErrors.permissionDenied,
         99 || 49 || 10049 => ForwardErrors.addressUnavailable,
         _ => ForwardErrors.bindFailed,
