@@ -6,8 +6,10 @@
 |---|---|
 | dartssh2、xterm2、flutter_riverpod、pinenacl | MIT |
 | desktop_drop | Apache-2.0 |
-| crypto、ffi、file_selector、flutter_secure_storage、intl、path_provider | BSD-3-Clause |
+| crypto、ffi、file_selector、flutter_secure_storage、intl、path_provider、yaml | BSD-3-Clause |
 | Flutter SDK、flutter_localizations | BSD-3-Clause；SDK 的其他组件另有各自声明 |
+
+yaml（dart-lang 官方，2026-11-08 加入，原为传递依赖）只在 `hosts/adapters` 读 Tabby 的 config.yaml。
 
 `tool/write_notices.dart` 从 `.dart_tool/package_config.json` 解析到的包读取许可证与 NOTICE，包含构建依赖，产出 `THIRD_PARTY_NOTICES.txt`。许可证缺失时失败。Windows 打包脚本将该文件放入完整 runner 分发目录。
 

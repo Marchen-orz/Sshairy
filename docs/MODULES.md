@@ -36,7 +36,7 @@ M3 路由字段：`jumpHostId` 指向另一台已保存主机作跳板，链由�
 
 SSH config 导入（M3）：读 `~/.ssh/config` 或指定文件，Include 最多 4 层、共 32 个文件，输入总量最多 1 MiB；相对 Include 路径以所选文件的目录为基准。只取 Host/HostName/User/Port/IdentityFile/ProxyJump，按 OpenSSH 首个匹配值生效；通配 Host 可提供默认值，但不成为主机。Match 区块不应用，其他关键字和不能对应的 ProxyJump 列入报告；需要 ProxyCommand 或未解析跳板的草稿不可导入，避免静默改成直连。先生成草稿：与已有主机同地址同用户且同路由的“已存在”默认不选；同端点但跳板链不同的不当作已存在，另立草稿；选择目标时连同必要的新跳板一起选择，确认后一次 revision 校验写入。ProxyJump 按别名、地址匹配导入草稿或已有主机；多跳需要不同上游时复制跳板配置为新草稿，不修改已有主机。
 
-当前实现（验证状态见 ROADMAP）：`hosts/domain/ssh_config.dart` 解析、`import_plan.dart` 出草稿、`adapters/ssh_config_files.dart` 做有界 Include 展开（file_selector 选文件）、`application/ssh_config_import.dart` 提供 pick/preview/commit，`presentation/ssh_config_import_panel.dart` 为主机库右侧抽屉，入口在主机库工具栏。IdentityFile 只在绝对路径或 `~` 展开后有效，相对路径按主目录解释，与密钥库无联动——导入的主机带 `keyPath`，密钥仍按现有流程导入。设计文档 `docs/SSH_CONFIG_IMPORT.md`。
+当前实现（验证状态见 ROADMAP）：`hosts/domain/ssh_config.dart` 解析、`import_plan.dart` 出草稿、`adapters/ssh_config_files.dart` 做有界 Include 展开，`adapters/host_import_files.dart` 找默认位置与选文件，`application/host_import.dart` 提供 detect/preview/regroup/commit，导入界面统一为主机库工具栏打开的居中对话框（`presentation/import_dialog.dart`），也接受 PuTTY、MobaXterm、SecureCRT、Xshell、FinalShell、Tabby 与 CSV，首次启动且主机库为空时自动打开一次（`docs/HOST_IMPORT.md`）。IdentityFile 只在绝对路径或 `~` 展开后有效，相对路径按主目录解释，与密钥库无联动——导入的主机带 `keyPath`，密钥仍按现有流程导入。设计文档 `docs/SSH_CONFIG_IMPORT.md`。
 
 主机保存与导入共用结构校验；代理地址、类型或用户名变化时先删除旧代理口令，再提交新配置，避免将旧口令发送给新代理。
 
@@ -55,6 +55,7 @@ idle → resolving → connecting → handshaking → verifyingHostKey
 - 初值：TCP 20s、认证总等待 120s（用户等待计入并显示）、通道打开 15s；known-host 确认最长 120s 且受总 attempt 取消控制。超时清理迟到 socket/channel。
 - keepalive 默认 30s、连续 3 次无应答判失活，0 明确禁用；是否被库支持由 E-09 验证。
 - 池按完整 ResolvedConnectionSpec 复用，合并并发同规格 acquire；lease 幂等归还。最后 lease 后默认停泊 60s，可设 0 立即关闭，范围 0–300s，**0 不表示无限保留**。
+- 加密算法偏好与 OpenSSH 客户端默认一致：chacha20-poly1305 优先，其次 aes-ctr（配 etm MAC），aes-gcm 最后。dartssh2 的加解密是纯 Dart、跑在 UI isolate 上；2026-11-07 在作者机器上以 AOT 编译测得单核约 chacha20-poly1305 12.5 MB/s、aes128-ctr+hmac-sha256 4.5 MB/s、aes256-gcm 0.6 MB/s（库默认把 gcm 排第一），大文件传输时 gcm 会占满 UI 线程。更快的实现或把 SSH 放进后台 isolate 是后续项。
 - 无法多通道/复用的主机可选独立连接。复用失败时只在未执行用户命令的 channel-open 阶段有界重建一次；不把所有错误都自动重登。
 - 用户关闭 terminal 不关闭 file/forward 的租约；用户“断开主机全部会话”展示受影响资源。
 - 手动重连默认；自动重连可选，1/2/4/8/16s 加抖动，最多 5 次，仅网络错误。主机密钥变化、认证失败、用户停止不自动重试。
@@ -98,6 +99,8 @@ SSH bytes → 有界入口队列 → 增量解码/VT 解析 → terminal model �
 
 中文、全角标点、emoji、组合字符、CJK 宽度、选区、光标位置必须实测。OSC 52 远端写剪贴板默认禁用；OSC 7 只更新有来源的 cwd 状态，不当指令执行。无法获得 cwd 时显示未知，不向正在 vim 的 shell 注入 pwd。
 
+终端目录（2026-11-08）：开 shell 时随 pty 请求发送环境变量 `LC_SSHAIRY_SESSION=<16 位随机十六进制>`（Debian/Ubuntu 默认 `AcceptEnv LC_*`）；服务器拒绝时不带它重开一次，同一连接后续 shell 不再尝试。文件面板打开期间，用户按 Enter 后约 400 ms 和 1.5 s、以及收到 OSC 7 时，经同一租约 exec 一条常量脚本：在 `/proc/*/environ` 里找带该值的进程，取父进程不带它的那个（登录 shell）的 `cwd`；终端前台进程组若是带该值的 shell（嵌套 bash 等），用它的。token 只含十六进制字符，脚本不拼接其他输入，只读。拿不到 token（服务器拒绝或非 Linux）时退回 OSC 7 报告的路径；两者都没有就不同步。只在结果变化时通知，方向只有终端 → 文件面板。`su`/`sudo -i`、tmux 和到其他主机的 ssh 里，得到的是外层登录 shell 的目录。
+
 分屏树采用 Leaf(paneId, sessionId) / Split(axis, children, ratios)。不变量：ID 唯一、叶子非空、比例正且归一；移除叶子折叠单子分支，保持未受影响祖先比例；焦点只能指向现存叶子。初期最多 8 pane，受最小尺寸约束。
 
 恢复保存布局、host 引用和当前标签，默认恢复为 disconnected 标签；自动连接独立开关且默认关。无凭据、原始输出、临时主机秘密进入恢复文件。重连不重放输入、广播或旧命令。
@@ -110,7 +113,7 @@ SSH bytes → 有界入口队列 → 增量解码/VT 解析 → terminal model �
 
 独立 SFTP 标签默认本地/远程双栏；终端侧面板为同组件的单栏远程视图。切视图不会取消任务。列表含名称、修改时间、大小、类型、权限/所有者（可隐藏）；目录优先、名称筛选、隐藏文件开关、前后导航、面包屑兼路径输入、每主机书签。
 
-支持上传/下载、创建文件/目录、重命名、删除、复制路径、chmod（服务端支持才启用）。不为了“快速删除”偷偷拼 `rm -rf`。OS 拖入上传与选择文件走同任务队列；原生拖出、远程到远程复制、树形文件视图、压缩上传、SCP fallback、sudo SFTP 延后。
+支持上传/下载、创建文件/目录、重命名、删除、复制路径、chmod（服务端支持才启用）。不为了“快速删除”偷偷拼 `rm -rf`。OS 拖入上传与选择文件走同任务队列；原生拖出、远程到远程复制、压缩上传、SCP fallback、sudo SFTP 延后。
 
 文件选择采用 Shift 范围、Ctrl/Cmd 多选；Enter 打开目录或外部编辑流程、Backspace 上级、F2 重命名、F5 刷新、Delete 删除确认、Ctrl/Cmd+A 全选、Ctrl/Cmd+L 编辑路径（点当前目录的路径段或路径栏空白处也可）、可打印字符前缀定位。输入框或模态框聚焦时列表快捷键不执行。
 
@@ -126,7 +129,7 @@ running → pausing → paused → preparing（M3 增量）
 - Task 持有 source/target identity、方向、策略、已确认进度、状态、错误、operationId 和 lease；保存 DTO 只含白名单，不含密码、socket、闭包。
 - M2 保证排队、进度、取消、从头重试；暂停/断点续传在 M3，经 checkpoint 验证通过才显示按钮。不能把网络中断后重传伪装成断点续传。
 - 初值全局并发 3 文件、每 host 2 文件；单文件 32 KiB 请求、最多 16 个在途请求。实际 API 是否支持、WAN 吞吐是否足够由测试决定；无同等能力时不能伪报参数生效。
-- 协议 open 15s、请求无进展 30s，可配置慢链路值；不为整个 1GB 文件设统一 30s 截止时间。进度 UI 最多约 5Hz 更新，速度以滑动窗口计算。
+- 协议 open 15s、请求无进展 30s，可配置慢链路值；不为整个 1GB 文件设统一 30s 截止时间。进度 UI 最多约 5Hz 更新，速度以 3 秒滑动窗口计算，窗口内的采样至少间隔 100ms（每个数据块都记一次会在高速传输时让 UI 线程忙于整理采样）。
 - 使用独立 transfer channel 或受限连接以保护终端延迟；复用 route/auth/trust 仍需校验。占用全连接带宽时不能只加更多 channel 声称隔离。
 - 开始前重新 stat 源和目标；目录扫描有条目/深度上限、渐进进度。默认不递归跟随符号链接。
 - 写 .part → 验证 → 安全发布，细则见 SECURITY。取消先停新请求、等待有限在途操作收束，再关闭本任务资源；不能 end 共享 transport 导致 terminal 掉线。
@@ -145,7 +148,7 @@ running → pausing → paused → preparing（M3 增量）
 ### 当前实现
 
 - 本机和远端共用 `FileSystem` 接口（`lib/foundation/file_system.dart`）：远端由 `TransportLease.openFiles()` 开一个 SFTP channel，本机用 dart:io。路径按各自语法拼接，远端一律 POSIX。
-- 主机库旁固定的 SFTP 页是左右双栏，每栏可选本机或任一主机；终端标签可打开右侧文件面板（同一组件的单栏，跟随焦点 pane 的主机）。拖到另一栏、发送到另一侧、OS 拖入、选择文件上传都进同一队列。没有每主机书签；所有者/组取自 SFTP longname，没有就留空。
+- 主机库旁固定的 SFTP 页是左右双栏，每栏可选本机或任一主机；终端标签可打开文件面板（同一组件的单栏，跟随焦点 pane 的主机）；停靠在下方时左边加一栏目录树（宽 240，从 `/` 起按需列出子目录，当前路径的祖先自动展开，点目录即进入），右边是列表。面板打开时跟随终端目录（§3），打开时也从终端目录开始；用户在面板里另去别处后，只有终端目录再变化才会跳回。拖到另一栏、发送到另一侧、OS 拖入、选择文件上传都进同一队列。没有每主机书签；所有者/组取自 SFTP longname，没有就留空。
 - TransferManager 持有任务。每台主机的传输共用一个与浏览分开的 SFTP channel；全局并发取设置（默认 3），每主机 2；单文件 32 KiB 请求、最多 16 个在途。30s 没有进展判为停滞并失败。
 - 单文件暂停与续传（`docs/TRANSFER_RESUME.md`）：running → pausing → paused；暂停停读源、等写入收束后 stat `.part` 记稳定长度，只记 settled checkpoint。续传前重新 stat 源（类型/大小/修改时间变了报 sourceChanged），`.part` 必须是本任务 ID 派生的同目录文件且长度与 checkpoint 一致，否则 partInvalid；从偏移读源、只向已存在的 `.part` 追加，最后沿用原子发布与替换基线检查。取消、移除、从头重试先清理本任务拥有的 `.part`，清理失败保留记录并显示路径（leftoverPart）。暂停/中断任务保留目标锁，不占并发与 SSH 租约；正常退出时单文件停在 paused（重启后为 interrupted，可手动恢复），目录不暂停也不续传。SFTP 续传的哈希一致性等真实服务器验证见 ROADMAP F-04。
 - 写到目标旁的隐藏文件 `.名称.随机.part`（排他创建），写完 stat 核对长度再发布；可暂停的单文件改用 `.名称.任务ID.part`，重启后能再找到。目标不存在时 rename；dartssh2 在服务器支持 posix-rename 时 rename 会覆盖，所以先确认目标不存在，两步之间有竞态窗口。替换只在服务器支持 `posix-rename@openssh.com` 时进行，发布前再 stat 目标，大小或修改时间变了就放弃；不支持时保留原文件并报错。本机替换用 File.rename。
@@ -195,7 +198,7 @@ SettingDefinition 统一记录 key/type/default/range/effect/applyMode/agentExpo
 |---|---|
 | 外观 | system/light/dark、强调色（预设，默认蓝，UI §2）、界面字体（系统已安装字体，默认 Segoe UI + Microsoft YaHei UI）与界面字号（默认 13，11–18）；即时生效。Windows 渲染器 Skia/Impeller（ADR-11），重启生效 |
 | 终端 | 字体（系统等宽字体，默认 Cascadia Mono）/字号（初值 14 logical px）、光标、回滚、选中复制（默认关）、右键行为、粘贴确认 |
-| 工作区 | 显示服务器监控（默认开）、文件面板停靠（左/右/下，默认右）、退出前确认（默认开，不开放给 AI） |
+| 工作区 | 显示服务器监控（默认开）、监控刷新间隔（1/2/3/5/10 秒，默认 3）、文件面板停靠（左/右/下，默认右）、导航展开状态与宽度（176–320，默认收起、200）、退出前确认（默认开，不开放给 AI） |
 | 连接 | 超时、保活、idle TTL、自动重连；标明下次连接生效 |
 | 文件 | 并发、隐藏文件、默认外部程序；覆盖默认询问；自动上传默认关 |
 | 快捷键 | 按上下文修改、冲突检测、恢复默认 |
@@ -216,9 +219,11 @@ Windows 打包：`tool/package_windows.ps1` 构建 Release，将完整 runner �
 
 终端标签左侧的监控面板（UI §1）。只读，不是 Capability，也不开放给 AI。
 
-- 数据来源：在该 pane 的主机已连接时，向 ConnectionManager 取 `LeasePurpose.exec` 租约（与终端共用同一条连接，不另行拨号；需要询问主机密钥或口令时一律拒绝，显示不可用），每 3 秒执行一条固定的只读命令：读 `/proc/stat`、`/proc/meminfo`、`/proc/loadavg`、`/proc/uptime`、`/proc/net/dev`、`/proc/cpuinfo` 的处理器数、`df -kP`，有 `nvidia-smi` 时查询 GPU 名称、利用率、显存与温度。命令是常量，不拼接任何主机、路径或用户输入。输出上限 256 KiB。
-- 解析（`monitor/domain/stats.dart`，纯 Dart，有单元测试）：CPU 利用率与网络速率按两次采样的差值计算；网络合计除 `lo` 外的接口；磁盘去掉 tmpfs、devtmpfs、overlay、squashfs 与 `/dev/loop*`、`/snap/` 挂载；最近 60 个采样画折线。非 Linux（没有 `/proc`）显示不支持。
+- 数据来源：在该 pane 的主机已连接时，向 ConnectionManager 取 `LeasePurpose.exec` 租约（与终端共用同一条连接，不另行拨号；需要询问主机密钥或口令时一律拒绝，显示不可用），按设置 `monitorInterval`（1/2/3/5/10 秒，默认 3，面板顶部可直接切换）执行只读命令。命令由固定片段组成，不拼接任何主机、路径或用户输入：基础片段读 `/proc/stat`（总计与各核）、`/proc/meminfo`、`/proc/loadavg`、`/proc/uptime`、`/proc/net/dev`、`df -kPl`、页大小与时钟频率，以及每个进程 `/proc/<pid>/stat` 中的状态、父进程、CPU 时间、线程数、启动时间、常驻内存和名称（awk 压缩为一行一个进程），并探测是否有 NVIDIA（`nvidia-smi`）或 AMD（`/sys/class/drm` 厂商 0x1002）显卡；进程窗口打开时追加 `ps` 的用户和完整命令行；GPU 页可见时才追加显卡查询。输出上限 1 MiB。
+- 解析（`monitor/domain/stats.dart`、`monitor/domain/gpu.dart`，纯 Dart，有单元测试）：CPU 利用率、各核利用率与各网卡速率按两次采样的差值计算；网络默认合计除 `lo` 外的接口，可在面板里选单个网卡；进程 CPU 按 top 的口径（相邻两次采样的进程 CPU 时间差 ÷ 总 CPU 时间差 × 核数，100% 为一个核），进程号重用由启动时间区分；磁盘去掉 tmpfs、devtmpfs、overlay、squashfs 与 `/dev/loop*`、`/snap/` 挂载；最近 60 个采样画折线。非 Linux（没有 `/proc`）显示不支持。
+- 面板（240 宽，信息密度参照 FinalShell）：主机名与刷新间隔；IP（可复制）、运行时长、负载；CPU、内存、交换三个环形图（中心百分比，下方已用/总量）；占用最高的 5 个进程（内存、CPU、名称，点击打开进程窗口）；网络上下行速率、网卡选择与折线；磁盘表（挂载点、可用/总量）。检测到显卡时顶部出现“系统 | GPU”分段切换，GPU 页参照驱动自带面板：每块卡显示名称、利用率与显存环形图、温度、功耗/上限、风扇、核心与显存频率、利用率折线，以及占用该卡的进程（PID、用户、显存、名称）。
+- 进程窗口（居中大对话框，像 htop 但用鼠标操作）：顶部各核利用率条、内存、交换、任务数与负载；下方是全部进程表（PID、用户、CPU、内存%、常驻内存、状态、线程、运行时长、命令），可搜索、点列头排序、暂停刷新；选中行跟随 PID 不跳动。右键可复制 PID 或命令、结束进程（SIGTERM）或强制结束（SIGKILL），结束前确认。结束进程是 monitor 的 typed 用例（PID 为整数、信号为枚举，命令由常量拼成），不登记为 Capability，不开放给 AI；权限不足时显示服务器返回的错误。
 - 生命周期：面板显示且所在标签激活时轮询；标签切走、面板关闭或会话断开时停止并归还租约，因而不会让本该停泊关闭的连接一直活着。单次执行超过 10 秒视为失败，连续失败时保留上次数据并标出。
-- GPU 只支持 NVIDIA（nvidia-smi）；其他 GPU 不显示该块，不显示假数据。
+- GPU：NVIDIA 用 `nvidia-smi --query-gpu` 与 `--query-compute-apps`（各 5 秒超时，`[N/A]` 显示为“–”）；AMD 读 amdgpu 的 sysfs（`gpu_busy_percent`、`mem_info_vram_*`、hwmon 温度/功耗/风扇），进程来自 `/proc/<pid>/fdinfo` 的 `drm-*` 字段（只看得到当前用户有权读取的进程），名称在有 `lspci` 时取自它。其他显卡不显示 GPU 页，不显示假数据。
 
-验收：解析与差值计算有单元测试；在作者的 Ubuntu 服务器上实际显示需实机验收。
+验收：解析、差值与进程 CPU 计算有单元测试；在作者的 Ubuntu 服务器上实际显示需实机验收；GPU 只有构造的输出样本，没有真实显卡验证。
