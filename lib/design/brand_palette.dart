@@ -66,6 +66,12 @@ class BrandPalette extends ThemeExtension<BrandPalette> {
     return color;
   }
 
+  /// Buttons keep the brand color itself whenever white text already reads on it.
+  Color get fillPrimary => colorContrast(primary, Colors.white) >= 4.5 ? primary : controlPrimary;
+
+  Color get navigationSelection => Color.alphaBlend(primary.withValues(alpha: .18), sidebar);
+  Color get onNavigationSelection => readableColor(controlPrimary, navigationSelection, 4.5);
+
   Color get accentInk => readableColor(accent, surface, 3);
 
   @override

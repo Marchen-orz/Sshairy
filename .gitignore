@@ -50,3 +50,6 @@ app.*.map.json
 
 # Claude Code runtime state
 .claude/scheduled_tasks.lock
+
+# Local design source pack; runtime assets are kept in assets/brand/.
+/Sshairy-Brand-Asset-Pack/

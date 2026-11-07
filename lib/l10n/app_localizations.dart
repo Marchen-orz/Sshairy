@@ -458,6 +458,18 @@ abstract class AppLocalizations {
   /// **'Sakura Pink'**
   String get themeNamePink;
 
+  /// No description provided for @navigationExpand.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand navigation'**
+  String get navigationExpand;
+
+  /// No description provided for @navigationCollapse.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse navigation'**
+  String get navigationCollapse;
+
   /// No description provided for @commandPalette.
   ///
   /// In en, this message translates to:
@@ -2131,6 +2143,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Resize tool panel'**
   String get resizeToolPanel;
+
+  /// No description provided for @resizeNavigation.
+  ///
+  /// In en, this message translates to:
+  /// **'Resize navigation'**
+  String get resizeNavigation;
 
   /// No description provided for @configRestoreSnapshots.
   ///

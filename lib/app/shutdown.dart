@@ -15,13 +15,15 @@ import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
 import '../foundation/diagnostics.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/desktop_window.dart';
 
 enum _ExitFailureChoice { back, retry, quit }
 
 /// Every close request shares this decision and drain sequence, including the custom titlebar and Alt+F4.
 class ShutdownGuard extends ConsumerStatefulWidget {
-  const ShutdownGuard({super.key, required this.child});
+  const ShutdownGuard({super.key, required this.child, this.window});
   final Widget child;
+  final DesktopWindow? window;
 
   @override
   ConsumerState<ShutdownGuard> createState() => _ShutdownGuardState();
@@ -31,6 +33,8 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
   late final _listener = AppLifecycleListener(onExitRequested: _onExit);
   var _asking = false;
   var _draining = false;
+
+  DesktopWindow get _window => widget.window ?? DesktopWindow.instance;
 
   @override
   void initState() {
@@ -66,6 +70,8 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
       }
       while (mounted) {
         setState(() => _draining = true);
+        // Cleanup and engine teardown happen after the window is gone, never on a frozen frame.
+        await _window.hide();
         try {
           await Future.wait([transfers.shutdown(), edits.shutdown(), forwards.shutdown()])
               .timeout(const Duration(seconds: 8));
@@ -86,11 +92,14 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
               .record(DiagnosticArea.application, DiagnosticAction.shutdown, DiagnosticOutcome.failed);
           if (!mounted) return AppExitResponse.cancel;
           setState(() => _draining = false);
+          await _window.show();
+          if (!mounted) return AppExitResponse.cancel;
           switch (await _failure()) {
             case _ExitFailureChoice.retry:
               continue;
             case _ExitFailureChoice.quit:
               // Only an explicit choice can abandon pending saves or an unconfirmed remote listener.
+              await _window.hide();
               ref.read(connectionManagerProvider).closeAll();
               return AppExitResponse.exit;
             case _ExitFailureChoice.back:

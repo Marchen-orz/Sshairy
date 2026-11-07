@@ -200,6 +200,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get themeNamePink => '樱花粉';
 
   @override
+  String get navigationExpand => '展开导航';
+
+  @override
+  String get navigationCollapse => '收起导航';
+
+  @override
   String get commandPalette => '命令面板';
 
   @override
@@ -1092,6 +1098,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get resizeToolPanel => '调整工具面板宽度';
+
+  @override
+  String get resizeNavigation => '调整导航宽度';
 
   @override
   String get configRestoreSnapshots => '恢复快照';

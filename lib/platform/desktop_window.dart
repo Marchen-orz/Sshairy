@@ -26,6 +26,7 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
   final MethodChannel _channel;
   final bool _windows;
   Future<void>? _initializing;
+  ({String theme, bool dark})? _brandIcon;
 
   Future<void> initialize() => _initializing ??= _initialize();
 
@@ -62,6 +63,10 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
   Future<void> beginDrag() => _invoke('drag');
   Future<void> showSystemMenu() => _invoke('systemMenu');
 
+  /// Quit hides the window before slow cleanup and shows it again only if cleanup needs a decision.
+  Future<void> hide() => _invoke('hide');
+  Future<void> show() => _invoke('show');
+
   /// Physical client coordinates let Windows identify the native maximize button for its Snap menu.
   Future<void> setMaximizeRect(Rect? bounds, double pixelRatio) => _invoke(
     'maximizeRect',
@@ -69,6 +74,19 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
         ? null
         : [bounds.left * pixelRatio, bounds.top * pixelRatio, bounds.right * pixelRatio, bounds.bottom * pixelRatio],
   );
+
+  /// Switches the running window's title-bar and taskbar icon to the one for [theme] (the persisted accent name) and
+  /// brightness. A repeat of the current icon is not sent again; a rejected icon is dropped and may be retried.
+  Future<void> setBrandIcon(String theme, {required bool dark}) async {
+    final icon = (theme: theme, dark: dark);
+    if (!value.supported || icon == _brandIcon) return;
+    _brandIcon = icon;
+    try {
+      await _channel.invokeMethod<void>('brandIcon', {'theme': theme, 'dark': dark});
+    } on PlatformException {
+      if (_brandIcon == icon) _brandIcon = null;
+    }
+  }
 
   /// Uses the same cancelable application-exit request as Alt+F4 and the native close menu.
   Future<AppExitResponse> close() => ServicesBinding.instance.exitApplication(AppExitType.cancelable);

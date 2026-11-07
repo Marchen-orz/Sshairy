@@ -4,6 +4,19 @@ import 'package:flutter/services.dart';
 import 'popup.dart';
 import 'theme.dart';
 
+/// The current navigation width, shared with secondary panels opened from command actions.
+class SidePanelAnchor extends InheritedWidget {
+  const SidePanelAnchor({super.key, required this.navigationWidth, required super.child});
+
+  final double navigationWidth;
+
+  static double of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SidePanelAnchor>()?.navigationWidth ?? WorkspaceSize.rail;
+
+  @override
+  bool updateShouldNotify(SidePanelAnchor oldWidget) => navigationWidth != oldWidget.navigationWidth;
+}
+
 /// Edit drawer from docs/UI.md §1: a floating panel on the right; Esc or a click outside closes it.
 Future<T?> showSideDrawer<T>(BuildContext context, WidgetBuilder builder, {double width = WorkspaceSize.flyout}) =>
     _showPanel<T>(context, builder, width: width, right: true);
@@ -14,6 +27,7 @@ Future<T?> showFlyout<T>(BuildContext context, WidgetBuilder builder, {double wi
 
 Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required double width, required bool right}) {
   final dark = Theme.of(context).brightness == Brightness.dark;
+  final navigationWidth = SidePanelAnchor.of(context);
   return showGeneralDialog<T>(
     context: context,
     barrierDismissible: true,
@@ -32,7 +46,7 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
               top: WorkspaceSize.titleBar + Space.sm,
               bottom: Space.sm,
               right: right ? Space.sm : 0,
-              left: right ? 0 : WorkspaceSize.rail + Space.xs,
+              left: right ? 0 : navigationWidth + Space.xs,
             ),
             child: Align(
               alignment: right ? Alignment.centerRight : Alignment.centerLeft,

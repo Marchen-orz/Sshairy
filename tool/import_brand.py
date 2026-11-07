@@ -52,8 +52,11 @@ def readable(color, background, ratio):
     raise ValueError("Unreachable contrast")
 
 
-def light_tokens(p):
+def light_tokens(p, theme):
     ink, primary, white, base = (p[k] for k in ("ink", "primary", "white", "surface"))
+    # Author's follow-up: the pack's blue, a little softer and toward sky, still carrying white text; artwork unchanged.
+    if theme == "blue":
+        primary = "#2C71E8"
     selection = blend(white, primary, .12)
     sidebar = blend(base, p["mist"], .45)
     text_base = min((base, sidebar, white), key=luminance)
@@ -69,6 +72,20 @@ def light_tokens(p):
         "on-selection": ink, "focus-ring": readable(primary, base, 3),
         "success": "#167347", "warning": "#806000", "danger": "#B42B40", "info": "#19559E",
         "terminal-bg": white, "terminal-fg": ink, "terminal-cursor": readable(primary, white, 3),
+    }
+
+
+def dark_tokens(tokens, theme):
+    # Author's follow-up: Ice Blue dark reads mostly neutral grey with blue only as the accent (cf. Netcatty dark).
+    if theme != "blue":
+        return tokens
+    return {
+        **tokens,
+        "background": "#121418", "sidebar": "#181A1F", "surface": "#1C1F25", "surface-raised": "#23262D",
+        "border-subtle": "#2E323A", "border-control": "#6B7280",
+        "text": "#ECEEF2", "text-secondary": "#A6ABB5", "text-muted": "#8A909B",
+        "selection": "#253244", "on-primary": "#0E1116", "on-selection": "#ECEEF2",
+        "terminal-bg": "#0F1114", "terminal-fg": "#E6E8EC", "terminal-cursor": tokens["primary"],
     }
 
 
@@ -110,8 +127,8 @@ def main():
         dark = json.loads((source / "dark/theme-dark.json").read_text(encoding="utf-8"))
         lines.append(f"  Accent.{key}: (")
         for mode, tokens, ansi in [
-            ("light", light_tokens(light["tokens"]), LIGHT_ANSI),
-            ("dark", dark["tokens"], [dark["terminal_ansi"][n] for n in ANSI_NAMES]),
+            ("light", light_tokens(light["tokens"], key), LIGHT_ANSI),
+            ("dark", dark_tokens(dark["tokens"], key), [dark["terminal_ansi"][n] for n in ANSI_NAMES]),
         ]:
             lines.append(f"    BrandPalette(Accent.{key}, Brightness.{mode}, {{")
             lines.extend(f"      '{name}': {dart_color(value)}," for name, value in tokens.items())
@@ -123,15 +140,40 @@ def main():
         output.mkdir(parents=True, exist_ok=True)
         assets = {
             "mark.png": ("mascot/mascot-head.png", (112, 112), True),
-            "mascot.png": ("mascot/mascot-full-body.png", (512, 400), True),
             "logo-light.png": ("logos/primary-horizontal.png", (800, 260), True),
             "logo-dark.png": ("dark/logos/primary-horizontal.png", (800, 260), True),
             "breeze-light.png": ("decorations/breeze.png", (256, 256), True),
             "breeze-dark.png": ("dark/decorations/breeze.png", (256, 256), True),
+            "cloud-light.png": ("decorations/cloud.png", (160, 160), True),
+            "cloud-dark.png": ("dark/decorations/cloud.png", (160, 160), True),
+            "sparkle-light.png": ("decorations/sparkle.png", (64, 64), True),
+            "sparkle-dark.png": ("dark/decorations/sparkle.png", (64, 64), True),
+            "wind-light.png": ("decorations/wind-lines.png", (160, 160), True),
+            "wind-dark.png": ("dark/decorations/wind-lines.png", (160, 160), True),
+            # Poses are shared by light and dark; the host library rotates the 360 px ones at up to 176 logical px.
+            "pose-default.png": ("poses/default.png", (360, 360), True),
+            "pose-happy.png": ("poses/happy.png", (360, 360), True),
+            "pose-success.png": ("poses/success.png", (360, 360), True),
+            "pose-speed.png": ("poses/speed.png", (360, 360), True),
+            "pose-sleeping.png": ("poses/sleeping.png", (360, 360), True),
+            "pose-security.png": ("poses/security.png", (240, 240), True),
+            "pose-coding-focus.png": ("poses/coding-focus.png", (240, 240), True),
+            "pose-ssh-connected.png": ("poses/ssh-connected.png", (240, 240), True),
+            "pose-sftp-transfer.png": ("poses/sftp-transfer.png", (240, 240), True),
         }
         for name, (relative, size, crop) in assets.items():
             export_png(source / relative, output / name, size, crop)
-        manifest[key] = {"source": folder, "assets": {name: spec[0] for name, spec in assets.items()}}
+        icon_output = root / "windows/runner/resources/brand"
+        icon_output.mkdir(parents=True, exist_ok=True)
+        icon_sources = {"light": "app-icons/app-icon-1024.png", "dark": "dark/app-icons/app-icon-1024.png"}
+        for mode, relative in icon_sources.items():
+            icon = Image.open(source / relative).convert("RGBA")
+            icon.save(icon_output / f"{key}-{mode}.ico", sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
+        manifest[key] = {
+            "source": folder,
+            "assets": {name: spec[0] for name, spec in assets.items()},
+            "windowsIcons": icon_sources,
+        }
     lines.append("};")
     (root / "lib/design/brand_palette_data.dart").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (brand / "sources.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -20,6 +20,8 @@ import 'identities_panel.dart';
 import 'keys_panel.dart';
 import 'ssh_config_import_panel.dart';
 
+const _gridTile = 320.0, _gridRow = 64.0;
+
 class VaultPage extends ConsumerStatefulWidget {
   const VaultPage({super.key, required this.active, required this.onConnect});
 
@@ -279,25 +281,49 @@ class _VaultPageState extends ConsumerState<VaultPage> {
           Expanded(
             child: matches.isEmpty
                 ? (query.isEmpty
-                      ? const BrandEmptyState()
+                      ? BrandEmptyState(active: widget.active)
                       : quick != null
                       ? const SizedBox.shrink()
                       : Center(child: Text(l.noMatches)))
-                : view == HostView.list
-                ? ListView.separated(
-                    itemCount: matches.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: Space.xs),
-                    itemBuilder: (context, i) => tile(matches[i]),
-                  )
-                : GridView.builder(
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 320,
-                      mainAxisExtent: 64,
-                      crossAxisSpacing: Space.sm,
-                      mainAxisSpacing: Space.sm,
-                    ),
-                    itemCount: matches.length,
-                    itemBuilder: (context, i) => tile(matches[i]),
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final list = view == HostView.list;
+                      // Fixed row extents give the hosts' height exactly; the watermark only fills space they leave.
+                      final rows = list
+                          ? matches.length
+                          : (matches.length / (constraints.maxWidth / (_gridTile + Space.sm)).ceil()).ceil();
+                      final used = list ? rows * (WorkspaceSize.listRow + Space.xs) : rows * (_gridRow + Space.sm);
+                      final spare =
+                          constraints.maxHeight - used >= BrandWatermark.height + Space.xl + Space.lg &&
+                          constraints.maxWidth >= BrandWatermark.width * 3;
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (spare)
+                            Positioned(
+                              right: 0,
+                              bottom: Space.lg,
+                              child: BrandWatermark(active: widget.active),
+                            ),
+                          list
+                              ? ListView.separated(
+                                  itemCount: matches.length,
+                                  separatorBuilder: (_, _) => const SizedBox(height: Space.xs),
+                                  itemBuilder: (context, i) => tile(matches[i]),
+                                )
+                              : GridView.builder(
+                                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: _gridTile,
+                                    mainAxisExtent: _gridRow,
+                                    crossAxisSpacing: Space.sm,
+                                    mainAxisSpacing: Space.sm,
+                                  ),
+                                  itemCount: matches.length,
+                                  itemBuilder: (context, i) => tile(matches[i]),
+                                ),
+                        ],
+                      );
+                    },
                   ),
           ),
         ],

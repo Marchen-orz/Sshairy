@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,6 +51,13 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   /// The SFTP page connects nothing until first shown, then stays alive like a tab.
   var _filesBuilt = false;
 
+  /// Shown at once and saved behind, like the files dock; a change through settings.patch is followed.
+  late var _navigationExpanded = ref.read(settingsProvider).get(SettingKeys.navigationExpanded);
+  late var _navigationWidth = ref.read(settingsProvider).get(SettingKeys.navigationWidth);
+  final _surfaceKey = GlobalKey();
+
+  BuildContext get _surfaceContext => _surfaceKey.currentContext ?? context;
+
   @override
   void initState() {
     super.initState();
@@ -79,12 +88,12 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   }
 
   void _flyout(WidgetBuilder builder, {double width = WorkspaceSize.flyout}) =>
-      _overlay(() => showFlyout<void>(context, builder, width: width));
+      _overlay(() => showFlyout<void>(_surfaceContext, builder, width: width));
 
   void _openSettings() => _flyout((_) => const SettingsPanel(), width: WorkspaceSize.flyoutWide);
   void _openSnippets() => _flyout((_) => const SnippetsPanel());
   void _openForwarding() => _flyout((_) => const ForwardingPanel());
-  void _openPalette() => _overlay(() => widget.openPalette(context));
+  void _openPalette() => _overlay(() => widget.openPalette(_surfaceContext));
   void _openKeys() => _flyout((_) => const KeysPanel());
   void _openTrust() => _flyout((context) => SingleChildScrollView(child: trustSettingsSection.build(context)));
 
@@ -195,6 +204,16 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     run?.call();
   }
 
+  void _setNavigation({bool? expanded, double? width}) {
+    setState(() {
+      _navigationExpanded = expanded ?? _navigationExpanded;
+      _navigationWidth = width ?? _navigationWidth;
+    });
+    final settings = ref.read(settingsProvider.notifier);
+    if (expanded != null) settings.set(SettingKeys.navigationExpanded, expanded);
+    if (width != null) settings.set(SettingKeys.navigationWidth, width);
+  }
+
   void _toggleFiles(TabId id) => setState(() => _sideFiles.contains(id) ? _sideFiles.remove(id) : _sideFiles.add(id));
 
   void _refocus(TabId tabId, PaneId pane) {
@@ -232,6 +251,18 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     final wide = MediaQuery.sizeOf(context).width >= WorkspaceSize.wideBreakpoint;
     final showMonitor = settings.get(SettingKeys.showMonitor);
     final dock = settings.get(SettingKeys.filesDock);
+    final settingsNotifier = ref.read(settingsProvider.notifier);
+    ref.listen(settingsProvider, (before, now) {
+      final (expanded, width) = (now.get(SettingKeys.navigationExpanded), now.get(SettingKeys.navigationWidth));
+      if (before?.get(SettingKeys.navigationExpanded) != expanded ||
+          before?.get(SettingKeys.navigationWidth) != width) {
+        setState(() {
+          _navigationExpanded = expanded;
+          _navigationWidth = width;
+        });
+      }
+    });
+    final navigationExpanded = _navigationExpanded, navigationWidth = _navigationWidth;
 
     Widget leaf(WorkspaceTab tab, Leaf leaf) {
       final session = sessions[leaf.session];
@@ -343,7 +374,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     final activeTab = state.activeTab;
     final titleBar = Container(
       height: WorkspaceSize.titleBar,
-      padding: const EdgeInsets.only(left: Space.xs),
+      padding: const EdgeInsets.fromLTRB(Space.xs, Space.xs, 0, Space.xs),
       color: scheme.surfaceContainerLow,
       child: Row(
         children: [
@@ -405,31 +436,37 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
               ],
             ),
           ),
-          if (activeTab != null) ...[
-            if (wide)
-              _BarToggle(
-                tooltip: l.monitor,
-                icon: Icons.monitor_heart_outlined,
-                selected: showMonitor,
-                onPressed: () => ref.read(settingsProvider.notifier).set(SettingKeys.showMonitor, !showMonitor),
-              ),
-            _BarToggle(
-              tooltip: l.files,
-              icon: Icons.folder_outlined,
-              selected: _sideFiles.contains(activeTab.id),
-              onPressed: () => _toggleFiles(activeTab.id),
-            ),
-            AppMenuButton<SplitAxis>(
-              tooltip: l.split,
-              icon: const Icon(Icons.vertical_split_outlined, size: 18),
-              onSelected: _workspace.split,
-              items: () => [
-                AppMenuItem(value: SplitAxis.horizontal, label: l.splitRight, icon: Icons.vertical_split_outlined),
-                AppMenuItem(value: SplitAxis.vertical, label: l.splitDown, icon: Icons.horizontal_split_outlined),
+          // A small gap keeps neighbouring selected buttons apart, like the window controls.
+          Row(
+            spacing: Space.xs / 2,
+            children: [
+              if (activeTab != null) ...[
+                if (wide)
+                  _BarToggle(
+                    tooltip: l.monitor,
+                    icon: Icons.monitor_heart_outlined,
+                    selected: showMonitor,
+                    onPressed: () => settingsNotifier.set(SettingKeys.showMonitor, !showMonitor),
+                  ),
+                _BarToggle(
+                  tooltip: l.files,
+                  icon: Icons.folder_outlined,
+                  selected: _sideFiles.contains(activeTab.id),
+                  onPressed: () => _toggleFiles(activeTab.id),
+                ),
+                AppMenuButton<SplitAxis>(
+                  tooltip: l.split,
+                  icon: const Icon(Icons.vertical_split_outlined, size: 18),
+                  onSelected: _workspace.split,
+                  items: () => [
+                    AppMenuItem(value: SplitAxis.horizontal, label: l.splitRight, icon: Icons.vertical_split_outlined),
+                    AppMenuItem(value: SplitAxis.vertical, label: l.splitDown, icon: Icons.horizontal_split_outlined),
+                  ],
+                ),
               ],
-            ),
-          ],
-          const TransfersButton(),
+              const TransfersButton(),
+            ],
+          ),
           const SizedBox(width: Space.xs),
           WindowControls(
             minimizeLabel: l.windowMinimize,
@@ -441,14 +478,26 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
       ),
     );
 
-    return Scaffold(
-      body: Focus(
-        onKeyEvent: _onKey,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            IconRail(
-              header: DesktopDragRegion(child: Center(child: const BrandMark())),
+    return SidePanelAnchor(
+      navigationWidth: navigationExpanded ? navigationWidth : WorkspaceSize.rail,
+      child: Scaffold(
+        key: _surfaceKey,
+        body: Focus(
+          onKeyEvent: _onKey,
+          child: NavigationFrame(
+            expanded: navigationExpanded,
+            width: navigationWidth,
+            resizeLabel: l.resizeNavigation,
+            onResize: (width) => _setNavigation(width: width),
+            navigation: IconRail(
+              header: const DesktopDragRegion(child: Center(child: BrandMark())),
+              expandedHeader: DesktopDragRegion(
+                child: Center(child: BrandLogo(width: min(BrandLogo.maxWidth, navigationWidth - Space.lg * 2))),
+              ),
+              expanded: navigationExpanded,
+              width: navigationWidth,
+              toggleLabel: navigationExpanded ? l.navigationCollapse : l.navigationExpand,
+              onToggle: () => _setNavigation(expanded: !navigationExpanded),
               groups: [
                 [
                   RailItem(icon: Icons.dns_outlined, label: l.hosts, selected: vault, onTap: _workspace.showVault),
@@ -471,53 +520,50 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 RailItem(icon: Icons.settings_outlined, label: l.settings, onTap: _openSettings),
               ],
             ),
-            const VerticalDivider(width: WorkspaceSize.divider),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  titleBar,
-                  const Divider(height: WorkspaceSize.divider),
-                  Expanded(
-                    key: const ValueKey('workspace-content'),
-                    // Not IndexedStack: its wrappers are unkeyed, so closing a middle tab would rebuild the panes
-                    // after it.
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                titleBar,
+                const Divider(height: WorkspaceSize.divider),
+                Expanded(
+                  key: const ValueKey('workspace-content'),
+                  // Not IndexedStack: its wrappers are unkeyed, so closing a middle tab would rebuild the panes
+                  // after it.
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Visibility.maintain(
+                        key: const ValueKey('vault'),
+                        visible: vault,
+                        child: ExcludeFocus(
+                          excluding: !vault,
+                          child: VaultPage(active: vault, onConnect: _workspace.openHost),
+                        ),
+                      ),
+                      if (_filesBuilt)
                         Visibility.maintain(
-                          key: const ValueKey('vault'),
-                          visible: vault,
-                          child: ExcludeFocus(
-                            excluding: !vault,
-                            child: VaultPage(active: vault, onConnect: _workspace.openHost),
+                          key: const ValueKey('files'),
+                          visible: state.files,
+                          child: IgnorePointer(
+                            ignoring: !state.files,
+                            child: ExcludeFocus(excluding: !state.files, child: const FilesPage()),
                           ),
                         ),
-                        if (_filesBuilt)
-                          Visibility.maintain(
-                            key: const ValueKey('files'),
-                            visible: state.files,
-                            child: IgnorePointer(
-                              ignoring: !state.files,
-                              child: ExcludeFocus(excluding: !state.files, child: const FilesPage()),
-                            ),
+                      for (final tab in state.tabs)
+                        Visibility.maintain(
+                          key: ValueKey(tab.id),
+                          visible: state.active == tab.id,
+                          child: IgnorePointer(
+                            ignoring: state.active != tab.id,
+                            child: ExcludeFocus(excluding: state.active != tab.id, child: tabBody(tab)),
                           ),
-                        for (final tab in state.tabs)
-                          Visibility.maintain(
-                            key: ValueKey(tab.id),
-                            visible: state.active == tab.id,
-                            child: IgnorePointer(
-                              ignoring: state.active != tab.id,
-                              child: ExcludeFocus(excluding: state.active != tab.id, child: tabBody(tab)),
-                            ),
-                          ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -707,40 +753,46 @@ class _TabState extends State<_Tab> {
                 onSecondaryTapUp: widget.onSecondaryTap == null
                     ? null
                     : (d) => widget.onSecondaryTap!(d.globalPosition),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: WorkspaceSize.tabMin, maxWidth: WorkspaceSize.tabMax),
-                  child: SizedBox(
-                    height: WorkspaceSize.tabHeight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: Space.sm, right: Space.xs),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox.square(dimension: 14, child: Center(child: widget.leading)),
-                          const SizedBox(width: Space.sm),
-                          Flexible(
-                            child: Text(
-                              widget.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: selected ? scheme.onSurface : scheme.onSurfaceVariant),
-                            ),
-                          ),
-                          if (widget.onClose != null) ...[
-                            const SizedBox(width: Space.xs),
-                            // The close button shows on the current tab and on hover, so idle tabs read cleanly.
-                            Opacity(
-                              opacity: selected || _hovered ? 1 : 0,
-                              child: IconButton(
-                                tooltip: AppLocalizations.of(context).close,
-                                onPressed: widget.onClose,
-                                constraints: const BoxConstraints.tightFor(width: 20, height: 20),
-                                style: IconButton.styleFrom(minimumSize: const Size(20, 20), padding: EdgeInsets.zero),
-                                icon: const Icon(Icons.close, size: 13),
+                // Sized to the title within the limits; a short title leaves its room before the close button, which
+                // keeps to the right edge.
+                child: IntrinsicWidth(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: WorkspaceSize.tabMin, maxWidth: WorkspaceSize.tabMax),
+                    child: SizedBox(
+                      height: WorkspaceSize.tabHeight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: Space.sm, right: Space.xs),
+                        child: Row(
+                          children: [
+                            SizedBox.square(dimension: 14, child: Center(child: widget.leading)),
+                            const SizedBox(width: Space.sm),
+                            Expanded(
+                              child: Text(
+                                widget.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: selected ? scheme.onSurface : scheme.onSurfaceVariant),
                               ),
                             ),
+                            if (widget.onClose != null) ...[
+                              const SizedBox(width: Space.xs),
+                              // The close button shows on the current tab and on hover, so idle tabs read cleanly.
+                              Opacity(
+                                opacity: selected || _hovered ? 1 : 0,
+                                child: IconButton(
+                                  tooltip: AppLocalizations.of(context).close,
+                                  onPressed: widget.onClose,
+                                  constraints: const BoxConstraints.tightFor(width: 20, height: 20),
+                                  style: IconButton.styleFrom(
+                                    minimumSize: const Size(20, 20),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  icon: const Icon(Icons.close, size: 13),
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),

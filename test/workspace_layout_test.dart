@@ -1,13 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/brand.dart';
+import 'package:sshairy/design/icon_rail.dart';
 import 'package:sshairy/design/dock_panel.dart';
 import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/features/hosts/api.dart';
+import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/workspace/presentation/workspace_page.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
@@ -24,11 +29,28 @@ class _Hosts extends HostsNotifier {
   List<Host> build() => _hosts;
 }
 
+class _ManyHosts extends HostsNotifier {
+  @override
+  List<Host> build() => [
+    for (var i = 0; i < 40; i++) Host(id: HostId('h$i'), label: 'host-$i', address: 'h$i.example', username: 'u'),
+  ];
+}
+
 class _TestAssets extends CachingAssetBundle {
   @override
   Future<ByteData> load(String key) async => key == 'AssetManifest.bin'
       ? const StandardMessageCodec().encodeMessage(<String, Object?>{})!
       : ByteData.sublistView(File(key).readAsBytesSync());
+}
+
+/// Settings are written by real file IO, which fake time does not advance. The state changes once the write has
+/// finished and released its lock; reading the file meanwhile would hold it open and fail the replace on Windows.
+Future<void> _settled(WidgetTester tester, ProviderContainer container, bool Function(Settings) done) async {
+  for (var i = 0; i < 400 && !done(container.read(settingsProvider)); i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  expect(done(container.read(settingsProvider)), isTrue);
 }
 
 void main() {
@@ -37,10 +59,14 @@ void main() {
     addTearDown(() => dir.deleteSync(recursive: true));
     await tester.binding.setSurfaceSize(const Size(1400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer(
+      overrides: [dataDirProvider.overrideWithValue(dir.path), hostsProvider.overrideWith(_Hosts.new)],
+    );
+    addTearDown(container.dispose);
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [dataDirProvider.overrideWithValue(dir.path), hostsProvider.overrideWith(_Hosts.new)],
+      UncontrolledProviderScope(
+        container: container,
         child: DefaultAssetBundle(
           bundle: _TestAssets(),
           child: MaterialApp(
@@ -54,6 +80,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byType(BrandWatermark), findsOneWidget, reason: 'three hosts leave the lower page blank');
     for (final label in ['Hosts', 'SFTP', 'Keys', 'Trusted host keys', 'Snippets', 'Settings']) {
       expect(find.byTooltip(label), findsOneWidget, reason: label);
     }
@@ -71,6 +98,13 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 
+    // An empty flyout list shows a small translucent pose with its label.
+    await tester.tap(find.byTooltip('Port forwarding'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BrandHint), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
     // Panels open as flyouts beside the rail and close with Escape.
     await tester.tap(find.byTooltip('Trusted host keys'));
     await tester.pumpAndSettle();
@@ -79,6 +113,98 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(flyout, findsNothing);
+    expect(tester.getSize(find.byType(IconRail)).width, WorkspaceSize.rail);
+    expect(tester.getTopLeft(find.byType(BrandMark)).dy, greaterThanOrEqualTo(Space.xs));
+    expect(tester.getTopLeft(find.byTooltip('New connection')).dy, greaterThanOrEqualTo(Space.xs));
+
+    await tester.tap(find.byTooltip('Expand navigation'));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(IconRail)).width, WorkspaceSize.navigationExpanded);
+    expect(find.text('Hosts'), findsOneWidget);
+    expect(find.text('Trusted host keys'), findsOneWidget);
+    expect(find.byType(BrandLogo), findsOneWidget);
+    expect(tester.getTopLeft(find.byType(BrandLogo)).dy, greaterThanOrEqualTo(Space.sm));
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.byType(PopupSurface)).dx, WorkspaceSize.navigationExpanded + Space.xs);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    // The expanded navigation resizes from its divider: only a guide moves until release, within 176-320.
+    double railWidth() => tester.getSize(find.byType(IconRail)).width;
+    Offset divider() => Offset(railWidth() + WorkspaceSize.divider / 2, 400);
+    final drag = await tester.startGesture(divider(), kind: PointerDeviceKind.mouse);
+    await drag.moveBy(const Offset(60, 0));
+    await drag.moveBy(const Offset(500, 0));
+    await tester.pump();
+    expect(railWidth(), WorkspaceSize.navigationExpanded, reason: 'the page does not reflow while dragging');
+    await drag.up();
+    await tester.pumpAndSettle();
+    expect(railWidth(), WorkspaceSize.navigationMax);
+    expect(tester.getTopLeft(find.byType(BrandLogo)).dx, greaterThanOrEqualTo(Space.lg));
+    await tester.dragFrom(divider(), const Offset(-500, 0), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    expect(railWidth(), WorkspaceSize.navigationMin);
+    expect(tester.getSize(find.byType(BrandLogo)).width, lessThanOrEqualTo(WorkspaceSize.navigationMin - Space.lg * 2));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(railWidth(), WorkspaceSize.navigationMin + Space.xl, reason: 'the focused divider steps with arrow keys');
+    // Width and expansion are remembered like the files dock.
+    await _settled(
+      tester,
+      container,
+      (s) => s.get(SettingKeys.navigationExpanded) && s.get(SettingKeys.navigationWidth) == railWidth(),
+    );
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.byType(PopupSurface)).dx, railWidth() + Space.xs);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.tapAt(divider(), kind: PointerDeviceKind.mouse);
+    await tester.pump(kDoubleTapMinTime);
+    await tester.tapAt(divider(), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    expect(railWidth(), WorkspaceSize.navigationExpanded, reason: 'double-click restores the default');
+    await tester.tap(find.byTooltip('Collapse navigation'));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(IconRail)).width, WorkspaceSize.rail);
+    expect(find.byType(BrandMark), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _settled(
+      tester,
+      container,
+      (s) =>
+          !s.get(SettingKeys.navigationExpanded) &&
+          s.get(SettingKeys.navigationWidth) == WorkspaceSize.navigationExpanded,
+    );
+    final saved = jsonDecode(File('${dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>;
+    expect((saved['navigationExpanded'], saved['navigationWidth']), (false, WorkspaceSize.navigationExpanded));
+  });
+
+  testWidgets('a full host library leaves no room for the watermark', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-layout-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [dataDirProvider.overrideWithValue(dir.path), hostsProvider.overrideWith(_ManyHosts.new)],
+        child: DefaultAssetBundle(
+          bundle: _TestAssets(),
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: WorkspacePage(openPalette: (_) async {}),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('host-0'), findsOneWidget);
+    expect(find.byType(BrandWatermark), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

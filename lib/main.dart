@@ -11,6 +11,7 @@ import 'app/configuration.dart';
 import 'features/capabilities/api.dart';
 import 'platform/desktop_window.dart';
 import 'app/shutdown.dart';
+import 'app/window_brand_icon.dart';
 import 'design/theme.dart';
 import 'features/settings/api.dart';
 import 'features/workspace/api.dart';
@@ -53,7 +54,9 @@ Future<void> main(List<String> args) async {
 }
 
 class SshairyApp extends ConsumerWidget {
-  const SshairyApp({super.key});
+  const SshairyApp({super.key, this.window});
+
+  final DesktopWindow? window;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -77,6 +80,7 @@ class SshairyApp extends ConsumerWidget {
         settings.terminalFontFamily,
       ),
       themeMode: settings.themeMode,
+      builder: (context, child) => WindowBrandIcon(window: window, child: child ?? const SizedBox.shrink()),
       locale: settings.locale == null ? null : Locale(settings.locale!),
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -86,7 +90,10 @@ class SshairyApp extends ConsumerWidget {
       ],
       supportedLocales: AppLocalizations.supportedLocales,
       home: problem == null
-          ? ShutdownGuard(child: WorkspacePage(openPalette: showCommandPalette))
+          ? ShutdownGuard(
+              window: window,
+              child: WorkspacePage(openPalette: showCommandPalette),
+            )
           : ConfigurationErrorPage(problem),
     );
   }

@@ -5,13 +5,37 @@
 #include <windowsx.h>
 
 #include <cmath>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <string>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "resource.h"
 
 namespace {
+
+// Persisted accent names in the order of the IDI_BRAND_* ids, each with a light and a dark icon.
+constexpr const char* kBrandThemes[] = {"blue", "green", "violet", "orange", "deepSea", "pink"};
+constexpr int kBrandThemeCount = static_cast<int>(std::size(kBrandThemes));
+static_assert(IDI_BRAND_PINK_DARK == IDI_BRAND_BLUE_LIGHT + 2 * kBrandThemeCount - 1,
+              "brand icon ids must be contiguous");
+
+// The icon resource for {'theme': name, 'dark': bool}, or nothing for anything outside the allowlist.
+std::optional<int> BrandIconResource(const flutter::EncodableValue* arguments) {
+  const auto* map = arguments ? std::get_if<flutter::EncodableMap>(arguments) : nullptr;
+  if (map == nullptr) return std::nullopt;
+  const auto theme = map->find(flutter::EncodableValue("theme"));
+  const auto dark = map->find(flutter::EncodableValue("dark"));
+  if (theme == map->end() || dark == map->end()) return std::nullopt;
+  const auto* name = std::get_if<std::string>(&theme->second);
+  const auto* is_dark = std::get_if<bool>(&dark->second);
+  if (name == nullptr || is_dark == nullptr) return std::nullopt;
+  for (int i = 0; i < kBrandThemeCount; ++i) {
+    if (*name == kBrandThemes[i]) return IDI_BRAND_BLUE_LIGHT + i * 2 + (*is_dark ? 1 : 0);
+  }
+  return std::nullopt;
+}
 
 std::string Utf8(const std::wstring& text) {
   const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
@@ -132,6 +156,17 @@ void FlutterWindow::HandleWindowMethod(
     result->Success(flutter::EncodableValue(SystemFonts()));
     return;
   }
+  if (method == "brandIcon") {
+    const auto icon = BrandIconResource(call.arguments());
+    if (!icon) {
+      result->Error("invalid_icon", "Expected a known theme and a dark flag");
+    } else if (!SetIcon(*icon)) {
+      result->Error("icon_unavailable", "The window icon could not be loaded");
+    } else {
+      result->Success();
+    }
+    return;
+  }
   if (method == "minimize") {
     ShowWindow(window, SW_MINIMIZE);
   } else if (method == "toggleMaximize") {
@@ -139,6 +174,11 @@ void FlutterWindow::HandleWindowMethod(
   } else if (method == "drag") {
     ReleaseCapture();
     SendMessage(window, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+  } else if (method == "hide") {
+    ShowWindow(window, SW_HIDE);
+  } else if (method == "show") {
+    ShowWindow(window, SW_SHOW);
+    SetForegroundWindow(window);
   } else if (method == "systemMenu") {
     POINT point;
     GetCursorPos(&point);

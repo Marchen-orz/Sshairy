@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
 import '../../../design/select.dart';
@@ -37,7 +38,7 @@ class ForwardingPanel extends ConsumerWidget {
         const SizedBox(height: Space.md),
         Expanded(
           child: items.isEmpty
-              ? Center(child: Text(l.none))
+              ? BrandHint(pose: BrandPose.sshConnected, label: l.none)
               : ListView.builder(
                   itemCount: items.length,
                   itemBuilder: (context, index) => Padding(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../platform/desktop_window.dart';
+import 'theme.dart';
 
 /// Wrap only unused title-bar space: buttons, tabs and inputs retain their own pointer handling.
 class DesktopDragRegion extends StatelessWidget {
@@ -86,6 +87,7 @@ class _WindowControlsState extends State<WindowControls> {
               icon: Icons.remove,
               onPressed: () => unawaited(_window.minimize()),
             ),
+            const SizedBox(width: _gap),
             _WindowButton(
               key: _maximizeKey,
               label: state.maximized ? widget.restoreLabel : widget.maximizeLabel,
@@ -93,18 +95,22 @@ class _WindowControlsState extends State<WindowControls> {
               background: state.maximizeHovered ? scheme.onSurface.withValues(alpha: 0.08) : null,
               onPressed: () => unawaited(_window.toggleMaximize()),
             ),
+            const SizedBox(width: _gap),
             _WindowButton(
               label: widget.closeLabel,
               icon: Icons.close,
               destructive: true,
               onPressed: () => unawaited(_window.close()),
             ),
+            const SizedBox(width: Space.sm),
           ],
         );
       },
     );
   }
 }
+
+const _gap = Space.xs / 2;
 
 class _WindowButton extends StatelessWidget {
   const _WindowButton({
@@ -128,15 +134,25 @@ class _WindowButton extends StatelessWidget {
     return Tooltip(
       message: label,
       child: SizedBox(
-        width: 40,
-        height: 36,
+        width: 36,
+        height: 28,
         child: TextButton(
           onPressed: onPressed,
           style: ButtonStyle(
             padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-            minimumSize: const WidgetStatePropertyAll(Size(40, 36)),
-            shape: const WidgetStatePropertyAll(RoundedRectangleBorder()),
+            minimumSize: const WidgetStatePropertyAll(Size(36, 28)),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: const WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(Radii.control))),
+            ),
+            overlayColor: WidgetStateProperty.resolveWith((states) {
+              if (destructive) return Colors.transparent;
+              if (states.contains(WidgetState.pressed)) return scheme.onSurface.withValues(alpha: 0.12);
+              if (states.contains(WidgetState.hovered)) return scheme.onSurface.withValues(alpha: 0.08);
+              return null;
+            }),
             backgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (destructive && states.contains(WidgetState.pressed)) return scheme.error.withValues(alpha: 0.85);
               if (destructive && states.contains(WidgetState.hovered)) return scheme.error;
               return background;
             }),

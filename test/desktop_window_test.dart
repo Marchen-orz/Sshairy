@@ -13,12 +13,15 @@ void main() {
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   late List<MethodCall> calls;
   late DesktopWindow window;
+  late bool rejectIcon;
 
   setUp(() {
     calls = [];
+    rejectIcon = false;
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
       if (call.method == 'initialize') return {'maximized': false, 'active': true};
+      if (call.method == 'brandIcon' && rejectIcon) throw PlatformException(code: 'invalid_icon');
       return null;
     });
     window = DesktopWindow(channel: channel, windows: true);
@@ -56,6 +59,46 @@ void main() {
     expect(calls.last.arguments, isNull);
   });
 
+  test('quit can hide the window and show it again through the native channel', () async {
+    await window.initialize();
+    await window.hide();
+    await window.show();
+    expect(calls.skip(1).map((call) => call.method), ['hide', 'show']);
+  });
+
+  test('brand icon sends the accent name and brightness only when the icon changes', () async {
+    await window.setBrandIcon('blue', dark: false);
+    expect(calls.where((call) => call.method == 'brandIcon'), isEmpty, reason: 'not supported before initialize');
+    await window.initialize();
+    await window.setBrandIcon('blue', dark: false);
+    await window.setBrandIcon('blue', dark: false);
+    await window.setBrandIcon('blue', dark: true);
+    await window.setBrandIcon('deepSea', dark: true);
+    await window.setBrandIcon('deepSea', dark: true);
+    final icons = calls.where((call) => call.method == 'brandIcon').map((call) => call.arguments).toList();
+    expect(icons, [
+      {'theme': 'blue', 'dark': false},
+      {'theme': 'blue', 'dark': true},
+      {'theme': 'deepSea', 'dark': true},
+    ]);
+  });
+
+  test('concurrent identical brand icon requests send one native call', () async {
+    await window.initialize();
+    await Future.wait([window.setBrandIcon('pink', dark: false), window.setBrandIcon('pink', dark: false)]);
+    expect(calls.where((call) => call.method == 'brandIcon').length, 1);
+  });
+
+  test('a rejected brand icon does not throw and is retried on the next request', () async {
+    await window.initialize();
+    rejectIcon = true;
+    await window.setBrandIcon('violet', dark: true);
+    rejectIcon = false;
+    await window.setBrandIcon('violet', dark: true);
+    await window.setBrandIcon('violet', dark: true);
+    expect(calls.where((call) => call.method == 'brandIcon').length, 2);
+  });
+
   test('close asks for a cancelable exit and respects a cancelled response', () async {
     messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       expect(call.method, 'System.exitApplication');
@@ -83,6 +126,9 @@ void main() {
     await other.initialize();
     await other.minimize();
     await other.toggleMaximize();
+    await other.setBrandIcon('green', dark: true);
+    await other.hide();
+    await other.show();
     expect(other.value.supported, isFalse);
     expect(calls, isEmpty);
   });
@@ -124,6 +170,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls.lastWhere((call) => call.method == 'maximizeRect').arguments, isNotNull);
     // Unmount before the adapter is disposed, clearing its native hit-test rectangle.
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('window buttons are rounded 36x28 with a margin after close and a danger hover', (tester) async {
+    await window.initialize();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topRight,
+            child: WindowControls(
+              window: window,
+              minimizeLabel: 'Minimize',
+              maximizeLabel: 'Maximize',
+              restoreLabel: 'Restore',
+              closeLabel: 'Close window',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final buttons = find.byType(TextButton);
+    expect(buttons, findsNWidgets(3));
+    final rects = [for (var i = 0; i < 3; i++) tester.getRect(buttons.at(i))];
+    for (final rect in rects) {
+      expect(rect.size, const Size(36, 28));
+    }
+    expect(rects[1].left - rects[0].right, 2);
+    expect(rects[2].left - rects[1].right, 2);
+    expect(tester.getRect(find.byType(WindowControls)).right - rects[2].right, 8);
+    final close = tester.widget<TextButton>(buttons.at(2)).style!;
+    expect(
+      close.shape!.resolve({}),
+      isA<RoundedRectangleBorder>().having((s) => s.borderRadius, 'radius', isNot(BorderRadius.zero)),
+    );
+    final scheme = Theme.of(tester.element(buttons.at(2))).colorScheme;
+    expect(close.backgroundColor!.resolve({WidgetState.hovered}), scheme.error);
+    final minimize = tester.widget<TextButton>(buttons.at(0)).style!;
+    expect(minimize.overlayColor!.resolve({WidgetState.hovered}), isNotNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }

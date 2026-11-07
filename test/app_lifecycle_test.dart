@@ -11,6 +11,7 @@ import 'package:sshairy/features/forwarding/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/main.dart';
+import 'package:sshairy/platform/desktop_window.dart';
 
 const _rule = ForwardRule(
   id: ForwardId('test-forward'),
@@ -18,6 +19,19 @@ const _rule = ForwardRule(
   listenPort: 49180,
   destinationPort: 22,
 );
+
+/// Records the order of window visibility changes and cleanup so the quit path can be checked.
+final _events = <String>[];
+
+class _RecordingWindow extends DesktopWindow {
+  _RecordingWindow() : super(windows: false);
+
+  @override
+  Future<void> hide() async => _events.add('hide');
+
+  @override
+  Future<void> show() async => _events.add('show');
+}
 
 class _ActiveForwards extends Forwards {
   int stops = 0;
@@ -30,6 +44,7 @@ class _ActiveForwards extends Forwards {
   @override
   Future<void> shutdown() async {
     stops++;
+    _events.add('stop');
     if (failStop) throw const ForwardError(ForwardErrors.stopFailed);
   }
 
@@ -58,6 +73,7 @@ class _QuietEdits extends ExternalEdits {
 void main() {
   late Directory dir;
   setUp(() {
+    _events.clear();
     dir = Directory.systemTemp.createTempSync('sshairy-lifecycle-');
     File('${dir.path}/settings.json').writeAsStringSync(jsonEncode({'schemaVersion': 1, 'locale': 'en'}));
   });
@@ -74,7 +90,7 @@ void main() {
     dir.deleteSync(recursive: true);
   });
 
-  Future<void> start(WidgetTester tester, {_ActiveForwards? forwards}) async {
+  Future<void> start(WidgetTester tester, {_ActiveForwards? forwards, DesktopWindow? window}) async {
     // Unmounting stops watchers and open files while the test zone is still live.
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -86,7 +102,7 @@ void main() {
           editsProvider.overrideWith(_QuietEdits.new),
           if (forwards != null) forwardsProvider.overrideWith(() => forwards),
         ],
-        child: const SshairyApp(),
+        child: SshairyApp(window: window),
       ),
     );
     await tester.pumpAndSettle();
@@ -124,6 +140,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(await request, ui.AppExitResponse.cancel);
     expect(forwards.resumed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('confirming quit hides the window before cleanup runs', (tester) async {
+    final forwards = _ActiveForwards();
+    final window = _RecordingWindow();
+    addTearDown(window.dispose);
+    await start(tester, forwards: forwards, window: window);
+    final request = tester.binding.handleRequestAppExit();
+    await tester.pumpAndSettle();
+    expect(_events, isEmpty, reason: 'the confirmation stays on screen');
+    await tester.tap(find.widgetWithText(TextButton, 'Quit'));
+    await tester.pumpAndSettle();
+    expect(await request, ui.AppExitResponse.exit);
+    expect(_events, ['hide', 'stop']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a failed cleanup shows the window again and a retry hides it before trying again', (tester) async {
+    final forwards = _ActiveForwards()..failStop = true;
+    final window = _RecordingWindow();
+    addTearDown(window.dispose);
+    await start(tester, forwards: forwards, window: window);
+    final request = tester.binding.handleRequestAppExit();
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Quit'));
+    await tester.pumpAndSettle();
+    expect(_events, ['hide', 'stop', 'show']);
+    forwards.failStop = false;
+    await tester.tap(find.widgetWithText(TextButton, 'Retry'));
+    await tester.pumpAndSettle();
+    expect(await request, ui.AppExitResponse.exit);
+    expect(_events, ['hide', 'stop', 'show', 'hide', 'stop']);
     expect(tester.takeException(), isNull);
   });
 

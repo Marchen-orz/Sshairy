@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
 import '../../../design/menu.dart';
@@ -83,72 +84,76 @@ class KeysPanel extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: Space.md),
-        if (keys.isEmpty) Text(l.none, style: muted),
-        Expanded(
-          child: ListView(
-            children: [
-              for (final key in keys)
-                Builder(
-                  builder: (context) {
-                    final users = library.keyReferences(key.id);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: Space.sm),
-                      child: Row(
-                        children: [
-                          Icon(Icons.key_outlined, size: 18, color: theme.colorScheme.primary),
-                          const SizedBox(width: Space.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(key.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                Tooltip(
-                                  message: key.fingerprint,
-                                  child: Text(
-                                    '${key.algorithm}  ${key.fingerprint}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: mono(context, muted),
+        if (keys.isEmpty)
+          Expanded(
+            child: BrandHint(pose: BrandPose.security, label: l.none),
+          ),
+        if (keys.isNotEmpty)
+          Expanded(
+            child: ListView(
+              children: [
+                for (final key in keys)
+                  Builder(
+                    builder: (context) {
+                      final users = library.keyReferences(key.id);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: Space.sm),
+                        child: Row(
+                          children: [
+                            Icon(Icons.key_outlined, size: 18, color: theme.colorScheme.primary),
+                            const SizedBox(width: Space.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(key.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  Tooltip(
+                                    message: key.fingerprint,
+                                    child: Text(
+                                      '${key.algorithm}  ${key.fingerprint}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: mono(context, muted),
+                                    ),
                                   ),
+                                  if (users.isNotEmpty)
+                                    Text(
+                                      l.keyInUse(users.join(', ')),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: muted,
+                                    ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: l.copyPublicKey,
+                              onPressed: () => Clipboard.setData(ClipboardData(text: key.publicKey)),
+                              icon: const Icon(Icons.copy_outlined, size: 16),
+                            ),
+                            AppMenuButton<VoidCallback>(
+                              tooltip: l.more,
+                              icon: const Icon(Icons.more_horiz, size: 16),
+                              onSelected: (run) => run(),
+                              items: () => [
+                                AppMenuItem(value: () => rename(key), label: l.rename),
+                                // A key some host still uses cannot go: the host would be left pointing at nothing.
+                                AppMenuItem(
+                                  enabled: users.isEmpty,
+                                  value: () => remove(key),
+                                  label: l.delete,
+                                  destructive: true,
                                 ),
-                                if (users.isNotEmpty)
-                                  Text(
-                                    l.keyInUse(users.join(', ')),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: muted,
-                                  ),
                               ],
                             ),
-                          ),
-                          IconButton(
-                            tooltip: l.copyPublicKey,
-                            onPressed: () => Clipboard.setData(ClipboardData(text: key.publicKey)),
-                            icon: const Icon(Icons.copy_outlined, size: 16),
-                          ),
-                          AppMenuButton<VoidCallback>(
-                            tooltip: l.more,
-                            icon: const Icon(Icons.more_horiz, size: 16),
-                            onSelected: (run) => run(),
-                            items: () => [
-                              AppMenuItem(value: () => rename(key), label: l.rename),
-                              // A key some host still uses cannot go: the host would be left pointing at nothing.
-                              AppMenuItem(
-                                enabled: users.isEmpty,
-                                value: () => remove(key),
-                                label: l.delete,
-                                destructive: true,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-            ],
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

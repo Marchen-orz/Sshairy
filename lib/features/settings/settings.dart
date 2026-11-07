@@ -172,12 +172,21 @@ abstract final class SettingKeys {
   static const hostOrder = EnumSetting('hostOrder', HostOrder.name, HostOrder.values);
 
   static const showMonitor = BoolSetting('showMonitor', true);
+
   static const filesDock = EnumSetting('filesDock', FilesDock.right, FilesDock.values);
+  static const navigationExpanded = BoolSetting('navigationExpanded', false);
+  static const navigationWidth = DoubleSetting(
+    'navigationWidth',
+    WorkspaceSize.navigationExpanded,
+    WorkspaceSize.navigationMin,
+    WorkspaceSize.navigationMax,
+  );
 
   /// Asks before every quit; running transfers, unsaved edits and tunnels ask regardless.
   static const confirmQuit = BoolSetting('confirmQuit', true, agentExposed: false);
 
   static const showHidden = BoolSetting('showHidden', false);
+
   static const transferConcurrency = IntSetting('transferConcurrency', 3, 1, 8);
 
   static const List<SettingDef<Object?>> all = [
@@ -202,6 +211,8 @@ abstract final class SettingKeys {
     hostOrder,
     showMonitor,
     filesDock,
+    navigationExpanded,
+    navigationWidth,
     confirmQuit,
     showHidden,
     transferConcurrency,

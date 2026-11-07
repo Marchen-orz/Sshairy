@@ -201,6 +201,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeNamePink => 'Sakura Pink';
 
   @override
+  String get navigationExpand => 'Expand navigation';
+
+  @override
+  String get navigationCollapse => 'Collapse navigation';
+
+  @override
   String get commandPalette => 'Command palette';
 
   @override
@@ -1122,6 +1128,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get resizeToolPanel => 'Resize tool panel';
+
+  @override
+  String get resizeNavigation => 'Resize navigation';
 
   @override
   String get configRestoreSnapshots => 'Restore a snapshot';

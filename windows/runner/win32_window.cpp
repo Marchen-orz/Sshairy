@@ -146,6 +146,7 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
+  ApplyIcon(icon_resource_);
   const MARGINS shadow = {1, 1, 1, 1};
   DwmExtendFrameIntoClientArea(window, &shadow);
   SetWindowPos(window, nullptr, 0, 0, 0, 0,
@@ -186,7 +187,18 @@ Win32Window::MessageHandler(HWND hwnd,
   switch (message) {
     case WM_NCCALCSIZE:
       // Keep native resize/Snap styles while Flutter draws the entire frame.
-      if (wparam) return 0;
+      if (wparam) {
+        // A maximized frame window is positioned past the work area by its invisible resize borders; those must
+        // not become client pixels, or the top of the content is cut off behind the screen edge.
+        if (IsZoomed(hwnd)) {
+          auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lparam);
+          MONITORINFO monitor = {sizeof(MONITORINFO)};
+          if (GetMonitorInfo(MonitorFromRect(&params->rgrc[0], MONITOR_DEFAULTTONEAREST), &monitor)) {
+            IntersectRect(&params->rgrc[0], &params->rgrc[0], &monitor.rcWork);
+          }
+        }
+        return 0;
+      }
       break;
 
     case WM_NCHITTEST:
@@ -223,6 +235,7 @@ Win32Window::MessageHandler(HWND hwnd,
 
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+      ApplyIcon(icon_resource_);
 
       return 0;
     }
@@ -313,6 +326,30 @@ HWND Win32Window::GetHandle() const {
 
 void Win32Window::SetQuitOnClose(bool quit_on_close) {
   quit_on_close_ = quit_on_close;
+}
+
+bool Win32Window::SetIcon(int resource_id) {
+  if (!ApplyIcon(resource_id)) return false;
+  icon_resource_ = resource_id;
+  return true;
+}
+
+bool Win32Window::ApplyIcon(int resource_id) {
+  if (!window_handle_) return false;
+  const UINT dpi = GetDpiForWindow(window_handle_);
+  const HINSTANCE instance = GetModuleHandle(nullptr);
+  // LR_SHARED handles belong to the system cache: nothing to destroy here, and the window keeps no copy.
+  const auto load = [&](int width, int height) {
+    return static_cast<HICON>(LoadImage(instance, MAKEINTRESOURCE(resource_id), IMAGE_ICON,
+                                        GetSystemMetricsForDpi(width, dpi),
+                                        GetSystemMetricsForDpi(height, dpi), LR_SHARED));
+  };
+  const HICON big = load(SM_CXICON, SM_CYICON);
+  const HICON small_icon = load(SM_CXSMICON, SM_CYSMICON);
+  if (!big || !small_icon) return false;
+  SendMessage(window_handle_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(big));
+  SendMessage(window_handle_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
+  return true;
 }
 
 bool Win32Window::OnCreate() {

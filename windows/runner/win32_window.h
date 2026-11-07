@@ -7,6 +7,8 @@
 #include <memory>
 #include <string>
 
+#include "resource.h"
+
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
 // inherited from by classes that wish to specialize with custom
 // rendering and input handling
@@ -52,6 +54,10 @@ class Win32Window {
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
+  // Shows the icon resource |resource_id| in the title bar, taskbar and Alt+Tab, sized for the window's DPI. The
+  // choice is kept for later DPI changes. Returns false and keeps the current icon if the resource cannot be loaded.
+  bool SetIcon(int resource_id);
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -93,7 +99,13 @@ class Win32Window {
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
 
+  // Loads |resource_id| at the window's current DPI and sets it as the big and small window icon.
+  bool ApplyIcon(int resource_id);
+
   bool quit_on_close_ = false;
+
+  // The icon the window shows, reapplied when the DPI changes.
+  int icon_resource_ = IDI_APP_ICON;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

@@ -54,6 +54,20 @@ END
 // remains consistent on all systems.
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 
+// Window and taskbar icons switched at runtime with the theme (flutter_window.cpp).
+IDI_BRAND_BLUE_LIGHT    ICON                    "resources\\brand\\blue-light.ico"
+IDI_BRAND_BLUE_DARK     ICON                    "resources\\brand\\blue-dark.ico"
+IDI_BRAND_GREEN_LIGHT   ICON                    "resources\\brand\\green-light.ico"
+IDI_BRAND_GREEN_DARK    ICON                    "resources\\brand\\green-dark.ico"
+IDI_BRAND_VIOLET_LIGHT  ICON                    "resources\\brand\\violet-light.ico"
+IDI_BRAND_VIOLET_DARK   ICON                    "resources\\brand\\violet-dark.ico"
+IDI_BRAND_ORANGE_LIGHT  ICON                    "resources\\brand\\orange-light.ico"
+IDI_BRAND_ORANGE_DARK   ICON                    "resources\\brand\\orange-dark.ico"
+IDI_BRAND_DEEPSEA_LIGHT ICON                    "resources\\brand\\deepSea-light.ico"
+IDI_BRAND_DEEPSEA_DARK  ICON                    "resources\\brand\\deepSea-dark.ico"
+IDI_BRAND_PINK_LIGHT    ICON                    "resources\\brand\\pink-light.ico"
+IDI_BRAND_PINK_DARK     ICON                    "resources\\brand\\pink-dark.ico"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //

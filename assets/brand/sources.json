@@ -3,66 +3,174 @@
     "source": "01-IceBlue-Mint",
     "assets": {
       "mark.png": "mascot/mascot-head.png",
-      "mascot.png": "mascot/mascot-full-body.png",
       "logo-light.png": "logos/primary-horizontal.png",
       "logo-dark.png": "dark/logos/primary-horizontal.png",
       "breeze-light.png": "decorations/breeze.png",
-      "breeze-dark.png": "dark/decorations/breeze.png"
+      "breeze-dark.png": "dark/decorations/breeze.png",
+      "cloud-light.png": "decorations/cloud.png",
+      "cloud-dark.png": "dark/decorations/cloud.png",
+      "sparkle-light.png": "decorations/sparkle.png",
+      "sparkle-dark.png": "dark/decorations/sparkle.png",
+      "wind-light.png": "decorations/wind-lines.png",
+      "wind-dark.png": "dark/decorations/wind-lines.png",
+      "pose-default.png": "poses/default.png",
+      "pose-happy.png": "poses/happy.png",
+      "pose-success.png": "poses/success.png",
+      "pose-speed.png": "poses/speed.png",
+      "pose-sleeping.png": "poses/sleeping.png",
+      "pose-security.png": "poses/security.png",
+      "pose-coding-focus.png": "poses/coding-focus.png",
+      "pose-ssh-connected.png": "poses/ssh-connected.png",
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+    },
+    "windowsIcons": {
+      "light": "app-icons/app-icon-1024.png",
+      "dark": "dark/app-icons/app-icon-1024.png"
     }
   },
   "green": {
     "source": "02-MintGreen",
     "assets": {
       "mark.png": "mascot/mascot-head.png",
-      "mascot.png": "mascot/mascot-full-body.png",
       "logo-light.png": "logos/primary-horizontal.png",
       "logo-dark.png": "dark/logos/primary-horizontal.png",
       "breeze-light.png": "decorations/breeze.png",
-      "breeze-dark.png": "dark/decorations/breeze.png"
+      "breeze-dark.png": "dark/decorations/breeze.png",
+      "cloud-light.png": "decorations/cloud.png",
+      "cloud-dark.png": "dark/decorations/cloud.png",
+      "sparkle-light.png": "decorations/sparkle.png",
+      "sparkle-dark.png": "dark/decorations/sparkle.png",
+      "wind-light.png": "decorations/wind-lines.png",
+      "wind-dark.png": "dark/decorations/wind-lines.png",
+      "pose-default.png": "poses/default.png",
+      "pose-happy.png": "poses/happy.png",
+      "pose-success.png": "poses/success.png",
+      "pose-speed.png": "poses/speed.png",
+      "pose-sleeping.png": "poses/sleeping.png",
+      "pose-security.png": "poses/security.png",
+      "pose-coding-focus.png": "poses/coding-focus.png",
+      "pose-ssh-connected.png": "poses/ssh-connected.png",
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+    },
+    "windowsIcons": {
+      "light": "app-icons/app-icon-1024.png",
+      "dark": "dark/app-icons/app-icon-1024.png"
     }
   },
   "violet": {
     "source": "03-Violet",
     "assets": {
       "mark.png": "mascot/mascot-head.png",
-      "mascot.png": "mascot/mascot-full-body.png",
       "logo-light.png": "logos/primary-horizontal.png",
       "logo-dark.png": "dark/logos/primary-horizontal.png",
       "breeze-light.png": "decorations/breeze.png",
-      "breeze-dark.png": "dark/decorations/breeze.png"
+      "breeze-dark.png": "dark/decorations/breeze.png",
+      "cloud-light.png": "decorations/cloud.png",
+      "cloud-dark.png": "dark/decorations/cloud.png",
+      "sparkle-light.png": "decorations/sparkle.png",
+      "sparkle-dark.png": "dark/decorations/sparkle.png",
+      "wind-light.png": "decorations/wind-lines.png",
+      "wind-dark.png": "dark/decorations/wind-lines.png",
+      "pose-default.png": "poses/default.png",
+      "pose-happy.png": "poses/happy.png",
+      "pose-success.png": "poses/success.png",
+      "pose-speed.png": "poses/speed.png",
+      "pose-sleeping.png": "poses/sleeping.png",
+      "pose-security.png": "poses/security.png",
+      "pose-coding-focus.png": "poses/coding-focus.png",
+      "pose-ssh-connected.png": "poses/ssh-connected.png",
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+    },
+    "windowsIcons": {
+      "light": "app-icons/app-icon-1024.png",
+      "dark": "dark/app-icons/app-icon-1024.png"
     }
   },
   "orange": {
     "source": "04-SunsetOrange",
     "assets": {
       "mark.png": "mascot/mascot-head.png",
-      "mascot.png": "mascot/mascot-full-body.png",
       "logo-light.png": "logos/primary-horizontal.png",
       "logo-dark.png": "dark/logos/primary-horizontal.png",
       "breeze-light.png": "decorations/breeze.png",
-      "breeze-dark.png": "dark/decorations/breeze.png"
+      "breeze-dark.png": "dark/decorations/breeze.png",
+      "cloud-light.png": "decorations/cloud.png",
+      "cloud-dark.png": "dark/decorations/cloud.png",
+      "sparkle-light.png": "decorations/sparkle.png",
+      "sparkle-dark.png": "dark/decorations/sparkle.png",
+      "wind-light.png": "decorations/wind-lines.png",
+      "wind-dark.png": "dark/decorations/wind-lines.png",
+      "pose-default.png": "poses/default.png",
+      "pose-happy.png": "poses/happy.png",
+      "pose-success.png": "poses/success.png",
+      "pose-speed.png": "poses/speed.png",
+      "pose-sleeping.png": "poses/sleeping.png",
+      "pose-security.png": "poses/security.png",
+      "pose-coding-focus.png": "poses/coding-focus.png",
+      "pose-ssh-connected.png": "poses/ssh-connected.png",
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+    },
+    "windowsIcons": {
+      "light": "app-icons/app-icon-1024.png",
+      "dark": "dark/app-icons/app-icon-1024.png"
     }
   },
   "deepSea": {
     "source": "05-DeepSeaBlue",
     "assets": {
       "mark.png": "mascot/mascot-head.png",
-      "mascot.png": "mascot/mascot-full-body.png",
       "logo-light.png": "logos/primary-horizontal.png",
       "logo-dark.png": "dark/logos/primary-horizontal.png",
       "breeze-light.png": "decorations/breeze.png",
-      "breeze-dark.png": "dark/decorations/breeze.png"
+      "breeze-dark.png": "dark/decorations/breeze.png",
+      "cloud-light.png": "decorations/cloud.png",
+      "cloud-dark.png": "dark/decorations/cloud.png",
+      "sparkle-light.png": "decorations/sparkle.png",
+      "sparkle-dark.png": "dark/decorations/sparkle.png",
+      "wind-light.png": "decorations/wind-lines.png",
+      "wind-dark.png": "dark/decorations/wind-lines.png",
+      "pose-default.png": "poses/default.png",
+      "pose-happy.png": "poses/happy.png",
+      "pose-success.png": "poses/success.png",
+      "pose-speed.png": "poses/speed.png",
+      "pose-sleeping.png": "poses/sleeping.png",
+      "pose-security.png": "poses/security.png",
+      "pose-coding-focus.png": "poses/coding-focus.png",
+      "pose-ssh-connected.png": "poses/ssh-connected.png",
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+    },
+    "windowsIcons": {
+      "light": "app-icons/app-icon-1024.png",
+      "dark": "dark/app-icons/app-icon-1024.png"
     }
   },
   "pink": {
     "source": "06-SakuraPink",
     "assets": {
       "mark.png": "mascot/mascot-head.png",
-      "mascot.png": "mascot/mascot-full-body.png",
       "logo-light.png": "logos/primary-horizontal.png",
       "logo-dark.png": "dark/logos/primary-horizontal.png",
       "breeze-light.png": "decorations/breeze.png",
-      "breeze-dark.png": "dark/decorations/breeze.png"
+      "breeze-dark.png": "dark/decorations/breeze.png",
+      "cloud-light.png": "decorations/cloud.png",
+      "cloud-dark.png": "dark/decorations/cloud.png",
+      "sparkle-light.png": "decorations/sparkle.png",
+      "sparkle-dark.png": "dark/decorations/sparkle.png",
+      "wind-light.png": "decorations/wind-lines.png",
+      "wind-dark.png": "dark/decorations/wind-lines.png",
+      "pose-default.png": "poses/default.png",
+      "pose-happy.png": "poses/happy.png",
+      "pose-success.png": "poses/success.png",
+      "pose-speed.png": "poses/speed.png",
+      "pose-sleeping.png": "poses/sleeping.png",
+      "pose-security.png": "poses/security.png",
+      "pose-coding-focus.png": "poses/coding-focus.png",
+      "pose-ssh-connected.png": "poses/ssh-connected.png",
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+    },
+    "windowsIcons": {
+      "light": "app-icons/app-icon-1024.png",
+      "dark": "dark/app-icons/app-icon-1024.png"
     }
   }
 }

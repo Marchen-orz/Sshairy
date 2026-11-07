@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,9 +22,9 @@ class _Assets extends CachingAssetBundle {
 }
 
 void main() {
-  test('all six themes retain their supplied brand colors and dark surfaces', () {
+  test('all six themes use the chosen interface accents and supplied dark surfaces', () {
     const expected = {
-      Accent.blue: (0xFF2E6EF7, 0xFF5AB6FF, 0xFF0B1420),
+      Accent.blue: (0xFF2C71E8, 0xFF5AB6FF, 0xFF121418),
       Accent.green: (0xFF168A6A, 0xFF54D6AE, 0xFF0C1916),
       Accent.violet: (0xFF7353C7, 0xFFB79AFF, 0xFF14111E),
       Accent.orange: (0xFFD86B30, 0xFFFFAE70, 0xFF1D1510),
@@ -54,9 +55,19 @@ void main() {
           }
         }
         expect(colorContrast(theme.colorScheme.primary, theme.colorScheme.onPrimary), greaterThanOrEqualTo(4.5));
+        final button = theme.filledButtonTheme.style!;
+        final fill = button.backgroundColor!.resolve({})!;
+        final label = button.foregroundColor!.resolve({})!;
+        expect(colorContrast(fill, label), greaterThanOrEqualTo(4.5));
+        if (accent == Accent.blue && brightness == Brightness.light) {
+          expect(fill, const Color(0xFF2C71E8), reason: 'filled buttons use the softened brand blue');
+          expect(label, Colors.white);
+        }
         expect(colorContrast(p.borderControl, p.surface), greaterThanOrEqualTo(3));
         expect(colorContrast(p.focus, p.background), greaterThanOrEqualTo(3));
         expect(colorContrast(p.onSelection, p.selection), greaterThanOrEqualTo(4.5));
+        expect(colorContrast(p.onNavigationSelection, p.navigationSelection), greaterThanOrEqualTo(4.5));
+        expect(colorContrast(p.navigationSelection, p.sidebar), greaterThanOrEqualTo(1.1));
         expect(colorContrast(terminal.foreground, terminal.background), greaterThanOrEqualTo(4.5));
         expect(colorContrast(terminal.selection, terminal.background), greaterThanOrEqualTo(2));
         expect(colorContrast(terminal.foreground, terminal.selection), greaterThanOrEqualTo(4.5));
@@ -97,10 +108,13 @@ void main() {
     for (final accent in Accent.values) {
       for (final path in [
         BrandAssets.mark(accent),
-        BrandAssets.mascot(accent),
+        for (final pose in BrandPose.values) BrandAssets.pose(accent, pose),
         for (final brightness in Brightness.values) ...[
           BrandAssets.logo(accent, brightness),
           BrandAssets.breeze(accent, brightness),
+          BrandAssets.cloud(accent, brightness),
+          BrandAssets.sparkle(accent, brightness),
+          BrandAssets.wind(accent, brightness),
         ],
       ]) {
         expect(File(path).existsSync(), isTrue, reason: path);
@@ -165,5 +179,83 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('樱花粉'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  group('host library pose', () {
+    setUp(() => BrandRotation.random = Random(7));
+    tearDown(() => BrandRotation.random = Random());
+
+    List<String> poses(WidgetTester tester) => [
+      for (final image in tester.widgetList<Image>(find.byType(Image)))
+        if (((image.image as ResizeImage).imageProvider as AssetImage).assetName case final name
+            when name.contains('/pose-'))
+          name,
+    ];
+
+    String shown(WidgetTester tester) => poses(tester).single;
+
+    Future<void> rotate(WidgetTester tester) async {
+      final before = poses(tester).join();
+      await tester.pump(BrandRotation.interval);
+      // The next image decodes outside fake time before the cross-fade starts.
+      for (var i = 0; i < 25 && poses(tester).join() == before; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    Future<void Function(bool)> start(WidgetTester tester, {bool reduceMotion = false}) async {
+      late StateSetter set;
+      var active = true;
+      await tester.pumpWidget(
+        DefaultAssetBundle(
+          bundle: _Assets(),
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: MediaQuery(
+              data: MediaQueryData(disableAnimations: reduceMotion),
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  set = setState;
+                  return BrandEmptyState(active: active);
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      return (value) => set(() => active = value);
+    }
+
+    testWidgets('changes with a cross-fade only while the library is visible, and anew on return', (tester) async {
+      final setActive = await start(tester);
+      final first = shown(tester);
+      expect(BrandRotation.poses.map((pose) => pose.file).any((file) => first.endsWith('pose-$file.png')), isTrue);
+      expect(first, isNot(contains('thinking')), reason: 'the AI pose is kept for the AI feature');
+
+      await rotate(tester);
+      final second = shown(tester);
+      expect(second, isNot(first));
+
+      setActive(false);
+      await tester.pump();
+      await rotate(tester);
+      await rotate(tester);
+      expect(shown(tester), second, reason: 'a hidden library does not rotate');
+
+      setActive(true);
+      await tester.pump();
+      expect(shown(tester), isNot(second), reason: 'returning to the library shows another pose at once');
+    });
+
+    testWidgets('reduced motion keeps the pose picked on arrival', (tester) async {
+      await start(tester, reduceMotion: true);
+      final first = shown(tester);
+      await rotate(tester);
+      expect(shown(tester), first);
+    });
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/dialog.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
@@ -96,7 +97,9 @@ class _SnippetsPanelState extends ConsumerState<SnippetsPanel> {
         const SizedBox(height: Space.md),
         Expanded(
           child: items.isEmpty
-              ? Center(child: Text(l.noMatches))
+              ? _query.isEmpty
+                    ? BrandHint(pose: BrandPose.codingFocus, label: l.none)
+                    : Center(child: Text(l.noMatches))
               : ListView.builder(
                   itemCount: items.length,
                   itemBuilder: (context, index) {
