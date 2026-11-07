@@ -210,6 +210,17 @@ void main() {
       expect(m.bytesPerSecond, 1500);
     });
 
+    test('speed keeps a bounded number of samples at block rate', () {
+      final m = SpeedMeter();
+      final t0 = DateTime(2026);
+      // 32 KiB every millisecond for ten seconds: about 32 MB/s.
+      for (var i = 0; i <= 10000; i++) {
+        m.add(t0.add(Duration(milliseconds: i)), i * 32768);
+      }
+      expect(m.sampleCount, lessThanOrEqualTo(32), reason: 'one per 100 ms over the 3 s window');
+      expect(m.bytesPerSecond, closeTo(32768000, 32768000 * .01));
+    });
+
     test('checkpoints round-trip and only resume paths the transfer owns', () {
       final t = Transfer(
         id: TransferId('own'),

@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 
@@ -403,17 +405,26 @@ List<TransferId> runnable(List<Transfer> all, {required int global, int perHost 
 
 /// Bytes per second over a sliding window, so one slow moment does not swing the figure.
 class SpeedMeter {
-  SpeedMeter({this.window = const Duration(seconds: 3)});
+  SpeedMeter({this.window = const Duration(seconds: 3), this.resolution = const Duration(milliseconds: 100)});
 
   final Duration window;
-  final _samples = <(DateTime, int)>[];
+
+  /// Readings closer together than this update the newest sample instead of adding one: progress arrives for
+  /// every 32 KiB block, and keeping each would make the window thousands of samples long at full speed.
+  final Duration resolution;
+  final _samples = ListQueue<(DateTime, int)>();
 
   void add(DateTime at, int total) {
+    if (_samples.length >= 2 && at.difference(_samples.elementAt(_samples.length - 2).$1) < resolution) {
+      _samples.removeLast();
+    }
     _samples.add((at, total));
     while (_samples.length > 2 && at.difference(_samples.first.$1) > window) {
-      _samples.removeAt(0);
+      _samples.removeFirst();
     }
   }
+
+  int get sampleCount => _samples.length;
 
   double get bytesPerSecond {
     if (_samples.length < 2) return 0;

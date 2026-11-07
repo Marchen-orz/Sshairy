@@ -286,7 +286,7 @@ class SshDialer {
     final client = SSHClient(
       socket,
       username: host.username,
-      algorithms: host.legacy ? _legacyAlgorithms : const SSHAlgorithms(),
+      algorithms: host.legacy ? _legacyAlgorithms : _algorithms,
       identities: identities,
       keepAliveInterval: options.keepAlive,
       onVerifyHostKey: (type, fp) async {
@@ -375,10 +375,23 @@ class SshDialer {
   }
 }
 
+/// OpenSSH's own cipher order. The library puts AES-GCM first, but its pure Dart GCM runs at well under 1 MB/s
+/// on the UI isolate and froze the window during large transfers; ChaCha20-Poly1305 is about twenty times faster
+/// (docs/MODULES.md §2).
+const _ciphers = [
+  SSHCipherType.chacha20poly1305,
+  SSHCipherType.aes128ctr,
+  SSHCipherType.aes256ctr,
+  SSHCipherType.aes128gcm,
+  SSHCipherType.aes256gcm,
+];
+
+const _algorithms = SSHAlgorithms(cipher: _ciphers);
+
 final _legacyAlgorithms = SSHAlgorithms(
   kex: [...const SSHAlgorithms().kex, SSHKexType.dhGexSha1, SSHKexType.dh14Sha1, SSHKexType.dh1Sha1],
   hostkey: [...const SSHAlgorithms().hostkey, SSHHostkeyType.rsaSha1],
-  cipher: [...const SSHAlgorithms().cipher, SSHCipherType.aes128cbc, SSHCipherType.aes192cbc, SSHCipherType.aes256cbc],
+  cipher: [..._ciphers, SSHCipherType.aes128cbc, SSHCipherType.aes192cbc, SSHCipherType.aes256cbc],
   mac: [...const SSHAlgorithms().mac, SSHMacType.hmacSha1],
 );
 
