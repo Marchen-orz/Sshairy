@@ -6,6 +6,7 @@ import '../../../design/dialog.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/json_file.dart';
+import '../../credentials/api.dart' show CredentialImportFailure;
 import '../../../l10n/app_localizations.dart';
 import '../application/host_import.dart';
 import '../application/hosts.dart';
@@ -41,6 +42,8 @@ class ImportDialog extends ConsumerStatefulWidget {
 class _ImportDialogState extends ConsumerState<ImportDialog> {
   Map<ImportFormat, int> _found = const {};
   ImportPreview? _preview;
+  ImportFormat? _source;
+  var _login = true;
   final _selected = <String>{};
   var _busy = false;
   String? _error;
@@ -74,7 +77,7 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
   void _show(ImportPreview preview, {bool all = false}) {
     final selectable = {
       for (final d in preview.plan.drafts)
-        if (d.selectable) d.key,
+        if (preview.canSelect(d, login: _login)) d.key,
     };
     setState(() {
       _preview = preview;
@@ -96,12 +99,22 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
       _error = null;
     });
     try {
-      final count = await _import.commit(preview, {..._selected});
+      final count = await _import.commit(preview, {..._selected}, login: _login);
       if (!mounted) return;
       final messenger = ScaffoldMessenger.maybeOf(context);
       final message = AppLocalizations.of(context).sshConfigImported(count);
       Navigator.pop(context);
       messenger?.showSnackBar(SnackBar(content: Text(message)));
+    } on CredentialImportFailure catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error.rollbackIncomplete
+              ? AppLocalizations.of(context).importCleanupFailed
+              : AppLocalizations.of(context).importFailed,
+        );
+      }
+    } on ImportSourceChanged {
+      if (mounted) setState(() => _error = AppLocalizations.of(context).importSourceChanged);
     } on JsonFileError catch (error) {
       if (mounted) {
         final l = AppLocalizations.of(context);
@@ -119,9 +132,9 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final preview = _preview;
-    final count = preview?.plan.additions(_selected).length ?? 0;
+    final count = preview?.count(_selected, login: _login) ?? 0;
     final dismiss = TextButton(
-      onPressed: () => Navigator.pop(context),
+      onPressed: _busy ? null : () => Navigator.pop(context),
       child: Text(widget.welcome ? l.skip : l.cancel),
     );
     return AppDialog(
@@ -132,7 +145,12 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (preview == null) _sources(l) else ..._planned(l, theme, preview),
+          if (preview != null)
+            ..._planned(l, theme, preview)
+          else if (_source != null)
+            _guidance(l, _source!)
+          else
+            _sources(l),
           if (_busy)
             const Padding(
               padding: EdgeInsets.only(top: Space.sm),
@@ -174,8 +192,15 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
                   child: j < sources.length
                       ? _SourceTile(
                           name: _names[sources[j]]!,
+                          hint: _fileHint(sources[j]),
                           found: _found[sources[j]] ?? 0,
-                          onTap: _busy ? null : () => _open(() => _import.fromSoftware(sources[j])),
+                          onTap: _busy
+                              ? null
+                              : () {
+                                  final source = sources[j];
+                                  setState(() => _source = source);
+                                  if ((_found[source] ?? 0) > 0) _open(() => _import.fromSoftware(source));
+                                },
                         )
                       : const SizedBox.shrink(),
                 ),
@@ -187,9 +212,60 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
     );
   }
 
+  Widget _guidance(AppLocalizations l, ImportFormat source) {
+    final text = switch (source) {
+      ImportFormat.openssh => l.importGuideOpenSsh,
+      ImportFormat.putty => l.importGuidePutty,
+      ImportFormat.mobaxterm => l.importGuideMoba,
+      ImportFormat.securecrt => l.importGuideSecureCrt,
+      ImportFormat.xshell => l.importGuideXshell,
+      ImportFormat.finalshell => l.importGuideFinalShell,
+      ImportFormat.tabby => l.importGuideTabby,
+      ImportFormat.csv => l.importGuideCsv,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              tooltip: l.back,
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                      _source = null;
+                      _error = null;
+                    }),
+              icon: const Icon(Icons.arrow_back, size: 16),
+            ),
+            Text(_names[source]!),
+          ],
+        ),
+        const SizedBox(height: Space.md),
+        Text(text),
+        const SizedBox(height: Space.sm),
+        for (final path in _import.locations(source).take(3))
+          Padding(
+            padding: const EdgeInsets.only(bottom: Space.xs),
+            child: SelectableText(
+              path,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+        const SizedBox(height: Space.md),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : () => _open(() => _import.choose(source)),
+          icon: Icon(_folders.contains(source) ? Icons.folder_open_outlined : Icons.file_open_outlined, size: 16),
+          label: Text(_folders.contains(source) ? l.importChooseFolder : l.importChooseFile),
+        ),
+      ],
+    );
+  }
+
   List<Widget> _planned(AppLocalizations l, ThemeData theme, ImportPreview preview) {
     final drafts = preview.plan.drafts;
-    final selectable = drafts.where((d) => d.selectable).toList();
+    final selectable = drafts.where((d) => preview.canSelect(d, login: _login)).toList();
     final groups = ref.watch(hostLibraryProvider).groupPaths;
     final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     return [
@@ -201,6 +277,7 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
                 ? null
                 : () => setState(() {
                     _preview = null;
+                    _source = null;
                     _error = null;
                   }),
             icon: const Icon(Icons.arrow_back, size: 16),
@@ -226,6 +303,38 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
           ),
         ],
       ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: Space.xs),
+        child: Row(
+          children: [
+            Expanded(
+              child: Tooltip(
+                message: preview.path,
+                child: Text(preview.path, maxLines: 2, overflow: TextOverflow.ellipsis, style: muted),
+              ),
+            ),
+            IconButton(
+              tooltip: l.importChooseAgain,
+              icon: const Icon(Icons.folder_open_outlined, size: 16),
+              onPressed: _busy ? null : () => _open(() => _import.choose(preview.format)),
+            ),
+          ],
+        ),
+      ),
+      if (preview.format == ImportFormat.finalshell)
+        AppToggleRow(
+          title: l.importLoginOption,
+          subtitle: l.importLoginStorage,
+          value: _login,
+          onChanged: _busy
+              ? null
+              : (value) => setState(() {
+                  _login = value;
+                  _selected.removeWhere(
+                    (key) => !drafts.any((d) => d.key == key && preview.canSelect(d, login: value)),
+                  );
+                }),
+        ),
       if (selectable.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(top: Space.sm),
@@ -250,7 +359,12 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
               _DraftRow(
                 draft: draft,
                 selected: _selected.contains(draft.key),
-                onChanged: _busy || !draft.selectable
+                loginStatus: preview.format != ImportFormat.finalshell
+                    ? null
+                    : preview.passwords.contains(draft.key)
+                    ? l.importPasswordFound
+                    : l.importLoginNeeded,
+                onChanged: _busy || !preview.canSelect(draft, login: _login)
                     ? null
                     : (value) => setState(() => value ? _selected.add(draft.key) : _selected.remove(draft.key)),
               ),
@@ -272,9 +386,9 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
 }
 
 class _SourceTile extends StatelessWidget {
-  const _SourceTile({required this.name, required this.found, required this.onTap});
+  const _SourceTile({required this.name, required this.hint, required this.found, required this.onTap});
 
-  final String name;
+  final String name, hint;
   final int found;
   final VoidCallback? onTap;
 
@@ -293,7 +407,7 @@ class _SourceTile extends StatelessWidget {
         customBorder: shape,
         onTap: onTap,
         child: SizedBox(
-          height: 52,
+          height: 64,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.md),
             child: Row(
@@ -315,7 +429,19 @@ class _SourceTile extends StatelessWidget {
                 ),
                 const SizedBox(width: Space.sm),
                 Expanded(
-                  child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.bodyMedium),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.bodyMedium),
+                      Text(
+                        hint,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
                 if (found > 0) Text('$found', style: text.bodySmall?.copyWith(color: scheme.primary)),
               ],
@@ -328,8 +454,9 @@ class _SourceTile extends StatelessWidget {
 }
 
 class _DraftRow extends StatelessWidget {
-  const _DraftRow({required this.draft, required this.selected, required this.onChanged});
+  const _DraftRow({required this.draft, required this.selected, required this.onChanged, this.loginStatus});
   final SshImportDraft draft;
+  final String? loginStatus;
   final bool selected;
   final ValueChanged<bool>? onChanged;
 
@@ -354,6 +481,7 @@ class _DraftRow extends StatelessWidget {
             Text('↳ ${source.jumps.join(' → ')}', maxLines: 2, overflow: TextOverflow.ellipsis),
           if (source.keyPath != null)
             Text('${l.keyPath}: ${source.keyPath}', maxLines: 2, overflow: TextOverflow.ellipsis),
+          if (loginStatus != null) Text(loginStatus!),
           if (status != null)
             Text(
               status,
@@ -438,4 +566,15 @@ String _issueText(AppLocalizations l, SshConfigIssueKind issue) => switch (issue
   SshConfigIssueKind.noAddress => l.importNoAddress,
   SshConfigIssueKind.unreadable => l.importUnreadable,
   SshConfigIssueKind.ppk => l.importPpk,
+};
+
+const _folders = {ImportFormat.securecrt, ImportFormat.xshell, ImportFormat.finalshell};
+String _fileHint(ImportFormat format) => switch (format) {
+  ImportFormat.openssh => '~/.ssh/config',
+  ImportFormat.putty => '.reg',
+  ImportFormat.mobaxterm => 'MobaXterm.ini / .mxtsessions',
+  ImportFormat.securecrt || ImportFormat.xshell => 'Sessions',
+  ImportFormat.finalshell => 'conn',
+  ImportFormat.tabby => 'config.yaml',
+  ImportFormat.csv => '.csv',
 };

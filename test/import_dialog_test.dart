@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/hosts/adapters/host_import_files.dart';
 import 'package:sshairy/features/hosts/api.dart';
@@ -23,6 +24,9 @@ class _Files extends HostImportFiles {
   _Files();
 
   final asked = <ImportFormat?>[];
+  String? finalShellPath;
+  @override
+  List<String> defaults(ImportFormat format) => ['/synthetic/${format.name}'];
 
   @override
   bool get hasRegistry => false;
@@ -30,6 +34,7 @@ class _Files extends HostImportFiles {
   @override
   Future<ImportRead?> readDefault(ImportFormat format) async {
     if (format != ImportFormat.finalshell) return null;
+    if (finalShellPath != null) return read(format, finalShellPath!);
     final files = [
       for (final (name, host) in [('web', 'w.example'), ('db', 'd.example')])
         ImportText('$name.json', jsonEncode({'name': name, 'host': host, 'port': 22, 'user_name': 'u'})),
@@ -41,7 +46,12 @@ class _Files extends HostImportFiles {
   Future<ImportRead?> pick([ImportFormat? format]) async {
     asked.add(format);
     const csv = ImportText('hosts.csv', 'name,host,group\nsaved,s.example,\nnew,n.example,lab\n');
-    return ImportRead('hosts.csv', ImportFormat.csv, parseCsvHosts(csv, defaultUser: 'u'));
+    return ImportRead(
+      'hosts.csv',
+      ImportFormat.csv,
+      parseCsvHosts(csv, defaultUser: 'u'),
+      path: '/synthetic/hosts.csv',
+    );
   }
 }
 
@@ -49,17 +59,24 @@ void main() {
   late Directory dir;
   late ProviderContainer container;
   late _Files files;
+  late MemorySecrets secrets;
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('sshairy-import-ui-');
     files = _Files();
+    secrets = MemorySecrets();
     container = ProviderContainer(
       overrides: [
         dataDirProvider.overrideWithValue(dir.path),
-        secretStoreProvider.overrideWithValue(MemorySecrets()),
+        secretStoreProvider.overrideWithValue(secrets),
         ...appOverrides(),
         hostImportProvider.overrideWith(
-          (ref) => HostImport(ref.read(hostsProvider.notifier), () => ref.read(hostsProvider), files: files),
+          (ref) => HostImport(
+            ref.read(hostsProvider.notifier),
+            () => ref.read(hostsProvider),
+            files: files,
+            passwords: ref.read(hostPasswordImportProvider),
+          ),
         ),
       ],
     );
@@ -114,8 +131,10 @@ void main() {
     expect(find.descendant(of: tile, matching: find.text('2')), findsOneWidget);
 
     await tester.tap(find.text('FinalShell'));
-    await tester.pumpAndSettle();
+    await until(tester, () => find.text('u@w.example:22').evaluate().isNotEmpty);
     expect(find.text('u@w.example:22'), findsOneWidget);
+    expect(find.text('Import saved login details'), findsOneWidget);
+    expect(find.byTooltip('Choose another source'), findsOneWidget);
     expect(find.text('Import (2)'), findsOneWidget);
 
     await tester.tap(find.text('No group'));
@@ -170,10 +189,67 @@ void main() {
 
     await tester.tap(find.text('CSV'));
     await tester.pumpAndSettle();
+    expect(find.textContaining('UTF-8 CSV'), findsOneWidget);
+    expect(files.asked, [null], reason: 'show guidance before opening the picker');
+    await tester.tap(find.text('Choose file'));
+    await tester.pumpAndSettle();
     expect(files.asked, [null, ImportFormat.csv]);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(find.text('Import hosts'), findsNothing);
     expect(container.read(hostsProvider), hasLength(1));
+  });
+
+  testWidgets('missing software shows folder guidance before opening a picker at minimum window size', (tester) async {
+    await pumpVault(tester);
+    await tester.binding.setSurfaceSize(const Size(960, 640));
+    await tester.tap(find.text('Xshell'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Xshell/Sessions under'), findsOneWidget);
+    expect(find.text('Choose folder'), findsOneWidget);
+    expect(files.asked, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+    expect(files.asked, [ImportFormat.xshell]);
+    expect(find.text('/synthetic/hosts.csv'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an existing FinalShell host can receive a password; opt-out disables the update', (tester) async {
+    final source = Directory('${dir.path}/synthetic-source')..createSync();
+    File('${source.path}/one_connect_config.json').writeAsStringSync(
+      jsonEncode({
+        'name': 'source-name',
+        'host': 's.example',
+        'user_name': 'u',
+        'authentication_type': 1,
+        'password': 'AwsWISw3Qk2PudUQ9dh27AOgGBzot4CKoBfdJqXqTi0=',
+      }),
+    );
+    files.finalShellPath = source.path;
+    await tester.runAsync(
+      () => hosts().save(const Host(id: HostId('s'), label: 'my name', address: 's.example', username: 'u')),
+    );
+    await pumpVault(tester);
+    await tester.tap(find.byIcon(Icons.input_rounded));
+    await until(tester, () => find.text('1').evaluate().isNotEmpty);
+    await tester.tap(find.text('FinalShell'));
+    await until(tester, () => find.text('Saved password available').evaluate().isNotEmpty);
+    expect(find.text('Import (1)'), findsOneWidget);
+    expect(find.text('synthetic-login-42'), findsNothing);
+    expect(find.text(source.absolute.path), findsOneWidget);
+    await tester.tap(find.text('Import saved login details'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Import (0)')).onPressed, isNull);
+    await tester.tap(find.text('Import saved login details'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select all'));
+    await tester.pump();
+    await tester.tap(find.text('Import (1)'));
+    await until(tester, () => find.text('Import hosts').evaluate().isEmpty);
+    expect(container.read(hostsProvider).single.label, 'my name');
+    expect(secrets.values[SecretRef.hostPassword(const HostId('s'))], 'synthetic-login-42');
+    expect(tester.takeException(), isNull);
   });
 }

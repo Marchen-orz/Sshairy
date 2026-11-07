@@ -10,6 +10,64 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get importChooseAgain => '重新选择来源';
+
+  @override
+  String get importChooseFolder => '选择文件夹';
+
+  @override
+  String get importChooseFile => '选择文件';
+
+  @override
+  String get importLoginOption => '迁移已保存的登录信息';
+
+  @override
+  String get importLoginStorage => '仅在本机处理密码，保存到系统安全存储；已有密码不覆盖。';
+
+  @override
+  String get importPasswordFound => '已找到可迁移的密码';
+
+  @override
+  String get importLoginNeeded => '连接时补充登录信息';
+
+  @override
+  String get importCleanupFailed => '导入失败，部分新凭据未能回收。请检查系统安全存储后重试。';
+
+  @override
+  String get importSourceChanged => '来源文件已改变或无法读取，请重新选择。';
+
+  @override
+  String get importGuideOpenSsh =>
+      '选择 .ssh 文件夹内的 config 文件；Include 仅在同一配置目录内读取。';
+
+  @override
+  String get importGuidePutty =>
+      'Windows 会自动读取 PuTTY 会话注册表。手动导入请选择注册表编辑器导出的 Sessions .reg 文件。';
+
+  @override
+  String get importGuideMoba =>
+      '选择 MobaXterm.ini，或从连接列表导出的 .mxtsessions 文件。便携版配置通常在程序旁。';
+
+  @override
+  String get importGuideSecureCrt =>
+      '在 SecureCRT 的全局选项中查看配置文件夹，选择其中的 Sessions 文件夹（内含 .ini 会话）。';
+
+  @override
+  String get importGuideXshell =>
+      '选择文档目录 NetSarang Computer 对应版本下的 Xshell/Sessions 文件夹（内含 .xsh 会话）。';
+
+  @override
+  String get importGuideFinalShell =>
+      '选择 FinalShell 程序目录中的 conn 文件夹，或包含 *_connect_config.json 的导出文件夹；压缩包请先解压。便携版和自定义安装位置可手动选择。';
+
+  @override
+  String get importGuideTabby => '选择 Tabby 的 config.yaml 配置文件。';
+
+  @override
+  String get importGuideCsv =>
+      '选择 UTF-8 CSV 文件。第一行应包含 host（或“地址”）表头，可另有 name、port、username、group、key。';
+
+  @override
   String get hosts => '主机';
 
   @override

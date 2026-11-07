@@ -72,6 +72,7 @@ class HostsNotifier extends Notifier<List<Host>> {
     int? expectedRevision,
     bool routes = true,
     Future<void> Function(HostLibrary before)? after,
+    Future<void> Function(Future<void> Function() commit)? aroundCommit,
   }) => _change(() async {
     final current = library;
     final edited = edit(current);
@@ -98,32 +99,41 @@ class HostsNotifier extends Notifier<List<Host>> {
 
     // A key must still exist when something starts to use it, and cannot be deleted while it is used.
     final keys = next.keyIds.difference(current.keyIds);
+    Future<void> persist() => aroundCommit == null ? commit() : aroundCommit(commit);
     if (keys.isEmpty) {
-      await commit();
+      await persist();
     } else {
-      await ref.read(keysProvider.notifier).withKeys(keys, commit);
+      await ref.read(keysProvider.notifier).withKeys(keys, persist);
     }
   });
 
   Future<void> save(Host host, {int? expectedRevision}) =>
       _apply((library) => library.withHost(host), expectedRevision: expectedRevision);
 
-  Future<void> importDrafts(List<Host> additions, {required int expectedRevision}) => _apply((library) {
-    final known = {for (final host in library.hosts) host.id};
-    final endpoints = {
-      for (final host in library.hosts) (host.address.toLowerCase(), host.port, host.username, host.jumpHostId),
-    };
-    var next = library;
-    for (final host in additions) {
-      next = next.withHost(host);
-      final added = next.hostById(host.id)!;
-      if (!known.add(host.id) ||
-          !endpoints.add((added.address.toLowerCase(), added.port, added.username, added.jumpHostId))) {
-        throw ArgumentError('duplicate imported host');
+  Future<void> importDrafts(
+    List<Host> additions, {
+    required int expectedRevision,
+    Future<void> Function(Future<void> Function() commit)? aroundCommit,
+  }) => _apply(
+    (library) {
+      final known = {for (final host in library.hosts) host.id};
+      final endpoints = {
+        for (final host in library.hosts) (host.address.toLowerCase(), host.port, host.username, host.jumpHostId),
+      };
+      var next = library;
+      for (final host in additions) {
+        next = next.withHost(host);
+        final added = next.hostById(host.id)!;
+        if (!known.add(host.id) ||
+            !endpoints.add((added.address.toLowerCase(), added.port, added.username, added.jumpHostId))) {
+          throw ArgumentError('duplicate imported host');
+        }
       }
-    }
-    return next;
-  }, expectedRevision: expectedRevision);
+      return next;
+    },
+    expectedRevision: expectedRevision,
+    aroundCommit: aroundCommit,
+  );
 
   Future<void> setPinned(Host host, bool pinned) => _update(host.id, (current) => current.copyWith(pinned: pinned));
 

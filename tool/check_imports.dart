@@ -6,7 +6,13 @@ const adapters = {
   // Credentials parses and generates keys with it; connections dials.
   'dartssh2': ['lib/features/connections/adapters/', 'lib/features/credentials/adapters/'],
   'pinenacl': ['lib/features/credentials/adapters/'],
-  'crypto': ['lib/features/credentials/adapters/', 'lib/features/connections/adapters/'],
+  'crypto': [
+    'lib/features/credentials/adapters/',
+    'lib/features/connections/adapters/',
+    'lib/features/hosts/adapters/finalshell_login.dart',
+  ],
+  // Read compatibility for FinalShell's legacy DES passwords only.
+  'pointycastle': ['lib/features/hosts/adapters/finalshell_login.dart'],
   'xterm2': ['lib/features/terminal/adapters/'],
   'flutter_pty': ['lib/features/terminal/adapters/'],
   'flutter_secure_storage': ['lib/features/credentials/adapters/'],

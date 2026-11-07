@@ -10,6 +10,68 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get importChooseAgain => 'Choose another source';
+
+  @override
+  String get importChooseFolder => 'Choose folder';
+
+  @override
+  String get importChooseFile => 'Choose file';
+
+  @override
+  String get importLoginOption => 'Import saved login details';
+
+  @override
+  String get importLoginStorage =>
+      'Passwords stay on this device and go into OS secure storage. Existing passwords are kept.';
+
+  @override
+  String get importPasswordFound => 'Saved password available';
+
+  @override
+  String get importLoginNeeded => 'Login details needed when connecting';
+
+  @override
+  String get importCleanupFailed =>
+      'Import failed and some new credentials could not be removed. Check OS secure storage before retrying.';
+
+  @override
+  String get importSourceChanged =>
+      'The source changed or is unreadable. Choose it again.';
+
+  @override
+  String get importGuideOpenSsh =>
+      'Choose the config file inside .ssh. Include files are read only within that configuration folder.';
+
+  @override
+  String get importGuidePutty =>
+      'PuTTY sessions are detected from the Windows registry. For manual import, choose a Sessions .reg export from Registry Editor.';
+
+  @override
+  String get importGuideMoba =>
+      'Choose MobaXterm.ini or a .mxtsessions export from the session list. Portable editions usually keep the configuration beside the program.';
+
+  @override
+  String get importGuideSecureCrt =>
+      'Find the configuration folder in SecureCRT Global Options, then choose its Sessions folder containing .ini sessions.';
+
+  @override
+  String get importGuideXshell =>
+      'Choose Xshell/Sessions under the matching NetSarang Computer version in Documents. It contains .xsh sessions.';
+
+  @override
+  String get importGuideFinalShell =>
+      'Choose conn inside the FinalShell program folder, or an export folder containing *_connect_config.json files. Extract archives first. Choose portable or custom installations manually.';
+
+  @override
+  String get importGuideTabby =>
+      'Choose the Tabby config.yaml configuration file.';
+
+  @override
+  String get importGuideCsv =>
+      'Choose a UTF-8 CSV file with a host header. Optional columns: name, port, username, group, key.';
+
+  @override
   String get hosts => 'Hosts';
 
   @override

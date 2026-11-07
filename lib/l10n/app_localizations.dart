@@ -98,6 +98,108 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @importChooseAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose another source'**
+  String get importChooseAgain;
+
+  /// No description provided for @importChooseFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose folder'**
+  String get importChooseFolder;
+
+  /// No description provided for @importChooseFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose file'**
+  String get importChooseFile;
+
+  /// No description provided for @importLoginOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Import saved login details'**
+  String get importLoginOption;
+
+  /// No description provided for @importLoginStorage.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords stay on this device and go into OS secure storage. Existing passwords are kept.'**
+  String get importLoginStorage;
+
+  /// No description provided for @importPasswordFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved password available'**
+  String get importPasswordFound;
+
+  /// No description provided for @importLoginNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Login details needed when connecting'**
+  String get importLoginNeeded;
+
+  /// No description provided for @importCleanupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Import failed and some new credentials could not be removed. Check OS secure storage before retrying.'**
+  String get importCleanupFailed;
+
+  /// No description provided for @importSourceChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The source changed or is unreadable. Choose it again.'**
+  String get importSourceChanged;
+
+  /// No description provided for @importGuideOpenSsh.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the config file inside .ssh. Include files are read only within that configuration folder.'**
+  String get importGuideOpenSsh;
+
+  /// No description provided for @importGuidePutty.
+  ///
+  /// In en, this message translates to:
+  /// **'PuTTY sessions are detected from the Windows registry. For manual import, choose a Sessions .reg export from Registry Editor.'**
+  String get importGuidePutty;
+
+  /// No description provided for @importGuideMoba.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose MobaXterm.ini or a .mxtsessions export from the session list. Portable editions usually keep the configuration beside the program.'**
+  String get importGuideMoba;
+
+  /// No description provided for @importGuideSecureCrt.
+  ///
+  /// In en, this message translates to:
+  /// **'Find the configuration folder in SecureCRT Global Options, then choose its Sessions folder containing .ini sessions.'**
+  String get importGuideSecureCrt;
+
+  /// No description provided for @importGuideXshell.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose Xshell/Sessions under the matching NetSarang Computer version in Documents. It contains .xsh sessions.'**
+  String get importGuideXshell;
+
+  /// No description provided for @importGuideFinalShell.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose conn inside the FinalShell program folder, or an export folder containing *_connect_config.json files. Extract archives first. Choose portable or custom installations manually.'**
+  String get importGuideFinalShell;
+
+  /// No description provided for @importGuideTabby.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the Tabby config.yaml configuration file.'**
+  String get importGuideTabby;
+
+  /// No description provided for @importGuideCsv.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a UTF-8 CSV file with a host header. Optional columns: name, port, username, group, key.'**
+  String get importGuideCsv;
+
   /// No description provided for @hosts.
   ///
   /// In en, this message translates to:
