@@ -24,10 +24,11 @@ class BackgroundImageStore {
     ],
   ))?.path;
 
-  Future<Result<String>?> choose(Set<String> retained) async {
+  /// [retained] is read once a file is picked: the dialog can stay open while the gallery changes.
+  Future<Result<String>?> choose(Set<String> Function() retained) async {
     try {
       final path = await _pick();
-      return path == null ? null : await importFile(path, retained);
+      return path == null ? null : await importFile(path, retained());
     } on Object {
       return const Err(AppError('backgroundImageUnreadable'));
     }
@@ -48,7 +49,7 @@ class BackgroundImageStore {
     try {
       await cleanup(retained);
       if (await _storedSize() + bytes.length > BackgroundImageLimits.totalBytes) {
-        return const Err(AppError('backgroundImageTooLarge'));
+        return const Err(AppError('backgroundGalleryFull'));
       }
       final random = Random.secure();
       final suffix = List.generate(8, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();

@@ -1640,6 +1640,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backgroundImageUnreadable => 'Could not read the image.';
 
   @override
+  String get backgroundGalleryFull =>
+      'Saved backgrounds are full. Remove one to add another.';
+
+  @override
+  String backgroundImageItem(int number) {
+    return 'Image $number';
+  }
+
+  @override
   String get commandHistory => 'Command history';
 
   @override
@@ -1650,6 +1659,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get commandHistoryClear => 'Clear history';
+
   @override
   String get cmdToolCompose => 'Multi-container apps';
 

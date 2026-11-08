@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -87,6 +88,23 @@ void main() {
       await tester.runAsync(() async {
         expect(await images.choose(BackgroundSlot.terminal), isA<Ok<void>>());
         await images.saveOpacity(BackgroundSlot.terminal, .3);
+        final id = container.read(settingsProvider).get(SettingKeys.terminalBackgroundImage);
+        final stream = FileImage(store.file(id)!).resolve(ImageConfiguration.empty);
+        final ready = Completer<void>();
+        final listener = ImageStreamListener(
+          (_, _) {
+            if (!ready.isCompleted) ready.complete();
+          },
+          onError: (Object error, StackTrace? stack) {
+            if (!ready.isCompleted) ready.completeError(error, stack);
+          },
+        );
+        stream.addListener(listener);
+        try {
+          await ready.future.timeout(const Duration(seconds: 5));
+        } finally {
+          stream.removeListener(listener);
+        }
       });
       await tester.pump();
       expect(find.byType(BackgroundImageView), findsOneWidget);
@@ -151,6 +169,8 @@ void main() {
       session.close();
       manager.closeAll();
       container.dispose();
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
       await tester.runAsync(() async {
         await Future<void>.delayed(const Duration(milliseconds: 50));
         dir.deleteSync(recursive: true);

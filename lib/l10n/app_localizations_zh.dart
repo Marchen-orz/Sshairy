@@ -1598,6 +1598,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get backgroundImageUnreadable => '无法读取图片。';
 
   @override
+  String get backgroundGalleryFull => '已保存的背景图片已满，请先移除一张。';
+
+  @override
+  String backgroundImageItem(int number) {
+    return '图片 $number';
+  }
+
+  @override
   String get commandHistory => '命令历史';
 
   @override
@@ -1608,6 +1616,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get commandHistoryClear => '清空历史';
+
   @override
   String get cmdToolCompose => '多容器应用';
 

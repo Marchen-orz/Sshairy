@@ -3062,6 +3062,18 @@ abstract class AppLocalizations {
   /// **'Could not read the image.'**
   String get backgroundImageUnreadable;
 
+  /// No description provided for @backgroundGalleryFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved backgrounds are full. Remove one to add another.'**
+  String get backgroundGalleryFull;
+
+  /// No description provided for @backgroundImageItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Image {number}'**
+  String backgroundImageItem(int number);
+
   /// No description provided for @commandHistory.
   ///
   /// In en, this message translates to:
@@ -3085,6 +3097,7 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Clear history'**
   String get commandHistoryClear;
+
   /// No description provided for @cmdToolCompose.
   ///
   /// In en, this message translates to:

@@ -148,7 +148,28 @@ class BackgroundImageSetting extends SettingDef<String?> {
   @override
   Map<String, Object?> get schema => {
     'type': ['string', 'null'],
-    'pattern': r'^bg-[0-9a-f]{1,16}-[0-9a-f]{16}\.png$',
+    'pattern': backgroundImageIdPattern,
+  };
+}
+
+/// Owned image identifiers in display order: no duplicates, at most [maxItems], nothing but valid identifiers.
+class BackgroundGallerySetting extends SettingDef<List<String>> {
+  const BackgroundGallerySetting(String key, {this.maxItems = BackgroundImageLimits.galleryItems})
+    : super(key, const [], agentExposed: false);
+
+  final int maxItems;
+
+  @override
+  bool accepts(Object? raw) =>
+      raw is List && raw.length <= maxItems && raw.every(validBackgroundImageId) && raw.toSet().length == raw.length;
+  @override
+  List<String> decode(Object? raw) => List.unmodifiable([for (final id in raw as List) id as String]);
+  @override
+  Map<String, Object?> get schema => {
+    'type': 'array',
+    'items': {'type': 'string', 'pattern': backgroundImageIdPattern},
+    'maxItems': maxItems,
+    'uniqueItems': true,
   };
 }
 
@@ -168,6 +189,7 @@ abstract final class SettingKeys {
   static const uiFontFamily = FontSetting('uiFontFamily');
   static const uiFontSize = DoubleSetting('uiFontSize', AppFonts.uiSize, AppFonts.uiSizeMin, AppFonts.uiSizeMax);
 
+  static const backgroundGallery = BackgroundGallerySetting('backgroundGallery');
   static const appBackgroundImage = BackgroundImageSetting('appBackgroundImage');
   static const appBackgroundOpacity = DoubleSetting('appBackgroundOpacity', BackgroundImageLimits.opacity, 0, 1);
   static const terminalBackgroundImage = BackgroundImageSetting('terminalBackgroundImage');
@@ -236,6 +258,7 @@ abstract final class SettingKeys {
     uiScale,
     uiFontFamily,
     uiFontSize,
+    backgroundGallery,
     appBackgroundImage,
     appBackgroundOpacity,
     terminalBackgroundImage,
