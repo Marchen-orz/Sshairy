@@ -1,0 +1,2 @@
+# Generated completion assets retain their audited byte counts and upstream license hash.
+assets/completions/** -text

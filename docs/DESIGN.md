@@ -42,6 +42,9 @@
 | [MEMORY_USAGE.md](MEMORY_USAGE.md) | 内存保留边界、缓存预算与闲置资源释放 |
 | [BACKGROUND_IMAGES.md](BACKGROUND_IMAGES.md) | 界面与终端背景图片、受管副本与透明度 |
 | [TERMINAL_ASSISTANCE.md](TERMINAL_ASSISTANCE.md) | 本地补全候选、会话历史与异步扩展端口 |
+| [COMPLETION_SPECS.md](COMPLETION_SPECS.md) | 固定 Fig 规格的静态导入、来源与许可 |
+| [COMPLETION_ENGINE.md](COMPLETION_ENGINE.md) | 纯 Dart 命令上下文、选项与路径请求 |
+| [TERMINAL_PATHS.md](TERMINAL_PATHS.md) | 复用可信租约的有界 SFTP 路径来源 |
 | [PROXIES.md](PROXIES.md) | SSH 出站代理、继承与集中管理 |
 
 每次先读本文件与 ROADMAP，再读对应专题。用户新指示优先于文档。发现代码、测试、文档冲突时记录并修订，不把待验证项当事实。涉及决策的修改同步更新对应规范，不机械要求每个代码变更都修改全套文档。

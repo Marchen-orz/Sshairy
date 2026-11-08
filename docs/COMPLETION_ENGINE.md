@@ -134,7 +134,7 @@ lib/features/terminal/domain/
 ## 实现状态
 
 - 三个领域文件和 `test/spec_completion_test.dart` 已写成。
-- `test/spec_completion_test.dart`、全部打包资源解码、会话与候选 UI、路径来源均已运行通过；2026-11-08 完整工程回归 698 项通过、1 项跳过（排除无关的未跟踪 `test/zz_probe_test.dart`）。
+- `test/spec_completion_test.dart`、全部打包资源解码、会话与候选 UI、路径来源均已运行通过；2026-11-08 完整工程回归 700 项通过、1 项跳过（排除无关的未跟踪 `test/zz_probe_test.dart`）。
 - 已格式化本轮 Dart 文件；模块 import 检查通过。`flutter analyze --no-pub` 仅有上述 probe 文件原有 3 条诊断，本轮没有新增诊断。
 - 自动测试覆盖 Tab/Enter、四方向虚拟浏览、转义路径、超过 8 项滚动、异步选中保留、旧结果与光标定位；不等同于真实 shell 或原生输入法验收。引号/转义规则未在作者服务器逐项比对，真实 IME、最终窗口与真实服务器 SFTP 仍未验证。
 - 不覆盖：多行、管道和重定向后的命令、变量与命令替换、通配符、`~user`、别名与 shell 函数、生成器类参数（git 分支、容器名等没有候选）。
