@@ -151,4 +151,4 @@ Suggestion：只有名字时是字符串；否则 `{name, description?, displayN
 - 运行时通过 `CompletionSpecs` 惰性加载，仅追踪当前命令分支的嵌套引用（最多 16 轮、每轮最多 32 个缺失引用）。全局 LRU 最多 32 个资源，按输入字符串 UTF-16 大小估算的缓存成本最多 16 MiB；这不是解码后对象堆的精确上限。原始规格 `loadString(cache:false)` 不留在 AssetBundle 字符串缓存，同一路径在途加载合并。
 - 顶层候选的说明与可浏览标记另由 `tool/generate_completion_command_metadata.dart` 从随包 JSON 生成纯 Dart 小索引，覆盖 738 个命令名，不为名称列表加载完整规格；`--check` 验证与源数据一致。运行时明确的 `cd` 路径修正也体现在索引。该索引、离线中文映射和未覆盖说明的类型回退不改变来源 JSON、manifest 或许可统计；悬浮保留来源说明，中文映射不是全库完整翻译。
 - 上游 LICENSE 已加入 Flutter 许可注册与打包 notices，派生的根说明索引与译文沿用同一来源声明；包级 ISC 与文件级 MIT 的不一致仍保留说明，未替代正式发行的许可审计。
-- 未做最终 Release 包体、真实窗口性能或大量大型规格加载的内存实测。本轮未重建安装包。
+- Release 包体与逐文件资源校验记录见 ROADMAP；真实窗口性能或大量大型规格加载的内存仍未实测。
