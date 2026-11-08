@@ -41,7 +41,11 @@ class ConnectionManager {
   Duration park;
   final _pool = <String, _Entry>{};
   final _detached = <_Entry>{};
+  final _connected = StreamController<HostId>.broadcast();
   var _closed = false;
+
+  /// A freshly authenticated transport is available; reused leases do not emit another event.
+  Stream<HostId> get connected => _connected.stream;
 
   /// What must match for two users to share a transport. Holds references, never secrets.
   static String keyOf(Host h) => jsonEncode([
@@ -142,7 +146,9 @@ class ConnectionManager {
   }
 
   void closeAll() {
+    if (_closed) return;
     _closed = true;
+    unawaited(_connected.close());
     for (final e in [..._pool.values, ..._detached]) {
       _close(e);
     }
@@ -159,6 +165,7 @@ class ConnectionManager {
         throw const ConnectError(ConnectFailure.cancelled);
       }
       entry.transport = t;
+      _connected.add(entry.host.id);
       // The only listener on the transport's done: a future cannot drop listeners, so each lease has its own.
       t.done.whenComplete(() {
         _forget(entry);

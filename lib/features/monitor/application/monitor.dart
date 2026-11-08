@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../foundation/ids.dart';
 import '../../../foundation/result.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
@@ -43,10 +44,13 @@ class ServerMonitor extends ChangeNotifier {
 
   TransportLease? _lease;
   Timer? _timer;
+  StreamSubscription<HostId>? _connected;
   StatsSample? _previous;
   DateTime? _previousAt;
   Duration _interval;
   var _running = false, _busy = false, _disposed = false, _gpuVisible = false, _processViews = 0;
+  var _generation = 0;
+  var _connectionPending = false;
 
   bool get running => _running;
   Duration get interval => _interval;
@@ -83,6 +87,15 @@ class ServerMonitor extends ChangeNotifier {
   void start() {
     if (_running || _disposed) return;
     _running = true;
+    _generation++;
+    _connected = _connections.connected.listen((id) {
+      if (id != host.id) return;
+      if (_busy) {
+        _connectionPending = true;
+      } else {
+        refresh();
+      }
+    });
     _tick();
   }
 
@@ -96,6 +109,10 @@ class ServerMonitor extends ChangeNotifier {
   /// Stops polling and hands the lease back; history is kept so a tab switched back to is not blank.
   void stop() {
     _running = false;
+    _generation++;
+    _connectionPending = false;
+    unawaited(_connected?.cancel());
+    _connected = null;
     _timer?.cancel();
     _timer = null;
     _drop();
@@ -116,15 +133,24 @@ class ServerMonitor extends ChangeNotifier {
   Future<void> _tick() async {
     if (!_running || _busy) return;
     _busy = true;
+    final generation = _generation;
     try {
-      await _poll();
+      await _poll(generation);
     } finally {
       _busy = false;
-      if (_running && state != MonitorState.unsupported) _timer = Timer(_interval, _tick);
+      final again = generation != _generation || (_connectionPending && state != MonitorState.live);
+      _connectionPending = false;
+      if (_running && state != MonitorState.unsupported) {
+        if (again) {
+          unawaited(_tick());
+        } else {
+          _timer = Timer(_interval, _tick);
+        }
+      }
     }
   }
 
-  Future<TransportLease?> _acquire() async {
+  Future<TransportLease?> _acquire({int? generation}) async {
     var lease = _lease;
     if (lease != null && !lease.lost) return lease;
     _drop();
@@ -134,7 +160,7 @@ class ServerMonitor extends ChangeNotifier {
     } on Object {
       return null;
     }
-    if (!_running) {
+    if (!_running || (generation != null && generation != _generation)) {
       lease.release();
       return null;
     }
@@ -148,21 +174,23 @@ class ServerMonitor extends ChangeNotifier {
     return lease;
   }
 
-  Future<void> _poll() async {
-    final lease = await _acquire();
+  Future<void> _poll(int generation) async {
+    final lease = await _acquire(generation: generation);
+    if (!_running || generation != _generation) return;
     if (lease == null) return _set(MonitorState.offline);
     final ExecResult result;
     try {
       final command = statsCommand(processes: _processViews > 0, gpu: _gpuVisible);
       result = await lease.exec(command, limit: _limit).timeout(_timeout);
     } on Object {
+      if (!_running || generation != _generation) return;
       if (lease.lost) {
         _drop();
         return _set(MonitorState.offline);
       }
       return _set(MonitorState.failed);
     }
-    if (!_running) return;
+    if (!_running || generation != _generation || !identical(_lease, lease) || lease.lost) return;
     final sample = parseStats(utf8.decode(result.stdout, allowMalformed: true));
     if (!sample.supported) {
       _drop();
