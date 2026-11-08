@@ -8,6 +8,7 @@ import '../../../design/theme.dart';
 import '../../../foundation/json_file.dart';
 import '../../credentials/api.dart' show CredentialImportFailure;
 import '../../../l10n/app_localizations.dart';
+import '../adapters/import_source_icon.dart';
 import '../application/host_import.dart';
 import '../application/hosts.dart';
 import '../domain/import_plan.dart';
@@ -191,6 +192,7 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
                 Expanded(
                   child: j < sources.length
                       ? _SourceTile(
+                          format: sources[j],
                           name: _names[sources[j]]!,
                           hint: _fileHint(sources[j]),
                           found: _found[sources[j]] ?? 0,
@@ -386,8 +388,15 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
 }
 
 class _SourceTile extends StatelessWidget {
-  const _SourceTile({required this.name, required this.hint, required this.found, required this.onTap});
+  const _SourceTile({
+    required this.format,
+    required this.name,
+    required this.hint,
+    required this.found,
+    required this.onTap,
+  });
 
+  final ImportFormat format;
   final String name, hint;
   final int found;
   final VoidCallback? onTap;
@@ -412,21 +421,7 @@ class _SourceTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: Space.md),
             child: Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withValues(alpha: .14),
-                    borderRadius: BorderRadius.circular(Radii.control),
-                  ),
-                  child: ExcludeSemantics(
-                    child: Text(
-                      name.substring(0, 2),
-                      style: text.labelMedium?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
+                ImportSourceIcon(format),
                 const SizedBox(width: Space.sm),
                 Expanded(
                   child: Column(
