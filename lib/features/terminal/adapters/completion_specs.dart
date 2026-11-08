@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import '../domain/completion_command_metadata.dart';
 import '../domain/spec_completion.dart';
 
 /// Loads the static projection only. No upstream JavaScript or generators run in the client.
@@ -58,7 +59,7 @@ class CompletionSpecs {
     try {
       final text = await _bundle.loadString(path, cache: false);
       cost = text.length * 2;
-      spec = CompletionSpec.tryParse(jsonDecode(text));
+      spec = CompletionSpec.tryParse(_pathHints(jsonDecode(text)));
     } on Object {
       spec = null;
     }
@@ -73,10 +74,57 @@ class CompletionSpecs {
     return spec;
   }
 
+  /// The static projection drops generators; these few arguments have an unambiguous filesystem meaning.
+  Object? _pathHints(Object? json) {
+    if (json is! Map) return json;
+    final name = json['name'];
+    if (name == 'cd' && json['args'] is Map) {
+      (json['args'] as Map).putIfAbsent('template', () => 'folders');
+    } else if (name == 'scp' || name == 'tar') {
+      Map? archive;
+      void options(Object? value) {
+        if (value is! List) return;
+        for (final option in value.whereType<Map>()) {
+          final names = option['name'];
+          final aliases = names is List ? names : [names];
+          final path = name == 'scp'
+              ? aliases.any((alias) => alias == '-F' || alias == '-i')
+              : aliases.contains('--file');
+          final args = option['args'];
+          if (path && args is Map) {
+            args.putIfAbsent('template', () => 'filepaths');
+            if (name == 'tar') archive ??= option;
+          }
+        }
+      }
+
+      options(json['options']);
+      if (name == 'tar') {
+        final subcommands = json['subcommands'];
+        if (subcommands is List) {
+          for (final subcommand in subcommands.whereType<Map>()) {
+            options(subcommand['options']);
+          }
+        }
+        if (archive != null) {
+          final rootOptions = json['options'];
+          if (rootOptions is List && !rootOptions.contains(archive)) {
+            rootOptions.add({...archive!, 'isPersistent': true});
+          }
+        }
+        final directives = json['parserDirectives'];
+        if (directives is Map) directives['flagsArePosixNoncompliant'] = false;
+      }
+    }
+    return json;
+  }
+
   Future<({SpecCompletionResult result, bool available})> complete(String draft) async {
     final context = CompletionContext.parse(draft);
     final names = await commandNames();
-    final choices = [for (final name in names) CompletionChoice(name)];
+    final choices = [
+      for (final name in names) CompletionChoice(name, description: completionCommandMetadata(name)?.description),
+    ];
     final command = context.words.isEmpty ? context.current.value : context.words.first.value;
     final spec = await load(command);
     final resolved = <String, CompletionSpec?>{};
@@ -91,6 +139,7 @@ class CompletionSpecs {
         config: SpecCompletionConfig(
           limit: 200,
           commands: choices,
+          commandCanBrowse: (name) => completionCommandMetadata(name)?.canBrowse ?? false,
           includeOptionsForEmptyToken: true,
           nested: (name) {
             if (!resolved.containsKey(name)) missing.add(name);

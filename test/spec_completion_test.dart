@@ -544,6 +544,53 @@ void main() {
       expect(values(complete(docker, 'docker compose up w')), ['web']);
     });
 
+    test('only command nodes with usable child content are marked browseable', () {
+      final tree = spec(r'''{"name": "tree", "subcommands": [
+        {"name": ["leaf", "-l"]},
+        {"name": "options", "options": [{"name": "--all"}]},
+        {"name": "args", "args": {"template": "filepaths"}},
+        {"name": "children", "subcommands": [{"name": "leaf"}]},
+        {"name": "lazy", "loadSpec": "tree/lazy"},
+        {"name": "text", "args": {"name": "text"}},
+        {"name": "script", "args": {"isScript": true, "template": "filepaths", "suggestions": ["x"]}},
+        {"name": "history", "args": {"template": "history"}},
+        {"name": "hidden", "options": [{"name": "--all", "hidden": true}],
+          "subcommands": [{"name": "secret", "hidden": true}]},
+        {"name": "choices", "args": {"suggestions": ["x"]}},
+        {"name": "command", "args": {"isCommand": true}},
+        {"name": "additional", "additionalSuggestions": ["x"]},
+        {"name": "later", "args": [{"name": "text"}, {"suggestions": ["x"]}]},
+        {"name": "optional", "args": [{"name": "text", "isOptional": true}, {"suggestions": ["x"]}]},
+        {"name": "variadic", "args": [{"name": "text", "isOptional": true, "isVariadic": true},
+          {"suggestions": ["x"]}]}]}''');
+      final suggestions = complete(tree, 'tree ').suggestions;
+      expect(
+        [for (final item in suggestions) (item.value, item.canBrowse)],
+        [
+          ('leaf', false),
+          ('options', true),
+          ('args', true),
+          ('children', true),
+          ('lazy', true),
+          ('text', false),
+          ('script', false),
+          ('history', false),
+          ('hidden', false),
+          ('choices', true),
+          ('command', true),
+          ('additional', true),
+          ('later', false),
+          ('optional', true),
+          ('variadic', false),
+        ],
+      );
+      expect(tree.subcommands[5].hasContent, isTrue);
+      expect(tree.subcommands[5].canBrowse, isFalse);
+      expect(complete(tree, 'tree -').suggestions.single.canBrowse, isFalse);
+      expect(complete(tree, 'tree options --a').suggestions.single.canBrowse, isFalse);
+      expect(complete(say, 'say a').suggestions.single.canBrowse, isFalse);
+    });
+
     test('an unknown subcommand, or past the positionals, suggests nothing', () {
       expect(complete(docker, 'docker nope ').isEmpty, isTrue);
       expect(complete(docker, 'docker nope -').isEmpty, isTrue);
@@ -645,6 +692,28 @@ void main() {
       expect(complete(tar, 'tar -xzf').suggestions, isEmpty);
     });
 
+    test('dashed subcommands select the options inside a short bundle', () {
+      final archive = spec(r'''{
+        "name": "archive", "options": [{"name": "-v", "isPersistent": true}],
+        "subcommands": [{"name": ["x", "-x", "--extract"],
+          "options": [{"name": "-z"},
+            {"name": ["-f", "--file"], "args": {"template": "filepaths"}}],
+          "args": {"name": "member", "isVariadic": true}}]}''');
+      for (final draft in ['archive -x -f ', 'archive -xzf ', 'archive -vxzf ', 'archive --extract --file=']) {
+        expect(complete(archive, draft).path?.typedPrefix, '', reason: draft);
+      }
+      final draft = 'archive -xzf"./My N';
+      final request = complete(archive, draft).path!;
+      expect((request.typedPrefix, request.tokenPrefix, request.valueStart), ('./My N', '-xzf', 12));
+      final suggestion = request.resolve(const [CompletionPathEntry('My Notes.tar')]).single;
+      expect(suggestion.applyTo(draft), '$draft${suggestion.suffix}');
+      expect(parse(suggestion.applyTo(draft)).current.value, '-xzf./My Notes.tar');
+      expect(values(complete(archive, 'archive --ext')), ['--extract']);
+      expect(values(complete(archive, 'archive -x')), contains('-xf'));
+      expect(complete(archive, 'archive -xzf file.tar ').path, isNull);
+      expect(complete(archive, 'archive -xQf ').path, isNull);
+    });
+
     test('flagsArePosixNoncompliant: -name is one option', () {
       expect(values(complete(finder, 'find -na')), ['-name']);
       expect(values(complete(finder, 'find . -type ')), ['f', 'd']);
@@ -719,6 +788,8 @@ void main() {
       );
       expect((s.replaceStart, s.replaceEnd), (3, 8));
       expect(s.applyTo('cd ~/pro'), 'cd ~/projects/');
+      expect(s.canBrowse, isTrue);
+      expect(complete(cat, 'cat ').path!.resolve(const [CompletionPathEntry('notes.txt')]).single.canBrowse, isFalse);
       expect(complete(cd, 'cd ~/projects/').path!.directory, '~/projects/');
     });
 
@@ -781,6 +852,38 @@ void main() {
       final s = r.single;
       expect((s.value, s.display, s.suffix), ('--file=~/backup.tar', 'backup.tar', 'ckup.tar'));
       expect(s.applyTo('tar --file=~/ba'), 'tar --file=~/backup.tar');
+    });
+
+    test('untyped plain arguments only fall back after an explicit path prefix', () {
+      final plain = spec(r'''{"name": "plain", "args": {"name": "value"},
+        "options": [{"name": "--value", "args": {"name": "value"}}]}''');
+      for (final draft in ['plain ', 'plain name', 'plain --value=', 'plain --value=name']) {
+        expect(complete(plain, draft).path, isNull, reason: draft);
+      }
+      for (final prefix in ['./', '../', '/', '~/', '.', '..', '~']) {
+        expect(complete(plain, 'plain $prefix').path?.typedPrefix, prefix, reason: prefix);
+        expect(complete(plain, 'plain --value=$prefix').path?.typedPrefix, prefix, reason: prefix);
+      }
+      final draft = 'plain --value="./My N';
+      final request = complete(plain, draft).path!;
+      expect((request.tokenPrefix, request.valueStart, request.quote), ('--value=', 14, CompletionQuote.double));
+      final suggestion = request.resolve(const [CompletionPathEntry('My Notes.txt')]).single;
+      expect(suggestion.applyTo(draft), '$draft${suggestion.suffix}');
+      expect(suggestion.applyTo(draft), 'plain --value="./My Notes.txt"');
+      expect(parse(suggestion.applyTo(draft)).current.value, '--value=./My Notes.txt');
+    });
+
+    test('static choices, scripts, and uncertain arguments do not turn into paths', () {
+      final fixed = spec(r'''{"name": "fixed", "args": {"suggestions": ["main"]},
+        "options": [{"name": "-c", "args": {"isScript": true}},
+                    {"name": "--branch", "args": {"suggestions": ["main"]}}]}''');
+      for (final draft in ['fixed ./', 'fixed -c ./', 'fixed --branch=./', 'fixed --unknown ./']) {
+        expect(complete(fixed, draft).path, isNull, reason: draft);
+      }
+      final remote = spec(r'''{"name": "copy", "args": {"isVariadic": true}}''');
+      for (final draft in ['copy host:path', 'copy host:/tmp/', 'copy scp://host/tmp/']) {
+        expect(complete(remote, draft).path, isNull, reason: draft);
+      }
     });
 
     test('at most 200 entries, or the limit given', () {
@@ -930,6 +1033,25 @@ void main() {
       expect(values(complete(sudo, 'sudo -E ', config: wrap)), ['git', 'ls']);
       expect(values(complete(sudo, 'sudo git commit -a -', config: wrap)), isNot(contains('-a')));
       expect(values(complete(sudo, 'sudo -', config: wrap)), ['-u', '--user', '-E']);
+    });
+
+    test('command browsing reads separate metadata without resolving every command', () {
+      var lookups = 0;
+      final result = complete(
+        sudo,
+        'sudo ',
+        config: SpecCompletionConfig(
+          commands: const [CompletionChoice('git'), CompletionChoice('leaf')],
+          command: (_) {
+            lookups++;
+            return null;
+          },
+          commandCanBrowse: (name) => name == 'git',
+        ),
+      );
+      expect([for (final item in result.suggestions) (item.value, item.canBrowse)], [('git', true), ('leaf', false)]);
+      expect(lookups, 0);
+      expect(complete(sudo, 'sudo ', config: wrap).suggestions.every((item) => !item.canBrowse), isTrue);
     });
 
     test('an unknown command after sudo falls back to paths and reports what was missing', () {

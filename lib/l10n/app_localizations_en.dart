@@ -67,6 +67,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get completionTruncated => 'Type more to narrow the list';
 
   @override
+  String get completionCommand => 'Command';
+
+  @override
+  String get completionSubcommand => 'Subcommand';
+
+  @override
+  String get completionOption => 'Option';
+
+  @override
+  String get completionArgument => 'Argument value';
+
+  @override
   String get openWith => 'Open with…';
 
   @override

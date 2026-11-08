@@ -58,7 +58,7 @@ lib/features/terminal/domain/
 最后一个词之前的每个词依次归类，状态机维护：
 
 - 子命令链（含别名）；仅在该节点第一个位置词、且规格有子命令时才查子命令；查不到又没有 `args` 则整条线 dead，不给候选。
-- 选项：精确名；`--opt<sep>值`（`optionArgSeparators`）；POSIX 合并短选项（`-xzf`、`-Ipath`，第一个带值的字母结束合并）；`-数字` 忽略。`flagsArePosixNoncompliant` 关闭合并。
+- 选项：精确名；`--opt<sep>值`（`optionArgSeparators`）；POSIX 合并短选项（`-xzf`、`-Ipath`，第一个带值的字母结束合并）；`-数字` 忽略。`flagsArePosixNoncompliant` 关闭合并。规格声明为子命令的 `-x` 等操作名也可在首个位置进入分支；短选项合并中最多进入一次这样的分支，之后用该分支的选项读余下字母。
 - 选项取值：必选的值消耗下一个词；`separator` 选项的值必须连写；可变参数的值遇到以 `-` 开头的词结束。
 - `--` 之后全是位置词；`optionsMustPrecedeArguments` 时第一个位置词之后的 `-` 词也是位置词。
 - 位置词按 `args` 下标计数，可变参数不耗尽。
@@ -83,16 +83,19 @@ lib/features/terminal/domain/
 
 ### 替换与后缀
 
-`SpecSuggestion` 带：`value`（插入后的完整逻辑词）、`display`（简短标签）、`kind`、`replaceStart`/`replaceEnd`、`replacement`（该范围插入后的 raw 文本，已按 shell 引号与转义编码）、`suffix`、`appendSpace`、`description`。
+`SpecSuggestion` 带：`value`（插入后的完整逻辑词）、`display`（简短标签）、`kind`、`replaceStart`/`replaceEnd`、`replacement`（该范围插入后的 raw 文本，已按 shell 引号与转义编码）、`suffix`、`appendSpace`、`canBrowse`、`description`。
 
 - `suffix` 非空：`replacement == 已输入的 raw + suffix`，即纯追加，`draft + suffix == applyTo(draft)`；调用方可以只追加字符，不删任何已输入内容。
 - `suffix` 为 null：已输入文本不是 `value` 的前缀（规格的 `insertValue` 改写），应用时要替换已输入字符，调用方必须确认或跳过。
 - 追加内容按引号状态编码：无引号时转义非普通字符（词首的 `~`、`#` 也转义）；单引号内 `'` 写成 `'\''`；双引号内转义 `" \ $` 和反引号，`!` 写成 `"\!"`。词结束（`appendSpace`）时补上闭合引号。
-- `appendSpace` 为 false：文件夹（结尾 `/`，继续下钻）与 `--名=`（值要连写）。
+- `appendSpace` 为 false：文件夹（结尾 `/`，继续下钻）与 `--名=`（值要连写）。引擎的 `replacement`/`suffix` 仅表示当前词；调用方在提交完整词时按该字段加词间空格。
+- `canBrowse` 仅标记存在可浏览层级的候选：目录为 true；子命令复用 `CompletionSpec.canBrowse`，有可见子命令/选项、额外静态建议、`loadSpec`，或当前首个参数（含连续可跳过的可选参数）能提供静态建议、路径模板、命令来源时为 true；遇到必填或可变参数后不把后续参数算入当前层级。只有自由文本、`isScript`、`history` 模板或隐藏内容的节点为 false，`hasContent` 仍只服务规格加载判断。文件、选项和静态参数候选为 false。`isCommand` 的命令名称使用 `config.commandCanBrowse` 同步只读元数据，缺少时保守为 false，不为所有候选调用会触发加载的 `config.command`。调用方只在 true 时接管向右键，末级候选交还 shell。
 
 ## 路径
 
-模板为 `filepaths` 或 `folders` 的参数产生 `PathCompletionRequest`，引擎不列目录。
+模板为 `filepaths` 或 `folders` 的参数产生 `PathCompletionRequest`，包括尚未输入名字的空参数；引擎不列目录。普通参数没有路径模板、静态建议、`isCommand` 或 `isScript` 时，仅在用户已输入显式路径（`/`、`./`、`../`、`~/`、`.`、`..`、`~`）时回退为路径请求；不凭参数名或丢失的生成器推断空位，选项连写值同样遵守此规则。
+
+随包 Fig 静态数据不完整时，`CompletionSpecs` 在解码前做少量明确的本地修正，不改写来源 JSON：`cd` 的参数补 `folders`；`scp -F/-i` 与 `tar -f/--file` 补 `filepaths`；`tar` 的档案选项也可在操作名前使用，并允许 POSIX 短选项合并来读取 `-xzf`。`scp` 的位置参数可指向另一台主机，空位不猜路径，只有显式本机路径回退；`host:path`、`scp://…` 不用当前连接列目录。其他生成器（分支、容器、主机名等）仍不执行、不自动改成路径。
 
 | 字段 | 含义 |
 |---|---|
@@ -129,7 +132,7 @@ lib/features/terminal/domain/
 2. 路径请求由调用方列目录，条目映射为 `CompletionPathEntry`；`~` 在调用方侧展开。
 3. 草稿 `context.supported` 为 false 时不给任何候选，历史候选的处理不变。
 4. 命令清单（顶层命令名）由调用方外部加载，引擎只处理一份根规格与以它开头的草稿。
-5. 候选文案（`description`）来自第三方规格，不得翻译成事实陈述；界面上的固定文案走 i18n。
+5. 候选文案（`description`）来自第三方规格；界面可按软件语言选择离线译文，未覆盖时使用本地化类型提示并在 tooltip 保留原文，不把译文当成服务器能力或权限判断。界面固定文案走 i18n。
 
 ## 实现状态
 

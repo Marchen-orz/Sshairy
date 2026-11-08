@@ -59,6 +59,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get completionTruncated => '继续输入以缩小范围';
 
   @override
+  String get completionCommand => '命令';
+
+  @override
+  String get completionSubcommand => '子命令';
+
+  @override
+  String get completionOption => '命令选项';
+
+  @override
+  String get completionArgument => '参数值';
+
+  @override
   String get openWith => '打开方式…';
 
   @override

@@ -188,6 +188,30 @@ abstract class AppLocalizations {
   /// **'Type more to narrow the list'**
   String get completionTruncated;
 
+  /// No description provided for @completionCommand.
+  ///
+  /// In en, this message translates to:
+  /// **'Command'**
+  String get completionCommand;
+
+  /// No description provided for @completionSubcommand.
+  ///
+  /// In en, this message translates to:
+  /// **'Subcommand'**
+  String get completionSubcommand;
+
+  /// No description provided for @completionOption.
+  ///
+  /// In en, this message translates to:
+  /// **'Option'**
+  String get completionOption;
+
+  /// No description provided for @completionArgument.
+  ///
+  /// In en, this message translates to:
+  /// **'Argument value'**
+  String get completionArgument;
+
   /// No description provided for @openWith.
   ///
   /// In en, this message translates to:

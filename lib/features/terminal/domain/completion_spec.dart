@@ -167,6 +167,27 @@ class CompletionSpec {
 
   bool get hasContent => subcommands.isNotEmpty || options.isNotEmpty || args.isNotEmpty;
 
+  /// Whether an empty next word has static suggestions or a path/command source to browse.
+  bool get canBrowse {
+    if (loadSpec != null ||
+        subcommands.any((subcommand) => !subcommand.hidden) ||
+        options.any((option) => !option.hidden) ||
+        additionalSuggestions.isNotEmpty) {
+      return true;
+    }
+    for (final arg in args) {
+      if (!arg.isScript &&
+          (arg.isCommand ||
+              arg.choices.isNotEmpty ||
+              arg.templates.contains(CompletionTemplate.filepaths) ||
+              arg.templates.contains(CompletionTemplate.folders))) {
+        return true;
+      }
+      if (!arg.isOptional || arg.isVariadic) break;
+    }
+    return false;
+  }
+
   /// This node with what [loaded] (the target of [loadSpec]) adds after it.
   CompletionSpec withLoaded(CompletionSpec loaded) => CompletionSpec(
     names,

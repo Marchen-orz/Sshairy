@@ -23,6 +23,8 @@ import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../domain/command_assistance.dart';
+import '../domain/completion_command_metadata.dart';
+import '../presentation/completion_descriptions.dart';
 import '../domain/directory.dart';
 import '../domain/insertion.dart';
 import '../domain/terminal_paths.dart';
@@ -104,7 +106,7 @@ class TerminalSession extends ChangeNotifier {
   int? _promptRow, _promptColumn;
   BufferLine? _submittedLine;
   String? _submittedText;
-  var _inputPending = false;
+  var _inputPending = false, _historyBrowsing = false;
 
   ValueListenable<CommandAssistanceState> get commandAssistance => _assistance;
   ValueListenable<List<String>> get commandHistory => _history;
@@ -126,6 +128,19 @@ class TerminalSession extends ChangeNotifier {
       _browseCommand(request, candidate);
   bool returnCommandBrowse() => _returnCommandBrowse();
 
+  /// Shell history echo must not start a new completion request.
+  void browseShellHistory() {
+    _historyBrowsing = true;
+    _invalidateCommandDraft();
+  }
+
+  void reopenCommandCompletion() {
+    if (!_historyBrowsing) return;
+    _historyBrowsing = false;
+    final request = _assistance.value.request;
+    if (request != null) unawaited(_complete(request));
+  }
+
   /// Output arrived while no pane showed this session.
   var unread = false;
   var _viewed = false;
@@ -144,7 +159,8 @@ class TerminalSession extends ChangeNotifier {
   late final _directory = _DirectoryNotifier(_following);
   String? _reported;
   final _lookups = <Timer>[];
-  var _looking = false;
+  Future<String?>? _directoryLookup;
+  var _directoryRevision = 0;
 
   /// The shell's working directory, looked up only while something listens; null until known.
   ValueListenable<String?> get directory => _directory;
@@ -259,6 +275,12 @@ class TerminalSession extends ChangeNotifier {
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
         if (data.isEmpty) return;
+        if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
+          _historyBrowsing = true;
+        } else if (!data.startsWith('\x1b') &&
+            (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b')) {
+          _historyBrowsing = false;
+        }
         _inputPending = true;
         _invalidateCommandDraft();
         shell.write(utf8.encode(data));
@@ -341,6 +363,8 @@ class TerminalSession extends ChangeNotifier {
 
   /// Enter may have run a `cd`: look once the shell has had time, and again for a slow one.
   void _entered() {
+    _directoryRevision++;
+    _directoryLookup = null;
     _reported = null;
     _directory.value = null;
     (remotePaths ?? _ownedPaths)?.invalidate();
@@ -370,23 +394,34 @@ class TerminalSession extends ChangeNotifier {
   }
 
   Future<String?> _look({bool force = false}) async {
-    final lease = _lease, generation = _shellGeneration;
-    if (_closed || _looking || lease == null || lease.lost || (!force && !_directory.followed)) return _directory.value;
-    _looking = true;
-    String? found;
-    try {
-      final result = await lease.exec(directoryQuery(_marker), limit: 4096).timeout(const Duration(seconds: 5));
-      found = parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
-    } on Object {
-      found = null;
-    } finally {
-      _looking = false;
+    final lease = _lease, generation = _shellGeneration, revision = _directoryRevision;
+    if (_closed || lease == null || lease.lost || (!force && !_directory.followed)) return _directory.value;
+    final pending = _directoryLookup;
+    if (pending != null) return pending;
+    Future<String?> query() async {
+      String? found;
+      try {
+        final result = await lease.exec(directoryQuery(_marker), limit: 4096).timeout(const Duration(seconds: 5));
+        found = parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
+      } on Object {
+        found = null;
+      }
+      if (_closed || generation != _shellGeneration || revision != _directoryRevision || !identical(_lease, lease)) {
+        return null;
+      }
+      // A server that refused the marker or has no /proc may still report through OSC 7.
+      found ??= _reported;
+      if (found != null) _directory.value = found;
+      return found;
     }
-    if (_closed || generation != _shellGeneration || !identical(_lease, lease)) return null;
-    // A server that refused the marker or has no /proc may still report through OSC 7.
-    found ??= _reported;
-    if (found != null) _directory.value = found;
-    return found;
+
+    final lookup = query();
+    _directoryLookup = lookup;
+    try {
+      return await lookup;
+    } finally {
+      if (identical(_directoryLookup, lookup)) _directoryLookup = null;
+    }
   }
 
   /// docs/MODULES.md §2: 1/2/4/8/16 s with jitter, at most five times, network errors only.

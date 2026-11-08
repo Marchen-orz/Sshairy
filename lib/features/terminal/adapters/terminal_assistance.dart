@@ -82,7 +82,7 @@ extension _CommandAssistance on TerminalSession {
       directory: _directory.value,
     );
     _assistance.value = CommandAssistanceState(request: request);
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || _historyBrowsing) return;
     _completionTimer = Timer(const Duration(milliseconds: 180), () => _complete(request));
   }
 
@@ -137,13 +137,15 @@ extension _CommandAssistance on TerminalSession {
           if (!name.startsWith(prefix) || name == prefix) continue;
           final text =
               '$draft${encodeShellSuffix(name.substring(prefix.length), context.quote, atWordStart: prefix.isEmpty, close: true)} ';
+          final metadata = completionCommandMetadata(name);
           local.add(
             CommandCandidate(
               text,
               source: CommandCandidateSource.builtin,
               kind: CommandKind.command,
               displayText: name,
-              preview: text,
+              detail: metadata?.description,
+              preview: metadata?.canBrowse == true ? text : null,
             ),
           );
         }
@@ -234,9 +236,10 @@ extension _CommandAssistance on TerminalSession {
   }
 
   CommandCandidate _specCandidate(String draft, SpecSuggestion item, {bool path = false}) {
-    final text = item.applyTo(draft);
+    final replacement = item.applyTo(draft);
+    final text = item.appendSpace ? '$replacement ' : replacement;
     final directory = item.kind == SpecSuggestionKind.folder;
-    final branch = item.kind == SpecSuggestionKind.command || item.kind == SpecSuggestionKind.subcommand;
+    final branch = !directory && item.canBrowse;
     return CommandCandidate(
       text,
       source: path ? CommandCandidateSource.path : CommandCandidateSource.builtin,
@@ -295,6 +298,7 @@ extension _CommandAssistance on TerminalSession {
   }
 
   void _submitCommand() {
+    _historyBrowsing = false;
     final text = _echoedCommand();
     if (text != null) _rememberCommand(text);
     _markCommandSubmitted();
@@ -308,10 +312,12 @@ extension _CommandAssistance on TerminalSession {
     _promptRow = _promptColumn = null;
     _submittedLine = null;
     _submittedText = null;
-    _inputPending = false;
+    _inputPending = _historyBrowsing = false;
     _ownedPaths?.dispose();
     _ownedPaths = null;
     _reported = null;
+    _directoryRevision++;
+    _directoryLookup = null;
     _directory.value = null;
     _invalidateCommandDraft();
   }

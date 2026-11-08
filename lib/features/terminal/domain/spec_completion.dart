@@ -25,6 +25,7 @@ class SpecSuggestion {
     this.suffix,
     this.description,
     this.appendSpace = true,
+    this.canBrowse = false,
   });
 
   /// The whole logical word after insertion (unquoted, unescaped), e.g. `--file=a b`.
@@ -46,6 +47,9 @@ class SpecSuggestion {
 
   /// False where the word goes on: after a folder (`/`) and after `--name=`.
   final bool appendSpace;
+
+  /// Whether the candidate has a directory or command branch to browse without changing the draft.
+  final bool canBrowse;
 
   bool get isAppendOnly => suffix != null;
 
@@ -139,6 +143,7 @@ class PathCompletionRequest {
         end: tokenEnd,
         quote: quote,
         appendSpace: !e.isDirectory,
+        canBrowse: e.isDirectory,
       );
       if (s != null) out.add(s);
     }
@@ -154,6 +159,7 @@ class SpecCompletionConfig {
     this.includeOptionsForEmptyToken = false,
     this.nested,
     this.command,
+    this.commandCanBrowse,
     this.commands = const [],
   });
 
@@ -168,6 +174,9 @@ class SpecCompletionConfig {
 
   /// Resolves the spec of the command that follows an `isCommand` argument (`sudo git`); null when unknown.
   final SpecLookup? command;
+
+  /// Reads already known command metadata without requesting or loading another spec.
+  final bool Function(String name)? commandCanBrowse;
 
   /// The command names offered where an `isCommand` argument is typed.
   final List<CompletionChoice> commands;
@@ -308,6 +317,7 @@ SpecSuggestion? _suggestion({
   required int end,
   required CompletionQuote quote,
   required bool appendSpace,
+  bool canBrowse = false,
   String? description,
 }) {
   if (value == currentValue || !completionValueValid(value)) return null;
@@ -335,6 +345,7 @@ SpecSuggestion? _suggestion({
     replacement: replacement,
     suffix: suffix,
     appendSpace: appendSpace,
+    canBrowse: canBrowse,
   );
 }
 
@@ -366,6 +377,14 @@ class _Pending {
   final int index;
 
   CompletionArg get arg => option.args[index];
+}
+
+class _ShortOptions {
+  const _ShortOptions(this.hits, this.subcommand, this.valueStart);
+
+  final List<(CompletionOption, String?)> hits;
+  final CompletionSpec? subcommand;
+  final int? valueStart;
 }
 
 /// Reads the words before the last one: which command node they lead to and what is still owed.
@@ -427,6 +446,8 @@ class _Walk {
       _positional(word);
     } else if (text == '--') {
       delimiter = true;
+    } else if (_dashed(text) && _subcommand(text) != null) {
+      _positional(word);
     } else if (_dashed(text) && !(node.directives.optionsMustPrecedeArguments && positionals > 0)) {
       _option(text);
     } else {
@@ -436,13 +457,14 @@ class _Walk {
 
   /// Options that apply here: the innermost node's, then the persistent ones of the nodes above. A name that a
   /// nearer node declares hides the same name further out.
-  List<CompletionOption> available() {
+  List<CompletionOption> available([CompletionSpec? subcommand]) {
+    final layers = subcommand == null ? chain : [...chain, subcommand];
     final seen = <String>{};
     final out = <CompletionOption>[];
-    for (var i = chain.length - 1; i >= 0; i--) {
+    for (var i = layers.length - 1; i >= 0; i--) {
       final layer = <String>[];
-      for (final o in chain[i].options) {
-        if (i != chain.length - 1 && !o.isPersistent) continue;
+      for (final o in layers[i].options) {
+        if (i != layers.length - 1 && !o.isPersistent) continue;
         if (o.names.any(seen.contains)) continue;
         out.add(o);
         layer.addAll(o.names);
@@ -452,9 +474,17 @@ class _Walk {
     return out;
   }
 
-  CompletionOption? lookup(String name) {
-    for (final o in available()) {
+  CompletionOption? lookup(String name, [CompletionSpec? subcommand]) {
+    for (final o in available(subcommand)) {
       if (o.names.contains(name)) return o;
+    }
+    return null;
+  }
+
+  CompletionSpec? _subcommand(String name) {
+    if (delimiter || positionals != 0 || lookup(name) != null) return null;
+    for (final subcommand in node.subcommands) {
+      if (subcommand.names.contains(name)) return subcommand;
     }
     return null;
   }
@@ -516,27 +546,45 @@ class _Walk {
     if (!bundled && cut == null) tainted = true;
   }
 
-  /// `-xzf`, `-I/path`: single-letter options in one word; the first that takes a value ends it. False (and nothing
-  /// recorded) when a letter is unknown.
-  bool _bundle(String text) {
+  /// Reads a short bundle without changing state; a dashed subcommand may select the options for the rest.
+  _ShortOptions? shortOptions(String text) {
     final hits = <(CompletionOption, String?)>[];
+    CompletionSpec? subcommand;
+    int? valueStart;
     for (var i = 1; i < text.length; i++) {
-      final o = lookup('-${text[i]}');
-      if (o == null) return false;
+      final name = '-${text[i]}';
+      final o = lookup(name, subcommand);
+      if (o == null) {
+        final sub = subcommand == null ? _subcommand(name) : null;
+        if (sub == null) return null;
+        subcommand = _loaded(sub, config, needs);
+        if (subcommand == null) return null;
+        continue;
+      }
       if (o.args.isEmpty) {
         hits.add((o, null));
         continue;
       }
-      final rest = text.substring(i + 1);
-      String? attached;
-      if (rest.isNotEmpty) {
-        final sep = o.separator;
-        attached = sep != null && rest.startsWith(sep) ? rest.substring(sep.length) : rest;
-      }
-      hits.add((o, attached));
+      final sep = o.separator;
+      var start = i + 1;
+      if (sep != null && text.startsWith(sep, start)) start += sep.length;
+      valueStart = start;
+      hits.add((o, start < text.length ? text.substring(start) : null));
       break;
     }
-    for (final (o, attached) in hits) {
+    return _ShortOptions(hits, subcommand, valueStart);
+  }
+
+  /// `-xzf`, `-I/path`: no state changes when any letter is unknown.
+  bool _bundle(String text) {
+    final bundle = shortOptions(text);
+    if (bundle == null) return false;
+    final subcommand = bundle.subcommand;
+    if (subcommand != null) {
+      chain.add(subcommand);
+      positionals = 0;
+    }
+    for (final (o, attached) in bundle.hits) {
       _hit(o, attached);
     }
     return true;
@@ -599,13 +647,14 @@ class _Candidate {
     this.rank, {
     this.match,
     this.appendSpace = true,
+    this.canBrowse = false,
   });
 
   final String value, display;
   final String? description, match;
   final SpecSuggestionKind kind;
   final int rank;
-  final bool appendSpace;
+  final bool appendSpace, canBrowse;
 }
 
 /// Turns the state of a [_Walk] into suggestions for the last word.
@@ -678,24 +727,32 @@ class _Collect {
         return;
       }
     }
-    if (plainBundle && text.length > 2 && walk.lookup(text) == null) {
-      for (var i = 1; i < text.length; i++) {
-        final o = walk.lookup('-${text[i]}');
-        if (o == null) break;
-        if (o.args.isEmpty) continue;
-        if (i + 1 < text.length) {
-          var length = i + 1;
-          final sep = o.separator;
-          if (sep != null && text.startsWith(sep, length)) length += sep.length;
-          _values(o.args.first, length);
-          return;
-        }
-        break;
-      }
+    final bundle = plainBundle && text.length >= 2 && walk.lookup(text) == null ? walk.shortOptions(text) : null;
+    final valueStart = bundle?.valueStart;
+    if (valueStart != null && valueStart < text.length) {
+      _values(bundle!.hits.last.$1.args.first, valueStart);
+      return;
     }
 
-    final available = walk.available();
+    final available = walk.available(bundle?.subcommand);
     final candidates = <_Candidate>[];
+    if (walk.positionals == 0 && !walk.delimiter) {
+      for (final sub in node.subcommands) {
+        if (sub.hidden) continue;
+        for (final name in sub.names.where((name) => name.startsWith('-'))) {
+          candidates.add(
+            _Candidate(
+              name,
+              name,
+              sub.description,
+              SpecSuggestionKind.subcommand,
+              sub.priority,
+              canBrowse: sub.canBrowse,
+            ),
+          );
+        }
+      }
+    }
     for (final o in available) {
       if (o.hidden || !walk.eligible(o)) continue;
       for (final name in o.names) {
@@ -705,17 +762,9 @@ class _Collect {
 
     // `-la` is made of known flags: offer the flags that can join it.
     if (plainBundle && text.length >= 2) {
-      final inside = <CompletionOption>[];
-      var flags = true;
-      for (var i = 1; i < text.length; i++) {
-        final o = walk.lookup('-${text[i]}');
-        if (o == null || o.args.isNotEmpty) {
-          flags = false;
-          break;
-        }
-        inside.add(o);
-      }
-      if (flags) {
+      final flags = bundle ?? walk.shortOptions(text);
+      final inside = flags?.hits.map((hit) => hit.$1).toList() ?? const <CompletionOption>[];
+      if (flags != null && flags.valueStart == null) {
         for (final o in available) {
           if (o.hidden || !walk.eligible(o, inside)) continue;
           for (final name in o.names) {
@@ -745,6 +794,7 @@ class _Collect {
               SpecSuggestionKind.subcommand,
               sub.priority,
               match: name,
+              canBrowse: sub.canBrowse,
             ),
           );
         }
@@ -777,6 +827,7 @@ class _Collect {
     kind,
     c.priority,
     match: '$head${c.value}',
+    canBrowse: kind == SpecSuggestionKind.command && (config.commandCanBrowse?.call(c.inserted) ?? false),
   );
 
   /// The value of [arg], whose typed part starts after the first [prefixLen] characters of the word.
@@ -795,7 +846,11 @@ class _Collect {
     }
     _emit(candidates);
     final files = arg.templates.contains(CompletionTemplate.filepaths);
-    if (files || arg.templates.contains(CompletionTemplate.folders)) _path(prefixLen, foldersOnly: !files);
+    if (files || arg.templates.contains(CompletionTemplate.folders)) {
+      _path(prefixLen, foldersOnly: !files);
+    } else if (!arg.isCommand && arg.choices.isEmpty) {
+      _path(prefixLen, foldersOnly: false, explicitOnly: true);
+    }
   }
 
   void _path(int prefixLen, {required bool foldersOnly, bool explicitOnly = false}) {
@@ -831,6 +886,7 @@ class _Collect {
         end: ctx.draft.length,
         quote: ctx.quote,
         appendSpace: c.appendSpace,
+        canBrowse: c.canBrowse,
       );
       if (s == null) continue;
       _seen.add(c.value);

@@ -35,6 +35,7 @@ extension _AssistancePane on _TerminalPaneState {
         !keys.isAltPressed &&
         event.logicalKey == LogicalKeyboardKey.space &&
         state.request != null) {
+      _session.reopenCommandCompletion();
       _update(() {
         _dismissedCandidateRequest = null;
         _candidateRequest = null;
@@ -55,8 +56,13 @@ extension _AssistancePane on _TerminalPaneState {
       _session.commandSubmitted();
       return null;
     }
-    if (!_popupAvailable(state)) return null;
     final key = event.logicalKey;
+    if (!_popupAvailable(state)) {
+      if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
+        _session.browseShellHistory();
+      }
+      return null;
+    }
     if (key == LogicalKeyboardKey.escape) {
       _update(() {
         _dismissedCandidateRequest = state.request;
@@ -65,29 +71,35 @@ extension _AssistancePane on _TerminalPaneState {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
-      if (state.candidates.isNotEmpty) {
-        _update(() {
-          _candidateIndex =
-              (_candidateIndex + (key == LogicalKeyboardKey.arrowDown ? 1 : -1)) % state.candidates.length;
-          _candidateText = state.candidates[_candidateIndex].identity;
-          _candidateMode = true;
-        });
-        _scrollCandidateIntoView();
+      if (state.candidates.isEmpty) {
+        _session.browseShellHistory();
+        return null;
       }
+      _update(() {
+        _candidateIndex = (_candidateIndex + (key == LogicalKeyboardKey.arrowDown ? 1 : -1)) % state.candidates.length;
+        _candidateText = state.candidates[_candidateIndex].identity;
+        _candidateMode = true;
+      });
+      _scrollCandidateIntoView();
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowLeft) {
-      _session.returnCommandBrowse();
-      return KeyEventResult.handled;
+      if (_session.returnCommandBrowse()) return KeyEventResult.handled;
+      _update(() => _dismissedCandidateRequest = state.request);
+      return null;
     }
     if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.tab) {
       if (_candidateMode && state.request != null && state.candidates.isNotEmpty) {
         final candidate = state.candidates[_candidateIndex.clamp(0, state.candidates.length - 1)];
-        if (key == LogicalKeyboardKey.arrowRight) {
-          _session.browseCommand(state.request!, candidate);
-        } else {
+        if (key == LogicalKeyboardKey.tab) {
           _session.acceptCommand(state.request!, candidate.text);
+          return KeyEventResult.handled;
         }
+        if (_session.browseCommand(state.request!, candidate)) return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowRight) {
+        _update(() => _dismissedCandidateRequest = state.request);
+        return null;
       }
       return KeyEventResult.handled;
     }
@@ -148,6 +160,50 @@ extension _AssistancePane on _TerminalPaneState {
       final l = AppLocalizations.of(context);
       final rowHeight = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
       final browse = state.browse;
+      String? description(CommandCandidate candidate) {
+        final own = candidate.description?.text(l);
+        if (own != null) return own;
+        final translated = translatedCompletionDescription(l.localeName, candidate);
+        if (translated != null) return translated;
+        if (!l.localeName.startsWith('zh') || candidate.source != CommandCandidateSource.builtin) return null;
+        return switch (candidate.kind) {
+          CommandKind.command => l.completionCommand,
+          CommandKind.subcommand => l.completionSubcommand,
+          CommandKind.option => l.completionOption,
+          _ => l.completionArgument,
+        };
+      }
+
+      double textWidth(String text, TextStyle? style) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: 1,
+        )..layout();
+        final width = painter.width;
+        painter.dispose();
+        return width;
+      }
+
+      double widest(Iterable<String> texts, TextStyle? style) =>
+          texts.fold(0.0, (width, text) => max(width, textWidth(text, style)));
+      final titleWidth = min(
+        CompletionSize.labelWidth,
+        widest(state.candidates.map((c) => c.displayText ?? c.text), Theme.of(context).textTheme.bodyMedium),
+      );
+      final details = state.candidates.map(description).whereType<String>().toList();
+      final detailWidth = min(CompletionSize.detailWidth, widest(details, Theme.of(context).textTheme.bodySmall));
+      final hasBranch = state.candidates.any((candidate) => candidate.preview != null);
+      final width =
+          (Space.lg +
+                  14 +
+                  Space.sm +
+                  titleWidth +
+                  (details.isEmpty ? 0 : Space.sm + detailWidth) +
+                  (hasBranch ? Space.xs + 14 : 0))
+              .clamp(CompletionSize.minWidth, CompletionSize.width)
+              .toDouble();
       final headerHeight = browse == null ? 0.0 : rowHeight;
       final status = browse == null
           ? null
@@ -162,7 +218,7 @@ extension _AssistancePane on _TerminalPaneState {
           delegate: CursorPopupLayout(
             cursor: _completionCursor.value!,
             preferredSize: Size(
-              CompletionSize.width,
+              width,
               min(CompletionSize.maxHeight, headerHeight + rowHeight * max(1, state.candidates.length) + Space.sm),
             ),
           ),
@@ -170,7 +226,7 @@ extension _AssistancePane on _TerminalPaneState {
             key: const ValueKey('command-completion-popup'),
             padding: const EdgeInsets.symmetric(vertical: Space.xs),
             child: SizedBox(
-              width: CompletionSize.width,
+              width: width,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -223,7 +279,11 @@ extension _AssistancePane on _TerminalPaneState {
                         itemBuilder: (context, index) {
                           final candidate = state.candidates[index];
                           final title = candidate.displayText ?? candidate.text;
-                          final description = candidate.description?.text(l) ?? candidate.detail;
+                          final detail = description(candidate);
+                          final original = candidate.detail;
+                          final explanation = detail != null && original != null && detail != original
+                              ? '$detail\n$original'
+                              : detail;
                           final selected = _candidateMode && index == _candidateIndex;
                           return MouseRegion(
                             onHover: (event) {
@@ -238,7 +298,7 @@ extension _AssistancePane on _TerminalPaneState {
                             child: Semantics(
                               selected: selected,
                               button: true,
-                              label: description == null ? title : '$title, $description',
+                              label: detail == null ? title : '$title, $detail',
                               child: Material(
                                 color: selected ? scheme.primaryContainer : Colors.transparent,
                                 child: InkWell(
@@ -274,20 +334,41 @@ extension _AssistancePane on _TerminalPaneState {
                                           color: scheme.onSurfaceVariant,
                                         ),
                                         const SizedBox(width: Space.sm),
-                                        Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                        if (description != null) ...[
-                                          const SizedBox(width: Space.md),
-                                          Expanded(
-                                            child: Text(
-                                              description,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              textAlign: TextAlign.end,
-                                              style: Theme.of(context).textTheme.bodySmall
-                                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                                        Expanded(
+                                          child: LayoutBuilder(
+                                            builder: (context, constraints) => Row(
+                                              children: [
+                                                ConstrainedBox(
+                                                  constraints: BoxConstraints(
+                                                    maxWidth: min(
+                                                      titleWidth,
+                                                      constraints.maxWidth * (detail == null ? 1 : .5),
+                                                    ),
+                                                  ),
+                                                  child: Tooltip(
+                                                    message: title,
+                                                    child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                  ),
+                                                ),
+                                                if (detail != null) ...[
+                                                  const SizedBox(width: Space.sm),
+                                                  Expanded(
+                                                    child: Tooltip(
+                                                      message: explanation!,
+                                                      child: Text(
+                                                        detail,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: Theme.of(context).textTheme.bodySmall
+                                                            ?.copyWith(color: scheme.onSurfaceVariant),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                           ),
-                                        ],
+                                        ),
                                         if (candidate.preview != null)
                                           const Padding(
                                             padding: EdgeInsets.only(left: Space.xs),

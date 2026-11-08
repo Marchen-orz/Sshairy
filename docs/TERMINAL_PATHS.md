@@ -41,7 +41,7 @@
 
 条目 `RemotePathEntry{name, kind, path, linkToDirectory}`：`kind` 为 directory、file、symlink；套接字、设备、管道算 file。`enterable` = 目录或指向目录的链接，补全插入时据此决定是否带 `/`。断链或指向文件的链接是 symlink 且 `linkToDirectory` 为假，不再追踪。`path` 是 `child(directory, name)`，仅用于层级导航，插入终端的编码由调用方的解析器负责。
 
-层级导航：向下查 `RemotePaths.child(result.directory, entry.name)`，向上查 `RemotePaths.parent(result.directory)`；两者都只是新的 `browse`，本模块不写终端。
+层级导航：向下查 `RemotePaths.child(result.directory, entry.name)`，向上查 `RemotePaths.parent(result.directory)`；两者都只是新的 `browse`，本模块不写终端。入口以 COMPLETION_ENGINE 产生的路径请求为准：明确的路径模板在空参数时也可列 cwd，未标模板的普通参数只接受已经输入的显式路径；不把 SSH 主机名、端口、用户、分支或容器名的空位当目录。`scp host:path` 和 `scp://…` 属于另一台主机，不借当前连接列举；重定向操作符仍由草稿解析器拒绝。
 
 失败 `RemotePathException(kind)`：
 

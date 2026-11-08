@@ -29,7 +29,8 @@ abstract final class WorkspaceSize {
 }
 
 abstract final class CompletionSize {
-  static const width = 460.0, maxHeight = 272.0, row = 32.0;
+  static const minWidth = 200.0, width = 380.0, labelWidth = 160.0, detailWidth = 200.0;
+  static const maxHeight = 272.0, row = 32.0;
 }
 
 abstract final class Motion {

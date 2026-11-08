@@ -50,6 +50,7 @@ class _Server extends FakeTransport {
   final opened = <_Shell>[];
   final queries = <String>[];
   String? cwd;
+  Completer<ExecResult>? pendingQuery;
   _Files? files;
 
   @override
@@ -67,6 +68,7 @@ class _Server extends FakeTransport {
   @override
   Future<ExecResult> exec(String command, {int limit = 0}) async {
     queries.add(command);
+    if (pendingQuery != null) return pendingQuery!.future;
     final out = cwd == null ? '' : '$cwd\n';
     return ExecResult(Uint8List.fromList(utf8.encode(out)), Uint8List(0), 0);
   }
@@ -187,6 +189,26 @@ void main() {
       await enter('cd /');
       await tester.pump(const Duration(seconds: 2));
       expect(server.queries, hasLength(3));
+    });
+
+    testWidgets('a directory lookup from before Enter cannot restore the previous directory', (tester) async {
+      await connect(tester);
+      final pending = Completer<ExecResult>();
+      server.pendingQuery = pending;
+      void follow() {}
+      session.directory.addListener(follow);
+      addTearDown(() => session.directory.removeListener(follow));
+      await tester.pump(Duration.zero);
+      expect(server.queries, hasLength(1));
+      await enter('cd /next');
+      pending.complete(ExecResult(Uint8List.fromList(utf8.encode('/previous\n')), Uint8List(0), 0));
+      await tester.pump();
+      expect(session.directory.value, isNull);
+      server.pendingQuery = null;
+      server.cwd = '/next';
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(session.directory.value, '/next');
+      session.directory.removeListener(follow);
     });
 
     testWidgets('without the marker the OSC 7 report is used', (tester) async {

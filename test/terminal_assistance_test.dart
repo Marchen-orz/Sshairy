@@ -48,6 +48,15 @@ class _Shell implements ShellChannel {
 
 class _Transport extends FakeTransport {
   final channels = <_Shell>[];
+  final queries = <String>[];
+  Completer<ExecResult>? directoryQuery;
+
+  @override
+  Future<ExecResult> exec(String command, {int limit = 0}) {
+    queries.add(command);
+    return directoryQuery?.future ?? super.exec(command, limit: limit);
+  }
+
   @override
   Future<ShellChannel> openShell({
     required int cols,
@@ -75,12 +84,20 @@ class _SpecBundle extends CachingAssetBundle {
   Future<ByteData> load(String key) async {
     final value = switch (key) {
       'assets/completions/manifest.json' => {
-        'commands': {'git': 'git.json', 'tmux': 'tmux.json', 'cat': 'cat.json', 'cd': 'cd.json'},
+        'commands': {
+          'git': 'git.json',
+          'tmux': 'tmux.json',
+          'cat': 'cat.json',
+          'cd': 'cd.json',
+          'mk': 'mk.json',
+          'dd': 'dd.json',
+        },
       },
       'git.json' => {
         'name': 'git',
         'subcommands': [
-          for (final name in ['status', 'stash', 'switch', 'show', 'commit']) {'name': name},
+          for (final name in ['status', 'stash', 'switch', 'show', 'commit'])
+            {'name': name, if (name == 'status') 'description': 'Show the working tree status'},
         ],
       },
       'tmux.json' => {
@@ -96,6 +113,19 @@ class _SpecBundle extends CachingAssetBundle {
       'cd.json' => {
         'name': 'cd',
         'args': {'template': 'folders'},
+      },
+      'dd.json' => {'name': 'dd'},
+      'mk.json' => {
+        'name': 'mk',
+        'options': [
+          {
+            'name': '--color',
+            'requiresSeparator': true,
+            'args': {
+              'suggestions': ['always', 'auto'],
+            },
+          },
+        ],
       },
       _ => throw StateError('Missing test asset'),
     };
@@ -192,16 +222,16 @@ void main() {
     await tester.pump();
     await tester.pump();
     final state = session.commandAssistance.value;
-    expect(state.candidates.map((c) => c.text), contains('git status'));
-    expect(await session.acceptCommand(state.request!, 'git status'), InsertResult.sent);
-    expect(shell.writes.join(), 'atus');
-    expect(await session.acceptCommand(state.request!, 'git status'), InsertResult.stale);
-    await _feed(tester, shell, 'atus');
+    expect(state.candidates.map((c) => c.text), contains('git status '));
+    expect(await session.acceptCommand(state.request!, 'git status '), InsertResult.sent);
+    expect(shell.writes.join(), 'atus ');
+    expect(await session.acceptCommand(state.request!, 'git status '), InsertResult.stale);
+    await _feed(tester, shell, 'atus ');
     session.commandSubmitted();
-    expect(session.commandHistory.value, ['git status']);
+    expect(session.commandHistory.value, ['git status ']);
     await _feed(tester, shell, '\r\nPassword: ');
     session.commandSubmitted();
-    expect(session.commandHistory.value, ['git status']);
+    expect(session.commandHistory.value, ['git status ']);
     session.close();
     manager.closeAll();
     await tester.pump();
@@ -344,6 +374,7 @@ void main() {
       double scale = 1,
       CommandCompletionProvider? provider,
       RemotePathSource? paths,
+      Locale locale = const Locale('en'),
     }) async {
       dir = Directory.systemTemp.createTempSync('sshairy-pane-');
       container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
@@ -362,6 +393,7 @@ void main() {
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
+            locale: locale,
             theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
             scrollBehavior: const AppScrollBehavior(),
             builder: (_, child) => InterfaceScale(scale: scale, child: child!),
@@ -407,13 +439,113 @@ void main() {
         expect(find.text('status'), findsOneWidget);
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
-        expect(shell.writes.join(), 'atus');
-        await _feed(tester, shell, 'atus');
+        expect(shell.writes.join(), 'atus ');
+        await _feed(tester, shell, 'atus ');
         shell.writes.clear();
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         await tester.pump();
         expect(shell.writes.join(), '\r');
-        expect(session.commandHistory.value, ['git status']);
+        expect(session.commandHistory.value, ['git status ']);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('shell history arrows keep completion closed until typing or explicitly reopening', (tester) async {
+      final shell = await mount(tester);
+      final popup = find.byKey(const ValueKey('command-completion-popup'));
+      try {
+        await _feed(tester, shell, 'u@box:~\$ ');
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        expect(shell.writes.join(), contains('\x1b[A'));
+        await _feed(tester, shell, 'git st');
+        expect(session.commandAssistance.value.request?.text, 'git st');
+        expect(popup, findsNothing);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ cat ');
+        expect(popup, findsNothing);
+        await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ git st');
+        await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
+        await tester.pump();
+        await tester.pump();
+        expect(popup, findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ git s');
+        expect(popup, findsNothing);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyT, character: 't');
+        await _feed(tester, shell, 't');
+        expect(popup, findsOneWidget);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('left at the first completion level reaches the shell cursor', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+        expect(shell.writes.join(), '\x1b[D');
+        expect(find.byKey(const ValueKey('command-completion-popup')), findsNothing);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('right on a leaf reaches the shell while command branches still browse', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ g');
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        await tester.pump();
+        expect(session.commandAssistance.value.browse?.depth, 1);
+        expect(find.text('status'), findsOneWidget);
+        expect(shell.writes, isEmpty);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        expect(shell.writes.join(), '\x1b[C');
+        expect(find.byKey(const ValueKey('command-completion-popup')), findsNothing);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('a root command without browseable children also releases Right to the shell', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ d');
+        expect(session.commandAssistance.value.candidates.single.preview, isNull);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        expect(shell.writes.join(), '\x1b[C');
+        await tester.pump();
+        expect(find.byKey(const ValueKey('command-completion-popup')), findsNothing);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('history navigation cancels late sources and deleting resumes completion', (tester) async {
+      final provider = _Provider();
+      final shell = await mount(tester, provider: provider);
+      final popup = find.byKey(const ValueKey('command-completion-popup'));
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ git s');
+        provider.pending.single.complete([const CommandCandidate('git status --short')]);
+        await tester.pump();
+        expect(popup, findsNothing);
+        expect(provider.pending, hasLength(1));
+        await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+        await _feed(tester, shell, '\b \b');
+        expect(popup, findsOneWidget);
+        expect(provider.pending, hasLength(2));
+        provider.pending.last.complete(const []);
+        await tester.pump();
       } finally {
         await unmount(tester);
       }
@@ -432,7 +564,7 @@ void main() {
         expect(tester.getTopLeft(find.text('git stash list')).dy, lessThan(tester.getTopLeft(find.text('status')).dy));
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
-        expect(shell.writes.join(), 'atus');
+        expect(shell.writes.join(), 'atus ');
       } finally {
         await unmount(tester);
       }
@@ -480,7 +612,7 @@ void main() {
         await tester.pump();
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
-        expect(shell.writes.join(), 'atus');
+        expect(shell.writes.join(), 'atus ');
       } finally {
         await unmount(tester);
       }
@@ -515,6 +647,30 @@ void main() {
       }
     });
 
+    testWidgets('path completion waits for an already running working-directory lookup', (tester) async {
+      final paths = _Paths();
+      final shell = await mount(tester, paths: paths);
+      final lookup = Completer<ExecResult>();
+      transport.directoryQuery = lookup;
+      void follow() {}
+      session.directory.addListener(follow);
+      try {
+        await tester.pump(Duration.zero);
+        expect(transport.queries, hasLength(1));
+        await _feed(tester, shell, 'u@box:~\$ cat ');
+        expect(paths.queries, isEmpty);
+        lookup.complete(ExecResult(Uint8List.fromList(utf8.encode('/work\n')), Uint8List(0), 0));
+        await tester.pump();
+        await tester.pump();
+        expect(paths.queries.single.directory, '/work');
+        expect(find.text('My Notes/'), findsOneWidget);
+        expect(transport.queries, hasLength(1));
+      } finally {
+        session.directory.removeListener(follow);
+        await unmount(tester);
+      }
+    });
+
     testWidgets('arrows browse paths virtually and Tab appends a safely escaped selection', (tester) async {
       final paths = _Paths();
       final shell = await mount(tester, paths: paths);
@@ -537,7 +693,35 @@ void main() {
         await tester.pump();
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
-        expect(shell.writes.join(), r'My\ Notes/中文.txt');
+        expect(
+          shell.writes.join(),
+          r'My\ Notes/中文.txt'
+          ' ',
+        );
+        expect(shell.writes.join(), isNot(contains('\r')));
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('Tab separates completed words but leaves directories and option separators open', (tester) async {
+      final shell = await mount(tester, paths: _Paths());
+      try {
+        await _feed(tester, shell, '\x1b]7;file://box/work\x07u@box:~\$ cat ');
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        expect(shell.writes.join(), r'My\ Notes/');
+        shell.writes.clear();
+        await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ mk --co');
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        expect(shell.writes.join(), 'lor=');
+        shell.writes.clear();
+        await _feed(tester, shell, 'lor=a');
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        expect(shell.writes.join(), 'lways ');
+        shell.writes.clear();
+        await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ cat "read');
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        expect(shell.writes.join(), ' me.txt" ');
         expect(shell.writes.join(), isNot(contains('\r')));
       } finally {
         await unmount(tester);
@@ -558,7 +742,7 @@ void main() {
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
-        expect(shell.writes.join(), 'ash');
+        expect(shell.writes.join(), 'ash ');
       } finally {
         await unmount(tester);
       }
@@ -576,6 +760,91 @@ void main() {
         await tester.pump();
         expect(shell.writes.join(), candidate.text.substring('tmux '.length));
         expect(shell.writes.join(), isNot(contains('\r')));
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('compact descriptions follow the app language and expose complete hover tips', (tester) async {
+      final shell = await mount(tester, locale: const Locale('zh'));
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        final popup = find.byKey(const ValueKey('command-completion-popup'));
+        final translated = find.text('显示工作区和暂存区状态');
+        expect(translated, findsOneWidget);
+        expect(tester.getSize(popup).width, lessThanOrEqualTo(CompletionSize.width));
+        final title = find.text('status');
+        final gap = tester.getTopLeft(translated).dx - tester.getTopRight(title).dx;
+        expect(gap, closeTo(Space.sm, .1));
+        expect(tester.widget<Text>(translated).textAlign, isNot(TextAlign.end));
+        final tooltip = find.byTooltip('显示工作区和暂存区状态\nShow the working tree status');
+        expect(tooltip, findsOneWidget);
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        await mouse.moveTo(tester.getCenter(translated));
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(find.text('显示工作区和暂存区状态\nShow the working tree status'), findsOneWidget);
+        await mouse.removePointer();
+        await tester.pump(const Duration(seconds: 1));
+        final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              theme: app.theme,
+              locale: const Locale('en'),
+              scrollBehavior: app.scrollBehavior,
+              builder: app.builder,
+              localizationsDelegates: app.localizationsDelegates,
+              supportedLocales: app.supportedLocales,
+              home: app.home,
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(find.text('Show the working tree status'), findsOneWidget);
+        expect(translated, findsNothing);
+        expect(shell.writes, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('long command labels keep their explanation close in a narrow pane', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(300, 400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@b:~\$ tmux ');
+        final title = find.text('command-0');
+        final detail = find.text('tmux action 0');
+        expect(title, findsOneWidget);
+        expect(detail, findsOneWidget);
+        expect(tester.getTopLeft(detail).dx - tester.getTopRight(title).dx, closeTo(Space.sm, .1));
+        expect(find.byTooltip('tmux action 0'), findsOneWidget);
+        final popup = tester.getRect(find.byKey(const ValueKey('command-completion-popup')));
+        final pane = tester.getRect(find.byType(TerminalPane));
+        expect(pane.contains(popup.topLeft), isTrue);
+        expect(pane.contains(popup.bottomRight), isTrue);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('untranslated specification explanations retain the original in a Chinese tooltip', (tester) async {
+      final shell = await mount(tester, locale: const Locale('zh'));
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux command-0');
+        await _feed(tester, shell, '\b \b');
+        expect(find.text('子命令'), findsWidgets);
+        expect(find.byTooltip('子命令\ntmux action 0'), findsOneWidget);
+        expect(
+          tester.getSize(find.byKey(const ValueKey('command-completion-popup'))).width,
+          lessThan(CompletionSize.width),
+        );
+        expect(tester.takeException(), isNull);
       } finally {
         await unmount(tester);
       }
@@ -612,7 +881,7 @@ void main() {
           expect(pane.contains(bottom.bottomRight), isTrue);
           await tester.binding.setSurfaceSize(const Size(800, 600));
           await tester.pump();
-          await _feed(tester, shell, '\x1b[2J\x1b[Hu@${List.filled(14, 'b').join()}:~\$ git s');
+          await _feed(tester, shell, '\x1b[2J\x1b[Hu@${List.filled(scale == 1 ? 25 : 14, 'b').join()}:~\$ git s');
           await tester.pump();
           expect(
             popup,
