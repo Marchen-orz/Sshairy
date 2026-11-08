@@ -1186,6 +1186,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resizeNavigation => 'Resize navigation';
 
   @override
+  String get resizeMonitor => 'Resize monitor';
+
+  @override
   String get configRestoreSnapshots => 'Restore a snapshot';
 
   @override

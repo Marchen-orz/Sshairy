@@ -389,6 +389,7 @@
   "retryAction": "Retry",
   "resizeToolPanel": "Resize tool panel",
   "resizeNavigation": "Resize navigation",
+  "resizeMonitor": "Resize monitor",
   "configRestoreSnapshots": "Restore a snapshot",
   "configNoSnapshots": "No valid snapshots",
   "configRestore": "Restore",

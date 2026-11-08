@@ -20,6 +20,7 @@ abstract final class WorkspaceSize {
   static const navigationExpanded = 200.0, navigationMin = 176.0, navigationMax = 320.0;
   static const navigationHeader = 76.0, navigationItem = 40.0;
   static const rail = 48.0, railItem = 36.0, flyout = 400.0, flyoutWide = 440.0, monitor = 240.0;
+  static const monitorMin = 240.0, monitorMax = 400.0;
   static const wideBreakpoint = 1200.0, terminalMin = 480.0;
   static const toolPanel = 360.0, toolPanelMin = 300.0, toolPanelMax = 560.0;
   static const dockBottom = 260.0, dockBottomMin = 160.0, dockBottomMaxShare = 0.6;

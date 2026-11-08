@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/monitor/api.dart';
@@ -108,14 +109,18 @@ void main() {
       ProviderScope(
         overrides: [dataDirProvider.overrideWithValue(dir.path), connectionManagerProvider.overrideWithValue(manager)],
         child: MaterialApp(
-          theme: buildTheme(Brightness.light),
+          scrollBehavior: const AppScrollBehavior(),
+          theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: const Scaffold(
             body: Align(
               alignment: Alignment.centerLeft,
-              child: MonitorPanel(host: host, active: true),
+              child: SizedBox(
+                width: WorkspaceSize.monitor,
+                child: MonitorPanel(host: host, active: true),
+              ),
             ),
           ),
         ),

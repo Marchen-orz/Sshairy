@@ -71,24 +71,22 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
     ref.listen(settingsProvider.select((s) => s.get(SettingKeys.monitorInterval)), (_, seconds) {
       _monitor.interval = Duration(seconds: seconds);
     });
-    return SizedBox(
-      width: WorkspaceSize.monitor,
-      child: ColoredBox(
-        color: scheme.surfaceContainerLow,
-        child: ListenableBuilder(
-          listenable: _monitor,
-          builder: (context, _) {
-            final gpus = _monitor.snapshot?.sample.gpuVendors.isNotEmpty ?? false;
-            return _Content(
-              monitor: _monitor,
-              host: widget.host,
-              page: gpus ? _page : _Page.system,
-              onPage: gpus ? _show : null,
-              interface: _interface,
-              onInterface: (name) => setState(() => _interface = name),
-            );
-          },
-        ),
+    // Fills the width its parent gives, so resizing never rebuilds the monitor.
+    return ColoredBox(
+      color: scheme.surfaceContainerLow,
+      child: ListenableBuilder(
+        listenable: _monitor,
+        builder: (context, _) {
+          final gpus = _monitor.snapshot?.sample.gpuVendors.isNotEmpty ?? false;
+          return _Content(
+            monitor: _monitor,
+            host: widget.host,
+            page: gpus ? _page : _Page.system,
+            onPage: gpus ? _show : null,
+            interface: _interface,
+            onInterface: (name) => setState(() => _interface = name),
+          );
+        },
       ),
     );
   }

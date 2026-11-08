@@ -1152,6 +1152,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get resizeNavigation => '调整导航宽度';
 
   @override
+  String get resizeMonitor => '调整监控宽度';
+
+  @override
   String get configRestoreSnapshots => '恢复快照';
 
   @override

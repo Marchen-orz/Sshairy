@@ -202,6 +202,14 @@ abstract final class SettingKeys {
 
   /// Seconds between monitor samples; the panel offers 1, 2, 3, 5 and 10.
   static const monitorInterval = IntSetting('monitorInterval', 3, 1, 10);
+
+  /// Shown smaller while the window leaves no room for it; the stored value stays.
+  static const monitorWidth = DoubleSetting(
+    'monitorWidth',
+    WorkspaceSize.monitor,
+    WorkspaceSize.monitorMin,
+    WorkspaceSize.monitorMax,
+  );
   static const filesDock = EnumSetting('filesDock', FilesDock.right, FilesDock.values);
   static const navigationExpanded = BoolSetting('navigationExpanded', false);
   static const navigationWidth = DoubleSetting(
@@ -247,6 +255,7 @@ abstract final class SettingKeys {
     hostOrder,
     showMonitor,
     monitorInterval,
+    monitorWidth,
     filesDock,
     navigationExpanded,
     navigationWidth,

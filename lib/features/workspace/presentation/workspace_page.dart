@@ -12,6 +12,7 @@ import '../../../design/icon_rail.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
 import '../../../design/side_drawer.dart';
+import '../../../design/sidebar_frame.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
 import '../../../design/window_chrome.dart';
@@ -55,6 +56,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   /// Shown at once and saved behind, like the files dock; a change through settings.patch is followed.
   late var _navigationExpanded = ref.read(settingsProvider).get(SettingKeys.navigationExpanded);
   late var _navigationWidth = ref.read(settingsProvider).get(SettingKeys.navigationWidth);
+  late var _monitorWidth = ref.read(settingsProvider).get(SettingKeys.monitorWidth);
   final _surfaceKey = GlobalKey();
 
   BuildContext get _surfaceContext => _surfaceKey.currentContext ?? context;
@@ -217,6 +219,11 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     if (width != null) settings.set(SettingKeys.navigationWidth, width);
   }
 
+  void _setMonitorWidth(double width) {
+    setState(() => _monitorWidth = width);
+    ref.read(settingsProvider.notifier).set(SettingKeys.monitorWidth, width);
+  }
+
   void _toggleFiles(TabId id) => setState(() => _sideFiles.contains(id) ? _sideFiles.remove(id) : _sideFiles.add(id));
 
   void _refocus(TabId tabId, PaneId pane) {
@@ -264,6 +271,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
           _navigationWidth = width;
         });
       }
+      final monitorWidth = now.get(SettingKeys.monitorWidth);
+      if (before?.get(SettingKeys.monitorWidth) != monitorWidth) setState(() => _monitorWidth = monitorWidth);
     });
     final navigationExpanded = _navigationExpanded, navigationWidth = _navigationWidth;
 
@@ -329,62 +338,58 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
     Widget tabBody(WorkspaceTab tab) {
       final session = sessions[tab.layout.focusedLeaf.session];
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (session != null && showMonitor && wide) ...[
-            MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: session.host, active: state.active == tab.id),
-            const VerticalDivider(width: WorkspaceSize.divider),
-          ],
-          Expanded(
-            key: ValueKey('dock-${tab.id.value}'),
-            child: DockPanel(
-              open: _sideFiles.contains(tab.id) && session != null,
-              side: switch (dock) {
-                FilesDock.left => DockSide.left,
-                FilesDock.right => DockSide.right,
-                FilesDock.bottom => DockSide.bottom,
-              },
-              onClose: () => setState(() => _sideFiles.remove(tab.id)),
-              closeLabel: l.closePane,
-              resizeLabel: l.resizeToolPanel,
-              showHeader: false,
-              panel: session != null
-                  ? SideFilesPanel(
-                      host: session.host,
-                      active: state.active == tab.id,
-                      tree: dock == FilesDock.bottom,
-                      directory: session.directory,
-                      toolbarActions: [
-                        AppMenuButton<FilesDock>(
-                          tooltip: l.dockPosition,
-                          icon: const Icon(Icons.space_dashboard_outlined, size: 16),
-                          items: () => [
-                            for (final (side, label) in [
-                              (FilesDock.left, l.dockLeft),
-                              (FilesDock.right, l.dockRight),
-                              (FilesDock.bottom, l.dockBottom),
-                            ])
-                              AppMenuItem(value: side, label: label, checked: side == dock),
-                          ],
-                          onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
-                        ),
-                        IconButton(
-                          tooltip: l.closePane,
-                          onPressed: () => setState(() => _sideFiles.remove(tab.id)),
-                          icon: const Icon(Icons.close, size: 16),
-                        ),
+      return SidebarFrame(
+        width: _monitorWidth,
+        onResize: _setMonitorWidth,
+        resizeLabel: l.resizeMonitor,
+        sidebar: session != null && showMonitor && wide
+            ? MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: session.host, active: state.active == tab.id)
+            : null,
+        child: DockPanel(
+          open: _sideFiles.contains(tab.id) && session != null,
+          side: switch (dock) {
+            FilesDock.left => DockSide.left,
+            FilesDock.right => DockSide.right,
+            FilesDock.bottom => DockSide.bottom,
+          },
+          onClose: () => setState(() => _sideFiles.remove(tab.id)),
+          closeLabel: l.closePane,
+          resizeLabel: l.resizeToolPanel,
+          showHeader: false,
+          panel: session != null
+              ? SideFilesPanel(
+                  host: session.host,
+                  active: state.active == tab.id,
+                  tree: dock == FilesDock.bottom,
+                  directory: session.directory,
+                  toolbarActions: [
+                    AppMenuButton<FilesDock>(
+                      tooltip: l.dockPosition,
+                      icon: const Icon(Icons.space_dashboard_outlined, size: 16),
+                      items: () => [
+                        for (final (side, label) in [
+                          (FilesDock.left, l.dockLeft),
+                          (FilesDock.right, l.dockRight),
+                          (FilesDock.bottom, l.dockBottom),
+                        ])
+                          AppMenuItem(value: side, label: label, checked: side == dock),
                       ],
-                    )
-                  : const SizedBox.shrink(),
-              child: LayoutView(
-                root: tab.layout.root,
-                leaf: (l) => leaf(tab, l),
-                onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
-              ),
-            ),
+                      onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
+                    ),
+                    IconButton(
+                      tooltip: l.closePane,
+                      onPressed: () => setState(() => _sideFiles.remove(tab.id)),
+                      icon: const Icon(Icons.close, size: 16),
+                    ),
+                  ],
+                )
+              : const SizedBox.shrink(),
+          child: LayoutView(
+            root: tab.layout.root,
+            leaf: (l) => leaf(tab, l),
+            onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
           ),
-        ],
+        ),
       );
     }
 

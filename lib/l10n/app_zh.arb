@@ -356,6 +356,7 @@
   "retryAction": "重试",
   "resizeToolPanel": "调整工具面板宽度",
   "resizeNavigation": "调整导航宽度",
+  "resizeMonitor": "调整监控宽度",
   "configRestoreSnapshots": "恢复快照",
   "configNoSnapshots": "没有有效快照",
   "configRestore": "恢复",

@@ -7,16 +7,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/design/brand.dart';
 import 'package:sshairy/design/icon_rail.dart';
 import 'package:sshairy/design/dock_panel.dart';
 import 'package:sshairy/design/popup.dart';
+import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
+import 'package:sshairy/features/monitor/api.dart';
 import 'package:sshairy/features/settings/api.dart';
+import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/workspace/presentation/workspace_page.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
+
+import 'connection_manager_test.dart' show FakeTransport;
 
 const _hosts = [
   Host(id: HostId('web'), label: 'web-1', address: 'web.example', username: 'u', group: 'Prod/Web'),
@@ -70,7 +76,8 @@ void main() {
         child: DefaultAssetBundle(
           bundle: _TestAssets(),
           child: MaterialApp(
-            theme: buildTheme(Brightness.light),
+            scrollBehavior: const AppScrollBehavior(),
+            theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
             locale: const Locale('en'),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
@@ -191,6 +198,130 @@ void main() {
     expect((saved['navigationExpanded'], saved['navigationWidth']), (false, WorkspaceSize.navigationExpanded));
   });
 
+  testWidgets('the monitor panel resizes from its divider without rebuilding the page', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-layout-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    // A saved tab comes back unconnected, which is all the monitor panel needs to show.
+    File('${dir.path}/workspace.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'tabs': [
+          {
+            'layout': {
+              'root': {'type': 'leaf', 'pane': 'p', 'session': 's'},
+              'focused': 'p',
+            },
+            'hosts': {'s': 'web'},
+          },
+        ],
+        'active': 0,
+      }),
+    );
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1400, 800);
+    addTearDown(tester.view.reset);
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final manager = ConnectionManager((_, _, _) async => FakeTransport(), park: Duration.zero);
+    addTearDown(manager.closeAll);
+    final container = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        hostsProvider.overrideWith(_Hosts.new),
+        connectionManagerProvider.overrideWithValue(manager),
+      ],
+    );
+    addTearDown(container.dispose);
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: DefaultAssetBundle(
+          bundle: _TestAssets(),
+          child: MaterialApp(
+            scrollBehavior: const AppScrollBehavior(),
+            theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
+            locale: const Locale('en'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: WorkspacePage(openPalette: (_) async {}),
+          ),
+        ),
+      ),
+    );
+    Future<void> settle() async {
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    await settle();
+
+    double monitor() => tester.getSize(find.byType(MonitorPanel)).width;
+    final handle = find.bySemanticsLabel('Resize monitor');
+    expect(find.byType(TerminalPane), findsOneWidget);
+    expect(monitor(), WorkspaceSize.monitor);
+    final panel = tester.state(find.byType(MonitorPanel));
+    final dock = tester.state(find.byType(DockPanel));
+    final terminal = tester.element(find.byType(TerminalPane));
+    void expectKept(String reason) {
+      expect(identical(tester.state(find.byType(DockPanel)), dock), isTrue, reason: reason);
+      expect(identical(tester.element(find.byType(TerminalPane)), terminal), isTrue, reason: reason);
+    }
+
+    // Only a guide moves until release, within 240-400.
+    final drag = await tester.startGesture(tester.getCenter(handle), kind: PointerDeviceKind.mouse);
+    await drag.moveBy(const Offset(60, 0));
+    await drag.moveBy(const Offset(500, 0));
+    await tester.pump();
+    expect(monitor(), WorkspaceSize.monitor, reason: 'the page does not reflow while dragging');
+    await drag.up();
+    await tester.pump();
+    expect(monitor(), WorkspaceSize.monitorMax);
+    expect(identical(tester.state(find.byType(MonitorPanel)), panel), isTrue, reason: 'resizing keeps the panel');
+    expectKept('resizing');
+    await _settled(tester, container, (s) => s.get(SettingKeys.monitorWidth) == WorkspaceSize.monitorMax);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(monitor(), WorkspaceSize.monitorMax - Space.xl, reason: 'the focused divider steps with arrow keys');
+
+    // Below 1200 px the panel is not shown, and it returns at the stored width.
+    tester.view.physicalSize = const Size(1100, 800);
+    await tester.binding.setSurfaceSize(const Size(1100, 800));
+    await settle();
+    expect(find.byType(MonitorPanel), findsNothing);
+    expect(handle, findsNothing);
+    expect(find.byTooltip('Server monitor'), findsNothing);
+    expectKept('a narrow window');
+    tester.view.physicalSize = const Size(1400, 800);
+    await tester.binding.setSurfaceSize(const Size(1400, 800));
+    await settle();
+    expect(monitor(), WorkspaceSize.monitorMax - Space.xl);
+    expectKept('a wide window');
+
+    // The toggle hides it without losing the width.
+    await tester.tap(find.byTooltip('Server monitor'));
+    await _settled(tester, container, (s) => !s.get(SettingKeys.showMonitor));
+    expect(find.byType(MonitorPanel), findsNothing);
+    expectKept('the toggle');
+    await tester.tap(find.byTooltip('Server monitor'));
+    await _settled(tester, container, (s) => s.get(SettingKeys.showMonitor));
+    expect(monitor(), WorkspaceSize.monitorMax - Space.xl);
+    expectKept('the toggle');
+
+    final at = tester.getCenter(handle);
+    await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+    await tester.pump(kDoubleTapMinTime);
+    await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+    await settle();
+    expect(monitor(), WorkspaceSize.monitor, reason: 'double-click restores the default');
+    await _settled(tester, container, (s) => s.get(SettingKeys.monitorWidth) == WorkspaceSize.monitor);
+    final saved = jsonDecode(File('${dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>;
+    expect((saved['monitorWidth'], saved['showMonitor']), (WorkspaceSize.monitor, true));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a full host library leaves no room for the watermark', (tester) async {
     final dir = Directory.systemTemp.createTempSync('sshairy-layout-');
     addTearDown(() => dir.deleteSync(recursive: true));
@@ -203,7 +334,8 @@ void main() {
         child: DefaultAssetBundle(
           bundle: _TestAssets(),
           child: MaterialApp(
-            theme: buildTheme(Brightness.light),
+            scrollBehavior: const AppScrollBehavior(),
+            theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
             locale: const Locale('en'),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
@@ -224,6 +356,7 @@ void main() {
       ProviderScope(
         overrides: [hostsProvider.overrideWith(_Hosts.new)],
         child: MaterialApp(
+          scrollBehavior: const AppScrollBehavior(),
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -259,7 +392,8 @@ void main() {
     const mainKey = ValueKey('main');
     await tester.pumpWidget(
       MaterialApp(
-        theme: buildTheme(Brightness.light),
+        scrollBehavior: const AppScrollBehavior(),
+        theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
         home: Scaffold(
           body: Center(
             child: StatefulBuilder(
@@ -308,7 +442,8 @@ void main() {
     const mainKey = ValueKey('main');
     await tester.pumpWidget(
       MaterialApp(
-        theme: buildTheme(Brightness.dark),
+        scrollBehavior: const AppScrollBehavior(),
+        theme: buildTheme(Brightness.dark).copyWith(platform: TargetPlatform.windows),
         home: Scaffold(
           body: DockPanel(
             open: true,
@@ -348,7 +483,8 @@ void main() {
     const mainKey = ValueKey('main');
     await tester.pumpWidget(
       MaterialApp(
-        theme: buildTheme(Brightness.light),
+        scrollBehavior: const AppScrollBehavior(),
+        theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
         home: Scaffold(
           body: DockPanel(
             open: true,

@@ -2234,6 +2234,12 @@ abstract class AppLocalizations {
   /// **'Resize navigation'**
   String get resizeNavigation;
 
+  /// No description provided for @resizeMonitor.
+  ///
+  /// In en, this message translates to:
+  /// **'Resize monitor'**
+  String get resizeMonitor;
+
   /// No description provided for @configRestoreSnapshots.
   ///
   /// In en, this message translates to:
