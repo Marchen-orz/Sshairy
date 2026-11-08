@@ -41,6 +41,8 @@ flutter:
   generate: true
   assets:
     - assets/import_sources/
+    - assets/completions/
+    - assets/completions/specs/
     - assets/brand/blue/
     - assets/brand/green/
     - assets/brand/violet/

@@ -48,6 +48,17 @@ Future<void> main(List<String> args) async {
       text.writeln(await file.readAsString());
     }
   }
+  // Bundled data rather than a Dart package: upstream Fig completion specs, license text kept verbatim.
+  final completionLicense = File('assets/completions/LICENSE');
+  if (completionLicense.existsSync()) {
+    text.writeln('\n${'=' * 72}\nwithfig/autocomplete (bundled completion data)\n${'=' * 72}\n');
+    text.writeln(
+      'Upstream package.json declares ISC while its LICENSE file is the MIT text below; reproduced as published.\n',
+    );
+    text.writeln(await completionLicense.readAsString());
+  } else {
+    missing.add('assets/completions');
+  }
   if (missing.isNotEmpty) {
     stderr.writeln('Missing license text: ${missing.join(', ')}');
     exitCode = 1;
