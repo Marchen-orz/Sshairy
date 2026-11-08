@@ -19,6 +19,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Hosts were deleted, but some saved credentials could not be removed. Check OS secure storage.';
 
   @override
+  String get closeTabsLeft => 'Close tabs to the left';
+
+  @override
+  String get closeTabsRight => 'Close tabs to the right';
+
+  @override
+  String get closeOtherTabs => 'Close other tabs';
+
+  @override
   String get noHosts => 'No hosts yet';
 
   @override

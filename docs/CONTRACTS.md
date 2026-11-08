@@ -65,7 +65,9 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 - 并行读按资源限流；同一路径写入、同终端受控命令串行。同主机不同只读通道可并行，不设阻塞全应用的总锁。
 - 普通 UI 查询不要求走 registry。hover、草稿、滚动、拖动中间帧、逐键终端输入不登记成远程工具。
 
-一期最小目录：host.list/create/update/move/delete、session.open/close/reconnect、workspace.split/focus、settings.get/patch；随 M2/M3 添加 files 与 forwarding。没有实现的 capability 不注册，不用空成功响应占位。
+一期最小目录：host.list/create/update/move/delete/deleteMany、group.reorder、session.open/close/reconnect、workspace.split/focus/closeTabs、settings.get/patch；随 M2/M3 添加 files 与 forwarding。没有实现的 capability 不注册，不用空成功响应占位。
+
+`workspace.closeTabs` 接收 tabId 和 scope（left/right/others），保留基准标签，按标签顺序关闭目标中的所有 shell，再单次更新和保存工作区；活动标签被关闭时切到基准，否则保留原活动页。缺失标签返回 notFound，空目标返回 closed: 0，不向 agent 开放。传输和隧道遵循原租约所有权，不因批量关闭 shell 而被主动取消。主机批量删除和同级组排序的原子边界见 HOST_INHERITANCE。
 
 ## 4. 重试、撤销与审计
 

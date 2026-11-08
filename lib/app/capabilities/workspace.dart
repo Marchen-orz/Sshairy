@@ -146,6 +146,28 @@ List<Capability> workspaceCapabilities(Ref ref) {
         return copy == null ? const Err(AppError('notFound', detail: 'tab')) : Ok({'tabId': copy.value});
       },
     ),
+    FunctionCapability(
+      'workspace.closeTabs',
+      Effect.localChange,
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'tabId': {'type': 'string', 'description': 'the tab that stays open'},
+          'scope': {
+            'type': 'string',
+            'enum': ['left', 'right', 'others'],
+          },
+        },
+        'required': ['tabId', 'scope'],
+      },
+      (a, _) async {
+        final id = TabId(a.require<String>('tabId'));
+        final scope = TabCloseScope.values.asNameMap()[a.require<String>('scope')];
+        if (scope == null) return const Err(AppError('invalidArgument', detail: 'scope'));
+        if (_tab(ref, id) == null) return const Err(AppError('notFound', detail: 'tab'));
+        return Ok({'closed': workspace().closeTabs(id, scope)});
+      },
+    ),
   ];
 }
 

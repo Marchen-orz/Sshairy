@@ -18,6 +18,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hostDeleteCleanupFailed => '主机已删除，但部分已保存凭据未能清理，请检查系统安全存储。';
 
   @override
+  String get closeTabsLeft => '关闭左侧标签';
+
+  @override
+  String get closeTabsRight => '关闭右侧标签';
+
+  @override
+  String get closeOtherTabs => '关闭其他标签';
+
+  @override
   String get noHosts => '暂无主机';
 
   @override

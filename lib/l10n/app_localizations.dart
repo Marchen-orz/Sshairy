@@ -110,6 +110,24 @@ abstract class AppLocalizations {
   /// **'Hosts were deleted, but some saved credentials could not be removed. Check OS secure storage.'**
   String get hostDeleteCleanupFailed;
 
+  /// No description provided for @closeTabsLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Close tabs to the left'**
+  String get closeTabsLeft;
+
+  /// No description provided for @closeTabsRight.
+  ///
+  /// In en, this message translates to:
+  /// **'Close tabs to the right'**
+  String get closeTabsRight;
+
+  /// No description provided for @closeOtherTabs.
+  ///
+  /// In en, this message translates to:
+  /// **'Close other tabs'**
+  String get closeOtherTabs;
+
   /// No description provided for @noHosts.
   ///
   /// In en, this message translates to:

@@ -19,6 +19,9 @@ class WorkspaceTab {
   WorkspaceTab withLayout(Layout layout) => WorkspaceTab(id, layout, title: title);
 }
 
+/// Which tabs to close around a reference tab, which itself stays open.
+enum TabCloseScope { left, right, others }
+
 class WorkspaceState {
   const WorkspaceState({this.tabs = const [], this.active, this.files = false});
 
@@ -35,6 +38,17 @@ class WorkspaceState {
   }
 
   WorkspaceTab? get activeTab => tabs.where((t) => t.id == active).firstOrNull;
+
+  /// The tabs [scope] closes around [id], in tab order. Empty when that side has none or [id] is not open.
+  List<WorkspaceTab> tabsToClose(TabId id, TabCloseScope scope) {
+    final i = tabs.indexWhere((t) => t.id == id);
+    if (i < 0) return const [];
+    return switch (scope) {
+      TabCloseScope.left => tabs.sublist(0, i),
+      TabCloseScope.right => tabs.sublist(i + 1),
+      TabCloseScope.others => [...tabs.sublist(0, i), ...tabs.sublist(i + 1)],
+    };
+  }
 }
 
 final workspaceProvider = NotifierProvider<Workspace, WorkspaceState>(Workspace.new);
@@ -110,12 +124,25 @@ class Workspace extends Notifier<WorkspaceState> {
   void closeTab(TabId id) {
     final i = state.tabs.indexWhere((t) => t.id == id);
     if (i < 0) return;
-    for (final leaf in state.tabs[i].layout.leaves) {
-      _sessions.close(leaf.session);
-    }
+    _closeSessions(state.tabs[i]);
     final tabs = [...state.tabs]..removeAt(i);
     if (state.active != id) return _set(state.withTabs(tabs));
     _set(WorkspaceState(tabs: tabs, active: tabs.isEmpty ? null : tabs[i.clamp(0, tabs.length - 1)].id));
+  }
+
+  /// Closes the tabs [scope] picks around [id] with one layout write; [id] stays open. The active tab stays too,
+  /// unless it is among those closed, then [id] takes over. Returns how many tabs were closed, 0 when [id] is gone.
+  int closeTabs(TabId id, TabCloseScope scope) {
+    final targets = state.tabsToClose(id, scope);
+    if (targets.isEmpty) return 0;
+    targets.forEach(_closeSessions);
+    final closing = {for (final t in targets) t.id};
+    final tabs = [
+      for (final t in state.tabs)
+        if (!closing.contains(t.id)) t,
+    ];
+    _set(closing.contains(state.active) ? WorkspaceState(tabs: tabs, active: id) : state.withTabs(tabs));
+    return targets.length;
   }
 
   void closePane(TabId tabId, PaneId pane) {
@@ -170,6 +197,12 @@ class Workspace extends Notifier<WorkspaceState> {
   }
 
   WorkspaceTab? _tab(TabId id) => state.tabs.where((t) => t.id == id).firstOrNull;
+
+  void _closeSessions(WorkspaceTab tab) {
+    for (final leaf in tab.layout.leaves) {
+      _sessions.close(leaf.session);
+    }
+  }
 
   void _replace(TabId id, Layout layout) =>
       _set(state.withTabs([for (final t in state.tabs) t.id == id ? t.withLayout(layout) : t]));

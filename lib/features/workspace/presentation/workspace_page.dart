@@ -196,6 +196,13 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   Future<void> _tabMenu(WorkspaceTab tab, String name, Offset p) async {
     final l = AppLocalizations.of(context);
+    final state = ref.read(workspaceProvider);
+    AppMenuItem<VoidCallback> closing(TabCloseScope scope, String label, IconData icon) => AppMenuItem(
+      value: () => _workspace.closeTabs(tab.id, scope),
+      label: label,
+      icon: icon,
+      enabled: state.tabsToClose(tab.id, scope).isNotEmpty,
+    );
     final run = await showAppMenu<VoidCallback>(
       context: context,
       anchor: anchorAt(p),
@@ -204,6 +211,9 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
         AppMenuItem(value: () => _workspace.duplicate(tab.id), label: l.duplicate, icon: Icons.copy_all_outlined),
         const AppMenuDivider(),
         AppMenuItem(value: () => _workspace.closeTab(tab.id), label: l.close, icon: Icons.close),
+        closing(TabCloseScope.left, l.closeTabsLeft, Icons.keyboard_double_arrow_left),
+        closing(TabCloseScope.right, l.closeTabsRight, Icons.keyboard_double_arrow_right),
+        closing(TabCloseScope.others, l.closeOtherTabs, Icons.tab_unselected),
       ],
     );
     run?.call();
