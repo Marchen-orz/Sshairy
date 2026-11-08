@@ -21,6 +21,7 @@ import '../../connections/api.dart';
 import '../../files/api.dart';
 import '../../forwarding/api.dart';
 import '../../hosts/api.dart';
+import '../../logs/api.dart';
 import '../../monitor/api.dart';
 import '../../settings/api.dart';
 import '../../snippets/api.dart';
@@ -93,6 +94,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   void _openSettings() => _flyout((_) => const SettingsPanel(), width: WorkspaceSize.flyoutWide);
   void _openSnippets() => _flyout((_) => const SnippetsPanel());
   void _openForwarding() => _flyout((_) => const ForwardingPanel());
+  void _openProxies() => _flyout((_) => const ProxyPanel());
+  void _openLogs() => _flyout((_) => const LogsPanel());
   void _openPalette() => _overlay(() => widget.openPalette(_surfaceContext));
   void _openKeys() => _flyout((_) => const KeysPanel());
   void _openTrust() => _flyout((context) => SingleChildScrollView(child: trustSettingsSection.build(context)));
@@ -297,6 +300,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     child: TerminalPane(
                       session,
                       active: state.active == tab.id && focused,
+                      visible: state.active == tab.id,
                       onKeyEvent: _onKey,
                       focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),
                       actions: [
@@ -523,9 +527,11 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 ],
                 [
                   RailItem(icon: Icons.key_outlined, label: l.keys, onTap: _openKeys),
+                  RailItem(icon: Icons.lan_outlined, label: l.proxy, onTap: _openProxies),
                   RailItem(icon: Icons.route_outlined, label: l.portForwarding, onTap: _openForwarding),
                   RailItem(icon: Icons.code, label: l.snippets, onTap: _openSnippets),
                   RailItem(icon: Icons.verified_user_outlined, label: l.trustedKeys, onTap: _openTrust),
+                  RailItem(icon: Icons.receipt_long_outlined, label: l.logs, onTap: _openLogs),
                 ],
               ],
               bottom: [
@@ -545,6 +551,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
+                      const BackgroundImageView(slot: BackgroundSlot.app),
                       Visibility.maintain(
                         key: const ValueKey('vault'),
                         visible: vault,

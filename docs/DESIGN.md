@@ -40,6 +40,9 @@
 | [TERMINAL_FLOW.md](TERMINAL_FLOW.md) | 终端输出的流控与背压 |
 | [WORKSPACE_LAYOUT.md](WORKSPACE_LAYOUT.md) | 工作区、主机树与工具面板布局 |
 | [MEMORY_USAGE.md](MEMORY_USAGE.md) | 内存保留边界、缓存预算与闲置资源释放 |
+| [BACKGROUND_IMAGES.md](BACKGROUND_IMAGES.md) | 界面与终端背景图片、受管副本与透明度 |
+| [TERMINAL_ASSISTANCE.md](TERMINAL_ASSISTANCE.md) | 本地补全候选、会话历史与异步扩展端口 |
+| [PROXIES.md](PROXIES.md) | SSH 出站代理、继承与集中管理 |
 
 每次先读本文件与 ROADMAP，再读对应专题。用户新指示优先于文档。发现代码、测试、文档冲突时记录并修订，不把待验证项当事实。涉及决策的修改同步更新对应规范，不机械要求每个代码变更都修改全套文档。
 

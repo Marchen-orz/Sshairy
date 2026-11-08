@@ -81,7 +81,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(BrandWatermark), findsOneWidget, reason: 'three hosts leave the lower page blank');
-    for (final label in ['Hosts', 'SFTP', 'Keys', 'Trusted host keys', 'Snippets', 'Settings']) {
+    for (final label in ['Hosts', 'SFTP', 'Keys', 'Proxy', 'Logs', 'Trusted host keys', 'Snippets', 'Settings']) {
       expect(find.byTooltip(label), findsOneWidget, reason: label);
     }
     expect(find.byTooltip('Server monitor'), findsNothing, reason: 'no terminal tab is open');
@@ -104,6 +104,16 @@ void main() {
     expect(find.byType(BrandHint), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
+
+    // New management panels use the same flyout and Escape path.
+    for (final label in ['Proxy', 'Logs']) {
+      await tester.tap(find.byTooltip(label));
+      await tester.pumpAndSettle();
+      expect(find.byType(PopupSurface), findsOneWidget, reason: label);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(PopupSurface), findsNothing, reason: label);
+    }
 
     // Panels open as flyouts beside the rail and close with Escape.
     await tester.tap(find.byTooltip('Trusted host keys'));
