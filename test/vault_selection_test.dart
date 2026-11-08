@@ -165,44 +165,208 @@ void main() {
     expect(container.read(hostsProvider), hasLength(4));
   });
 
-  testWidgets('group chip dragging persists sibling order and keeps the selected group', (tester) async {
-    await mount(tester);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Personal'));
-    await tester.pumpAndSettle();
-    final source = tester.getCenter(find.byKey(const ValueKey('group-chip-Team')));
-    final target = tester.getRect(find.byKey(const ValueKey('group-chip-Personal')));
-    final gesture = await tester.startGesture(source);
-    await gesture.moveBy(const Offset(-12, 0));
-    await tester.pump();
-    await gesture.moveTo(Offset(target.left + 3, target.center.dy));
-    await tester.pump();
-    await gesture.up();
-    for (var i = 0; i < 100 && hosts.library.groupPaths.first != 'Team'; i++) {
+  Finder groupChip(String path) => find.byKey(ValueKey('group-chip-$path'));
+
+  Future<void> waitForOrder(WidgetTester tester, List<String> paths) async {
+    for (var i = 0; i < 100 && hosts.library.groupPaths.join('|') != paths.join('|'); i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump(const Duration(milliseconds: 20));
     }
     await tester.pumpAndSettle();
-    expect(hosts.library.groupPaths, ['Team', 'Personal']);
-    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Personal')).selected, isTrue);
+    expect(hosts.library.groupPaths, paths);
+    expect(tester.takeException(), isNull);
+  }
+
+  testWidgets('group dragging shows the final gap before saving and keeps selection and the fixed All chip', (
+    tester,
+  ) async {
+    await mount(tester);
+    await click(tester, 0);
+    await click(tester, 1, modifier: LogicalKeyboardKey.controlLeft);
+    await tester.tap(groupChip('Personal'));
+    await tester.pumpAndSettle();
+    final all = tester.getRect(groupChip(''));
+    final personal = tester.getRect(groupChip('Personal'));
+    final team = tester.getRect(groupChip('Team'));
+    final revision = hosts.revision;
+    final gesture = await tester.startGesture(team.center, kind: PointerDeviceKind.mouse);
+    await gesture.moveBy(const Offset(-24, 0));
+    await tester.pump();
+    await gesture.moveTo(personal.center);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(hosts.library.groupPaths, ['Personal', 'Team'], reason: 'dragging is only a preview');
+    expect(hosts.revision, revision);
+    expect(tester.getRect(groupChip('Personal')).left, greaterThan(personal.left + team.width / 2));
+    expect(tester.getRect(groupChip('')), all);
+    await gesture.up();
+    await waitForOrder(tester, ['Team', 'Personal']);
+    expect(hosts.revision, revision + 1, reason: 'one release makes one write');
+    expect(tester.widget<ChoiceChip>(groupChip('Personal')).selected, isTrue);
+    expect(selected(tester), [0, 1]);
     final reopened = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(data.path)]);
     expect(reopened.read(hostLibraryProvider).groupPaths, ['Team', 'Personal']);
     reopened.dispose();
 
-    final moved = tester.getCenter(find.byKey(const ValueKey('group-chip-Team')));
-    final last = tester.getRect(find.byKey(const ValueKey('group-chip-Personal')));
-    final reverse = await tester.startGesture(moved);
-    await reverse.moveBy(const Offset(12, 0));
+    final last = tester.getRect(groupChip('Personal'));
+    final first = tester.getRect(groupChip('Team'));
+    final reverse = await tester.startGesture(first.center, kind: PointerDeviceKind.mouse);
+    await reverse.moveBy(const Offset(24, 0));
     await tester.pump();
-    await reverse.moveTo(Offset(last.right - 3, last.center.dy));
+    await reverse.moveTo(Offset(last.right + first.width / 2 + Space.md, last.center.dy));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.getRect(groupChip('Personal')).left, lessThan(last.left - first.width / 2));
     await reverse.up();
-    for (var i = 0; i < 100 && hosts.library.groupPaths.first != 'Personal'; i++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump(const Duration(milliseconds: 20));
-    }
+    await waitForOrder(tester, ['Personal', 'Team']);
+    expect(tester.widget<ChoiceChip>(groupChip('Personal')).selected, isTrue);
+    expect(selected(tester), [0, 1]);
+    final fixed = await tester.startGesture(tester.getCenter(groupChip('')), kind: PointerDeviceKind.mouse);
+    await fixed.moveBy(const Offset(180, 0));
+    await fixed.up();
     await tester.pumpAndSettle();
     expect(hosts.library.groupPaths, ['Personal', 'Team']);
-    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Personal')).selected, isTrue);
+    expect(tester.getRect(groupChip('')), all);
+  });
+
+  testWidgets('parent dragging moves its children and nested dragging only reorders siblings', (tester) async {
+    await mount(tester);
+    await tester.runAsync(() async {
+      await hosts.addGroup('Personal/Alpha');
+      await hosts.addGroup('Personal/Beta');
+      await hosts.addGroup('Team/Remote');
+    });
+    await tester.pumpAndSettle();
+    final originalParents = {for (final group in hosts.library.groups) group.id: group.parentId};
+    final personal = tester.getRect(groupChip('Personal'));
+    final alpha = tester.getRect(groupChip('Personal/Alpha'));
+    final betaEnd = tester.getRect(groupChip('Personal/Beta'));
+    final team = tester.getRect(groupChip('Team'));
+    final teamEnd = tester.getRect(groupChip('Team/Remote'));
+    final parent = await tester.startGesture(personal.center, kind: PointerDeviceKind.mouse);
+    await parent.moveBy(const Offset(24, 0));
+    await tester.pump();
+    final delta = teamEnd.center.dx - betaEnd.right;
+    await parent.moveTo(personal.center + Offset(delta, 0));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.getRect(groupChip('Personal/Alpha')).left - alpha.left, closeTo(delta, .1));
+    expect(tester.getRect(groupChip('Team')).left, lessThan(team.left));
+    await parent.up();
+    await waitForOrder(tester, ['Team', 'Team/Remote', 'Personal', 'Personal/Alpha', 'Personal/Beta']);
+
+    await tester.tap(groupChip('Personal/Alpha'));
+    await tester.pumpAndSettle();
+    final beta = await tester.startGesture(tester.getCenter(groupChip('Personal/Beta')), kind: PointerDeviceKind.mouse);
+    await beta.moveBy(const Offset(-24, 0));
+    await tester.pump();
+    await beta.moveTo(tester.getCenter(groupChip('Personal/Alpha')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await beta.up();
+    await waitForOrder(tester, ['Team', 'Team/Remote', 'Personal', 'Personal/Beta', 'Personal/Alpha']);
+    expect(tester.widget<ChoiceChip>(groupChip('Personal/Alpha')).selected, isTrue);
+    expect({for (final group in hosts.library.groups) group.id: group.parentId}, originalParents);
+
+    final unchanged = hosts.revision;
+    final crossParent = await tester.startGesture(
+      tester.getCenter(groupChip('Personal/Beta')),
+      kind: PointerDeviceKind.mouse,
+    );
+    await crossParent.moveBy(const Offset(-24, 0));
+    await tester.pump();
+    await crossParent.moveTo(tester.getCenter(groupChip('Team/Remote')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await crossParent.up();
+    await tester.pumpAndSettle();
+    expect(hosts.revision, unchanged, reason: 'the first child stays first when dragged outside its siblings');
+    expect({for (final group in hosts.library.groups) group.id: group.parentId}, originalParents);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final nested in [false, true]) {
+    testWidgets('group drag auto-scrolls an overflowing ${nested ? 'child' : 'root'} strip', (tester) async {
+      await mount(tester, count: 0);
+      final prefix = nested ? 'Personal/' : '';
+      await tester.runAsync(() async {
+        for (var i = 0; i < 16; i++) {
+          await hosts.addGroup('${prefix}Group-${i.toString().padLeft(2, '0')}');
+        }
+      });
+      await tester.binding.setSurfaceSize(const Size(960, 640));
+      await tester.pumpAndSettle();
+      final all = tester.getRect(groupChip(''));
+      final source = '${prefix}Group-00';
+      final scrollable = find.ancestor(of: groupChip(source), matching: find.byType(Scrollable)).first;
+      final state = tester.state<ScrollableState>(scrollable);
+      final bounds = tester.getRect(scrollable);
+      expect(state.position.maxScrollExtent, greaterThan(0));
+      final gesture = await tester.startGesture(tester.getCenter(groupChip(source)), kind: PointerDeviceKind.mouse);
+      await gesture.moveBy(const Offset(24, 0));
+      await tester.pump();
+      await gesture.moveTo(Offset(bounds.right - 2, bounds.center.dy));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(state.position.pixels, greaterThan(0));
+      expect(tester.getRect(groupChip('')), all);
+      await gesture.up();
+      for (
+        var i = 0;
+        i < 100 &&
+            hosts.library.groupChildren(nested ? hosts.library.groupIdFor('Personal') : null).first.name == 'Group-00';
+        i++
+      ) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.pumpAndSettle();
+      final siblings = hosts.library.groupChildren(nested ? hosts.library.groupIdFor('Personal') : null);
+      expect(siblings.indexWhere((group) => group.name == 'Group-00'), greaterThan(0));
+      expect(siblings, hasLength(16));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a changed library cancels the drag instead of saving stale group positions', (tester) async {
+    await mount(tester);
+    final gesture = await tester.startGesture(tester.getCenter(groupChip('Team')), kind: PointerDeviceKind.mouse);
+    await gesture.moveBy(const Offset(-24, 0));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(groupChip('Personal')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(() => hosts.addGroup('Work'));
+    await tester.pump();
+    final revision = hosts.revision;
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(hosts.library.groupPaths, ['Personal', 'Team', 'Work']);
+    expect(hosts.revision, revision);
+    expect(find.text('Could not save. Check access to the data directory and secure storage.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('group chips still filter on click and open the existing menu on right click', (tester) async {
+    await mount(tester);
+    await tester.tap(groupChip('Team'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(groupChip('Team')).selected, isTrue);
+    expect(tile(0), findsNothing);
+    final revision = hosts.revision;
+    await tester.tap(groupChip('Personal'), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Edit group'), findsOneWidget);
+    expect(find.text('Dissolve group'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(groupChip('Team')).selected, isTrue);
+    expect(hosts.revision, revision);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.tap(groupChip(''));
+    await tester.pumpAndSettle();
+    expect(tile(0), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('empty home keeps the pose and shows a short localized instruction below it', (tester) async {

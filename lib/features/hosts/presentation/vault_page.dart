@@ -38,6 +38,7 @@ class VaultPage extends ConsumerStatefulWidget {
 class _VaultPageState extends ConsumerState<VaultPage> {
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
+  final _groupScroll = ScrollController();
 
   /// The group being shown; empty for every host.
   var _group = '';
@@ -77,6 +78,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   void dispose() {
     _search.dispose();
     _searchFocus.dispose();
+    _groupScroll.dispose();
     super.dispose();
   }
 
@@ -378,40 +380,14 @@ class _VaultPageState extends ConsumerState<VaultPage> {
             const SizedBox(height: Space.md),
             SizedBox(
               height: 32,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  for (final g in ['', ...groups])
-                    Padding(
-                      padding: const EdgeInsets.only(right: Space.sm),
-                      child: _GroupOrderChip(
-                        group: library.groupById(library.groupIdFor(g)),
-                        siblings: library.groupChildren(library.groupById(library.groupIdFor(g))?.parentId),
-                        revision: _hosts.revision,
-                        onReorder: _reorderGroup,
-                        child: GestureDetector(
-                          onSecondaryTapUp: g.isEmpty ? null : (d) => _groupMenu(g, d.globalPosition),
-                          child: ChoiceChip(
-                            key: ValueKey('group-chip-$g'),
-                            showCheckmark: false,
-                            visualDensity: VisualDensity.compact,
-                            label: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (g.isNotEmpty) ...[
-                                  Icon(Icons.folder_outlined, size: 16, color: theme.colorScheme.primary),
-                                  const SizedBox(width: Space.xs),
-                                ],
-                                Text(g.isEmpty ? l.allHosts : g),
-                              ],
-                            ),
-                            selected: _group == g,
-                            onSelected: (_) => setState(() => _group = g),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+              child: _GroupOrderBar(
+                library: library,
+                revision: _hosts.revision,
+                controller: _groupScroll,
+                selected: _group,
+                onSelected: (group) => setState(() => _group = group),
+                onMenu: _groupMenu,
+                onReorder: _reorderGroup,
               ),
             ),
           ],
@@ -496,61 +472,123 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   }
 }
 
-class _GroupDrag {
-  const _GroupDrag(this.id, this.parent, this.revision);
-  final String id;
-  final String? parent;
-  final int revision;
-}
-
-class _GroupOrderChip extends StatelessWidget {
-  const _GroupOrderChip({
-    required this.group,
-    required this.siblings,
+class _GroupOrderBar extends StatelessWidget {
+  const _GroupOrderBar({
+    required this.library,
     required this.revision,
+    required this.controller,
+    required this.selected,
+    required this.onSelected,
+    required this.onMenu,
     required this.onReorder,
-    required this.child,
   });
 
-  final HostGroup? group;
-  final List<HostGroup> siblings;
+  final HostLibrary library;
   final int revision;
+  final ScrollController controller;
+  final String selected;
+  final ValueChanged<String> onSelected;
+  final void Function(String, Offset) onMenu;
   final Future<void> Function(String, String?, int) onReorder;
-  final Widget child;
 
-  @override
-  Widget build(BuildContext context) {
-    final group = this.group;
-    if (group == null) return child;
-    final scheme = Theme.of(context).colorScheme;
-    return DragTarget<_GroupDrag>(
-      onWillAcceptWithDetails: (details) => details.data.id != group.id && details.data.parent == group.parentId,
-      onAcceptWithDetails: (details) {
-        final box = context.findRenderObject()! as RenderBox;
-        final after = box.globalToLocal(details.offset).dx >= box.size.width / 2;
-        final index = siblings.indexWhere((item) => item.id == group.id);
-        final before = after ? (index + 1 < siblings.length ? siblings[index + 1].id : null) : group.id;
-        onReorder(details.data.id, before, details.data.revision);
-      },
-      builder: (context, candidates, rejected) => Draggable<_GroupDrag>(
-        data: _GroupDrag(group.id, group.parentId, revision),
-        dragAnchorStrategy: pointerDragAnchorStrategy,
-        affinity: Axis.horizontal,
-        feedback: Material(
-          type: MaterialType.transparency,
-          child: Opacity(opacity: .85, child: child),
+  Widget _chip(BuildContext context, String path) => Padding(
+    padding: const EdgeInsets.only(right: Space.sm),
+    child: GestureDetector(
+      onSecondaryTapUp: path.isEmpty ? null : (d) => onMenu(path, d.globalPosition),
+      child: ChoiceChip(
+        key: ValueKey('group-chip-$path'),
+        showCheckmark: false,
+        visualDensity: VisualDensity.compact,
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (path.isNotEmpty) ...[
+              Icon(Icons.folder_outlined, size: 16, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: Space.xs),
+            ],
+            Flexible(
+              child: Tooltip(
+                message: path.isEmpty ? AppLocalizations.of(context).allHosts : path,
+                child: Text(
+                  path.isEmpty ? AppLocalizations.of(context).allHosts : path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
         ),
-        childWhenDragging: Opacity(opacity: .35, child: child),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(Radii.control),
-            border: candidates.isEmpty ? null : Border.all(color: scheme.primary, width: 2),
+        selected: selected == path,
+        onSelected: (_) => onSelected(path),
+      ),
+    ),
+  );
+
+  void _move(List<HostGroup> siblings, int from, int to) {
+    final sequence = siblings.toList();
+    final moved = sequence.removeAt(from);
+    sequence.insert(to, moved);
+    onReorder(moved.id, to + 1 < sequence.length ? sequence[to + 1].id : null, revision);
+  }
+
+  Widget _branch(BuildContext context, HostGroup group, double width) {
+    final children = library.groupChildren(group.id);
+    final chip = _chip(context, library.groupPath(group.id));
+    if (children.isEmpty) {
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: width),
+        child: chip,
+      );
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: width),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: width / 2),
+            child: chip,
           ),
-          child: child,
-        ),
+          Flexible(
+            child: LayoutBuilder(
+              builder: (context, constraints) => _list(context, children, constraints.maxWidth, parent: group.id),
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _list(BuildContext context, List<HostGroup> siblings, double width, {String? parent}) =>
+      ReorderableListView.builder(
+        // A changed library cancels an in-flight drag instead of applying its old indices to new groups.
+        key: ValueKey(('group-order-list', parent, revision)),
+        scrollController: parent == null ? controller : null,
+        scrollDirection: Axis.horizontal,
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        buildDefaultDragHandles: false,
+        itemCount: siblings.length,
+        onReorderItem: (from, to) => _move(siblings, from, to),
+        proxyDecorator: (child, _, _) => Material(type: MaterialType.transparency, child: child),
+        itemBuilder: (context, index) => ReorderableDragStartListener(
+          key: ValueKey(siblings[index].id),
+          index: index,
+          child: _branch(context, siblings[index], width),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      _chip(context, ''),
+      Expanded(
+        child: LayoutBuilder(
+          builder: (context, constraints) => _list(context, library.groupChildren(null), constraints.maxWidth),
+        ),
+      ),
+    ],
+  );
 }
 
 class _HostTile extends StatefulWidget {
