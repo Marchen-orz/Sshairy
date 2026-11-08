@@ -459,6 +459,16 @@ class HostLibrary {
     return copyWith(hosts: hosts.where((h) => h.id != id));
   }
 
+  /// Removes a selection together; references between its members disappear with them.
+  HostLibrary withoutHosts(Iterable<HostId> ids) {
+    final wanted = ids.toSet();
+    if (wanted.any((id) => hostById(id) == null)) throw ArgumentError('missing host');
+    final next = copyWith(hosts: hosts.where((host) => !wanted.contains(host.id)));
+    final references = {for (final id in wanted) ...next.jumpReferences(id)};
+    if (references.isNotEmpty) throw HostInUse(references.toList());
+    return next;
+  }
+
   HostLibrary withGroup(HostGroup group) {
     final i = groups.indexWhere((g) => g.id == group.id);
     return copyWith(groups: i < 0 ? [...groups, group] : ([...groups]..[i] = group));

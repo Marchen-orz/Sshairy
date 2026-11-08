@@ -8,6 +8,11 @@ import '../../credentials/api.dart';
 import '../domain/host.dart';
 import '../domain/host_library.dart';
 
+/// Host metadata was deleted, but some host-owned credentials could not be removed.
+class HostDeleteCleanupFailure implements Exception {
+  const HostDeleteCleanupFailure();
+}
+
 final hostsProvider = NotifierProvider<HostsNotifier, List<Host>>(HostsNotifier.new);
 
 /// Groups, identities and defaults beside the hosts; it changes whenever [hostsProvider] does.
@@ -277,6 +282,27 @@ class HostsNotifier extends Notifier<List<Host>> {
     proxy: proxy,
     legacy: current.legacy,
   );
+
+  Future<void> deleteMany(Iterable<HostId> ids, {int? expectedRevision}) {
+    final wanted = ids.toSet();
+    if (wanted.isEmpty) return Future.value();
+    return _apply(
+      (library) => library.withoutHosts(wanted),
+      expectedRevision: expectedRevision,
+      routes: false,
+      after: (before) async {
+        var failed = false;
+        for (final id in wanted) {
+          try {
+            await ref.read(hostCredentialCleanupProvider).clearHost(id, before.hostById(id)?.proxy?.key ?? '');
+          } on Object {
+            failed = true;
+          }
+        }
+        if (failed) throw const HostDeleteCleanupFailure();
+      },
+    );
+  }
 
   /// Throws [HostInUse] while another host, a group or the defaults still use it as their jump host.
   Future<void> delete(Host host) => _apply(

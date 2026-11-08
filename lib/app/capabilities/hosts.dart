@@ -145,6 +145,35 @@ List<Capability> hostCapabilities(Ref ref) {
       }),
     ),
     FunctionCapability(
+      'host.deleteMany',
+      Effect.localChange,
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'hostIds': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'minItems': 1,
+          },
+        },
+        'required': ['hostIds'],
+      },
+      guarded((a) async {
+        final raw = a.raw['hostIds'];
+        if (raw is! List || raw.isEmpty || raw.any((id) => id is! String || id.isEmpty)) {
+          throw const Rejected('invalidArgument', 'hostIds');
+        }
+        final ids = [for (final id in raw) HostId(id as String)];
+        if (ids.any((id) => hosts().byId(id) == null)) throw const Rejected('notFound', 'host');
+        try {
+          await hosts().deleteMany(ids);
+        } on HostDeleteCleanupFailure {
+          throw const Rejected('cleanupFailed');
+        }
+        return null;
+      }),
+    ),
+    FunctionCapability(
       'host.delete',
       Effect.localChange,
       inputSchema: const {

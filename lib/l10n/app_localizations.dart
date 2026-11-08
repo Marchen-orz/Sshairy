@@ -98,6 +98,18 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @deleteHostsConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete the selected {count} hosts?'**
+  String deleteHostsConfirm(int count);
+
+  /// No description provided for @hostDeleteCleanupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Hosts were deleted, but some saved credentials could not be removed. Check OS secure storage.'**
+  String get hostDeleteCleanupFailed;
+
   /// No description provided for @noHosts.
   ///
   /// In en, this message translates to:

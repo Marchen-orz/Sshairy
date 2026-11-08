@@ -11,11 +11,14 @@ import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/design/select.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/hosts/api.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/hosts/presentation/move_hosts_dialog.dart';
 import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
+
+import 'keys_test.dart' show MemorySecrets;
 
 void main() {
   late Directory data;
@@ -25,7 +28,9 @@ void main() {
 
   setUp(() {
     data = Directory.systemTemp.createTempSync('sshairy-vault-select-');
-    container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(data.path)]);
+    container = ProviderContainer(
+      overrides: [dataDirProvider.overrideWithValue(data.path), secretStoreProvider.overrideWithValue(MemorySecrets())],
+    );
     hosts = container.read(hostsProvider.notifier);
     connected.clear();
   });
@@ -103,6 +108,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(MoveHostsDialog), findsNothing);
   }
+
+  testWidgets('multi-selection menus show only batch actions and delete asks once for the selected set', (
+    tester,
+  ) async {
+    await mount(tester);
+    await click(tester, 0);
+    await click(tester, 1, modifier: LogicalKeyboardKey.controlLeft);
+    await tester.tap(find.text('host-0'), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Move to group…'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    for (final label in ['Edit', 'Duplicate', 'Pin', 'Unpin']) {
+      expect(find.text(label), findsNothing);
+    }
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete the selected 2 hosts?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(container.read(hostsProvider), hasLength(4));
+    expect(selected(tester), [0, 1]);
+    await tester.tap(find.descendant(of: tile(0), matching: find.byTooltip('More')));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit'), findsNothing);
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    for (var i = 0; i < 100 && container.read(hostsProvider).length == 4; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
+    await tester.pumpAndSettle();
+    expect(container.read(hostsProvider).map((h) => h.id.value), ['h2', 'h3']);
+    expect(selected(tester), isEmpty);
+  });
+
+  testWidgets('single-host right click keeps single actions and targets only the clicked unselected host', (
+    tester,
+  ) async {
+    await mount(tester);
+    await click(tester, 0);
+    await click(tester, 1, modifier: LogicalKeyboardKey.controlLeft);
+    await tester.tap(find.text('host-3'), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+    expect(selected(tester), [3]);
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('host-3'), findsWidgets);
+    expect(find.text('Delete the selected 2 hosts?'), findsNothing);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(container.read(hostsProvider), hasLength(4));
+  });
 
   testWidgets('empty home keeps the pose and shows a short localized instruction below it', (tester) async {
     await mount(tester, count: 0);

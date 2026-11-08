@@ -10,6 +10,15 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String deleteHostsConfirm(int count) {
+    return 'Delete the selected $count hosts?';
+  }
+
+  @override
+  String get hostDeleteCleanupFailed =>
+      'Hosts were deleted, but some saved credentials could not be removed. Check OS secure storage.';
+
+  @override
   String get noHosts => 'No hosts yet';
 
   @override

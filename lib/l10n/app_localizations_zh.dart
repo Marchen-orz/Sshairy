@@ -10,6 +10,14 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String deleteHostsConfirm(int count) {
+    return '删除选中的 $count 台主机？';
+  }
+
+  @override
+  String get hostDeleteCleanupFailed => '主机已删除，但部分已保存凭据未能清理，请检查系统安全存储。';
+
+  @override
   String get noHosts => '暂无主机';
 
   @override

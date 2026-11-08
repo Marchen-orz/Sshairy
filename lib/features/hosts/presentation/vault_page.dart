@@ -84,12 +84,18 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 
   void _edit([Host? host]) => showSideDrawer<void>(context, (_) => HostForm(host: host, group: _group));
 
-  Future<void> _delete(Host host) async {
+  Future<void> _delete(List<HostId> ids) async {
     final l = AppLocalizations.of(context);
+    final hosts = _hosts;
+    final targets = ids.toSet().toList();
+    if (targets.isEmpty) return;
+    final revision = hosts.revision;
+    final title = hosts.byId(targets.first)?.title ?? '';
+
     final ok = await showAppDialog<bool>(
       context: context,
       builder: (context) => AppDialog(
-        content: Text(l.deleteHost(host.title)),
+        content: Text(targets.length == 1 ? l.deleteHost(title) : l.deleteHostsConfirm(targets.length)),
         actions: [
           TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
           TextButton(
@@ -102,11 +108,15 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     );
     if (!(ok ?? false)) return;
     try {
-      await _hosts.delete(host);
+      await hosts.deleteMany(targets, expectedRevision: revision);
     } on HostInUse catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.hostInUse(e.references.join(', ')))));
       }
+    } on HostDeleteCleanupFailure {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.hostDeleteCleanupFailed)));
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.errSave)));
     }
   }
 
@@ -210,12 +220,29 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     );
   }
 
-  Future<void> _hostMenu(Host host, Offset position, List<(String, VoidCallback)> actions) async {
-    _targets(host);
+  List<(String, VoidCallback)> _hostActions(Host host) {
+    final l = AppLocalizations.of(context);
+    final targets = _targets(host);
+    return [
+      if (targets.length == 1) ...[
+        (l.edit, () => _edit(host)),
+        (l.duplicate, () => _hosts.duplicate(host, l.copyOf(host.title))),
+        (host.pinned ? l.unpin : l.pin, () => _hosts.setPinned(host, !host.pinned)),
+      ],
+      (l.moveToGroup, () => _moveHosts(targets)),
+      (l.delete, () => _delete(targets)),
+    ];
+  }
+
+  Future<void> _hostMenu(Host host, Offset position) async {
+    final actions = _hostActions(host);
     final run = await showAppMenu<VoidCallback>(
       context: context,
       anchor: anchorAt(position),
-      items: [for (final (label, action) in actions) AppMenuItem(value: action, label: label)],
+      items: [
+        for (final (label, action) in actions)
+          AppMenuItem(value: action, label: label, destructive: label == AppLocalizations.of(context).delete),
+      ],
     );
     run?.call();
   }
@@ -249,13 +276,6 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     if (!visibleIds.contains(_anchor)) _anchor = null;
 
     Widget tile(Host h) {
-      final actions = <(String, VoidCallback)>[
-        (l.edit, () => _edit(h)),
-        (l.duplicate, () => _hosts.duplicate(h, l.copyOf(h.title))),
-        (h.pinned ? l.unpin : l.pin, () => _hosts.setPinned(h, !h.pinned)),
-        (l.moveToGroup, () => _moveHosts(_targets(h))),
-        (l.delete, () => _delete(h)),
-      ];
       return _HostTile(
         key: ValueKey(h.id),
         host: h,
@@ -269,9 +289,8 @@ class _VaultPageState extends ConsumerState<VaultPage> {
           _anchor = null;
         }),
         onConnect: () => widget.onConnect(h),
-        onMenu: () => _targets(h),
-        onSecondaryTap: (position) => _hostMenu(h, position, actions),
-        actions: actions,
+        onSecondaryTap: (position) => _hostMenu(h, position),
+        actions: () => _hostActions(h),
       );
     }
 
@@ -326,6 +345,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                 items: () => [
                   if (_selected.isNotEmpty) ...[
                     AppMenuItem(value: () => _moveHosts(_selected.toList()), label: l.moveToGroup),
+                    AppMenuItem(value: () => _delete(_selected.toList()), label: l.delete, destructive: true),
                     const AppMenuDivider(),
                   ],
                   AppMenuItem(
@@ -469,7 +489,6 @@ class _HostTile extends StatefulWidget {
     required this.onSelectAll,
     required this.onClear,
     required this.onConnect,
-    required this.onMenu,
     required this.onSecondaryTap,
     required this.actions,
   });
@@ -478,9 +497,9 @@ class _HostTile extends StatefulWidget {
 
   /// A dense row with group and tags, instead of a card.
   final bool list, selected;
-  final VoidCallback onConnect, onSelect, onToggle, onSelectAll, onClear, onMenu;
+  final VoidCallback onConnect, onSelect, onToggle, onSelectAll, onClear;
   final ValueChanged<Offset> onSecondaryTap;
-  final List<(String, VoidCallback)> actions;
+  final List<(String, VoidCallback)> Function() actions;
 
   @override
   State<_HostTile> createState() => _HostTileState();
@@ -554,10 +573,10 @@ class _HostTileState extends State<_HostTile> {
             tooltip: l.more,
             icon: const Icon(Icons.more_horiz, size: 16),
             onSelected: (action) => action(),
-            items: () {
-              widget.onMenu();
-              return [for (final (label, run) in widget.actions) AppMenuItem(value: run, label: label)];
-            },
+            items: () => [
+              for (final (label, run) in widget.actions())
+                AppMenuItem(value: run, label: label, destructive: label == l.delete),
+            ],
           ),
         ],
       ),

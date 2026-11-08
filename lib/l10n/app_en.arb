@@ -1,5 +1,8 @@
 {
   "@@locale": "en",
+  "deleteHostsConfirm": "Delete the selected {count} hosts?",
+  "@deleteHostsConfirm": {"placeholders": {"count": {"type": "int"}}},
+  "hostDeleteCleanupFailed": "Hosts were deleted, but some saved credentials could not be removed. Check OS secure storage.",
   "noHosts": "No hosts yet",
   "noHostsInGroup": "No hosts in this group",
   "hostEmptyHint": "Add a host or import saved connections to get started.",

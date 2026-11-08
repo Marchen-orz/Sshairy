@@ -1,5 +1,8 @@
 {
   "@@locale": "zh",
+  "deleteHostsConfirm": "删除选中的 {count} 台主机？",
+  "@deleteHostsConfirm": {"placeholders": {"count": {"type": "int"}}},
+  "hostDeleteCleanupFailed": "主机已删除，但部分已保存凭据未能清理，请检查系统安全存储。",
   "noHosts": "暂无主机",
   "noHostsInGroup": "此分组暂无主机",
   "hostEmptyHint": "新建主机或导入已有连接，开始使用。",
