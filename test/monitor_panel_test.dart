@@ -22,7 +22,27 @@ import 'connection_manager_test.dart' show FakeTransport, NoPrompts;
 class _Server extends FakeTransport {
   final commands = <String>[];
   var gpu = false;
+  var sortable = false;
+  var spikeMemory = false;
   var _ticks = 0;
+
+  static const processes = [
+    (800, 'zulu', 7, 4),
+    (700, 'alpha', 6, 2),
+    (600, 'beta', 5, 8),
+    (500, 'delta', 4, 1),
+    (400, 'gamma', 3, 6),
+    (300, 'aardvark', 2, 9),
+    (200, 'Beta', 1, 8),
+    (100, 'epsilon', 0, 3),
+  ];
+
+  String get processData => sortable
+      ? [
+          for (final (pid, name, cpu, pages) in processes)
+            '$pid R 1 ${1000 + _ticks * cpu} 1 100 ${spikeMemory && name == 'alpha' ? 20 : pages} $name',
+        ].join('\n')
+      : '1 S 0 500 1 1 3000 systemd\n400 R 1 ${1000 + _ticks} 4 9000 25600 worker';
 
   @override
   Future<ExecResult> exec(String command, {int limit = 0}) async {
@@ -54,8 +74,7 @@ Filesystem 1024-blocks Used Available Capacity Mounted on
 /dev/vda2 ext4 41152812 20576406 18663036 53% /
 /dev/vdb1 xfs 104857600 10485760 94371840 10% /data
 @@proc
-1 S 0 500 1 1 3000 systemd
-400 R 1 ${1000 + _ticks} 4 9000 25600 worker
+$processData
 @@gpus
 ${gpu ? 'nvidia' : ''}
 ''');
@@ -73,8 +92,10 @@ ${gpu ? 'nvidia' : ''}
 void main() {
   const host = Host(id: HostId('h'), label: 'web', address: '10.0.0.5', username: 'u');
 
-  Future<_Server> pump(WidgetTester tester, {bool gpu = false}) async {
-    final server = _Server()..gpu = gpu;
+  Future<_Server> pump(WidgetTester tester, {bool gpu = false, bool sortable = false}) async {
+    final server = _Server()
+      ..gpu = gpu
+      ..sortable = sortable;
     final manager = ConnectionManager((_, _, _) async => server);
     // The panel never dials: the terminal's lease is what makes the host connected.
     await manager.acquire(host, NoPrompts());
@@ -160,6 +181,38 @@ void main() {
     expect(server.commands.skip(closed), [
       isNot(contains('@@ps')),
     ], reason: 'owners are only fetched while the window is open');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the process preview sorts the full sample by CPU, memory and name in both directions', (tester) async {
+    final server = await pump(tester, sortable: true);
+    final preview = find.ancestor(of: find.byTooltip('Show all processes'), matching: find.byType(MonitorCard));
+    List<String> names() => [
+      for (final text in tester.widgetList<Text>(find.descendant(of: preview, matching: find.byType(Text))))
+        if (_Server.processes.any((p) => p.$2 == text.data)) text.data!,
+    ];
+    Future<void> sort(String label, List<String> expected, IconData direction) async {
+      await tester.tap(find.descendant(of: preview, matching: find.text(label)));
+      await tester.pump();
+      expect(names(), expected);
+      expect(find.descendant(of: preview, matching: find.byIcon(direction)), findsOneWidget);
+      expect(find.byType(ProcessDialog), findsNothing, reason: 'a header sorts without expanding the card');
+    }
+
+    expect(names(), ['zulu', 'alpha', 'beta', 'delta', 'gamma']);
+    await sort('Memory', ['aardvark', 'Beta', 'beta', 'gamma', 'zulu'], Icons.arrow_downward);
+    await tester.pump(const Duration(seconds: 3));
+    expect(names(), ['aardvark', 'Beta', 'beta', 'gamma', 'zulu'], reason: 'refresh retains the selected sort');
+    server.spikeMemory = true;
+    await tester.pump(const Duration(seconds: 3));
+    expect(names(), ['alpha', 'aardvark', 'Beta', 'beta', 'gamma'], reason: 'new samples use the active sort');
+    server.spikeMemory = false;
+    await tester.pump(const Duration(seconds: 3));
+    await sort('Memory', ['delta', 'alpha', 'epsilon', 'zulu', 'gamma'], Icons.arrow_upward);
+    await sort('Processes', ['aardvark', 'alpha', 'Beta', 'beta', 'delta'], Icons.arrow_upward);
+    await sort('Processes', ['zulu', 'gamma', 'epsilon', 'delta', 'Beta'], Icons.arrow_downward);
+    await sort('CPU', ['zulu', 'alpha', 'beta', 'delta', 'gamma'], Icons.arrow_downward);
+    await sort('CPU', ['epsilon', 'Beta', 'aardvark', 'gamma', 'delta'], Icons.arrow_upward);
     expect(tester.takeException(), isNull);
   });
 

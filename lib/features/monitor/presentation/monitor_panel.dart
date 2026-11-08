@@ -246,13 +246,11 @@ class _Content extends ConsumerWidget {
     final scheme = theme.colorScheme;
     final muted = theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant, fontFeatures: tabular);
     final header = theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant);
-    final figures = theme.textTheme.bodySmall?.copyWith(fontFeatures: tabular);
     String used(int usedKib, int totalKib) =>
         '${formatShortBytes(usedKib * 1024)}/${formatShortBytes(totalKib * 1024)}';
     final names = snap.interfaceRates.keys.toList()..sort();
     final selected = names.contains(interface) ? interface : ServerMonitor.allInterfaces;
     final rate = snap.interfaceRates[selected];
-    final top = snap.top(5);
 
     return [
       MonitorCard(
@@ -297,57 +295,7 @@ class _Content extends ConsumerWidget {
           ],
         ),
       ),
-      if (top.isNotEmpty)
-        MonitorCard(
-          tooltip: l.showAllProcesses,
-          onTap: () => showProcessDialog(context, monitor),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  SizedBox(
-                    width: 48,
-                    child: Text(l.memory, style: header, textAlign: TextAlign.right),
-                  ),
-                  SizedBox(
-                    width: 40,
-                    child: Text(l.cpu, style: header, textAlign: TextAlign.right),
-                  ),
-                  const SizedBox(width: Space.sm),
-                  Expanded(child: Text(l.processes, style: header)),
-                  Icon(Icons.open_in_full_rounded, size: 12, color: scheme.onSurfaceVariant),
-                ],
-              ),
-              const SizedBox(height: 2),
-              for (final p in top)
-                SizedBox(
-                  height: 18,
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 48,
-                        child: Text(formatShortBytes(p.residentBytes), style: figures, textAlign: TextAlign.right),
-                      ),
-                      SizedBox(
-                        width: 40,
-                        child: Text(formatCpu(p.cpu), style: figures, textAlign: TextAlign.right),
-                      ),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        child: Text(
-                          p.name,
-                          style: theme.textTheme.bodySmall,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
+      if (snap.processes.isNotEmpty) _ProcessPreview(monitor: monitor, snapshot: snap),
       MonitorCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -457,6 +405,129 @@ class _Content extends ConsumerWidget {
           ),
         ),
     ];
+  }
+}
+
+enum _ProcessSort { memory, cpu, name }
+
+class _ProcessPreview extends StatefulWidget {
+  const _ProcessPreview({required this.monitor, required this.snapshot});
+
+  final ServerMonitor monitor;
+  final StatsSnapshot snapshot;
+
+  @override
+  State<_ProcessPreview> createState() => _ProcessPreviewState();
+}
+
+class _ProcessPreviewState extends State<_ProcessPreview> {
+  var _sort = _ProcessSort.cpu;
+  var _descending = true;
+
+  int _compare(ProcessInfo a, ProcessInfo b) {
+    var order = switch (_sort) {
+      _ProcessSort.memory => a.residentBytes.compareTo(b.residentBytes),
+      _ProcessSort.cpu => (a.cpu ?? 0).compareTo(b.cpu ?? 0),
+      _ProcessSort.name => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    };
+    if (order == 0 && _sort == _ProcessSort.cpu) order = a.residentBytes.compareTo(b.residentBytes);
+    return order == 0 ? a.pid.compareTo(b.pid) : (_descending ? -order : order);
+  }
+
+  void _sortBy(_ProcessSort column) => setState(() {
+    if (_sort == column) {
+      _descending = !_descending;
+    } else {
+      _sort = column;
+      _descending = column != _ProcessSort.name;
+    }
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final figures = theme.textTheme.bodySmall?.copyWith(fontFeatures: tabular);
+    final rows = List.of(widget.snapshot.processes)..sort(_compare);
+    void expand() => showProcessDialog(context, widget.monitor);
+
+    Widget header(_ProcessSort column, String label, {bool numeric = true}) {
+      final selected = _sort == column;
+      return Semantics(
+        button: true,
+        selected: selected,
+        child: InkWell(
+          onTap: () => _sortBy(column),
+          borderRadius: BorderRadius.circular(Radii.control),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Space.xs),
+            child: Row(
+              mainAxisAlignment: numeric ? MainAxisAlignment.end : MainAxisAlignment.start,
+              children: [
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(_descending ? Icons.arrow_downward : Icons.arrow_upward, size: 10, color: scheme.onSurface),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return MonitorCard(
+      onTap: expand,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              SizedBox(width: 48, child: header(_ProcessSort.memory, l.memory)),
+              SizedBox(width: 40, child: header(_ProcessSort.cpu, l.cpu)),
+              const SizedBox(width: Space.sm),
+              Expanded(child: header(_ProcessSort.name, l.processes, numeric: false)),
+              IconButton(
+                tooltip: l.showAllProcesses,
+                onPressed: expand,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 20, height: 24),
+                icon: const Icon(Icons.open_in_full_rounded, size: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          for (final p in rows.take(5))
+            SizedBox(
+              height: 18,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 48,
+                    child: Text(formatShortBytes(p.residentBytes), style: figures, textAlign: TextAlign.right),
+                  ),
+                  SizedBox(
+                    width: 40,
+                    child: Text(formatCpu(p.cpu), style: figures, textAlign: TextAlign.right),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(p.name, style: theme.textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
