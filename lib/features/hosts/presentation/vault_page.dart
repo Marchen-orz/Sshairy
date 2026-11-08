@@ -305,10 +305,10 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       : quick != null
                       ? const SizedBox.shrink()
                       : Center(child: Text(l.noMatches)))
-                : LayoutBuilder(
+                : ScrollGutterLayout(
                     builder: (context, constraints) {
                       final list = view == HostView.list;
-                      final contentWidth = constraints.maxWidth - AppScrollBehavior.gutterOf(context);
+                      final contentWidth = constraints.maxWidth - ScrollGutterScope.gapOf(context);
                       // Fixed row extents give the hosts' height exactly; the watermark only fills space they leave.
                       final rows = list
                           ? matches.length

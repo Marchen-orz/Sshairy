@@ -227,27 +227,29 @@ class _ProcessDialogState extends State<ProcessDialog> {
             final live = widget.monitor.snapshot;
             final snap = _paused ? (_frozen ??= live) : live;
             final rows = _rows(snap);
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (snap != null) _Summary(snap: snap),
-                const SizedBox(height: Space.md),
-                _toolbar(l, rows.length),
-                const SizedBox(height: Space.sm),
-                ScrollGutter(child: _header(l)),
-                Expanded(
-                  child: Focus(
-                    focusNode: _focus,
-                    onKeyEvent: (_, event) => _key(rows, event),
-                    child: ListView.builder(
-                      controller: _scroll,
-                      itemExtent: WorkspaceSize.treeRow,
-                      itemCount: rows.length,
-                      itemBuilder: (context, i) => _row(rows[i]),
+            return ScrollGutterScope(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (snap != null) _Summary(snap: snap),
+                  const SizedBox(height: Space.md),
+                  _toolbar(l, rows.length),
+                  const SizedBox(height: Space.sm),
+                  ScrollGutter(child: _header(l)),
+                  Expanded(
+                    child: Focus(
+                      focusNode: _focus,
+                      onKeyEvent: (_, event) => _key(rows, event),
+                      child: ListView.builder(
+                        controller: _scroll,
+                        itemExtent: WorkspaceSize.treeRow,
+                        itemCount: rows.length,
+                        itemBuilder: (context, i) => _row(rows[i]),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           },
         ),

@@ -7,6 +7,58 @@ import 'theme.dart';
 
 enum DockSide { left, right, bottom }
 
+/// A window outline with the panel's share filled in on the side it docks to. Size and colour come from the
+/// surrounding [IconTheme], so it sits in a menu row like any icon.
+class DockSideIcon extends StatelessWidget {
+  const DockSideIcon(this.side, {super.key});
+
+  final DockSide side;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = IconTheme.of(context);
+    return CustomPaint(
+      size: Size.square(icon.size ?? 16),
+      painter: _DockSidePainter(side, icon.color ?? Theme.of(context).colorScheme.onSurface),
+    );
+  }
+}
+
+class _DockSidePainter extends CustomPainter {
+  const _DockSidePainter(this.side, this.color);
+
+  final DockSide side;
+  final Color color;
+
+  static const _stroke = 1.5, _share = .4;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final frame = (Offset(0, size.height * .1) & Size(size.width, size.height * .8)).deflate(_stroke / 2);
+    final window = RRect.fromRectAndRadius(frame, const Radius.circular(2.5));
+    final panel = switch (side) {
+      DockSide.left => Rect.fromLTRB(frame.left, frame.top, frame.left + frame.width * _share, frame.bottom),
+      DockSide.right => Rect.fromLTRB(frame.right - frame.width * _share, frame.top, frame.right, frame.bottom),
+      DockSide.bottom => Rect.fromLTRB(frame.left, frame.bottom - frame.height * _share, frame.right, frame.bottom),
+    };
+    canvas
+      ..save()
+      ..clipRRect(window)
+      ..drawRect(panel, Paint()..color = color.withValues(alpha: .55))
+      ..restore()
+      ..drawRRect(
+        window,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = _stroke,
+      );
+  }
+
+  @override
+  bool shouldRepaint(_DockSidePainter old) => old.side != side || old.color != color;
+}
+
 /// A resizable panel docked to one side of the main view (docs/WORKSPACE_LAYOUT.md). A left or right panel that
 /// would squeeze the main view below [WorkspaceSize.terminalMin] covers it instead.
 class DockPanel extends StatefulWidget {

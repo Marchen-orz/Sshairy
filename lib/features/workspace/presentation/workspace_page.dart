@@ -366,13 +366,14 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     AppMenuButton<FilesDock>(
                       tooltip: l.dockPosition,
                       icon: const Icon(Icons.space_dashboard_outlined, size: 16),
+                      minWidth: 0,
                       items: () => [
-                        for (final (side, label) in [
-                          (FilesDock.left, l.dockLeft),
-                          (FilesDock.right, l.dockRight),
-                          (FilesDock.bottom, l.dockBottom),
+                        for (final (side, shape, label) in [
+                          (FilesDock.left, DockSide.left, l.dockLeft),
+                          (FilesDock.right, DockSide.right, l.dockRight),
+                          (FilesDock.bottom, DockSide.bottom, l.dockBottom),
                         ])
-                          AppMenuItem(value: side, label: label, checked: side == dock),
+                          AppMenuItem(value: side, label: label, glyph: DockSideIcon(shape), checked: side == dock),
                       ],
                       onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
                     ),
@@ -678,7 +679,7 @@ class _PaneHeader extends StatelessWidget {
         onTap: onTap,
         child: Container(
           height: 24,
-          padding: const EdgeInsets.only(left: Space.sm),
+          padding: const EdgeInsets.only(left: Space.sm, right: Space.xs),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(color: focused ? scheme.primary : scheme.outlineVariant, width: focused ? 2 : 1),
@@ -690,7 +691,9 @@ class _PaneHeader extends StatelessWidget {
               children: [
                 SizedBox.square(dimension: 14, child: Center(child: SessionStatusIcon(session.status))),
                 const SizedBox(width: Space.sm),
-                Flexible(
+                // Expanded, not Flexible beside a Spacer: the two would split the free width, and a short label
+                // would leave the close button part-way along the header.
+                Expanded(
                   child: Text(
                     session.host.target,
                     maxLines: 1,
@@ -700,7 +703,6 @@ class _PaneHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Spacer(),
                 IconButton(
                   tooltip: AppLocalizations.of(context).closePane,
                   onPressed: onClose,

@@ -545,9 +545,9 @@ class _FilePaneState extends ConsumerState<FilePane> {
         break;
     }
     final items = b.visible;
-    return LayoutBuilder(
+    return ScrollGutterLayout(
       builder: (context, box) {
-        final width = box.maxWidth - AppScrollBehavior.gutterOf(context);
+        final width = box.maxWidth - ScrollGutterScope.gapOf(context);
         final wide = width >= 560, medium = width >= 380;
         final columns = _Columns(modified: medium, size: width >= 300, mode: wide && !b.local);
         return Column(

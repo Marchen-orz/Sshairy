@@ -61,6 +61,80 @@ Future<void> _settled(WidgetTester tester, ProviderContainer container, bool Fun
 }
 
 void main() {
+  testWidgets('split headers put close at the pane edge and file docking menu stays compact with position icons', (
+    tester,
+  ) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-pane-header-');
+    File('${dir.path}/workspace.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'tabs': [
+          {
+            'layout': {
+              'root': {
+                'type': 'split',
+                'axis': 'vertical',
+                'ratios': [.5, .5],
+                'children': [
+                  {'type': 'leaf', 'pane': 'p1', 'session': 's1'},
+                  {'type': 'leaf', 'pane': 'p2', 'session': 's2'},
+                ],
+              },
+              'focused': 'p1',
+            },
+            'hosts': {'s1': 'web', 's2': 'web'},
+          },
+        ],
+        'active': 0,
+      }),
+    );
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1400, 800);
+    addTearDown(tester.view.reset);
+    final manager = ConnectionManager((_, _, _) async => FakeTransport(), park: Duration.zero);
+    final container = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        hostsProvider.overrideWith(_Hosts.new),
+        connectionManagerProvider.overrideWithValue(manager),
+      ],
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: DefaultAssetBundle(
+          bundle: _TestAssets(),
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: WorkspacePage(openPalette: (_) async {}),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final panes = find.byType(TerminalPane);
+    expect(panes, findsNWidgets(2));
+    final close = find.byTooltip('Close pane');
+    expect(close, findsNWidgets(2));
+    for (var i = 0; i < 2; i++) {
+      expect(tester.getRect(close.at(i)).right, closeTo(tester.getRect(panes.at(i)).right, 5));
+    }
+    await tester.tap(find.byTooltip('Files'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Dock position'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DockSideIcon), findsNWidgets(3));
+    expect(tester.getSize(find.byType(PopupSurface).last).width, lessThan(170));
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    manager.closeAll();
+    dir.deleteSync(recursive: true);
+  });
+
   testWidgets('the icon rail keeps every page and panel at the minimum window size', (tester) async {
     final dir = Directory.systemTemp.createTempSync('sshairy-layout-');
     addTearDown(() => dir.deleteSync(recursive: true));
