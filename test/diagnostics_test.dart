@@ -57,6 +57,102 @@ void main() {
     expect(obstacle.readAsStringSync(), 'keep');
   });
 
+  test('recent history is newest first, bounded and immutable across rotations', () async {
+    final log = DiagnosticLog(directory.path, fileBytes: 300, fileCount: 3);
+    for (var i = 0; i < 20; i++) {
+      log.record(DiagnosticArea.connection, DiagnosticAction.dial, DiagnosticOutcome.succeeded, elapsedMilliseconds: i);
+    }
+    final snapshot = await log.readRecent(limit: 2);
+    expect(snapshot.records.map((record) => record.elapsedMilliseconds), [19, 18]);
+    expect(() => snapshot.records.clear(), throwsUnsupportedError);
+    expect(snapshot.skipped, 0);
+    expect(() => log.readRecent(limit: 501), throwsRangeError);
+    await log.close();
+  });
+
+  test('reader skips malformed, unknown, oversized and arbitrary-field records', () async {
+    final valid = {
+      'time': '2026-11-08T12:00:00.000Z',
+      'area': 'connection',
+      'action': 'dial',
+      'outcome': 'failed',
+      'elapsedMs': 42,
+    };
+    File('${directory.path}/diagnostic-0.jsonl').writeAsStringSync(
+      [
+        jsonEncode(valid),
+        '{broken',
+        jsonEncode({...valid, 'area': 'unknown'}),
+        jsonEncode({...valid, 'secret': 'not-for-viewer'}),
+        jsonEncode({...valid, 'elapsedMs': -1}),
+        jsonEncode({...valid, 'dropped': 1.5}),
+        'x' * 2049,
+      ].join('\n'),
+    );
+    final log = DiagnosticLog(directory.path);
+    final snapshot = await log.readRecent();
+    expect(snapshot.records, hasLength(1));
+    expect(snapshot.skipped, 6);
+    expect(jsonDecode(snapshot.records.single.text), valid);
+    expect(snapshot.records.single.text, isNot(contains('not-for-viewer')));
+    await log.close();
+  });
+
+  test('snapshots and notifications do not duplicate or miss queued writes', () async {
+    final log = DiagnosticLog(directory.path);
+    var notices = 0;
+    final subscription = log.changes.listen((_) => notices++);
+    log.record(DiagnosticArea.application, DiagnosticAction.start, DiagnosticOutcome.started, elapsedMilliseconds: 1);
+    final first = log.readRecent();
+    log.record(DiagnosticArea.connection, DiagnosticAction.dial, DiagnosticOutcome.succeeded, elapsedMilliseconds: 2);
+    expect((await first).records.map((record) => record.elapsedMilliseconds), [1]);
+    final second = await log.readRecent();
+    expect(second.records.map((record) => record.elapsedMilliseconds), [2, 1]);
+    await Future<void>.delayed(Duration.zero);
+    expect(notices, 2);
+    await subscription.cancel();
+    await log.close();
+  });
+
+  test('reader refuses oversized files without returning raw contents or paths', () async {
+    File('${directory.path}/diagnostic-0.jsonl').writeAsStringSync('x' * 257);
+    final log = DiagnosticLog(directory.path, fileBytes: 256);
+    await expectLater(log.readRecent(), throwsA(isA<DiagnosticReadFailure>()));
+    expect(const DiagnosticReadFailure().toString(), isNot(contains(directory.path)));
+    await log.close();
+  });
+
+  test('reader and writer reject a non-file rotation destination', () async {
+    Directory('${directory.path}/diagnostic-1.jsonl').createSync();
+    final log = DiagnosticLog(directory.path);
+    await expectLater(log.readRecent(), throwsA(isA<DiagnosticReadFailure>()));
+    log.record(DiagnosticArea.application, DiagnosticAction.start, DiagnosticOutcome.started);
+    await log.idle;
+    expect(log.failed, isTrue);
+    expect(File('${directory.path}/diagnostic-0.jsonl').existsSync(), isFalse);
+    await log.close();
+  });
+
+  test('reader and writer refuse linked log files', () async {
+    final outside = File('${directory.path}/outside')..writeAsStringSync('untouched');
+    Link('${directory.path}/diagnostic-0.jsonl').createSync(outside.path);
+    final log = DiagnosticLog(directory.path);
+    await expectLater(log.readRecent(), throwsA(isA<DiagnosticReadFailure>()));
+    log.record(DiagnosticArea.application, DiagnosticAction.start, DiagnosticOutcome.started);
+    await log.idle;
+    expect(log.failed, isTrue);
+    expect(outside.readAsStringSync(), 'untouched');
+    await log.close();
+  }, skip: Platform.isWindows ? 'Windows symlink creation requires machine-specific privileges.' : false);
+
+  test('disabled logger returns empty history without creating files', () async {
+    final log = DiagnosticLog.disabled();
+    expect((await log.readRecent()).records, isEmpty);
+    log.record(DiagnosticArea.application, DiagnosticAction.start, DiagnosticOutcome.started);
+    await log.close();
+    expect(directory.listSync(), isEmpty);
+  });
+
   test('connection failures never serialize secrets, target metadata or raw exceptions', () async {
     const sentinel = 'diagnostic-test-secret-not-for-output';
     final log = DiagnosticLog(directory.path);
