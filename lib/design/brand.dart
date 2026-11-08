@@ -46,11 +46,19 @@ abstract final class BrandRotation {
 }
 
 class _Art extends StatelessWidget {
-  const _Art(this.asset, {super.key, required this.width, this.height, required this.opacity});
+  const _Art(
+    this.asset, {
+    super.key,
+    required this.width,
+    this.height,
+    required this.opacity,
+    this.alignment = Alignment.center,
+  });
 
   final String asset;
   final double width, opacity;
   final double? height;
+  final Alignment alignment;
 
   /// The same decoded size the widget uses, so a precached image is the one shown.
   static ImageProvider provider(BuildContext context, String asset, double width) =>
@@ -63,15 +71,23 @@ class _Art extends StatelessWidget {
     height: height,
     opacity: AlwaysStoppedAnimation(opacity),
     fit: BoxFit.contain,
+    alignment: alignment,
     excludeFromSemantics: true,
   );
 }
 
 class _HomePose extends StatefulWidget {
-  const _HomePose({required this.width, required this.height, required this.opacity, required this.active});
+  const _HomePose({
+    required this.width,
+    required this.height,
+    required this.opacity,
+    required this.active,
+    this.alignment = Alignment.center,
+  });
 
   final double width, height, opacity;
   final bool active;
+  final Alignment alignment;
 
   @override
   State<_HomePose> createState() => _HomePoseState();
@@ -143,6 +159,7 @@ class _HomePoseState extends State<_HomePose> {
         width: widget.width,
         height: widget.height,
         opacity: widget.opacity,
+        alignment: widget.alignment,
       ),
     ),
   );
@@ -302,6 +319,7 @@ class BrandWatermark extends StatelessWidget {
           height: height,
           opacity: _decorOpacity(palette.brightness, light: .12, dark: .09),
           active: active,
+          alignment: Alignment.bottomRight,
         ),
       ),
     );

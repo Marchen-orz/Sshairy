@@ -320,7 +320,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                         children: [
                           if (spare)
                             Positioned(
-                              right: 0,
+                              right: Space.lg,
                               bottom: Space.lg,
                               child: BrandWatermark(active: widget.active),
                             ),
