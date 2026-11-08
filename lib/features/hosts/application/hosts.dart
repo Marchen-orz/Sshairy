@@ -137,6 +137,26 @@ class HostsNotifier extends Notifier<List<Host>> {
 
   Future<void> setPinned(Host host, bool pinned) => _update(host.id, (current) => current.copyWith(pinned: pinned));
 
+  /// Puts every host in [ids] into group [groupId], or into no group when it is null, in one write. A missing host
+  /// or group refuses the whole batch; the hosts keep their overrides and metadata and so follow the new group.
+  Future<void> moveToGroup(Iterable<HostId> ids, String? groupId, {int? expectedRevision}) {
+    final wanted = ids.toSet();
+    return _apply((library) {
+      if (groupId != null && library.groupById(groupId) == null) {
+        throw ArgumentError.value(groupId, 'groupId', 'missing group');
+      }
+      final path = groupId == null ? '' : library.groupPath(groupId);
+      var next = library;
+      for (final id in wanted) {
+        final host = library.hostById(id);
+        if (host == null) throw ArgumentError.value(id.value, 'hostId', 'missing host');
+        // The path goes with the ID: withHost files a host without an ID under the group its path names.
+        if (host.groupId != groupId) next = next.withHost(host.copyWith(groupId: () => groupId, group: path));
+      }
+      return identical(next, library) ? null : next;
+    }, expectedRevision: expectedRevision);
+  }
+
   /// Recorded when a session opens, for the "recent" order.
   Future<void> touch(HostId id) => _update(id, (current) => current.copyWith(lastUsed: DateTime.now()));
 

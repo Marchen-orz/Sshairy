@@ -200,6 +200,193 @@ void main() {
     });
   });
 
+  group('moving hosts', () {
+    const a = HostId('a'), b = HostId('b'), c = HostId('c');
+
+    void reopen() {
+      container.dispose();
+      container = open();
+      hosts = container.read(hostsProvider.notifier);
+    }
+
+    Map storedHost(String id) => (persisted()['hosts'] as List).cast<Map>().firstWhere((h) => h['id'] == id);
+
+    /// a inherits its port and carries metadata, b has its own port, c stays elsewhere; returns the id of `dst`.
+    Future<String> seed() async {
+      await hosts.saveDefaults(_login('root'));
+      await hosts.save(
+        const Host(
+          id: a,
+          label: 'Alpha',
+          address: 'a.example',
+          username: 'placeholder',
+          group: 'src',
+          tags: ['web'],
+          pinned: true,
+          overrides: ConnectionOverrides(),
+        ),
+      );
+      await hosts.save(
+        _inheriting('b', group: 'src').copyWith(overrides: () => _with(port: const OverrideValue.value(2022))),
+      );
+      await hosts.save(_inheriting('c', group: 'other'));
+      await hosts.touch(a);
+      final dst = await makeGroup('dst');
+      await hosts.saveGroup(
+        hosts.library.groupById(dst)!.copyWith(defaults: _with(port: const OverrideValue.value(2201))),
+      );
+      return dst;
+    }
+
+    test('a single host, a batch and ungrouping are one write each and keep overrides and metadata', () async {
+      final dst = await seed();
+      final used = hosts.byId(a)!.lastUsed;
+      expect(used, isNotNull);
+
+      var revision = hosts.revision;
+      await hosts.moveToGroup([a], dst);
+      expect(hosts.revision, revision + 1);
+      expect((hosts.byId(a)!.group, hosts.byId(a)!.groupId, hosts.byId(a)!.port), ('dst', dst, 2201));
+      expect(hosts.byId(b)!.group, 'src');
+
+      revision = hosts.revision;
+      await hosts.moveToGroup([a, b, b], dst);
+      expect(hosts.revision, revision + 1);
+      expect(hosts.byId(b)!.group, 'dst');
+      expect(hosts.byId(b)!.port, 2022, reason: 'an own port is not replaced by the new group');
+      expect(hosts.byId(c)!.group, 'other');
+      expect(container.read(hostsProvider).where((h) => h.group == 'dst').map((h) => h.id), [a, b]);
+      expect(hosts.byId(a)!.overrides!.port.mode, OverrideMode.inherit);
+      expect(hosts.byId(b)!.overrides!.port.value, 2022);
+      expect(
+        (hosts.byId(a)!.label, hosts.byId(a)!.pinned, hosts.byId(a)!.lastUsed, hosts.byId(a)!.tags.join()),
+        ('Alpha', true, used, 'web'),
+      );
+
+      revision = hosts.revision;
+      await hosts.moveToGroup([a, b], dst);
+      expect(hosts.revision, revision, reason: 'hosts already there are not written again');
+
+      reopen();
+      expect((hosts.byId(a)!.group, hosts.byId(a)!.groupId, hosts.byId(a)!.port), ('dst', dst, 2201));
+      expect((hosts.byId(b)!.group, hosts.byId(b)!.port), ('dst', 2022));
+
+      revision = hosts.revision;
+      await hosts.moveToGroup([a, b], null);
+      expect(hosts.revision, revision + 1);
+      for (final id in [a, b]) {
+        expect((hosts.byId(id)!.group, hosts.byId(id)!.groupId), ('', null));
+        expect(storedHost(id.value).containsKey('groupId'), isFalse);
+        expect(storedHost(id.value).containsKey('group'), isFalse);
+      }
+      expect(hosts.byId(a)!.port, 22, reason: 'back to the global value');
+      expect(hosts.byId(c)!.group, 'other');
+      expect(hosts.library.groupPaths, ['dst', 'other', 'src'], reason: 'emptied groups stay');
+
+      reopen();
+      expect((hosts.byId(a)!.group, hosts.byId(a)!.groupId, hosts.byId(a)!.port), ('', null, 22));
+      expect(hosts.byId(b)!.overrides!.port.value, 2022);
+      expect(hosts.byId(a)!.pinned, isTrue);
+      expect(hosts.byId(a)!.lastUsed!.isAtSameMomentAs(used!), isTrue);
+    });
+
+    test('a missing group or host refuses the whole batch, also when it vanishes while the move is queued', () async {
+      final dst = await seed();
+      final before = persisted();
+      final library = hosts.library;
+      final revision = hosts.revision;
+
+      await expectLater(hosts.moveToGroup([a, b], 'gone'), throwsArgumentError);
+      await expectLater(hosts.moveToGroup([], 'gone'), throwsArgumentError);
+      await expectLater(hosts.moveToGroup([a, const HostId('ghost'), b], dst), throwsArgumentError);
+      expect(identical(hosts.library, library), isTrue);
+      expect(persisted(), before);
+      expect(hosts.revision, revision);
+
+      final removal = hosts.deleteGroup(dst);
+      final toGone = expectLater(hosts.moveToGroup([a, b], dst), throwsArgumentError);
+      await removal;
+      await toGone;
+      expect((hosts.byId(a)!.group, hosts.byId(b)!.group), ('src', 'src'));
+
+      final other = await makeGroup('elsewhere');
+      final deleted = hosts.delete(hosts.byId(b)!);
+      final withGone = expectLater(hosts.moveToGroup([a, b], other), throwsArgumentError);
+      await deleted;
+      await withGone;
+      expect(hosts.byId(a)!.group, 'src');
+    });
+
+    test('a move that leaves any host with a broken route or no login refuses the whole batch', () async {
+      await hosts.saveDefaults(_login('root'));
+      const jump = HostId('jump'), x = HostId('x');
+      await hosts.save(_inheriting('jump'));
+      await hosts.save(_inheriting('x', group: 'src'));
+      final lab = await makeGroup('lab');
+      await hosts.saveGroup(
+        hosts.library.groupById(lab)!.copyWith(defaults: _with(jump: const OverrideValue.value(jump))),
+      );
+      final before = persisted();
+
+      await expectLater(
+        hosts.moveToGroup([x, jump], lab),
+        throwsArgumentError,
+        reason: 'jump would route through itself',
+      );
+      expect(hosts.byId(x)!.group, 'src');
+      expect(persisted(), before);
+
+      await hosts.moveToGroup([x], lab);
+      expect(hosts.byId(x)!.jumpHostId, jump, reason: 'the host follows the jump of its new group');
+    });
+
+    test('ungrouping refuses when the group was the only source of a host login', () async {
+      final lab = await makeGroup('lab');
+      await hosts.saveGroup(hosts.library.groupById(lab)!.copyWith(defaults: _login('ops')));
+      await hosts.save(_inheriting('x', group: 'lab'));
+      await hosts.save(const Host(id: HostId('y'), label: 'y', address: 'y.example', username: 'u', group: 'lab'));
+      final before = persisted();
+
+      await expectLater(hosts.moveToGroup([const HostId('y'), const HostId('x')], null), throwsArgumentError);
+      expect(hosts.byId(const HostId('y'))!.group, 'lab');
+      expect(persisted(), before);
+
+      await hosts.moveToGroup([const HostId('y')], null);
+      expect(hosts.byId(const HostId('y'))!.group, '');
+    });
+
+    test('a stale revision is refused and nothing moves', () async {
+      final dst = await seed();
+      final stale = hosts.revision;
+      await hosts.addGroup('later');
+      final before = persisted();
+
+      await expectLater(
+        hosts.moveToGroup([a], dst, expectedRevision: stale),
+        throwsA(isA<JsonFileError>().having((e) => e.kind, 'kind', JsonFileFailure.conflict)),
+      );
+      expect(hosts.byId(a)!.group, 'src');
+      expect(persisted(), before);
+
+      await hosts.moveToGroup([a], dst, expectedRevision: hosts.revision);
+      expect(hosts.byId(a)!.group, 'dst');
+    });
+
+    test('a move queued behind other edits applies to the hosts as they are by then', () async {
+      final dst = await seed();
+      final pin = hosts.setPinned(hosts.byId(b)!, true);
+      final touch = hosts.touch(b);
+      final move = hosts.moveToGroup([a, b], dst);
+      final unpin = hosts.setPinned(hosts.byId(a)!, false);
+      await Future.wait([pin, touch, move, unpin]);
+
+      expect((hosts.byId(a)!.group, hosts.byId(b)!.group), ('dst', 'dst'));
+      expect((hosts.byId(a)!.pinned, hosts.byId(b)!.pinned), (false, true));
+      expect(hosts.byId(b)!.lastUsed, isNotNull);
+      expect(hosts.byId(a)!.lastUsed, isNotNull);
+    });
+  });
+
   group('jump hosts', () {
     test('a host used as a jump host cannot be deleted, and can once the reference is gone', () async {
       await hosts.saveDefaults(_login('root'));

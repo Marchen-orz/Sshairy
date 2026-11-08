@@ -122,6 +122,81 @@ void main() {
     });
   });
 
+  group('moving hosts', () {
+    Future<List<Map>> moved(Map<String, Object?> args) async {
+      final result = await call('host.move', args);
+      expect(result, isA<Ok<Object?>>(), reason: result is Err ? '${result.error}' : '');
+      return ((result as Ok<Object?>).value as List).cast<Map>();
+    }
+
+    test('host.move takes one or many hosts into a group or out of every group', () async {
+      await ok('hostDefaults.update', {'username': 'root'});
+      final lab = await ok('group.create', {'path': 'lab', 'port': 2300});
+      final a = await ok('host.create', {'address': 'a.example', 'port': 2022});
+      final b = await ok('host.create', {'address': 'b.example', 'group': 'other', 'pinned': true});
+
+      final both = await moved({
+        'hostIds': [a['id'], b['id'], a['id']],
+        'groupId': lab['id'],
+      });
+      expect(both.map((h) => h['id']), [a['id'], b['id']]);
+      expect(both.map((h) => h['group']), ['lab', 'lab']);
+      expect(both.map((h) => h['groupId']), [lab['id'], lab['id']]);
+      expect((stored(a['id']! as String).port, stored(b['id']! as String).port), (2022, 2300));
+      expect(stored(b['id']! as String).pinned, isTrue);
+
+      final out = await moved({
+        'hostIds': [a['id']],
+        'groupId': null,
+      });
+      expect((out.single['group'], out.single.containsKey('groupId')), ('', false));
+      expect(stored(a['id']! as String).groupId, isNull);
+
+      await moved({
+        'hostIds': [b['id']],
+      });
+      expect((stored(b['id']! as String).group, stored(b['id']! as String).groupId), ('', null));
+    });
+
+    test('bad arguments, absent hosts or groups and broken routes are refused without changing anything', () async {
+      await ok('hostDefaults.update', {'username': 'root'});
+      final lab = await ok('group.create', {'path': 'lab'});
+      final a = await ok('host.create', {'address': 'a.example'});
+      final bastion = await ok('host.create', {'address': 'b.example'});
+      final jumpy = await ok('group.create', {'path': 'jumpy', 'jumpHostId': bastion['id']});
+      final before = container.read(hostsProvider.notifier).revision;
+
+      await refused('host.move', {}, 'invalidArgument');
+      await refused('host.move', {'hostIds': []}, 'invalidArgument');
+      await refused('host.move', {'hostIds': a['id']}, 'invalidArgument');
+      await refused('host.move', {
+        'hostIds': [1],
+      }, 'invalidArgument');
+      await refused('host.move', {
+        'hostIds': [''],
+      }, 'invalidArgument');
+      await refused('host.move', {
+        'hostIds': [a['id']],
+        'groupId': 7,
+      }, 'invalidArgument');
+      await refused('host.move', {
+        'hostIds': [a['id']],
+        'groupId': 'nope',
+      }, 'notFound');
+      await refused('host.move', {
+        'hostIds': [a['id'], 'ghost'],
+        'groupId': lab['id'],
+      }, 'notFound');
+      await refused('host.move', {
+        'hostIds': [a['id'], bastion['id']],
+        'groupId': jumpy['id'],
+      }, 'invalidArgument');
+
+      expect(container.read(hostsProvider.notifier).revision, before);
+      expect((stored(a['id']! as String).group, stored(bastion['id']! as String).group), ('', ''));
+    });
+  });
+
   group('identities', () {
     test('an identity can be created, used by hosts, edited, and only deleted once nothing uses it', () async {
       final identity = await ok('identity.create', {'label': 'ops', 'username': 'ops'});
@@ -221,6 +296,7 @@ void main() {
       for (final id in [
         'host.create',
         'host.update',
+        'host.move',
         'host.delete',
         'group.create',
         'group.update',

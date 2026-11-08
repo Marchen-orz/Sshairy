@@ -11,6 +11,7 @@ MODULES §1 的具体落地；与当前 Host/连接端口保持兼容，用户�
 - ConnectionManager 在任何拨号前同步解析目标和完整跳板链，池键使用解析后的认证、路由与交互策略。配置编辑不关闭/重连现有连接；重连会重新取当前配置，既有连接保持创建时快照。所有直连、跳板、SFTP、转发继续走原 HostTrustService。
 - 主机、分组、全局默认值共用一个 ConnectionEditor：端口、登录（身份或用户名+认证）、路由（跳板/代理）和 legacy 每项旁有链接图标，链接时禁用控件并显示继承值，提示来源（全局默认值 / 组路径 / 内置默认值）；取消链接以继承值为起点再改。新建主机只在没有任何默认值可继承的端口上直接取消链接，其余跟随上层；已有主机按其 overrides 回显，保存不改变它没动过的字段。分组与全局默认值的登录可以不设；主机必须从某一层得到登录。链接的登录不校验必填。代理仅在有效跳板为空时出现。
 - 组面板同一次写入完成改名/移动与默认值替换，新建与改名遇到已存在路径一律拒绝（不合并）；解散组把成员上移并丢弃其默认值，有默认值时先确认。空组在主机库和树中可见，主机库的调节菜单进入全局默认值、身份和密钥。
+- `HostsNotifier.moveToGroup(ids, groupId, expectedRevision:)` 单次串行写入移动单台或多台主机。目标必须是现有稳定组 ID，null 表示不分组并同时清空旧路径；从执行时最新主机读取，只改分组归属，保留 ID、覆盖、凭据引用及其他元信息。继承项按新组重新解析，新增无效路由、缺主机/目标、过期 revision 或写失败时整批不发布。UI 目标对话框绑定打开时 revision；保存失败保留对话框和选择。`host.move` 供 dispatcher 使用，输入非空 hostIds 数组和 groupId（可省略/null），仍不向 agent 开放。
 - Capability（均不对 agent 开放）：`group.list/create/update/delete`、`identity.list/create/update/delete`、`hostDefaults.get/update`；`host.create/update` 沿用同一连接字段词汇：port、identityId、username、auth、methods、keyPath、keyId、allowInteractive、jumpHostId（空串=显式直连）、proxy（null=无）、legacy，另有 `inherit: [port|login|jump|proxy|legacy]` 表示该项继承。DTO 输出生效值与 `inherit`，不含 keyPath 和任何秘密。身份仍被引用时 `identity.delete` 返回 `inUse`；主机仍被当作跳板时 `host.delete` 也返回 `inUse`（detail 为引用方，全局默认值写作 `global`）。
 
 已知限制：合并到已有组路径被拒绝；解散组丢弃其默认值；密钥文件无法加载时“密钥→密码”主机连接失败，不静默降级；引用身份的主机不共享已记住的密码；代理凭据仍按主机 ID 与代理键保存；新建主机在无默认值时自带端口，不跟随之后才设的全局端口。折叠的“连接路由”区里的代理地址或端口校验失败时，保存会自动展开该区，错误可见。

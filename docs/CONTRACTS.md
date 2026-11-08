@@ -65,7 +65,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 - 并行读按资源限流；同一路径写入、同终端受控命令串行。同主机不同只读通道可并行，不设阻塞全应用的总锁。
 - 普通 UI 查询不要求走 registry。hover、草稿、滚动、拖动中间帧、逐键终端输入不登记成远程工具。
 
-一期最小目录：host.list/create/update/delete、session.open/close/reconnect、workspace.split/focus、settings.get/patch；随 M2/M3 添加 files 与 forwarding。没有实现的 capability 不注册，不用空成功响应占位。
+一期最小目录：host.list/create/update/move/delete、session.open/close/reconnect、workspace.split/focus、settings.get/patch；随 M2/M3 添加 files 与 forwarding。没有实现的 capability 不注册，不用空成功响应占位。
 
 ## 4. 重试、撤销与审计
 

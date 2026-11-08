@@ -114,6 +114,37 @@ List<Capability> hostCapabilities(Ref ref) {
       guarded((a) => save(build(a, find(a)))),
     ),
     FunctionCapability(
+      'host.move',
+      Effect.localChange,
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'hostIds': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'minItems': 1,
+          },
+          'groupId': {
+            'type': ['string', 'null'],
+            'description': 'A group from group.list; absent or null means no group.',
+          },
+        },
+        'required': ['hostIds'],
+      },
+      guarded((a) async {
+        final raw = a.raw['hostIds'];
+        if (raw is! List || raw.isEmpty || raw.any((id) => id is! String || id.isEmpty)) {
+          throw const Rejected('invalidArgument', 'hostIds');
+        }
+        final ids = [for (final id in raw) HostId(id as String)];
+        final groupId = a.optional<String>('groupId');
+        if (groupId != null && hosts().library.groupById(groupId) == null) throw const Rejected('notFound', 'group');
+        if (ids.any((id) => hosts().byId(id) == null)) throw const Rejected('notFound', 'host');
+        await hosts().moveToGroup(ids, groupId);
+        return [for (final id in ids.toSet()) hostDto(hosts().byId(id)!)];
+      }),
+    ),
+    FunctionCapability(
       'host.delete',
       Effect.localChange,
       inputSchema: const {
