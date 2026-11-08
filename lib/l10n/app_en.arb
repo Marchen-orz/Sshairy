@@ -1,5 +1,11 @@
 {
   "@@locale": "en",
+  "noHosts": "No hosts yet",
+  "noHostsInGroup": "No hosts in this group",
+  "hostEmptyHint": "Add a host or import saved connections to get started.",
+  "moveToGroup": "Move to group…",
+  "moveHostsTitle": "{count, plural, =1{Move host to group} other{Move {count} hosts to group}}",
+  "@moveHostsTitle": {"placeholders": {"count": {"type": "int"}}},
   "completionLoading": "Loading…",
   "completionUnavailable": "Path unavailable",
   "completionFailed": "Could not list this folder",

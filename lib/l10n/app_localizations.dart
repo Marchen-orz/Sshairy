@@ -98,6 +98,36 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @noHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'No hosts yet'**
+  String get noHosts;
+
+  /// No description provided for @noHostsInGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'No hosts in this group'**
+  String get noHostsInGroup;
+
+  /// No description provided for @hostEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a host or import saved connections to get started.'**
+  String get hostEmptyHint;
+
+  /// No description provided for @moveToGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to group…'**
+  String get moveToGroup;
+
+  /// No description provided for @moveHostsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Move host to group} other{Move {count} hosts to group}}'**
+  String moveHostsTitle(int count);
+
   /// No description provided for @completionLoading.
   ///
   /// In en, this message translates to:

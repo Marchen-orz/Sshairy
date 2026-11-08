@@ -1,5 +1,11 @@
 {
   "@@locale": "zh",
+  "noHosts": "暂无主机",
+  "noHostsInGroup": "此分组暂无主机",
+  "hostEmptyHint": "新建主机或导入已有连接，开始使用。",
+  "moveToGroup": "移动到分组…",
+  "moveHostsTitle": "移动 {count} 台主机到分组",
+  "@moveHostsTitle": {"placeholders": {"count": {"type": "int"}}},
   "completionLoading": "加载中…",
   "completionUnavailable": "无法获取此路径",
   "completionFailed": "无法读取此目录",

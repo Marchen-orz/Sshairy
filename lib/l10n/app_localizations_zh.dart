@@ -10,6 +10,23 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get noHosts => '暂无主机';
+
+  @override
+  String get noHostsInGroup => '此分组暂无主机';
+
+  @override
+  String get hostEmptyHint => '新建主机或导入已有连接，开始使用。';
+
+  @override
+  String get moveToGroup => '移动到分组…';
+
+  @override
+  String moveHostsTitle(int count) {
+    return '移动 $count 台主机到分组';
+  }
+
+  @override
   String get completionLoading => '加载中…';
 
   @override

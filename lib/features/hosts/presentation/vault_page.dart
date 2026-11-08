@@ -11,6 +11,7 @@ import '../../../design/scrolling.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../foundation/ids.dart';
 import '../../settings/api.dart';
 import '../application/hosts.dart';
 import '../domain/host.dart';
@@ -20,6 +21,7 @@ import 'host_form.dart';
 import 'identities_panel.dart';
 import 'import_dialog.dart';
 import 'keys_panel.dart';
+import 'move_hosts_dialog.dart';
 
 const _gridTile = 320.0, _gridRow = 64.0;
 
@@ -39,6 +41,8 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 
   /// The group being shown; empty for every host.
   var _group = '';
+  final _selected = <HostId>{};
+  HostId? _anchor;
 
   /// The setting lands only after its write, so this keeps a second offer from opening meanwhile.
   var _offered = false;
@@ -162,6 +166,60 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     }
   }
 
+  void _select(HostId id, List<Host> visible, {bool toggle = false, bool range = false}) {
+    final ids = visible.map((h) => h.id).toList();
+    setState(() {
+      if (range && _anchor != null && ids.contains(_anchor)) {
+        final a = ids.indexOf(_anchor!), b = ids.indexOf(id);
+        final span = ids.sublist(a < b ? a : b, (a < b ? b : a) + 1);
+        if (!toggle) _selected.clear();
+        _selected.addAll(span);
+      } else {
+        if (!toggle) {
+          _selected.clear();
+          _selected.add(id);
+        } else if (!_selected.remove(id)) {
+          _selected.add(id);
+        }
+        _anchor = id;
+      }
+    });
+  }
+
+  void _selectClick(Host host, List<Host> visible) {
+    final keys = HardwareKeyboard.instance;
+    _select(host.id, visible, toggle: keys.isControlPressed || keys.isMetaPressed, range: keys.isShiftPressed);
+  }
+
+  List<HostId> _targets(Host host) {
+    if (!_selected.contains(host.id)) {
+      setState(() {
+        _selected.clear();
+        _selected.add(host.id);
+        _anchor = host.id;
+      });
+    }
+    return _selected.toList();
+  }
+
+  Future<void> _moveHosts(List<HostId> ids) async {
+    if (ids.isEmpty) return;
+    await showAppDialog<void>(
+      context: context,
+      builder: (_) => MoveHostsDialog(hostIds: ids),
+    );
+  }
+
+  Future<void> _hostMenu(Host host, Offset position, List<(String, VoidCallback)> actions) async {
+    _targets(host);
+    final run = await showAppMenu<VoidCallback>(
+      context: context,
+      anchor: anchorAt(position),
+      items: [for (final (label, action) in actions) AppMenuItem(value: action, label: label)],
+    );
+    run?.call();
+  }
+
   void _submit(List<Host> matches, Host? quick) {
     if (quick != null) {
       widget.onConnect(quick);
@@ -186,19 +244,36 @@ class _VaultPageState extends ConsumerState<VaultPage> {
       recent: order == HostOrder.recent,
     );
     final quick = query.isEmpty ? null : parseQuickConnect(_search.text);
+    final visibleIds = {for (final host in matches) host.id};
+    _selected.retainAll(visibleIds);
+    if (!visibleIds.contains(_anchor)) _anchor = null;
 
-    Widget tile(Host h) => _HostTile(
-      key: ValueKey(h.id),
-      host: h,
-      list: view == HostView.list,
-      onConnect: () => widget.onConnect(h),
-      actions: [
+    Widget tile(Host h) {
+      final actions = <(String, VoidCallback)>[
         (l.edit, () => _edit(h)),
         (l.duplicate, () => _hosts.duplicate(h, l.copyOf(h.title))),
         (h.pinned ? l.unpin : l.pin, () => _hosts.setPinned(h, !h.pinned)),
+        (l.moveToGroup, () => _moveHosts(_targets(h))),
         (l.delete, () => _delete(h)),
-      ],
-    );
+      ];
+      return _HostTile(
+        key: ValueKey(h.id),
+        host: h,
+        list: view == HostView.list,
+        selected: _selected.contains(h.id),
+        onSelect: () => _selectClick(h, matches),
+        onToggle: () => _select(h.id, matches, toggle: true),
+        onSelectAll: () => setState(() => _selected.addAll(visibleIds)),
+        onClear: () => setState(() {
+          _selected.clear();
+          _anchor = null;
+        }),
+        onConnect: () => widget.onConnect(h),
+        onMenu: () => _targets(h),
+        onSecondaryTap: (position) => _hostMenu(h, position, actions),
+        actions: actions,
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.all(Space.lg),
@@ -244,14 +319,24 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                 onPressed: () => showImportDialog(context),
                 icon: const Icon(Icons.input_rounded, size: 18),
               ),
-              AppMenuButton<Widget>(
+              AppMenuButton<VoidCallback>(
                 tooltip: l.more,
                 icon: const Icon(Icons.tune_outlined, size: 18),
-                onSelected: (panel) => showSideDrawer<void>(context, (_) => panel),
+                onSelected: (run) => run(),
                 items: () => [
-                  AppMenuItem(value: const DefaultsPanel(), label: l.globalDefaults),
-                  AppMenuItem(value: const IdentitiesPanel(), label: l.identities),
-                  AppMenuItem(value: const KeysPanel(), label: l.keys),
+                  if (_selected.isNotEmpty) ...[
+                    AppMenuItem(value: () => _moveHosts(_selected.toList()), label: l.moveToGroup),
+                    const AppMenuDivider(),
+                  ],
+                  AppMenuItem(
+                    value: () => showSideDrawer<void>(context, (_) => const DefaultsPanel()),
+                    label: l.globalDefaults,
+                  ),
+                  AppMenuItem(
+                    value: () => showSideDrawer<void>(context, (_) => const IdentitiesPanel()),
+                    label: l.identities,
+                  ),
+                  AppMenuItem(value: () => showSideDrawer<void>(context, (_) => const KeysPanel()), label: l.keys),
                 ],
               ),
               const SizedBox(width: Space.sm),
@@ -273,10 +358,16 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                         child: ChoiceChip(
                           showCheckmark: false,
                           visualDensity: VisualDensity.compact,
-                          label: Text(g.isEmpty ? l.allHosts : g),
-                          avatar: g.isEmpty
-                              ? null
-                              : Icon(Icons.folder_outlined, size: 16, color: theme.colorScheme.primary),
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (g.isNotEmpty) ...[
+                                Icon(Icons.folder_outlined, size: 16, color: theme.colorScheme.primary),
+                                const SizedBox(width: Space.xs),
+                              ],
+                              Text(g.isEmpty ? l.allHosts : g),
+                            ],
+                          ),
                           selected: _group == g,
                           onSelected: (_) => setState(() => _group = g),
                         ),
@@ -301,7 +392,21 @@ class _VaultPageState extends ConsumerState<VaultPage> {
           Expanded(
             child: matches.isEmpty
                 ? (query.isEmpty
-                      ? BrandEmptyState(active: widget.active)
+                      ? BrandEmptyState(
+                          active: widget.active,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(hosts.isEmpty ? l.noHosts : l.noHostsInGroup, style: theme.textTheme.titleMedium),
+                              const SizedBox(height: Space.xs),
+                              Text(
+                                l.hostEmptyHint,
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        )
                       : quick != null
                       ? const SizedBox.shrink()
                       : Center(child: Text(l.noMatches)))
@@ -354,13 +459,27 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 }
 
 class _HostTile extends StatefulWidget {
-  const _HostTile({super.key, required this.host, required this.list, required this.onConnect, required this.actions});
+  const _HostTile({
+    super.key,
+    required this.host,
+    required this.list,
+    required this.selected,
+    required this.onSelect,
+    required this.onToggle,
+    required this.onSelectAll,
+    required this.onClear,
+    required this.onConnect,
+    required this.onMenu,
+    required this.onSecondaryTap,
+    required this.actions,
+  });
 
   final Host host;
 
   /// A dense row with group and tags, instead of a card.
-  final bool list;
-  final VoidCallback onConnect;
+  final bool list, selected;
+  final VoidCallback onConnect, onSelect, onToggle, onSelectAll, onClear, onMenu;
+  final ValueChanged<Offset> onSecondaryTap;
   final List<(String, VoidCallback)> actions;
 
   @override
@@ -369,12 +488,19 @@ class _HostTile extends StatefulWidget {
 
 class _HostTileState extends State<_HostTile> {
   final _focus = FocusNode();
-  final _clicks = DoubleClick();
+  var _clicks = DoubleClick();
   var _hovered = false, _focused = false;
 
   void _tap() {
     _focus.requestFocus();
-    if (_clicks.hit) widget.onConnect();
+    final keys = HardwareKeyboard.instance;
+    final modified = keys.isControlPressed || keys.isMetaPressed || keys.isShiftPressed;
+    if (modified) _clicks = DoubleClick();
+    widget.onSelect();
+    if (!modified && _clicks.hit) {
+      widget.onConnect();
+      _clicks = DoubleClick();
+    }
   }
 
   @override
@@ -415,7 +541,7 @@ class _HostTileState extends State<_HostTile> {
     );
     // Stays in the tree when hidden: an open menu would otherwise lose its selection when focus moves.
     final actions = Opacity(
-      opacity: _hovered || _focused ? 1 : 0,
+      opacity: _hovered || _focused || widget.selected ? 1 : 0,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -428,7 +554,10 @@ class _HostTileState extends State<_HostTile> {
             tooltip: l.more,
             icon: const Icon(Icons.more_horiz, size: 16),
             onSelected: (action) => action(),
-            items: () => [for (final (label, run) in widget.actions) AppMenuItem(value: run, label: label)],
+            items: () {
+              widget.onMenu();
+              return [for (final (label, run) in widget.actions) AppMenuItem(value: run, label: label)];
+            },
           ),
         ],
       ),
@@ -477,16 +606,29 @@ class _HostTileState extends State<_HostTile> {
           bindings: {
             const SingleActivator(LogicalKeyboardKey.enter): widget.onConnect,
             const SingleActivator(LogicalKeyboardKey.numpadEnter): widget.onConnect,
+            const SingleActivator(LogicalKeyboardKey.space): widget.onToggle,
+            const SingleActivator(LogicalKeyboardKey.keyA, control: true): widget.onSelectAll,
+            const SingleActivator(LogicalKeyboardKey.keyA, meta: true): widget.onSelectAll,
+            const SingleActivator(LogicalKeyboardKey.escape): widget.onClear,
           },
-          child: Card(
-            margin: EdgeInsets.zero,
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              focusNode: _focus,
-              onTap: _tap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: Space.md),
-                child: widget.list ? SizedBox(height: WorkspaceSize.listRow, child: content) : content,
+          child: Semantics(
+            selected: widget.selected,
+            child: Card(
+              margin: EdgeInsets.zero,
+              color: widget.selected ? theme.colorScheme.primaryContainer : null,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                focusNode: _focus,
+                onTap: _tap,
+                onSecondaryTapUp: (details) {
+                  _focus.requestFocus();
+                  _clicks = DoubleClick();
+                  widget.onSecondaryTap(details.globalPosition);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                  child: widget.list ? SizedBox(height: WorkspaceSize.listRow, child: content) : content,
+                ),
               ),
             ),
           ),

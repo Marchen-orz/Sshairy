@@ -10,6 +10,30 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get noHosts => 'No hosts yet';
+
+  @override
+  String get noHostsInGroup => 'No hosts in this group';
+
+  @override
+  String get hostEmptyHint =>
+      'Add a host or import saved connections to get started.';
+
+  @override
+  String get moveToGroup => 'Move to group…';
+
+  @override
+  String moveHostsTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Move $count hosts to group',
+      one: 'Move host to group',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get completionLoading => 'Loading…';
 
   @override
