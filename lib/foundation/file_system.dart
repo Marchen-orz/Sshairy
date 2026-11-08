@@ -91,7 +91,7 @@ enum PathStyle {
   /// Each ancestor of [path] with the name to show for it, root first.
   List<(String label, String path)> crumbs(String path) {
     final out = <(String, String)>[];
-    for (var p = path;; p = parent(p)) {
+    for (var p = path; ; p = parent(p)) {
       final label = this == posix && p == '/' ? '/' : (this == windows && p.length <= 3 ? p : name(p));
       out.add((label, p));
       if (p.isEmpty || parent(p) == p) break;
@@ -159,4 +159,32 @@ abstract interface class FileSystem {
   });
 
   Future<void> close();
+}
+
+/// What one bounded scan of a directory saw. [scanned] counts every name read, [entries] only the accepted ones.
+class BoundedListing {
+  const BoundedListing(this.entries, {required this.scanned, required this.complete});
+
+  final List<FileEntry> entries;
+  final int scanned;
+
+  /// False when the scan stopped at its limit with names still unread.
+  final bool complete;
+}
+
+/// A [FileSystem] that can also read a directory without reading all of it. Optional: [FileSystem.list] stays as it is
+/// for callers that want everything, and callers of this check for it with `is`.
+abstract interface class BoundedFileListing {
+  /// Reads at most [maxScanned] names of [dir], in the order the server gives them, with no entry of `.` or `..`.
+  /// A name beyond the limit makes the result incomplete; exactly [maxScanned] names followed by the end of the
+  /// directory is complete. Names [accept] refuses count as scanned but are neither kept nor looked at again.
+  ///
+  /// [cancel] is checked between requests. A scan that ends incomplete, fails or is cancelled may leave the directory
+  /// open on the server until the file system is closed, so the owner of the channel closes it then.
+  Future<BoundedListing> listBounded(
+    String dir, {
+    required int maxScanned,
+    bool Function(String name)? accept,
+    CancellationToken? cancel,
+  });
 }

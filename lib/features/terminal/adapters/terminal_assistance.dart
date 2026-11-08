@@ -1,5 +1,10 @@
 part of 'terminal_session.dart';
 
+class _BrowseFrame {
+  const _BrowseFrame(this.draft);
+  final String draft;
+}
+
 extension _CommandAssistance on TerminalSession {
   void _semanticPrompt(TerminalSemanticPromptState state) {
     _semanticSeen = true;
@@ -45,14 +50,26 @@ extension _CommandAssistance on TerminalSession {
     return visibleShellCommand(_rowText(row, 0, column), tail);
   }
 
+  bool _requestCurrent(CommandCompletionRequest request) =>
+      !_closed &&
+      canInsert &&
+      request.generation == _shellGeneration &&
+      request.revision == _draftRevision &&
+      identical(_assistance.value.request, request);
+
+  void _cancelCompletion() {
+    _completionTimer?.cancel();
+    _completionCancel?.cancel();
+    _completionCancel = null;
+    _browseStack.clear();
+  }
+
   void _syncCommandDraft() {
     if (_closed) return;
     final text = _echoedCommand();
     final previous = _assistance.value.request;
     if (previous?.text == text && previous?.generation == _shellGeneration) return;
-    _completionTimer?.cancel();
-    _completionCancel?.cancel();
-    _completionCancel = null;
+    _cancelCompletion();
     final revision = ++_draftRevision;
     if (text == null) {
       _assistance.value = const CommandAssistanceState();
@@ -70,24 +87,193 @@ extension _CommandAssistance on TerminalSession {
   }
 
   Future<void> _complete(CommandCompletionRequest request) async {
+    _completionCancel?.cancel();
     final cancel = CancellationToken();
     _completionCancel = cancel;
-    final local = localCommandCandidates(request.text, _commands);
-    bool current() => !_closed && !cancel.isCancelled && identical(_assistance.value.request, request) && canInsert;
-    if (!current()) return;
-    _assistance.value = CommandAssistanceState(request: request, candidates: local);
-    final provider = _completionProvider;
-    if (provider == null) return;
-    try {
-      final supplied = await provider.complete(request, cancel).timeout(const Duration(seconds: 5));
+    final draft = _browseStack.isEmpty ? request.text : _browseStack.last.draft;
+    final depth = _browseStack.length;
+    bool current() => !cancel.isCancelled && _requestCurrent(request);
+    final local = <CommandCandidate>[
+      if (depth == 0) ...localCommandCandidates(request.text, _commands, catalog: false),
+    ];
+    var supplied = <CommandCandidate>[];
+    CommandBrowseState? browse = depth == 0 ? null : CommandBrowseState(label: draft, depth: depth);
+    var loading = true;
+    void publish() {
       if (!current()) return;
-      final candidates = mergeCommandCandidates(request.text, local, supplied);
-      _assistance.value = CommandAssistanceState(request: request, candidates: List.unmodifiable(candidates));
+      _assistance.value = CommandAssistanceState(
+        request: request,
+        candidates: mergeCommandCandidates(request.text, local, supplied),
+        browse: browse,
+        loading: loading,
+      );
+    }
+
+    publish();
+    Future<void> optionalProvider() async {
+      final provider = completionProvider;
+      if (provider == null || depth != 0) return;
+      final providerCancel = CancellationToken();
+      unawaited(cancel.whenCancelled.then((_) => providerCancel.cancel()));
+      try {
+        supplied = await provider.complete(request, providerCancel).timeout(const Duration(seconds: 5));
+        publish();
+      } on Object {
+        // Optional sources cannot change shell input or remove built-in results.
+      } finally {
+        providerCancel.cancel();
+      }
+    }
+
+    final extra = optionalProvider();
+    try {
+      final context = CompletionContext.parse(draft);
+      if (!context.supported) return;
+      if (context.words.isEmpty && context.current.start == 0) {
+        final names = await _completionSpecs.commandNames();
+        if (!current()) return;
+        final prefix = context.current.value;
+        for (final name in names) {
+          if (!name.startsWith(prefix) || name == prefix) continue;
+          final text =
+              '$draft${encodeShellSuffix(name.substring(prefix.length), context.quote, atWordStart: prefix.isEmpty, close: true)} ';
+          local.add(
+            CommandCandidate(
+              text,
+              source: CommandCandidateSource.builtin,
+              kind: CommandKind.command,
+              displayText: name,
+              preview: text,
+            ),
+          );
+        }
+        if (names.isEmpty) {
+          local.addAll(localCommandCandidates(draft, CommandHistory()));
+        }
+      } else {
+        final completed = await _completionSpecs.complete(draft);
+        if (!current()) return;
+        final result = completed.result;
+        for (final item in result.suggestions) {
+          if (item.isAppendOnly) local.add(_specCandidate(draft, item));
+        }
+        if (!completed.available && result.suggestions.isEmpty) {
+          local.addAll(localCommandCandidates(draft, CommandHistory()));
+        }
+        final path = result.path;
+        if (path != null) {
+          browse = CommandBrowseState(
+            label: path.directory.isEmpty ? '.' : path.directory,
+            depth: depth,
+            load: CompletionLoad.loading,
+          );
+          publish();
+          final source = remotePaths ?? _ownedPaths;
+          var typedDirectory = path.directory;
+          final rawPath = draft.substring(path.valueStart);
+          // Quoted/escaped tildes, and option values after '=', name a literal directory.
+          if (typedDirectory.startsWith('~') && (path.tokenPrefix.isNotEmpty || !rawPath.startsWith('~'))) {
+            typedDirectory = './$typedDirectory';
+          }
+          String? cwd = request.directory ?? _directory.value;
+          if (RemotePaths.absolute(typedDirectory, cwd: cwd) == null) {
+            cwd = await _look(force: true);
+          }
+          if (!current()) return;
+          final directory = RemotePaths.absolute(typedDirectory, cwd: cwd);
+          if (source == null || directory == null) {
+            browse = CommandBrowseState(
+              label: path.directory.isEmpty ? '.' : path.directory,
+              depth: depth,
+              load: CompletionLoad.unavailable,
+            );
+          } else {
+            try {
+              final listing = await source.browse(
+                RemotePathQuery(directory: directory, prefix: path.namePrefix, foldersOnly: path.foldersOnly),
+                cancel: cancel,
+              );
+              if (!current()) return;
+              final suggestions = path.resolve([
+                for (final entry in listing.entries) CompletionPathEntry(entry.name, isDirectory: entry.enterable),
+              ]);
+              for (final item in suggestions) {
+                if (item.isAppendOnly) local.add(_specCandidate(draft, item, path: true));
+              }
+              browse = CommandBrowseState(
+                label: path.directory.isEmpty ? (cwd ?? '.') : path.directory,
+                depth: depth,
+                truncated: listing.truncated || result.truncated,
+              );
+            } on RemotePathException catch (e) {
+              if (!current()) return;
+              browse = CommandBrowseState(
+                label: path.directory.isEmpty ? '.' : path.directory,
+                depth: depth,
+                load: e.kind == RemotePathFailure.unavailable ? CompletionLoad.unavailable : CompletionLoad.failed,
+              );
+            }
+          }
+        }
+      }
+      if (depth == 0) {
+        for (final snippet in _snippets()) {
+          if (snippet.text.startsWith(request.text) && commandIsSingleLine(snippet.text)) {
+            local.add(CommandCandidate(snippet.text, source: CommandCandidateSource.snippet, detail: snippet.label));
+          }
+        }
+      }
     } on Object {
-      // A failed optional provider never changes normal terminal input.
+      if (current()) local.addAll(localCommandCandidates(draft, CommandHistory()));
     } finally {
+      loading = false;
+      publish();
+      await extra;
       if (identical(_completionCancel, cancel)) _completionCancel = null;
     }
+  }
+
+  CommandCandidate _specCandidate(String draft, SpecSuggestion item, {bool path = false}) {
+    final text = item.applyTo(draft);
+    final directory = item.kind == SpecSuggestionKind.folder;
+    final branch = item.kind == SpecSuggestionKind.command || item.kind == SpecSuggestionKind.subcommand;
+    return CommandCandidate(
+      text,
+      source: path ? CommandCandidateSource.path : CommandCandidateSource.builtin,
+      kind: switch (item.kind) {
+        SpecSuggestionKind.command => CommandKind.command,
+        SpecSuggestionKind.subcommand => CommandKind.subcommand,
+        SpecSuggestionKind.option => CommandKind.option,
+        _ => CommandKind.argument,
+      },
+      displayText: item.display,
+      detail: item.description,
+      directory: directory ? item.value : null,
+      preview: directory || branch ? (branch && !text.endsWith(' ') ? '$text ' : text) : null,
+    );
+  }
+
+  bool _browseCommand(CommandCompletionRequest request, CommandCandidate candidate) {
+    final draft = candidate.preview;
+    if (!_requestCurrent(request) ||
+        draft == null ||
+        !draft.startsWith(request.text) ||
+        !commandIsSingleLine(draft) ||
+        _browseStack.length >= 32 ||
+        (_browseStack.isNotEmpty && draft == _browseStack.last.draft)) {
+      return false;
+    }
+    _browseStack.add(_BrowseFrame(draft));
+    unawaited(_complete(request));
+    return true;
+  }
+
+  bool _returnCommandBrowse() {
+    final request = _assistance.value.request;
+    if (request == null || !_requestCurrent(request) || _browseStack.isEmpty) return false;
+    _browseStack.removeLast();
+    unawaited(_complete(request));
+    return true;
   }
 
   void _rememberCommand(String text) {
@@ -96,8 +282,7 @@ extension _CommandAssistance on TerminalSession {
   }
 
   void _invalidateCommandDraft() {
-    _completionTimer?.cancel();
-    _completionCancel?.cancel();
+    _cancelCompletion();
     _draftRevision++;
     _assistance.value = const CommandAssistanceState();
   }
@@ -114,23 +299,21 @@ extension _CommandAssistance on TerminalSession {
     if (text != null) _rememberCommand(text);
     _markCommandSubmitted();
     _semanticInput = false;
-    _completionTimer?.cancel();
-    _completionCancel?.cancel();
-    _draftRevision++;
-    _assistance.value = const CommandAssistanceState();
+    _invalidateCommandDraft();
   }
 
   void _resetCommandDraft() {
     _shellGeneration++;
-    _draftRevision++;
     _semanticSeen = _semanticInput = false;
     _promptRow = _promptColumn = null;
     _submittedLine = null;
     _submittedText = null;
     _inputPending = false;
-    _completionTimer?.cancel();
-    _completionCancel?.cancel();
-    _assistance.value = const CommandAssistanceState();
+    _ownedPaths?.dispose();
+    _ownedPaths = null;
+    _reported = null;
+    _directory.value = null;
+    _invalidateCommandDraft();
   }
 
   Future<InsertResult> _acceptCommand(CommandCompletionRequest request, String text) async {
@@ -143,12 +326,8 @@ extension _CommandAssistance on TerminalSession {
     }
     final suffix = text.substring(request.text.length);
     if (suffix.isEmpty) return InsertResult.sent;
-    // No erase-line control sequence or newline: only append to a verified echoed prefix.
     _terminal.paste(suffix);
-    _completionTimer?.cancel();
-    _completionCancel?.cancel();
-    _draftRevision++;
-    _assistance.value = const CommandAssistanceState();
+    _invalidateCommandDraft();
     return InsertResult.sent;
   }
 }

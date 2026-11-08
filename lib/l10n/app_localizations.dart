@@ -98,6 +98,36 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @completionLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get completionLoading;
+
+  /// No description provided for @completionUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Path unavailable'**
+  String get completionUnavailable;
+
+  /// No description provided for @completionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not list this folder'**
+  String get completionFailed;
+
+  /// No description provided for @completionEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No matches'**
+  String get completionEmpty;
+
+  /// No description provided for @completionTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'Type more to narrow the list'**
+  String get completionTruncated;
+
   /// No description provided for @uiScale.
   ///
   /// In en, this message translates to:

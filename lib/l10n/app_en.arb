@@ -1,5 +1,10 @@
 {
   "@@locale": "en",
+  "completionLoading": "Loading…",
+  "completionUnavailable": "Path unavailable",
+  "completionFailed": "Could not list this folder",
+  "completionEmpty": "No matches",
+  "completionTruncated": "Type more to narrow the list",
   "uiScale": "Interface scale",
   "importChooseAgain": "Choose another source",
   "importChooseFolder": "Choose folder",

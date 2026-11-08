@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
@@ -11,7 +12,7 @@ const _chunk = 32 * 1024;
 const _inFlight = 16;
 
 /// [FileSystem] over one SFTP channel. Closing it closes only the channel, never the shared transport.
-class SftpFileSystem implements FileSystem {
+class SftpFileSystem implements FileSystem, BoundedFileListing {
   SftpFileSystem._(this._sftp, this._posixRename);
 
   static Future<SftpFileSystem> open(SSHClient client) async {
@@ -59,6 +60,35 @@ class SftpFileSystem implements FileSystem {
     }
     return out;
   });
+
+  /// One READDIR at a time, so the server's pace is the backpressure. dartssh2 closes the directory only after it has
+  /// read to the end; stopping earlier leaves it open until [close].
+  @override
+  Future<BoundedListing> listBounded(
+    String dir, {
+    required int maxScanned,
+    bool Function(String name)? accept,
+    CancellationToken? cancel,
+  }) => _guard(
+    () => scanSftpDirectory(
+      _sftp.readdir(dir),
+      maxScanned: maxScanned,
+      accept: accept,
+      cancel: cancel,
+      linksToDirectory: (name) => _linksToDir(PathStyle.posix.join(dir, name)),
+    ),
+  );
+
+  /// Follows the link at [path]. The server saying the target is unreachable leaves it a plain link; a lost
+  /// connection is not an answer about the link and surfaces.
+  Future<bool> _linksToDir(String path) async {
+    try {
+      return (await _sftp.stat(path)).isDirectory;
+    } on SftpStatusError catch (e) {
+      if (e.code == SftpStatusCode.noConnection || e.code == SftpStatusCode.connectionLost) rethrow;
+      return false;
+    }
+  }
 
   @override
   Future<FileEntry?> stat(String path) async {
@@ -220,4 +250,53 @@ class SftpFileSystem implements FileSystem {
       linkToDir: linkToDir,
     );
   }
+}
+
+/// The scan behind [SftpFileSystem.listBounded], over any stream of READDIR batches so it runs without a server.
+/// Reading stops at the first name past [maxScanned]; links are looked at only among the names kept, 16 at a time,
+/// so nothing past the limit costs a request. [cancel] is checked between batches and between lookups.
+Future<BoundedListing> scanSftpDirectory(
+  Stream<List<SftpName>> batches, {
+  required int maxScanned,
+  required Future<bool> Function(String name) linksToDirectory,
+  bool Function(String name)? accept,
+  CancellationToken? cancel,
+}) async {
+  void checkCancelled() {
+    if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
+  }
+
+  final kept = <SftpName>[];
+  var scanned = 0;
+  var complete = true;
+  await for (final batch in batches) {
+    checkCancelled();
+    for (final name in batch) {
+      if (name.filename == '.' || name.filename == '..') continue;
+      if (scanned == maxScanned) {
+        complete = false;
+        break;
+      }
+      scanned++;
+      if (accept == null || accept(name.filename)) kept.add(name);
+    }
+    if (!complete) break;
+  }
+
+  final entries = [for (final n in kept) SftpFileSystem._entry(n.filename, n.attr, n.longname)];
+  final links = [
+    for (var i = 0; i < entries.length; i++)
+      if (entries[i].kind == FileKind.link) i,
+  ];
+  for (var from = 0; from < links.length; from += _inFlight) {
+    checkCancelled();
+    final window = links.sublist(from, min(from + _inFlight, links.length));
+    final found = await Future.wait([for (final i in window) linksToDirectory(entries[i].name)]);
+    for (var k = 0; k < window.length; k++) {
+      if (!found[k]) continue;
+      final n = kept[window[k]];
+      entries[window[k]] = SftpFileSystem._entry(n.filename, n.attr, n.longname, linkToDir: true);
+    }
+  }
+  return BoundedListing(entries, scanned: scanned, complete: complete);
 }

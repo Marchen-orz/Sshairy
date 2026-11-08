@@ -13,6 +13,7 @@ import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
+import 'package:sshairy/features/terminal/adapters/completion_specs.dart';
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
@@ -69,14 +70,85 @@ class _Provider implements CommandCompletionProvider {
   }
 }
 
+class _SpecBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async {
+    final value = switch (key) {
+      'assets/completions/manifest.json' => {
+        'commands': {'git': 'git.json', 'tmux': 'tmux.json', 'cat': 'cat.json', 'cd': 'cd.json'},
+      },
+      'git.json' => {
+        'name': 'git',
+        'subcommands': [
+          for (final name in ['status', 'stash', 'switch', 'show', 'commit']) {'name': name},
+        ],
+      },
+      'tmux.json' => {
+        'name': 'tmux',
+        'subcommands': [
+          for (var i = 0; i < 32; i++) {'name': 'command-$i', 'description': 'tmux action $i'},
+        ],
+      },
+      'cat.json' => {
+        'name': 'cat',
+        'args': {'template': 'filepaths', 'isVariadic': true},
+      },
+      'cd.json' => {
+        'name': 'cd',
+        'args': {'template': 'folders'},
+      },
+      _ => throw StateError('Missing test asset'),
+    };
+    return ByteData.sublistView(Uint8List.fromList(utf8.encode(jsonEncode(value))));
+  }
+}
+
+CompletionSpecs _specs() => CompletionSpecs(bundle: _SpecBundle());
+
+class _Paths implements RemotePathSource {
+  final queries = <RemotePathQuery>[];
+  @override
+  Future<RemotePathResult> browse(RemotePathQuery query, {CancellationToken? cancel}) async {
+    queries.add(query);
+    final entries = switch (query.directory) {
+      '/work' => [
+        const RemotePathEntry('My Notes', RemotePathKind.directory, '/work/My Notes'),
+        const RemotePathEntry('read me.txt', RemotePathKind.file, '/work/read me.txt'),
+      ],
+      '/work/My Notes' => [const RemotePathEntry('中文.txt', RemotePathKind.file, '/work/My Notes/中文.txt')],
+      _ => <RemotePathEntry>[],
+    };
+    return RemotePathResult(
+      directory: query.directory,
+      prefix: query.prefix,
+      entries: entries,
+      truncated: false,
+      generation: 1,
+      cached: false,
+    );
+  }
+
+  @override
+  void invalidate([String? directory]) {}
+  @override
+  void dispose() {}
+}
+
 /// Output reaches the terminal on a timer, so the clock must advance past it and the 180 ms completion debounce.
 Future<void> _feed(WidgetTester tester, _Shell shell, String text) async {
   shell.echo(text);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));
+  await tester.pump();
+  await tester.pump();
 }
 
 void main() {
+  test('asset adapter resolves a command spec before completing its current token', () async {
+    final value = await _specs().complete('git st');
+    expect(value.available, isTrue);
+    expect(value.result.suggestions.map((s) => s.applyTo('git st')), contains('git status'));
+  });
   test('history deduplicates, rejects controls and leading spaces, and stays bounded', () {
     final history = CommandHistory();
     for (var i = 0; i < 120; i++) {
@@ -109,6 +181,7 @@ void main() {
       const SessionId('s'),
       const Host(id: HostId('h'), label: 'h', address: 'box', username: 'u'),
       manager,
+      completionSpecs: _specs(),
     );
     unawaited(session.connect(NoPrompts()));
     await tester.pump();
@@ -116,6 +189,8 @@ void main() {
     shell.echo('u@box:~\$ git st');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+    await tester.pump();
     final state = session.commandAssistance.value;
     expect(state.candidates.map((c) => c.text), contains('git status'));
     expect(await session.acceptCommand(state.request!, 'git status'), InsertResult.sent);
@@ -139,6 +214,7 @@ void main() {
       const SessionId('s'),
       const Host(id: HostId('h'), label: 'h', address: 'box', username: 'u'),
       manager,
+      completionSpecs: _specs(),
     );
     unawaited(session.connect(NoPrompts()));
     await tester.pump();
@@ -162,6 +238,7 @@ void main() {
       const SessionId('s'),
       const Host(id: HostId('h'), label: 'h', address: 'box', username: 'u'),
       manager,
+      completionSpecs: _specs(),
       completionProvider: provider,
     );
     unawaited(session.connect(NoPrompts()));
@@ -170,6 +247,8 @@ void main() {
     shell.echo('u@box:~\$ git');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+    await tester.pump();
     expect(provider.pending, hasLength(1));
     final old = session.commandAssistance.value.request!;
     await _feed(tester, shell, ' s');
@@ -192,6 +271,7 @@ void main() {
       const SessionId('s'),
       const Host(id: HostId('h'), label: 'h', address: 'box', username: 'u'),
       manager,
+      completionSpecs: _specs(),
       scrollback: 30,
     );
     unawaited(session.connect(NoPrompts()));
@@ -225,6 +305,7 @@ void main() {
       const SessionId('s'),
       const Host(id: HostId('h'), label: 'h', address: 'box', username: 'u'),
       manager,
+      completionSpecs: _specs(),
     );
     unawaited(session.connect(NoPrompts()));
     await tester.pump();
@@ -239,6 +320,8 @@ void main() {
     expect(session.commandAssistance.value.candidates, isEmpty);
     expect(await session.acceptCommand(old, 'custom-echo café'), InsertResult.stale);
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+    await tester.pump();
     expect(session.commandAssistance.value.candidates, isEmpty);
     final history = session.commandHistory;
     final assistance = session.commandAssistance;
@@ -256,7 +339,12 @@ void main() {
     late ConnectionManager manager;
     late TerminalSession session;
 
-    Future<_Shell> mount(WidgetTester tester, {double scale = 1, CommandCompletionProvider? provider}) async {
+    Future<_Shell> mount(
+      WidgetTester tester, {
+      double scale = 1,
+      CommandCompletionProvider? provider,
+      RemotePathSource? paths,
+    }) async {
       dir = Directory.systemTemp.createTempSync('sshairy-pane-');
       container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
       transport = _Transport();
@@ -265,8 +353,10 @@ void main() {
         const SessionId('s'),
         const Host(id: HostId('h'), label: 'h', address: 'box', username: 'u'),
         manager,
+        completionSpecs: _specs(),
         autoConnect: false,
         completionProvider: provider,
+        remotePaths: paths,
       );
       await tester.pumpWidget(
         UncontrolledProviderScope(
@@ -310,35 +400,26 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('candidate mode is explicit: Enter appends the suffix only, plain Enter still reaches the shell', (
-      tester,
-    ) async {
+    testWidgets('popup accepts Tab immediately while Enter submits the actual draft', (tester) async {
       final shell = await mount(tester);
-      await _feed(tester, shell, 'u@box:~\$ git st');
-      expect(find.text('status'), findsOneWidget);
-
-      // Without Ctrl+Space the arrow keys and Enter belong to the shell, so nothing is accepted.
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pump();
-      expect(shell.writes.join(), isNot(contains('atus')));
-      shell.writes.clear();
-      await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ git st');
-
-      await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
-      expect(shell.writes.join(), 'atus');
-
-      await _feed(tester, shell, 'atus');
-      shell.writes.clear();
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
-      expect(shell.writes.join(), '\r');
-      expect(session.commandHistory.value, ['git status']);
-      await unmount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        expect(find.text('status'), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(shell.writes.join(), 'atus');
+        await _feed(tester, shell, 'atus');
+        shell.writes.clear();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(shell.writes.join(), '\r');
+        expect(session.commandHistory.value, ['git status']);
+      } finally {
+        await unmount(tester);
+      }
     });
 
-    testWidgets('late AI candidates appear first without changing the selected local command', (tester) async {
+    testWidgets('late AI candidates preserve the selected command', (tester) async {
       final provider = _Provider();
       final shell = await mount(tester, provider: provider);
       try {
@@ -346,9 +427,58 @@ void main() {
         await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
         provider.pending.single.complete([const CommandCandidate('git stash list', source: CommandCandidateSource.ai)]);
         await tester.pump();
+        await tester.pump();
         expect(session.commandAssistance.value.candidates.first.source, CommandCandidateSource.ai);
         expect(tester.getTopLeft(find.text('git stash list')).dy, lessThan(tester.getTopLeft(find.text('status')).dy));
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(shell.writes.join(), 'atus');
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('history stays above specification candidates and Tab accepts it first', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git stash list');
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await _feed(tester, shell, '\r\nu@box:~\$ git st');
+        shell.writes.clear();
+        expect(session.commandAssistance.value.candidates.first.source, CommandCandidateSource.history);
+        expect(tester.getTopLeft(find.text('git stash list')).dy, lessThan(tester.getTopLeft(find.text('status')).dy));
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(shell.writes.join(), 'ash list');
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('IME composing owns arrows and Tab while modified arrows still reach the terminal', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.arrowLeft);
+        expect(shell.writes, isNotEmpty);
+        await _feed(tester, shell, '\r\nu@box:~\$ git st');
+        shell.writes.clear();
+        final initial = TextEditingValue.fromJSON(tester.testTextInput.editingState!);
+        tester.testTextInput.updateEditingValue(
+          const TextEditingValue(
+            text: 'ni',
+            selection: TextSelection.collapsed(offset: 2),
+            composing: TextRange(start: 0, end: 2),
+          ),
+        );
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(shell.writes, isEmpty);
+        tester.testTextInput.updateEditingValue(initial);
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
         expect(shell.writes.join(), 'atus');
       } finally {
@@ -364,7 +494,7 @@ void main() {
         final view = tester.state<TerminalViewState>(find.byType(TerminalView));
         await _feed(tester, shell, '\x1b[${view.widget.terminal.viewHeight ~/ 2};1Hu@box:~\$ tmux ');
         final candidates = session.commandAssistance.value.candidates;
-        expect(candidates, hasLength(8));
+        expect(candidates.length, greaterThan(8));
         await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
         await tester.pump();
@@ -377,9 +507,58 @@ void main() {
         await tester.pump();
         expect(list.controller!.offset, 0);
         expect(find.text(candidates.first.displayText!).hitTestable(), findsOneWidget);
-        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pump();
         expect(shell.writes.join(), candidates.first.text.substring('tmux '.length));
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('arrows browse paths virtually and Tab appends a safely escaped selection', (tester) async {
+      final paths = _Paths();
+      final shell = await mount(tester, paths: paths);
+      try {
+        await _feed(tester, shell, '\x1b]7;file://box/work\x07u@box:~\$ cat ');
+        expect(find.text('My Notes/'), findsOneWidget);
+        expect(shell.writes, isEmpty);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        await tester.pump();
+        expect(paths.queries.last.directory, '/work/My Notes');
+        expect(find.text('中文.txt'), findsOneWidget);
+        expect(shell.writes, isEmpty);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+        await tester.pump();
+        await tester.pump();
+        expect(paths.queries.last.directory, '/work');
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(shell.writes.join(), r'My\ Notes/中文.txt');
+        expect(shell.writes.join(), isNot(contains('\r')));
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('Escape dismisses the current draft and Ctrl+Space reopens it', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        final popup = find.byKey(const ValueKey('command-completion-popup'));
+        expect(popup, findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(popup, findsNothing);
+        await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
+        expect(popup, findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(shell.writes.join(), 'ash');
       } finally {
         await unmount(tester);
       }

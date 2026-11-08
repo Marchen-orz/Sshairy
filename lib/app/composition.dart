@@ -18,6 +18,9 @@ import 'capabilities/forwarding.dart';
 
 /// The composition root: the one place that knows every feature and registers what each one offers.
 List<Override> appOverrides() => [
+  terminalSnippetsProvider.overrideWith(
+    (ref) => [for (final snippet in ref.watch(snippetsProvider)) CommandSnippet(snippet.text, snippet.label)],
+  ),
   keyReferencesProvider.overrideWith(
     (ref) =>
         (id) => ref.read(hostsProvider.notifier).library.keyReferences(id),

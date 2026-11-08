@@ -44,7 +44,7 @@ void main() {
     });
 
     test('tmux offers subcommands for an empty token, abbreviations and options', () {
-      expect(words('tmux '), hasLength(8));
+      expect(words('tmux ').length, greaterThan(8));
       expect(words('tmux '), containsAll(['attach', 'new', 'ls']));
       expect(catalogSuggestions('tmux ').every((s) => s.kind == CommandKind.subcommand), isTrue);
       expect(texts('tmux a'), ['tmux attach']);
@@ -58,7 +58,7 @@ void main() {
     test('git subcommands and their options', () {
       expect(words('git s').first, 'status');
       expect(words('git st'), ['status', 'stash']);
-      expect(words('git '), hasLength(8));
+      expect(words('git ').length, greaterThan(8));
       expect(words('git commit -'), containsAll(['-m', '--amend']));
       expect(words('git commit -a'), ['-am']);
       expect(words('git stash '), containsAll(['pop', 'apply', 'list']));
@@ -75,7 +75,7 @@ void main() {
       expect(words('docker compose up -'), ['-d', '--build', '-f', '-p']);
       expect(words('docker compose -f x.yml up -'), ['-d', '--build', '-p']);
       expect(words('docker run --r'), ['--rm', '--restart']);
-      expect(words('docker run -'), hasLength(8));
+      expect(words('docker run -').length, greaterThan(8));
       expect(words('docker run --restart '), ['always', 'unless-stopped', 'on-failure', 'no']);
       expect(words('docker run --network '), ['host', 'bridge', 'none']);
       expect(catalogSuggestions('docker run -p '), isEmpty);
@@ -85,7 +85,7 @@ void main() {
     });
 
     test('kubectl shared options are understood before and after the verb', () {
-      expect(words('kubectl get '), [
+      expect(words('kubectl get ').take(8), [
         'pods',
         'deployments',
         'services',
@@ -226,7 +226,7 @@ void main() {
         for (final probe in ['$line ', '$line -']) {
           probes++;
           final found = catalogSuggestions(probe);
-          expect(found.length, lessThanOrEqualTo(8), reason: probe);
+          expect(found.length, lessThanOrEqualTo(commandCandidateLimit), reason: probe);
           expect(found.map((s) => s.text).toSet(), hasLength(found.length), reason: probe);
           for (final s in found) {
             expect(s.text.startsWith(probe), isTrue, reason: '$probe -> ${s.text}');
@@ -264,17 +264,17 @@ void main() {
       }
       final mixed = localCommandCandidates('git c', history);
       expect(mixed.map((c) => c.source), [
-        ...List.filled(5, CommandCandidateSource.history),
-        ...List.filled(3, CommandCandidateSource.builtin),
+        ...List.filled(7, CommandCandidateSource.history),
+        ...List.filled(5, CommandCandidateSource.builtin),
       ]);
       expect(mixed.take(2).map((c) => c.text), ['git commit 7', 'git commit 6']);
-      expect(mixed.skip(5).map((c) => c.text), ['git commit', 'git checkout', 'git clone']);
+      expect(mixed.skip(7).take(3).map((c) => c.text), ['git commit', 'git checkout', 'git clone']);
 
       for (var i = 1; i <= 9; i++) {
         history.remember('echo $i');
       }
       final onlyHistory = localCommandCandidates('echo ', history);
-      expect(onlyHistory, hasLength(8));
+      expect(onlyHistory, hasLength(9));
       expect(onlyHistory.every((c) => c.source == CommandCandidateSource.history), isTrue);
     });
 
@@ -296,7 +296,7 @@ void main() {
       expect(commandCandidateValid(const CommandCandidate('git s\nrm -rf /'), draft), isFalse);
     });
 
-    test('merge puts ai first, then local, then other providers, without duplicates', () {
+    test('merge keeps history before ai and other providers without duplicates', () {
       const draft = 'git s';
       final local = [
         candidate('git status', CommandCandidateSource.history),
@@ -312,21 +312,20 @@ void main() {
         candidate('git sync', CommandCandidateSource.ai, shown: 'rm -rf /'),
         candidate('git status', CommandCandidateSource.provider),
       ]);
-      expect(merged.map((c) => c.text), ['git show', 'git status', 'git stash', 'git switch main']);
-      expect(merged[1].source, CommandCandidateSource.ai);
+      expect(merged.map((c) => c.text), ['git status', 'git show', 'git stash', 'git switch main']);
+      expect(merged.first.source, CommandCandidateSource.history);
     });
 
-    test('merge never exceeds the visible limit and keeps ai ahead of everything', () {
-      final ai = [for (var i = 0; i < 12; i++) candidate('git s$i', CommandCandidateSource.ai)];
-      final local = [for (var i = 0; i < 8; i++) candidate('git status $i', CommandCandidateSource.builtin)];
-      final merged = mergeCommandCandidates('git s', local, ai);
+    test('total cap is separate from visible rows and history keeps its own budget', () {
+      final history = [for (var i = 0; i < 80; i++) candidate('git status $i', CommandCandidateSource.history)];
+      final local = [for (var i = 0; i < 220; i++) candidate('git stash $i', CommandCandidateSource.builtin)];
+      final ai = [for (var i = 0; i < 20; i++) candidate('git show $i', CommandCandidateSource.ai)];
+      final merged = mergeCommandCandidates('git s', [...history, ...local], ai);
       expect(merged, hasLength(commandCandidateLimit));
-      expect(merged.every((c) => c.source == CommandCandidateSource.ai), isTrue);
-
-      final few = mergeCommandCandidates('git s', local, ai.take(3));
-      expect(few, hasLength(commandCandidateLimit));
-      expect(few.take(3).every((c) => c.source == CommandCandidateSource.ai), isTrue);
-      expect(few.skip(3).every((c) => c.source == CommandCandidateSource.builtin), isTrue);
+      expect(merged.take(50).every((c) => c.source == CommandCandidateSource.history), isTrue);
+      expect(merged.skip(50).take(20).every((c) => c.source == CommandCandidateSource.ai), isTrue);
+      expect(merged.skip(70).every((c) => c.source == CommandCandidateSource.builtin), isTrue);
+      expect(mergeCommandCandidates('git s', local.take(8).toList(), ai.take(3)), hasLength(11));
     });
   });
 }

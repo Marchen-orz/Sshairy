@@ -10,6 +10,21 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get completionLoading => 'Loading…';
+
+  @override
+  String get completionUnavailable => 'Path unavailable';
+
+  @override
+  String get completionFailed => 'Could not list this folder';
+
+  @override
+  String get completionEmpty => 'No matches';
+
+  @override
+  String get completionTruncated => 'Type more to narrow the list';
+
+  @override
   String get uiScale => 'Interface scale';
 
   @override

@@ -50,6 +50,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   var _candidateIndex = 0;
   String? _candidateText;
   final _candidateScroll = ScrollController();
+  CommandCompletionRequest? _dismissedCandidateRequest;
+  int _candidateBrowseDepth = 0;
+  Offset? _candidatePointer;
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;

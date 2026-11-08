@@ -5,9 +5,13 @@ import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../adapters/terminal_session.dart';
+import '../domain/command_assistance.dart';
 
-final terminalSessionsProvider =
-    NotifierProvider<TerminalSessions, Map<SessionId, TerminalSession>>(TerminalSessions.new);
+final terminalSnippetsProvider = Provider<List<CommandSnippet>>((_) => const []);
+
+final terminalSessionsProvider = NotifierProvider<TerminalSessions, Map<SessionId, TerminalSession>>(
+  TerminalSessions.new,
+);
 
 /// Owns every shell and terminal model (docs/CONTRACTS.md §2); panes and tabs only refer to them by ID.
 class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
@@ -34,6 +38,7 @@ class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
       autoConnect: autoConnect,
       scrollback: ref.read(settingsProvider).get(SettingKeys.scrollback),
       autoReconnect: () => ref.read(settingsProvider).get(SettingKeys.autoReconnect),
+      snippets: () => ref.read(terminalSnippetsProvider),
     );
     _owned[session.id] = session;
     state = {...state, session.id: session};

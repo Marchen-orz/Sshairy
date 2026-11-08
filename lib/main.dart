@@ -18,12 +18,14 @@ import 'design/scrolling.dart';
 import 'design/interface_scale.dart';
 import 'features/settings/api.dart';
 import 'features/workspace/api.dart';
+import 'features/terminal/api.dart' show registerCompletionLicenses;
 import 'foundation/data_dir.dart';
 import 'foundation/diagnostics.dart';
 import 'l10n/app_localizations.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerCompletionLicenses();
   await DesktopWindow.instance.initialize();
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);

@@ -10,6 +10,21 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get completionLoading => '加载中…';
+
+  @override
+  String get completionUnavailable => '无法获取此路径';
+
+  @override
+  String get completionFailed => '无法读取此目录';
+
+  @override
+  String get completionEmpty => '没有匹配项';
+
+  @override
+  String get completionTruncated => '继续输入以缩小范围';
+
+  @override
   String get uiScale => '界面缩放';
 
   @override

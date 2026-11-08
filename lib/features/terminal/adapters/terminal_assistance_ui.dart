@@ -12,6 +12,15 @@ extension _AssistancePane on _TerminalPaneState {
     _focus.requestFocus();
   }
 
+  bool _popupAvailable(CommandAssistanceState state) =>
+      widget.active &&
+      !_searching &&
+      _focus.hasFocus &&
+      _completionCursor.value != null &&
+      state.request != null &&
+      !identical(_dismissedCandidateRequest, state.request) &&
+      (state.candidates.isNotEmpty || state.browse != null);
+
   KeyEventResult? _assistanceKey(KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return null;
     final keys = HardwareKeyboard.instance;
@@ -21,63 +30,96 @@ extension _AssistancePane on _TerminalPaneState {
       return KeyEventResult.handled;
     }
     final state = _session.commandAssistance.value;
-    final enter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
-    _syncCandidateSelection(state);
     if (modifier &&
         !keys.isShiftPressed &&
+        !keys.isAltPressed &&
         event.logicalKey == LogicalKeyboardKey.space &&
-        state.candidates.isNotEmpty) {
+        state.request != null) {
       _update(() {
-        _candidateMode = true;
-        _candidateRequest = state.request;
-        _candidateIndex = 0;
-        _candidateText = state.candidates.first.text;
+        _dismissedCandidateRequest = null;
+        _candidateRequest = null;
+        _syncCandidateSelection(state);
       });
       _scrollCandidateIntoView();
       return KeyEventResult.handled;
     }
-    if (_candidateMode && state.candidates.isNotEmpty && state.request != null) {
-      if (event.logicalKey == LogicalKeyboardKey.escape) {
-        _update(() => _candidateMode = false);
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowDown || event.logicalKey == LogicalKeyboardKey.arrowUp) {
+    // xterm's text input owns composing events; modified arrows keep shell/application shortcuts.
+    if (keys.isControlPressed || keys.isMetaPressed || keys.isAltPressed || keys.isShiftPressed) return null;
+    _syncCandidateSelection(state);
+    final enter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if (enter) {
+      _update(() {
+        _dismissedCandidateRequest = state.request;
+        _candidateMode = false;
+      });
+      _session.commandSubmitted();
+      return null;
+    }
+    if (!_popupAvailable(state)) return null;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      _update(() {
+        _dismissedCandidateRequest = state.request;
+        _candidateMode = false;
+      });
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
+      if (state.candidates.isNotEmpty) {
         _update(() {
           _candidateIndex =
-              (_candidateIndex + (event.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1)) % state.candidates.length;
-          _candidateText = state.candidates[_candidateIndex].text;
+              (_candidateIndex + (key == LogicalKeyboardKey.arrowDown ? 1 : -1)) % state.candidates.length;
+          _candidateText = state.candidates[_candidateIndex].identity;
+          _candidateMode = true;
         });
         _scrollCandidateIntoView();
-        return KeyEventResult.handled;
       }
-      if (enter || event.logicalKey == LogicalKeyboardKey.tab) {
-        _session.acceptCommand(
-          state.request!,
-          state.candidates[_candidateIndex.clamp(0, state.candidates.length - 1)].text,
-        );
-        _update(() => _candidateMode = false);
-        return KeyEventResult.handled;
-      }
-      _update(() => _candidateMode = false);
+      return KeyEventResult.handled;
     }
-    if (enter && !modifier && !keys.isAltPressed) {
-      _session.commandSubmitted();
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _session.returnCommandBrowse();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.tab) {
+      if (_candidateMode && state.request != null && state.candidates.isNotEmpty) {
+        final candidate = state.candidates[_candidateIndex.clamp(0, state.candidates.length - 1)];
+        if (key == LogicalKeyboardKey.arrowRight) {
+          _session.browseCommand(state.request!, candidate);
+        } else {
+          _session.acceptCommand(state.request!, candidate.text);
+        }
+      }
+      return KeyEventResult.handled;
     }
     return null;
   }
 
   void _syncCandidateSelection(CommandAssistanceState state) {
-    if (!identical(_candidateRequest, state.request)) {
-      _candidateMode = false;
+    final depth = state.browse?.depth ?? 0;
+    if (!identical(_candidateRequest, state.request) || depth != _candidateBrowseDepth) {
+      _candidateRequest = state.request;
+      _candidateBrowseDepth = depth;
       _candidateText = null;
-    } else if (_candidateMode && _candidateText != null) {
-      final selected = state.candidates.indexWhere((candidate) => candidate.text == _candidateText);
-      if (selected < 0) {
+      _candidateIndex = 0;
+      _candidateMode = false;
+    }
+    if (state.candidates.isEmpty) return;
+    if (_candidateText == null) {
+      _candidateIndex = 0;
+      _candidateText = state.candidates.first.identity;
+      _candidateMode = true;
+      _scrollCandidateIntoView();
+    } else {
+      final index = state.candidates.indexWhere((candidate) => candidate.identity == _candidateText);
+      if (index < 0) {
+        // A vanished async result must not silently retarget Tab to a different item.
         _candidateMode = false;
-        _candidateText = null;
-      } else if (selected != _candidateIndex) {
-        _candidateIndex = selected;
-        _scrollCandidateIntoView();
+      } else {
+        _candidateMode = true;
+        if (_candidateIndex != index) {
+          _candidateIndex = index;
+          _scrollCandidateIntoView();
+        }
       }
     }
   }
@@ -87,8 +129,7 @@ extension _AssistancePane on _TerminalPaneState {
       if (!mounted || !_candidateMode || !_candidateScroll.hasClients) return;
       final row = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
       final position = _candidateScroll.position;
-      final top = _candidateIndex * row;
-      final bottom = top + row;
+      final top = _candidateIndex * row, bottom = top + row;
       if (top < position.pixels) {
         _candidateScroll.jumpTo(top.clamp(0, position.maxScrollExtent));
       } else if (bottom > position.pixels + position.viewportDimension) {
@@ -101,26 +142,28 @@ extension _AssistancePane on _TerminalPaneState {
     listenable: Listenable.merge([_session.commandAssistance, _completionCursor]),
     builder: (context, _) {
       final state = _session.commandAssistance.value;
-      final cursor = _completionCursor.value;
       _syncCandidateSelection(state);
-      if (!widget.active ||
-          _searching ||
-          !_focus.hasFocus ||
-          cursor == null ||
-          state.candidates.isEmpty ||
-          state.request == null) {
-        return const SizedBox.shrink();
-      }
+      if (!_popupAvailable(state)) return const SizedBox.shrink();
       final scheme = Theme.of(context).colorScheme;
       final l = AppLocalizations.of(context);
       final rowHeight = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
+      final browse = state.browse;
+      final headerHeight = browse == null ? 0.0 : rowHeight;
+      final status = browse == null
+          ? null
+          : switch (browse.load) {
+              CompletionLoad.loading => l.completionLoading,
+              CompletionLoad.failed => l.completionFailed,
+              CompletionLoad.unavailable => l.completionUnavailable,
+              CompletionLoad.ready => state.candidates.isEmpty ? l.completionEmpty : null,
+            };
       return Positioned.fill(
         child: CustomSingleChildLayout(
           delegate: CursorPopupLayout(
-            cursor: cursor,
+            cursor: _completionCursor.value!,
             preferredSize: Size(
               CompletionSize.width,
-              min(CompletionSize.maxHeight, rowHeight * state.candidates.length + Space.sm),
+              min(CompletionSize.maxHeight, headerHeight + rowHeight * max(1, state.candidates.length) + Space.sm),
             ),
           ),
           child: PopupSurface(
@@ -128,69 +171,144 @@ extension _AssistancePane on _TerminalPaneState {
             padding: const EdgeInsets.symmetric(vertical: Space.xs),
             child: SizedBox(
               width: CompletionSize.width,
-              child: ListView.builder(
-                controller: _candidateScroll,
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: state.candidates.length,
-                itemExtent: rowHeight,
-                itemBuilder: (context, index) {
-                  final candidate = state.candidates[index];
-                  final title = candidate.displayText ?? candidate.text;
-                  final description = candidate.description?.text(l);
-                  final selected = _candidateMode && index == _candidateIndex;
-                  return Semantics(
-                    selected: selected,
-                    button: true,
-                    label: description == null ? title : '$title, $description',
-                    child: Material(
-                      color: selected ? scheme.primaryContainer : Colors.transparent,
-                      child: InkWell(
-                        canRequestFocus: false,
-                        onTap: () {
-                          _session.acceptCommand(state.request!, candidate.text);
-                          _update(() => _candidateMode = false);
-                          _focus.requestFocus();
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: Space.sm),
-                          child: Row(
-                            children: [
-                              Icon(
-                                switch (candidate.source) {
-                                  CommandCandidateSource.ai => Icons.auto_awesome_outlined,
-                                  CommandCandidateSource.history => Icons.history,
-                                  _ => switch (candidate.kind) {
-                                    CommandKind.option => Icons.tune,
-                                    CommandKind.subcommand => Icons.subdirectory_arrow_right,
-                                    _ => Icons.terminal,
-                                  },
-                                },
-                                size: 14,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: Space.sm),
-                              Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                              if (description != null) ...[
-                                const SizedBox(width: Space.md),
-                                Expanded(
-                                  child: Text(
-                                    description,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.end,
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(color: scheme.onSurfaceVariant),
-                                  ),
-                                ),
-                              ],
-                            ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (browse != null)
+                    SizedBox(
+                      height: rowHeight,
+                      child: Row(
+                        children: [
+                          if (browse.depth > 0)
+                            IconButton(
+                              tooltip: l.back,
+                              icon: const Icon(Icons.arrow_back, size: 14),
+                              onPressed: _session.returnCommandBrowse,
+                              visualDensity: VisualDensity.compact,
+                            )
+                          else
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: Space.sm),
+                              child: Icon(Icons.folder_outlined, size: 14),
+                            ),
+                          Expanded(
+                            child: Text(
+                              browse.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                           ),
-                        ),
+                          if (browse.load == CompletionLoad.loading)
+                            const Padding(
+                              padding: EdgeInsets.all(Space.sm),
+                              child: SizedBox.square(dimension: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                            ),
+                        ],
                       ),
                     ),
-                  );
-                },
+                  if (state.candidates.isEmpty && status != null)
+                    Padding(
+                      padding: const EdgeInsets.all(Space.sm),
+                      child: Text(status, style: Theme.of(context).textTheme.bodySmall),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.builder(
+                        controller: _candidateScroll,
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        itemCount: state.candidates.length,
+                        itemExtent: rowHeight,
+                        itemBuilder: (context, index) {
+                          final candidate = state.candidates[index];
+                          final title = candidate.displayText ?? candidate.text;
+                          final description = candidate.description?.text(l) ?? candidate.detail;
+                          final selected = _candidateMode && index == _candidateIndex;
+                          return MouseRegion(
+                            onHover: (event) {
+                              if (event.delta == Offset.zero || event.position == _candidatePointer) return;
+                              _candidatePointer = event.position;
+                              _update(() {
+                                _candidateIndex = index;
+                                _candidateText = candidate.identity;
+                                _candidateMode = true;
+                              });
+                            },
+                            child: Semantics(
+                              selected: selected,
+                              button: true,
+                              label: description == null ? title : '$title, $description',
+                              child: Material(
+                                color: selected ? scheme.primaryContainer : Colors.transparent,
+                                child: InkWell(
+                                  canRequestFocus: false,
+                                  onTap: () {
+                                    if (candidate.directory != null) {
+                                      _session.browseCommand(state.request!, candidate);
+                                    } else {
+                                      _session.acceptCommand(state.request!, candidate.text);
+                                    }
+                                    _focus.requestFocus();
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          switch (candidate.source) {
+                                            CommandCandidateSource.history => Icons.history,
+                                            CommandCandidateSource.ai => Icons.auto_awesome_outlined,
+                                            CommandCandidateSource.path =>
+                                              candidate.directory != null
+                                                  ? Icons.folder_outlined
+                                                  : Icons.insert_drive_file_outlined,
+                                            CommandCandidateSource.snippet => Icons.code,
+                                            _ => switch (candidate.kind) {
+                                              CommandKind.option => Icons.tune,
+                                              CommandKind.subcommand => Icons.subdirectory_arrow_right,
+                                              _ => Icons.terminal,
+                                            },
+                                          },
+                                          size: 14,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                        const SizedBox(width: Space.sm),
+                                        Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                        if (description != null) ...[
+                                          const SizedBox(width: Space.md),
+                                          Expanded(
+                                            child: Text(
+                                              description,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.end,
+                                              style: Theme.of(context).textTheme.bodySmall
+                                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                                            ),
+                                          ),
+                                        ],
+                                        if (candidate.preview != null)
+                                          const Padding(
+                                            padding: EdgeInsets.only(left: Space.xs),
+                                            child: Icon(Icons.chevron_right, size: 14),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  if (browse?.truncated ?? false)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                      child: Text(l.completionTruncated, maxLines: 1, style: Theme.of(context).textTheme.bodySmall),
+                    ),
+                ],
               ),
             ),
           ),

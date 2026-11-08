@@ -135,7 +135,7 @@ class CatalogSuggestion {
   final CommandDescription? description;
 }
 
-const _maxSuggestions = 8;
+const _maxSuggestions = 200;
 
 /// Only plain words and a few path/host characters. Quotes, expansions, pipes, redirects and chaining are never parsed.
 final _plainLine = RegExp(r'^[A-Za-z0-9._+/:@,%=~ -]*$');

@@ -25,6 +25,10 @@ import '../../settings/api.dart';
 import '../domain/command_assistance.dart';
 import '../domain/directory.dart';
 import '../domain/insertion.dart';
+import '../domain/terminal_paths.dart';
+import '../domain/spec_completion.dart';
+import 'terminal_paths.dart';
+import 'completion_specs.dart';
 import '../presentation/confirm_insert.dart';
 import 'ime_caret.dart';
 import 'command_descriptions.dart';
@@ -47,15 +51,21 @@ class TerminalSession extends ChangeNotifier {
     this.autoConnect = true,
     int scrollback = 2000,
     bool Function()? autoReconnect,
-    this._completionProvider,
+    this.completionProvider,
+    CompletionSpecs? completionSpecs,
+    this.remotePaths,
+    List<CommandSnippet> Function()? snippets,
   }) : _terminal = Terminal(maxLines: scrollback),
-       _autoReconnect = autoReconnect ?? (() => false) {
+       _autoReconnect = autoReconnect ?? (() => false),
+       _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
+       _snippets = snippets ?? (() => const []) {
     _terminal.onSemanticPrompt = _semanticPrompt;
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
     _terminal.onClipboardQuery = (_) => null;
     _terminal.onCurrentDirectoryChange = (uri) {
       _reported = parseOsc7(uri);
+      if (_reported != null) _directory.value = _reported;
       // The report comes with the prompt, so the command that changed directory has finished.
       if (_directory.followed) _lookSoon(const [Duration(milliseconds: 50)]);
     };
@@ -78,7 +88,12 @@ class TerminalSession extends ChangeNotifier {
   var _closed = false;
   var _shellEnded = true;
   final _insertions = <CancellationToken>{};
-  final CommandCompletionProvider? _completionProvider;
+  final CommandCompletionProvider? completionProvider;
+  final CompletionSpecs _completionSpecs;
+  final List<CommandSnippet> Function() _snippets;
+  final RemotePathSource? remotePaths;
+  RemotePathSource? _ownedPaths;
+  final _browseStack = <_BrowseFrame>[];
   final _commands = CommandHistory();
   final _history = ValueNotifier<List<String>>(const []);
   final _assistance = ValueNotifier<CommandAssistanceState>(const CommandAssistanceState());
@@ -106,6 +121,10 @@ class TerminalSession extends ChangeNotifier {
   }
 
   Future<InsertResult> acceptCommand(CommandCompletionRequest request, String text) => _acceptCommand(request, text);
+
+  bool browseCommand(CommandCompletionRequest request, CommandCandidate candidate) =>
+      _browseCommand(request, candidate);
+  bool returnCommandBrowse() => _returnCommandBrowse();
 
   /// Output arrived while no pane showed this session.
   var unread = false;
@@ -229,6 +248,7 @@ class TerminalSession extends ChangeNotifier {
       _shell = shell;
       _shellEnded = false;
       _resetCommandDraft();
+      _ownedPaths = remotePaths == null ? LeaseRemotePathSource(lease, generation: _shellGeneration) : null;
       void ended() {
         if (!identical(_shell, shell)) return;
         _shellEnded = true;
@@ -238,6 +258,7 @@ class TerminalSession extends ChangeNotifier {
 
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
+        if (data.isEmpty) return;
         _inputPending = true;
         _invalidateCommandDraft();
         shell.write(utf8.encode(data));
@@ -320,6 +341,9 @@ class TerminalSession extends ChangeNotifier {
 
   /// Enter may have run a `cd`: look once the shell has had time, and again for a slow one.
   void _entered() {
+    _reported = null;
+    _directory.value = null;
+    (remotePaths ?? _ownedPaths)?.invalidate();
     if (_directory.followed) _lookSoon(const [Duration(milliseconds: 400), Duration(milliseconds: 1500)]);
   }
 
@@ -345,9 +369,9 @@ class TerminalSession extends ChangeNotifier {
     _lookups.clear();
   }
 
-  Future<void> _look() async {
-    final lease = _lease;
-    if (_closed || _looking || lease == null || lease.lost || !_directory.followed) return;
+  Future<String?> _look({bool force = false}) async {
+    final lease = _lease, generation = _shellGeneration;
+    if (_closed || _looking || lease == null || lease.lost || (!force && !_directory.followed)) return _directory.value;
     _looking = true;
     String? found;
     try {
@@ -358,9 +382,11 @@ class TerminalSession extends ChangeNotifier {
     } finally {
       _looking = false;
     }
+    if (_closed || generation != _shellGeneration || !identical(_lease, lease)) return null;
     // A server that refused the marker or has no /proc may still report through OSC 7.
     found ??= _reported;
-    if (!_closed && found != null) _directory.value = found;
+    if (found != null) _directory.value = found;
+    return found;
   }
 
   /// docs/MODULES.md §2: 1/2/4/8/16 s with jitter, at most five times, network errors only.
@@ -398,8 +424,9 @@ class TerminalSession extends ChangeNotifier {
     if (_closed) return;
     _closed = true;
     _shellEnded = true;
-    _completionTimer?.cancel();
-    _completionCancel?.cancel();
+    _cancelCompletion();
+    _ownedPaths?.dispose();
+    _ownedPaths = null;
     _commands.clear();
     _history.value = const [];
     _assistance.value = const CommandAssistanceState();

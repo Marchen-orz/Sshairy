@@ -3,8 +3,7 @@ import 'command_catalog.dart';
 
 export 'command_catalog.dart' show CommandDescription, CommandKind;
 
-/// [ai] is reserved for a future, separately authorized provider; it sorts before everything else.
-enum CommandCandidateSource { ai, history, builtin, provider }
+enum CommandCandidateSource { history, ai, builtin, path, snippet, provider }
 
 class CommandCandidate {
   const CommandCandidate(
@@ -13,19 +12,34 @@ class CommandCandidate {
     this.kind = CommandKind.line,
     this.displayText,
     this.description,
+    this.detail,
+    this.directory,
+    this.preview,
   });
 
-  /// The whole command line after insertion; it always starts with the draft it was offered for.
+  /// Whole line to append to a verified echoed draft; never a shell command to run.
   final String text;
   final CommandCandidateSource source;
   final CommandKind kind;
-
-  /// Only the completed word, shown instead of [text]; null for whole-line candidates.
   final String? displayText;
   final CommandDescription? description;
+
+  /// Third-party static specification text, or a user-owned snippet label.
+  final String? detail;
+
+  /// A raw logical path ending in '/', for a directory that can be browsed without writing to the shell.
+  final String? directory;
+
+  /// A longer virtual draft for drilling into the next command level without writing to the shell.
+  final String? preview;
+  String get identity => '${source.name}:$text:${directory ?? ''}';
 }
 
-/// A provider has no terminal handle. An AI implementation must be injected only after its own authorization.
+class CommandSnippet {
+  const CommandSnippet(this.text, this.label);
+  final String text, label;
+}
+
 class CommandCompletionRequest {
   const CommandCompletionRequest({
     required this.text,
@@ -33,7 +47,6 @@ class CommandCompletionRequest {
     required this.revision,
     this.directory,
   });
-
   final String text;
   final int generation, revision;
   final String? directory;
@@ -44,11 +57,27 @@ abstract interface class CommandCompletionProvider {
   Future<List<CommandCandidate>> complete(CommandCompletionRequest request, CancellationToken cancel);
 }
 
-class CommandAssistanceState {
-  const CommandAssistanceState({this.request, this.candidates = const []});
+enum CompletionLoad { ready, loading, failed, unavailable }
 
+class CommandBrowseState {
+  const CommandBrowseState({
+    required this.label,
+    required this.depth,
+    this.load = CompletionLoad.ready,
+    this.truncated = false,
+  });
+  final String label;
+  final int depth;
+  final CompletionLoad load;
+  final bool truncated;
+}
+
+class CommandAssistanceState {
+  const CommandAssistanceState({this.request, this.candidates = const [], this.browse, this.loading = false});
   final CommandCompletionRequest? request;
   final List<CommandCandidate> candidates;
+  final CommandBrowseState? browse;
+  final bool loading;
 }
 
 bool commandIsSingleLine(String text) =>
@@ -57,9 +86,7 @@ bool commandIsSingleLine(String text) =>
 class CommandHistory {
   static const limit = 100, maxLength = 2048;
   final _commands = <String>[];
-
   List<String> get commands => List.unmodifiable(_commands);
-
   void remember(String command) {
     if (!commandIsSingleLine(command) || command.trim().isEmpty || command.startsWith(' ')) return;
     _commands.remove(command);
@@ -70,7 +97,6 @@ class CommandHistory {
   void clear() => _commands.clear();
 }
 
-/// Deliberately narrow: the normal SSH shell prompts we can identify without installing integration scripts.
 String? visibleShellCommand(String beforeCursor, String afterCursor) {
   if (afterCursor.trim().isNotEmpty) return null;
   final prompt = RegExp(r'^(?:\[[^\]\r\n]*@[^\]\r\n]+\]|[\w.-]+@[\w.-]+:[^\r\n]*?)[#$] ').firstMatch(beforeCursor);
@@ -79,28 +105,28 @@ String? visibleShellCommand(String beforeCursor, String afterCursor) {
   return commandIsSingleLine(command) ? command : null;
 }
 
-const commandCandidateLimit = 8, _historySlots = 5;
+const commandCandidateLimit = 200, commandHistoryCandidateLimit = 50;
 
-/// What may be offered for [draft]: one line that only extends it, and a label that is the text actually inserted.
 bool commandCandidateValid(CommandCandidate candidate, String draft) {
-  final text = candidate.text, shown = candidate.displayText;
-  if (!commandIsSingleLine(text) || !text.startsWith(draft)) return false;
-  return shown == null ||
-      (commandIsSingleLine(shown) && shown.length >= text.length - draft.length && text.endsWith(shown));
+  if (!commandIsSingleLine(candidate.text) || !candidate.text.startsWith(draft)) return false;
+  final shown = candidate.displayText;
+  if (shown == null) return true;
+  if (shown.isEmpty || !commandIsSingleLine(shown)) return false;
+  if (candidate.source == CommandCandidateSource.ai || candidate.source == CommandCandidateSource.provider) {
+    return shown.length >= candidate.text.length - draft.length && candidate.text.endsWith(shown);
+  }
+  return true;
 }
 
-/// History first (keeping slots for the catalog), then contextual catalog words; never more than the visible limit.
-List<CommandCandidate> localCommandCandidates(String prefix, CommandHistory history) {
+/// The small built-in catalog is a fallback if packaged specifications are unavailable.
+List<CommandCandidate> localCommandCandidates(String prefix, CommandHistory history, {bool catalog = true}) {
   if (prefix.trim().isEmpty || !commandIsSingleLine(prefix)) return const [];
-  final seen = <String>{prefix};
-  final past = [
+  return mergeCommandCandidates(prefix, [
     for (final command in history.commands)
-      if (command.startsWith(prefix) && seen.add(command))
+      if (command.startsWith(prefix) && command != prefix)
         CommandCandidate(command, source: CommandCandidateSource.history),
-  ];
-  final known = [
-    for (final s in catalogSuggestions(prefix))
-      if (commandIsSingleLine(s.text) && seen.add(s.text))
+    if (catalog)
+      for (final s in catalogSuggestions(prefix))
         CommandCandidate(
           s.text,
           source: CommandCandidateSource.builtin,
@@ -108,32 +134,29 @@ List<CommandCandidate> localCommandCandidates(String prefix, CommandHistory hist
           displayText: s.display,
           description: s.description,
         ),
-  ];
-  return [
-    ...past.take(_historySlots),
-    ...known,
-    ...past.skip(_historySlots),
-  ].take(commandCandidateLimit).toList(growable: false);
+  ], const []);
 }
 
-/// Order: [CommandCandidateSource.ai], then local, then other provider results. Duplicates and invalid items are dropped.
+/// History stays first. A future AI source cannot displace it or access it through its provider request.
 List<CommandCandidate> mergeCommandCandidates(
   String draft,
   List<CommandCandidate> local,
   Iterable<CommandCandidate> supplied,
 ) {
-  final provided = supplied.take(32).toList();
+  final provided = supplied.take(commandCandidateLimit * 2).toList();
+  final all = [...local, ...provided];
   final seen = <String>{draft};
   final merged = <CommandCandidate>[];
-  for (final candidate in [
-    ...provided.where((c) => c.source == CommandCandidateSource.ai),
-    ...local,
-    ...provided.where((c) => c.source != CommandCandidateSource.ai),
-  ]) {
-    if (commandCandidateValid(candidate, draft) && seen.add(candidate.text)) {
-      merged.add(candidate);
-      if (merged.length == commandCandidateLimit) break;
+  var history = 0;
+  for (final source in CommandCandidateSource.values) {
+    for (final candidate in all.where((c) => c.source == source)) {
+      if (source == CommandCandidateSource.history && history >= commandHistoryCandidateLimit) break;
+      if (commandCandidateValid(candidate, draft) && seen.add(candidate.text)) {
+        merged.add(candidate);
+        if (source == CommandCandidateSource.history) history++;
+        if (merged.length == commandCandidateLimit) return List.unmodifiable(merged);
+      }
     }
   }
-  return merged;
+  return List.unmodifiable(merged);
 }
