@@ -289,9 +289,10 @@ class _Content extends ConsumerWidget {
             ),
             const SizedBox(height: Space.sm),
             MonitorSpark(
-              height: 28,
-              max: 1,
-              series: [(monitor.memory, scheme.secondary), (monitor.cpu, scheme.primary)],
+              height: 20,
+              percentage: true,
+              labels: [l.cpu, l.memory],
+              series: [(monitor.cpu, scheme.primary), (monitor.memory, scheme.secondary)],
             ),
           ],
         ),
@@ -611,7 +612,7 @@ class _GpuCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: Space.sm),
-          MonitorSpark(height: 28, max: 1, series: [(history, scheme.primary)]),
+          MonitorSpark(height: 28, percentage: true, labels: [l.gpu], series: [(history, scheme.primary)]),
           if (gpu.processes.isNotEmpty) ...[
             const SizedBox(height: Space.sm),
             for (final p in gpu.processes)

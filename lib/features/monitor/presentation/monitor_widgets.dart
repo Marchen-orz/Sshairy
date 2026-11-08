@@ -1,9 +1,11 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../../design/theme.dart';
 import '../application/monitor.dart';
+import '../domain/chart_range.dart';
 
 const tabular = [FontFeature.tabularFigures()];
 
@@ -186,34 +188,74 @@ class MonitorBar extends StatelessWidget {
   }
 }
 
-/// Lines over the last [ServerMonitor.historyLength] samples.
+/// Lines over the last [ServerMonitor.historyLength] samples. Percentage series get separate, named plots.
 class MonitorSpark extends StatelessWidget {
-  const MonitorSpark({super.key, required this.series, this.max, this.height = 32});
+  const MonitorSpark({
+    super.key,
+    required this.series,
+    this.percentage = false,
+    this.labels = const [],
+    this.height = 32,
+  });
 
   final List<(List<double>, Color)> series;
-
-  /// Null scales to the largest value shown.
-  final double? max;
+  final bool percentage;
+  final List<String> labels;
   final double height;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: height,
-    child: CustomPaint(
-      painter: _SparkPainter(
-        [for (final (values, color) in series) (List.of(values), color)],
-        max,
-        Theme.of(context).colorScheme.outlineVariant,
-      ),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final data = [
+      for (final (values, color) in series)
+        (values.skip(max(0, values.length - ServerMonitor.historyLength)).toList(), color),
+    ];
+    Widget plot(List<(List<double>, Color)> lines, MonitorRange range) => SizedBox(
+      height: height,
+      child: CustomPaint(painter: _SparkPainter(lines, range, theme.colorScheme.outlineVariant)),
+    );
+    if (!percentage) return plot(data, MonitorRange.network(data.expand((s) => s.$1)));
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < data.length; i++) ...[
+          if (i > 0) const SizedBox(height: Space.xs),
+          Builder(
+            builder: (context) {
+              final line = data[i], range = MonitorRange.percentage(data[i].$1);
+              final label = i < labels.length ? labels[i] : '';
+              final extent = '${(range.min * 100).toStringAsFixed(1)}–${(range.max * 100).toStringAsFixed(1)}%';
+              return Tooltip(
+                message: [label, extent].where((s) => s.isNotEmpty).join(' · '),
+                child: Row(
+                  children: [
+                    if (label.isNotEmpty)
+                      SizedBox(
+                        width: 42,
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    Expanded(child: plot([line], range)),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 class _SparkPainter extends CustomPainter {
-  _SparkPainter(this.series, this.max, this.grid);
+  _SparkPainter(this.series, this.range, this.grid);
 
   final List<(List<double>, Color)> series;
-  final double? max;
+  final MonitorRange range;
   final Color grid;
 
   @override
@@ -223,49 +265,66 @@ class _SparkPainter extends CustomPainter {
       Offset(size.width, size.height - .5),
       Paint()..color = grid.withValues(alpha: .5),
     );
-    var top = max ?? 0;
-    if (max == null) {
-      for (final (values, _) in series) {
-        for (final v in values) {
-          top = v > top ? v : top;
-        }
-      }
-    }
-    if (top <= 0) return;
     final step = size.width / (ServerMonitor.historyLength - 1);
     for (final (values, color) in series) {
-      if (values.length < 2) continue;
       final start = size.width - (values.length - 1) * step;
-      Offset at(int i) => Offset(start + i * step, size.height - (values[i] / top).clamp(0.0, 1.0) * (size.height - 2));
-      final line = Path()..moveTo(at(0).dx, at(0).dy);
-      for (var i = 1; i < values.length; i++) {
-        final p = at(i);
-        line.lineTo(p.dx, p.dy);
+      final stroke = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..strokeJoin = StrokeJoin.round;
+      final fill = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: .22), color.withValues(alpha: 0)],
+        ).createShader(Offset.zero & size);
+      Path? line;
+      Offset? first, last;
+      void finish() {
+        if (line == null) return;
+        if (first == last) {
+          canvas.drawCircle(first!, 1.5, Paint()..color = color);
+        } else {
+          final area = Path.from(line!)
+            ..lineTo(last!.dx, size.height)
+            ..lineTo(first!.dx, size.height)
+            ..close();
+          canvas.drawPath(area, fill);
+          canvas.drawPath(line!, stroke);
+        }
+        line = null;
       }
-      final area = Path.from(line)
-        ..lineTo(size.width, size.height)
-        ..lineTo(start, size.height)
-        ..close();
-      canvas.drawPath(
-        area,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [color.withValues(alpha: .22), color.withValues(alpha: 0)],
-          ).createShader(Offset.zero & size),
-      );
-      canvas.drawPath(
-        line,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..strokeJoin = StrokeJoin.round,
-      );
+
+      for (var i = 0; i < values.length; i++) {
+        if (!values[i].isFinite) {
+          finish();
+          continue;
+        }
+        final point = Offset(start + i * step, size.height - 1 - range.fraction(values[i]) * (size.height - 2));
+        if (line == null) {
+          first = point;
+          line = Path()..moveTo(point.dx, point.dy);
+        } else {
+          line!.lineTo(point.dx, point.dy);
+        }
+        last = point;
+      }
+      finish();
     }
   }
 
   @override
-  bool shouldRepaint(_SparkPainter old) => true;
+  bool shouldRepaint(_SparkPainter old) {
+    if (range.min != old.range.min ||
+        range.max != old.range.max ||
+        grid != old.grid ||
+        series.length != old.series.length) {
+      return true;
+    }
+    for (var i = 0; i < series.length; i++) {
+      if (series[i].$2 != old.series[i].$2 || !listEquals(series[i].$1, old.series[i].$1)) return true;
+    }
+    return false;
+  }
 }
