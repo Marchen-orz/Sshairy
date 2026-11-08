@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/interface_scale.dart';
+import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
@@ -15,7 +17,7 @@ import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
-import 'package:xterm2/xterm.dart' show TerminalView;
+import 'package:xterm2/xterm.dart' show TerminalView, TerminalViewState;
 
 import 'connection_manager_test.dart' show FakeTransport, NoPrompts;
 
@@ -87,7 +89,7 @@ void main() {
     expect(history.commands, hasLength(100));
     expect(history.commands.first, 'echo 119');
     expect(history.commands.last, 'echo 20');
-    expect(localCommandCandidates('git s', history).map((c) => c.text), ['git status']);
+    expect(localCommandCandidates('git s', history).map((c) => c.text), contains('git status'));
     history.clear();
     expect(history.commands, isEmpty);
   });
@@ -227,15 +229,15 @@ void main() {
     unawaited(session.connect(NoPrompts()));
     await tester.pump();
     final shell = transport.channels.single;
-    await _feed(tester, shell, 'u@box:~\$ echo café');
+    await _feed(tester, shell, 'u@box:~\$ custom-echo café');
     session.commandSubmitted();
-    expect(session.commandHistory.value, ['echo café']);
-    await _feed(tester, shell, '\r\nu@box:~\$ echo');
+    expect(session.commandHistory.value, ['custom-echo café']);
+    await _feed(tester, shell, '\r\nu@box:~\$ custom-echo');
     final old = session.commandAssistance.value.request!;
-    expect(session.commandAssistance.value.candidates.map((c) => c.text), contains('echo café'));
+    expect(session.commandAssistance.value.candidates.map((c) => c.text), contains('custom-echo café'));
     session.clearCommandHistory();
     expect(session.commandAssistance.value.candidates, isEmpty);
-    expect(await session.acceptCommand(old, 'echo café'), InsertResult.stale);
+    expect(await session.acceptCommand(old, 'custom-echo café'), InsertResult.stale);
     await tester.pump(const Duration(milliseconds: 200));
     expect(session.commandAssistance.value.candidates, isEmpty);
     final history = session.commandHistory;
@@ -254,7 +256,7 @@ void main() {
     late ConnectionManager manager;
     late TerminalSession session;
 
-    Future<_Shell> mount(WidgetTester tester) async {
+    Future<_Shell> mount(WidgetTester tester, {double scale = 1, CommandCompletionProvider? provider}) async {
       dir = Directory.systemTemp.createTempSync('sshairy-pane-');
       container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
       transport = _Transport();
@@ -264,12 +266,15 @@ void main() {
         const Host(id: HostId('h'), label: 'h', address: 'box', username: 'u'),
         manager,
         autoConnect: false,
+        completionProvider: provider,
       );
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
-            theme: buildTheme(Brightness.light),
+            theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
+            scrollBehavior: const AppScrollBehavior(),
+            builder: (_, child) => InterfaceScale(scale: scale, child: child!),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(body: SizedBox.expand(child: TerminalPane(session, active: true))),
@@ -310,7 +315,7 @@ void main() {
     ) async {
       final shell = await mount(tester);
       await _feed(tester, shell, 'u@box:~\$ git st');
-      expect(find.text('git status'), findsOneWidget);
+      expect(find.text('status'), findsOneWidget);
 
       // Without Ctrl+Space the arrow keys and Enter belong to the shell, so nothing is accepted.
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
@@ -331,6 +336,146 @@ void main() {
       expect(shell.writes.join(), '\r');
       expect(session.commandHistory.value, ['git status']);
       await unmount(tester);
+    });
+
+    testWidgets('late AI candidates appear first without changing the selected local command', (tester) async {
+      final provider = _Provider();
+      final shell = await mount(tester, provider: provider);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
+        provider.pending.single.complete([const CommandCandidate('git stash list', source: CommandCandidateSource.ai)]);
+        await tester.pump();
+        expect(session.commandAssistance.value.candidates.first.source, CommandCandidateSource.ai);
+        expect(tester.getTopLeft(find.text('git stash list')).dy, lessThan(tester.getTopLeft(find.text('status')).dy));
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(shell.writes.join(), 'atus');
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('keyboard selection scrolls a constrained list and starts again at its first item', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 320));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final shell = await mount(tester);
+      try {
+        final view = tester.state<TerminalViewState>(find.byType(TerminalView));
+        await _feed(tester, shell, '\x1b[${view.widget.terminal.viewHeight ~/ 2};1Hu@box:~\$ tmux ');
+        final candidates = session.commandAssistance.value.candidates;
+        expect(candidates, hasLength(8));
+        await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await tester.pump();
+        await tester.pump();
+        final popup = find.byKey(const ValueKey('command-completion-popup'));
+        final list = tester.widget<ListView>(find.descendant(of: popup, matching: find.byType(ListView)));
+        expect(list.controller!.offset, greaterThan(0));
+        expect(find.text(candidates.last.displayText!).hitTestable(), findsOneWidget);
+        await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.space);
+        await tester.pump();
+        expect(list.controller!.offset, 0);
+        expect(find.text(candidates.first.displayText!).hitTestable(), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(shell.writes.join(), candidates.first.text.substring('tmux '.length));
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('tmux subcommands display short labels and only insert the missing suffix', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        expect(find.byKey(const ValueKey('command-completion-popup')), findsOneWidget);
+        final candidate = session.commandAssistance.value.candidates.first;
+        expect(candidate.kind, CommandKind.subcommand);
+        expect(find.text(candidate.displayText!), findsOneWidget);
+        await tester.tap(find.text(candidate.displayText!));
+        await tester.pump();
+        expect(shell.writes.join(), candidate.text.substring('tmux '.length));
+        expect(shell.writes.join(), isNot(contains('\r')));
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    for (final scale in [1.0, 1.5]) {
+      testWidgets('completion tracks the caret at $scale scale and stays inside the pane', (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final shell = await mount(tester, scale: scale);
+        try {
+          await _feed(tester, shell, 'u@box:~\$ git s');
+          await tester.pump();
+          final popup = find.byKey(const ValueKey('command-completion-popup'));
+          expect(popup, findsOneWidget);
+          final first = tester.getRect(popup);
+          final view = tester.state<TerminalViewState>(find.byType(TerminalView));
+          Rect caret() => MatrixUtils.transformRect(view.renderTerminal.getTransformTo(null), view.cursorRect);
+          expect(first.left, closeTo(caret().right + Space.xs * scale, .1));
+          expect(first.top, greaterThanOrEqualTo(caret().bottom));
+          await _feed(tester, shell, 't');
+          await tester.pump();
+          final moved = tester.getRect(popup);
+          expect(moved.left, greaterThan(first.left));
+          expect(moved.left, closeTo(caret().right + Space.xs * scale, .1));
+          // Place a new prompt at the bottom: the popup flips above the caret.
+          final terminal = view.widget.terminal;
+          await _feed(tester, shell, '\x1b[${terminal.viewHeight};1Hu@box:~\$ git st');
+          await tester.pump();
+          final bottom = tester.getRect(popup);
+          expect(bottom.bottom, lessThanOrEqualTo(caret().top));
+          final pane = tester.getRect(find.byType(TerminalPane));
+          expect(pane.contains(bottom.topLeft), isTrue);
+          expect(pane.contains(bottom.bottomRight), isTrue);
+          await tester.binding.setSurfaceSize(const Size(800, 600));
+          await tester.pump();
+          await _feed(tester, shell, '\x1b[2J\x1b[Hu@${List.filled(14, 'b').join()}:~\$ git s');
+          await tester.pump();
+          expect(
+            popup,
+            findsOneWidget,
+            reason:
+                'draft=${session.commandAssistance.value.request?.text}, '
+                'grid=${terminal.viewWidth}x${terminal.viewHeight}, caret=${caret()}, '
+                'scroll=${view.widget.scrollController!.offset}',
+          );
+          final clamped = tester.getRect(popup);
+          final narrowPane = tester.getRect(find.byType(TerminalPane));
+          expect(clamped.right, closeTo(narrowPane.right - Space.sm * scale, .1));
+          expect(clamped.left, lessThan(caret().right + Space.xs * scale));
+          expect(tester.takeException(), isNull);
+        } finally {
+          await unmount(tester);
+        }
+      });
+    }
+
+    testWidgets('scrolling away hides the popup and scrolling back restores its cursor anchor', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, '${List.filled(70, 'output\r\n').join()}u@box:~\$ git st');
+        final popup = find.byKey(const ValueKey('command-completion-popup'));
+        expect(popup, findsOneWidget);
+        final view = tester.state<TerminalViewState>(find.byType(TerminalView));
+        final scroll = view.widget.scrollController!;
+        scroll.jumpTo(0);
+        await tester.pump();
+        await tester.pump();
+        expect(popup, findsNothing);
+        scroll.jumpTo(scroll.position.maxScrollExtent);
+        await tester.pump();
+        await tester.pump();
+        expect(popup, findsOneWidget);
+        final caret = MatrixUtils.transformRect(view.renderTerminal.getTransformTo(null), view.cursorRect);
+        expect(tester.getRect(popup).left, closeTo(caret.right + Space.xs, .1));
+        expect(tester.takeException(), isNull);
+      } finally {
+        await unmount(tester);
+      }
     });
 
     testWidgets('pending input revokes mouse candidates and a new draft exits keyboard selection', (tester) async {

@@ -28,6 +28,10 @@ abstract final class WorkspaceSize {
   static const divider = 1.0, dividerGrab = 8.0, treeRow = 26.0, listRow = 34.0, control = 32.0;
 }
 
+abstract final class CompletionSize {
+  static const width = 460.0, maxHeight = 272.0, row = 32.0;
+}
+
 abstract final class Motion {
   static const quick = Duration(milliseconds: 120), normal = Duration(milliseconds: 180);
   static const panel = Duration(milliseconds: 220);

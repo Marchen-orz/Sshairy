@@ -81,16 +81,7 @@ extension _CommandAssistance on TerminalSession {
     try {
       final supplied = await provider.complete(request, cancel).timeout(const Duration(seconds: 5));
       if (!current()) return;
-      final seen = <String>{request.text};
-      final candidates = <CommandCandidate>[];
-      for (final candidate in [...local, ...supplied.take(32)]) {
-        if (commandIsSingleLine(candidate.text) &&
-            candidate.text.startsWith(request.text) &&
-            seen.add(candidate.text)) {
-          candidates.add(candidate);
-          if (candidates.length == 8) break;
-        }
-      }
+      final candidates = mergeCommandCandidates(request.text, local, supplied);
       _assistance.value = CommandAssistanceState(request: request, candidates: List.unmodifiable(candidates));
     } on Object {
       // A failed optional provider never changes normal terminal input.

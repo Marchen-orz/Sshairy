@@ -22,7 +22,7 @@ extension _AssistancePane on _TerminalPaneState {
     }
     final state = _session.commandAssistance.value;
     final enter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
-    if (_candidateMode && !identical(_candidateRequest, state.request)) _candidateMode = false;
+    _syncCandidateSelection(state);
     if (modifier &&
         !keys.isShiftPressed &&
         event.logicalKey == LogicalKeyboardKey.space &&
@@ -31,7 +31,9 @@ extension _AssistancePane on _TerminalPaneState {
         _candidateMode = true;
         _candidateRequest = state.request;
         _candidateIndex = 0;
+        _candidateText = state.candidates.first.text;
       });
+      _scrollCandidateIntoView();
       return KeyEventResult.handled;
     }
     if (_candidateMode && state.candidates.isNotEmpty && state.request != null) {
@@ -40,10 +42,12 @@ extension _AssistancePane on _TerminalPaneState {
         return KeyEventResult.handled;
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowDown || event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        _update(
-          () => _candidateIndex =
-              (_candidateIndex + (event.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1)) % state.candidates.length,
-        );
+        _update(() {
+          _candidateIndex =
+              (_candidateIndex + (event.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1)) % state.candidates.length;
+          _candidateText = state.candidates[_candidateIndex].text;
+        });
+        _scrollCandidateIntoView();
         return KeyEventResult.handled;
       }
       if (enter || event.logicalKey == LogicalKeyboardKey.tab) {
@@ -62,46 +66,126 @@ extension _AssistancePane on _TerminalPaneState {
     return null;
   }
 
-  Widget _completionOverlay() => ValueListenableBuilder<CommandAssistanceState>(
-    valueListenable: _session.commandAssistance,
-    builder: (context, state, _) {
-      if (!identical(_candidateRequest, state.request)) _candidateMode = false;
-      if (!widget.active || _searching || !_focus.hasFocus || state.candidates.isEmpty || state.request == null) {
+  void _syncCandidateSelection(CommandAssistanceState state) {
+    if (!identical(_candidateRequest, state.request)) {
+      _candidateMode = false;
+      _candidateText = null;
+    } else if (_candidateMode && _candidateText != null) {
+      final selected = state.candidates.indexWhere((candidate) => candidate.text == _candidateText);
+      if (selected < 0) {
+        _candidateMode = false;
+        _candidateText = null;
+      } else if (selected != _candidateIndex) {
+        _candidateIndex = selected;
+        _scrollCandidateIntoView();
+      }
+    }
+  }
+
+  void _scrollCandidateIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_candidateMode || !_candidateScroll.hasClients) return;
+      final row = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
+      final position = _candidateScroll.position;
+      final top = _candidateIndex * row;
+      final bottom = top + row;
+      if (top < position.pixels) {
+        _candidateScroll.jumpTo(top.clamp(0, position.maxScrollExtent));
+      } else if (bottom > position.pixels + position.viewportDimension) {
+        _candidateScroll.jumpTo((bottom - position.viewportDimension).clamp(0, position.maxScrollExtent));
+      }
+    });
+  }
+
+  Widget _completionOverlay() => ListenableBuilder(
+    listenable: Listenable.merge([_session.commandAssistance, _completionCursor]),
+    builder: (context, _) {
+      final state = _session.commandAssistance.value;
+      final cursor = _completionCursor.value;
+      _syncCandidateSelection(state);
+      if (!widget.active ||
+          _searching ||
+          !_focus.hasFocus ||
+          cursor == null ||
+          state.candidates.isEmpty ||
+          state.request == null) {
         return const SizedBox.shrink();
       }
       final scheme = Theme.of(context).colorScheme;
-      return Align(
-        alignment: Alignment.bottomLeft,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(Space.sm, Space.sm, Space.sm, _completionBottomInset()),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420, maxHeight: 220),
-            child: PopupSurface(
+      final l = AppLocalizations.of(context);
+      final rowHeight = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
+      return Positioned.fill(
+        child: CustomSingleChildLayout(
+          delegate: CursorPopupLayout(
+            cursor: cursor,
+            preferredSize: Size(
+              CompletionSize.width,
+              min(CompletionSize.maxHeight, rowHeight * state.candidates.length + Space.sm),
+            ),
+          ),
+          child: PopupSurface(
+            key: const ValueKey('command-completion-popup'),
+            padding: const EdgeInsets.symmetric(vertical: Space.xs),
+            child: SizedBox(
+              width: CompletionSize.width,
               child: ListView.builder(
+                controller: _candidateScroll,
                 shrinkWrap: true,
+                padding: EdgeInsets.zero,
                 itemCount: state.candidates.length,
+                itemExtent: rowHeight,
                 itemBuilder: (context, index) {
                   final candidate = state.candidates[index];
-                  return Material(
-                    color: _candidateMode && index == _candidateIndex ? scheme.primaryContainer : Colors.transparent,
-                    child: InkWell(
-                      canRequestFocus: false,
-                      onTap: () {
-                        _session.acceptCommand(state.request!, candidate.text);
-                        _update(() => _candidateMode = false);
-                        _focus.requestFocus();
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
-                        child: Row(
-                          children: [
-                            Icon(
-                              candidate.source == CommandCandidateSource.history ? Icons.history : Icons.terminal,
-                              size: 14,
-                            ),
-                            const SizedBox(width: Space.sm),
-                            Expanded(child: Text(candidate.text, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                          ],
+                  final title = candidate.displayText ?? candidate.text;
+                  final description = candidate.description?.text(l);
+                  final selected = _candidateMode && index == _candidateIndex;
+                  return Semantics(
+                    selected: selected,
+                    button: true,
+                    label: description == null ? title : '$title, $description',
+                    child: Material(
+                      color: selected ? scheme.primaryContainer : Colors.transparent,
+                      child: InkWell(
+                        canRequestFocus: false,
+                        onTap: () {
+                          _session.acceptCommand(state.request!, candidate.text);
+                          _update(() => _candidateMode = false);
+                          _focus.requestFocus();
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                          child: Row(
+                            children: [
+                              Icon(
+                                switch (candidate.source) {
+                                  CommandCandidateSource.ai => Icons.auto_awesome_outlined,
+                                  CommandCandidateSource.history => Icons.history,
+                                  _ => switch (candidate.kind) {
+                                    CommandKind.option => Icons.tune,
+                                    CommandKind.subcommand => Icons.subdirectory_arrow_right,
+                                    _ => Icons.terminal,
+                                  },
+                                },
+                                size: 14,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: Space.sm),
+                              Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              if (description != null) ...[
+                                const SizedBox(width: Space.md),
+                                Expanded(
+                                  child: Text(
+                                    description,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.end,
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(color: scheme.onSurfaceVariant),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ),

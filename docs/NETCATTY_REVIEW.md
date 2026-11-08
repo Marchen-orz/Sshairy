@@ -101,3 +101,13 @@ v0.2。依据 [binaricat/Netcatty](https://github.com/binaricat/Netcatty) commit
 ## 8. 明确不做
 
 插件平台（`packages/plugin-*`）、MCP、云同步、内嵌浏览器、Monaco、Mosh/ET/Telnet/串口/X11/ZMODEM、FIDO、终端图片协议、外部 CLI Agent。完整清单见 DESIGN §3。
+
+## 2026-11-08 补全专项参考
+
+仍基于只读本地 commit `0e3f282657df29a5dc6939c86dbf4ea3ad2be8ea`，未运行 Netcatty，不复制其代码或命令规格。
+
+- `components/terminal/autocomplete/terminalAutocompleteLayout.ts:283–351,430–565`：按光标横坐标锚定，下方不够翻上方，限制在 pane 内；处理字符宽度、回显及折行。sshairy 按用户要求锚在光标右边缘，使用自身 renderer 的光标矩形，保持既有已回显/行尾输入保护。
+- `components/terminal/autocomplete/completionEngine.ts:284–714`：命令树区分命令、子命令、选项；合并规格、历史、路径等来源，按完整插入文本去重。sshairy 独立编写小型常用 CLI 目录，不照搬 Fig/Netcatty 数据，不运行命令生成器。
+- `components/terminal/autocomplete/AutocompletePopup.tsx:268–355,416–528`：候选含类型、短显示文本、说明，选中项可显示详情。sshairy 用同排短词与本地化说明，暂不额外占用详情面板。
+- `components/terminal/autocomplete/terminalCompletionProviders.ts:63–145` 与 `useTerminalAutocomplete.ts:964–1215`：异步来源有时限与旧请求保护；这条路径未发现内置 AI 排序。AI 顶置是本项目后续接口约定，不能写作 Netcatty 已有功能；本轮不接模型。
+- `electron/main/registerBridges.cjs:633–678` 加载覆盖规格及 `@withfig/autocomplete`，静态序列化会移除函数，不能据 Fig 含生成器就推断运行时动态候选可用。Netcatty 为 GPL-3.0-or-later；Fig 锁文件记录 ISC、对应上游源码 LICENSE 为 MIT，未来若引用须核对实际包。本轮没有引用或复制二者的数据。

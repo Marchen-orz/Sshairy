@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../../design/dialog.dart';
+import '../../../design/cursor_popup.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
 import '../../../design/scrolling.dart';
@@ -26,6 +27,7 @@ import '../domain/directory.dart';
 import '../domain/insertion.dart';
 import '../presentation/confirm_insert.dart';
 import 'ime_caret.dart';
+import 'command_descriptions.dart';
 import 'terminal_output.dart';
 
 part 'terminal_pane.dart';

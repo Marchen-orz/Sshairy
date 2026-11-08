@@ -41,12 +41,15 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   final _view = GlobalKey<TerminalViewState>();
   final _scroll = ScrollController();
   final _terminalOwnsBackground = ValueNotifier<bool>(false);
+  final _completionCursor = ValueNotifier<Rect?>(null);
   Rect? _imeRect;
   var _imeRectScheduled = false;
   var _searching = false;
   var _candidateMode = false;
   CommandCompletionRequest? _candidateRequest;
   var _candidateIndex = 0;
+  String? _candidateText;
+  final _candidateScroll = ScrollController();
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;
@@ -60,6 +63,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     _session.addListener(_focusWhenConnected);
     _terminal.addListener(_scheduleImeRect);
     _terminal.addListener(_backgroundChanged);
+    _scroll.addListener(_scheduleImeRect);
     _focus.addListener(_scheduleImeRect);
     _focus.addListener(_assistanceFocusChanged);
     _markViewed();
@@ -109,15 +113,6 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     }
   }
 
-  double _completionBottomInset() {
-    final view = _view.currentState;
-    final box = context.findRenderObject();
-    if (view == null || box is! RenderBox || !box.hasSize) return Space.sm;
-    final cursor = box.globalToLocal(view.globalCursorRect.topLeft);
-    final above = box.size.height - cursor.dy + Space.sm;
-    return above.clamp(Space.sm, max(Space.sm, box.size.height - 240));
-  }
-
   /// xterm2 never sends the composing rect, so Windows puts the IME candidate window at the window corner.
   /// Its editable transform is the identity, so the cursor's global rect is what the engine expects.
   void _scheduleImeRect() {
@@ -126,8 +121,15 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _imeRectScheduled = false;
       final view = _view.currentState;
-      if (!mounted || view == null || !_focus.hasFocus) return;
-      final rect = view.globalCursorRect;
+      if (!mounted || view == null) return;
+      final box = context.findRenderObject();
+      final render = view.renderTerminal;
+      final rect = MatrixUtils.transformRect(render.getTransformTo(null), view.cursorRect);
+      if (box is RenderBox && box.hasSize) {
+        final local = Rect.fromPoints(box.globalToLocal(rect.topLeft), box.globalToLocal(rect.bottomRight));
+        _completionCursor.value = (Offset.zero & box.size).overlaps(local) ? local : null;
+      }
+      if (!_focus.hasFocus) return;
       if (rect == _imeRect) return;
       _imeRect = rect;
       SystemChannels.textInput.invokeMethod<void>('TextInput.setMarkedTextRect', {
@@ -147,9 +149,13 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     _terminal.removeListener(_scheduleImeRect);
     _terminal.removeListener(_backgroundChanged);
     _terminalOwnsBackground.dispose();
+    _completionCursor.dispose();
+    _scroll.removeListener(_scheduleImeRect);
+    _focus.removeListener(_scheduleImeRect);
     _focus.removeListener(_assistanceFocusChanged);
     _session.removeListener(_focusWhenConnected);
     _session.viewed = false;
+    _candidateScroll.dispose();
     _controller.dispose();
     _scroll.dispose();
     if (widget.focusNode == null) _focus.dispose();
@@ -284,6 +290,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
 
   @override
   Widget build(BuildContext context) {
+    _scheduleImeRect();
     final l = AppLocalizations.of(context);
     final settings = ref.watch(settingsProvider);
     final copyOnSelect = settings.get(SettingKeys.copyOnSelect);
