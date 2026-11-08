@@ -12,86 +12,7 @@ import '../domain/host_library.dart';
 import 'form_parts.dart';
 import 'identities_panel.dart';
 import 'login_editor.dart';
-
-class _ProxyEditor extends StatefulWidget {
-  const _ProxyEditor({super.key, this.initial, this.enabled = true, this.onInvalid});
-
-  final Proxy? initial;
-  final bool enabled;
-
-  /// Called when a field fails validation, so the section holding it can be opened.
-  final VoidCallback? onInvalid;
-
-  @override
-  State<_ProxyEditor> createState() => _ProxyEditorState();
-}
-
-class _ProxyEditorState extends State<_ProxyEditor> {
-  late ProxyKind? _kind = widget.initial?.kind;
-  late final _address = TextEditingController(text: widget.initial?.address);
-  late final _portField = TextEditingController(text: '${widget.initial?.port ?? 1080}');
-  late final _user = TextEditingController(text: widget.initial?.username);
-
-  @override
-  void dispose() {
-    _address.dispose();
-    _portField.dispose();
-    _user.dispose();
-    super.dispose();
-  }
-
-  String? _checked(String? error) {
-    if (error != null) widget.onInvalid?.call();
-    return error;
-  }
-
-  Proxy? get value => _kind == null
-      ? null
-      : Proxy(_kind!, _address.text.trim(), int.parse(_portField.text), username: _user.text.trim());
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final enabled = widget.enabled;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppSelect<ProxyKind?>(
-          value: _kind,
-          label: l.proxy,
-          options: [
-            AppOption(null, l.directConnection),
-            const AppOption(ProxyKind.socks5, 'SOCKS5'),
-            const AppOption(ProxyKind.http, 'HTTP CONNECT'),
-          ],
-          onChanged: enabled ? (v) => setState(() => _kind = v) : null,
-        ),
-        if (_kind != null) ...[
-          formGap,
-          TextFormField(
-            controller: _address,
-            enabled: enabled,
-            validator: (v) => _checked(requiredField(l, v)),
-            decoration: InputDecoration(labelText: l.proxyAddress),
-          ),
-          formGap,
-          TextFormField(
-            controller: _portField,
-            enabled: enabled,
-            validator: (v) => _checked(portField(l, v)),
-            decoration: InputDecoration(labelText: l.port),
-          ),
-          formGap,
-          TextFormField(
-            controller: _user,
-            enabled: enabled,
-            decoration: InputDecoration(labelText: l.proxyUser),
-          ),
-        ],
-      ],
-    );
-  }
-}
+import 'proxy_editor.dart';
 
 /// A control with the switch between its own value and the one it inherits.
 class _Inheritable extends StatelessWidget {
@@ -162,7 +83,7 @@ class ConnectionEditor extends ConsumerStatefulWidget {
 
 class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
   final _login = GlobalKey<LoginEditorState>();
-  final _proxy = GlobalKey<_ProxyEditorState>();
+  final _proxy = GlobalKey<ProxyEditorState>();
   final _route = ExpansibleController();
 
   ResolvedConnection get _inherited => widget.inherited;
@@ -322,12 +243,12 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
               if (!linked) _proxySeed = _inherited.proxy;
             }),
             child: _proxyLinked
-                ? _ProxyEditor(
+                ? ProxyEditor(
                     key: ValueKey('proxy-${_inherited.proxy?.key}'),
                     initial: _inherited.proxy,
                     enabled: false,
                   )
-                : _ProxyEditor(key: _proxy, initial: _proxySeed, onInvalid: _revealRoute),
+                : ProxyEditor(key: _proxy, initial: _proxySeed, onInvalid: _revealRoute),
           ),
         ],
         formGap,

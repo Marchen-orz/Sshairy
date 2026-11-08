@@ -230,6 +230,34 @@ class HostsNotifier extends Notifier<List<Host>> {
   Future<void> saveDefaults(ConnectionOverrides defaults, {int? expectedRevision}) =>
       _apply((library) => library.withDefaults(defaults), expectedRevision: expectedRevision);
 
+  Future<void> setHostProxy(HostId id, OverrideValue<Proxy> proxy, {required int expectedRevision}) =>
+      _apply((library) {
+        final host = library.hostById(id);
+        if (host == null) throw ArgumentError('missing host');
+        final overrides = _withProxy(host.overrides ?? explicitConnection(host), proxy);
+        return library.withHost(host.copyWith(overrides: () => overrides));
+      }, expectedRevision: expectedRevision);
+
+  Future<void> setGroupProxy(String id, OverrideValue<Proxy> proxy, {required int expectedRevision}) =>
+      _apply((library) {
+        final group = library.groupById(id);
+        if (group == null) throw ArgumentError('missing group');
+        return library.withGroup(group.copyWith(defaults: _withProxy(group.defaults, proxy)));
+      }, expectedRevision: expectedRevision);
+
+  Future<void> setDefaultProxy(OverrideValue<Proxy> proxy, {required int expectedRevision}) => _apply(
+    (library) => library.withDefaults(_withProxy(library.defaults, proxy)),
+    expectedRevision: expectedRevision,
+  );
+
+  static ConnectionOverrides _withProxy(ConnectionOverrides current, OverrideValue<Proxy> proxy) => ConnectionOverrides(
+    port: current.port,
+    authentication: current.authentication,
+    jump: current.jump,
+    proxy: proxy,
+    legacy: current.legacy,
+  );
+
   /// Throws [HostInUse] while another host, a group or the defaults still use it as their jump host.
   Future<void> delete(Host host) => _apply(
     (library) => library.hostById(host.id) == null ? null : library.withoutHost(host.id),
