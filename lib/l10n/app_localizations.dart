@@ -2755,6 +2755,330 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'PuTTY .ppk key not used; convert it to OpenSSH format first'**
   String get importPpk;
+
+  /// No description provided for @proxies.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxies'**
+  String get proxies;
+
+  /// No description provided for @proxySearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search hosts, groups or proxies'**
+  String get proxySearch;
+
+  /// No description provided for @proxyInherit.
+  ///
+  /// In en, this message translates to:
+  /// **'Inherit'**
+  String get proxyInherit;
+
+  /// No description provided for @proxyConfiguredHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Configured here'**
+  String get proxyConfiguredHere;
+
+  /// No description provided for @proxyVia.
+  ///
+  /// In en, this message translates to:
+  /// **'Via jump host'**
+  String get proxyVia;
+
+  /// No description provided for @proxyEditHop.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit the jump host proxy'**
+  String get proxyEditHop;
+
+  /// No description provided for @proxyNextConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes apply to the next connection.'**
+  String get proxyNextConnection;
+
+  /// No description provided for @proxyInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the proxy address, port and username.'**
+  String get proxyInvalid;
+
+  /// No description provided for @proxyChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Configuration changed. Reopen this editor and try again.'**
+  String get proxyChanged;
+
+  /// No description provided for @proxyCleanupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The proxy configuration is saved, but old saved credentials could not be fully removed.'**
+  String get proxyCleanupFailed;
+
+  /// No description provided for @logs.
+  ///
+  /// In en, this message translates to:
+  /// **'Logs'**
+  String get logs;
+
+  /// No description provided for @logArea.
+  ///
+  /// In en, this message translates to:
+  /// **'Area'**
+  String get logArea;
+
+  /// No description provided for @logOutcome.
+  ///
+  /// In en, this message translates to:
+  /// **'Result'**
+  String get logOutcome;
+
+  /// No description provided for @logAllAreas.
+  ///
+  /// In en, this message translates to:
+  /// **'All areas'**
+  String get logAllAreas;
+
+  /// No description provided for @logAllOutcomes.
+  ///
+  /// In en, this message translates to:
+  /// **'All results'**
+  String get logAllOutcomes;
+
+  /// No description provided for @logCopyRecord.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy selected record'**
+  String get logCopyRecord;
+
+  /// No description provided for @logEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No records'**
+  String get logEmpty;
+
+  /// No description provided for @logDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnostic recording is off.'**
+  String get logDisabled;
+
+  /// No description provided for @logWriterFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnostic recording stopped after a write failure.'**
+  String get logWriterFailed;
+
+  /// No description provided for @logReadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read diagnostic records. Refresh to retry.'**
+  String get logReadFailed;
+
+  /// No description provided for @logSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped {count} invalid records.'**
+  String logSkipped(int count);
+
+  /// No description provided for @logDropped.
+  ///
+  /// In en, this message translates to:
+  /// **'Dropped {count} queued records.'**
+  String logDropped(int count);
+
+  /// No description provided for @logElapsed.
+  ///
+  /// In en, this message translates to:
+  /// **'{milliseconds} ms'**
+  String logElapsed(int milliseconds);
+
+  /// No description provided for @logAreaApplication.
+  ///
+  /// In en, this message translates to:
+  /// **'Application'**
+  String get logAreaApplication;
+
+  /// No description provided for @logAreaConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection'**
+  String get logAreaConnection;
+
+  /// No description provided for @logAreaTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer'**
+  String get logAreaTransfer;
+
+  /// No description provided for @logAreaConfiguration.
+  ///
+  /// In en, this message translates to:
+  /// **'Configuration'**
+  String get logAreaConfiguration;
+
+  /// No description provided for @logOutcomeStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Started'**
+  String get logOutcomeStarted;
+
+  /// No description provided for @logOutcomeSucceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Succeeded'**
+  String get logOutcomeSucceeded;
+
+  /// No description provided for @logOutcomeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get logOutcomeFailed;
+
+  /// No description provided for @logOutcomeCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get logOutcomeCancelled;
+
+  /// No description provided for @logOutcomeInterrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'Interrupted'**
+  String get logOutcomeInterrupted;
+
+  /// No description provided for @logActionStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get logActionStart;
+
+  /// No description provided for @logActionDial.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get logActionDial;
+
+  /// No description provided for @logActionCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer'**
+  String get logActionCopy;
+
+  /// No description provided for @logActionPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get logActionPause;
+
+  /// No description provided for @logActionCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get logActionCancel;
+
+  /// No description provided for @logActionRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Read'**
+  String get logActionRead;
+
+  /// No description provided for @logActionWrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Write'**
+  String get logActionWrite;
+
+  /// No description provided for @logActionRecover.
+  ///
+  /// In en, this message translates to:
+  /// **'Recover'**
+  String get logActionRecover;
+
+  /// No description provided for @logActionUncaught.
+  ///
+  /// In en, this message translates to:
+  /// **'Unhandled error'**
+  String get logActionUncaught;
+
+  /// No description provided for @logActionShutdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Shut down'**
+  String get logActionShutdown;
+
+  /// No description provided for @appBackgroundImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface background'**
+  String get appBackgroundImage;
+
+  /// No description provided for @terminalBackgroundImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal background'**
+  String get terminalBackgroundImage;
+
+  /// No description provided for @backgroundChooseImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose image'**
+  String get backgroundChooseImage;
+
+  /// No description provided for @backgroundRestoreDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore default background'**
+  String get backgroundRestoreDefault;
+
+  /// No description provided for @backgroundOpacity.
+  ///
+  /// In en, this message translates to:
+  /// **'Image opacity'**
+  String get backgroundOpacity;
+
+  /// No description provided for @backgroundImageTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Image exceeds the size limit.'**
+  String get backgroundImageTooLarge;
+
+  /// No description provided for @backgroundImageUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a static PNG or JPEG image.'**
+  String get backgroundImageUnsupported;
+
+  /// No description provided for @backgroundImageUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the image.'**
+  String get backgroundImageUnreadable;
+
+  /// No description provided for @commandHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Command history'**
+  String get commandHistory;
+
+  /// No description provided for @commandHistoryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No commands'**
+  String get commandHistoryEmpty;
+
+  /// No description provided for @commandHistoryInsert.
+  ///
+  /// In en, this message translates to:
+  /// **'Insert command'**
+  String get commandHistoryInsert;
+
+  /// No description provided for @commandHistoryClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear history'**
+  String get commandHistoryClear;
 }
 
 class _AppLocalizationsDelegate

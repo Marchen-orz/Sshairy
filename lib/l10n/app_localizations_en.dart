@@ -1475,4 +1475,176 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get importPpk =>
       'PuTTY .ppk key not used; convert it to OpenSSH format first';
+
+  @override
+  String get proxies => 'Proxies';
+
+  @override
+  String get proxySearch => 'Search hosts, groups or proxies';
+
+  @override
+  String get proxyInherit => 'Inherit';
+
+  @override
+  String get proxyConfiguredHere => 'Configured here';
+
+  @override
+  String get proxyVia => 'Via jump host';
+
+  @override
+  String get proxyEditHop => 'Edit the jump host proxy';
+
+  @override
+  String get proxyNextConnection => 'Changes apply to the next connection.';
+
+  @override
+  String get proxyInvalid => 'Check the proxy address, port and username.';
+
+  @override
+  String get proxyChanged =>
+      'Configuration changed. Reopen this editor and try again.';
+
+  @override
+  String get proxyCleanupFailed =>
+      'The proxy configuration is saved, but old saved credentials could not be fully removed.';
+
+  @override
+  String get logs => 'Logs';
+
+  @override
+  String get logArea => 'Area';
+
+  @override
+  String get logOutcome => 'Result';
+
+  @override
+  String get logAllAreas => 'All areas';
+
+  @override
+  String get logAllOutcomes => 'All results';
+
+  @override
+  String get logCopyRecord => 'Copy selected record';
+
+  @override
+  String get logEmpty => 'No records';
+
+  @override
+  String get logDisabled => 'Diagnostic recording is off.';
+
+  @override
+  String get logWriterFailed =>
+      'Diagnostic recording stopped after a write failure.';
+
+  @override
+  String get logReadFailed =>
+      'Could not read diagnostic records. Refresh to retry.';
+
+  @override
+  String logSkipped(int count) {
+    return 'Skipped $count invalid records.';
+  }
+
+  @override
+  String logDropped(int count) {
+    return 'Dropped $count queued records.';
+  }
+
+  @override
+  String logElapsed(int milliseconds) {
+    return '$milliseconds ms';
+  }
+
+  @override
+  String get logAreaApplication => 'Application';
+
+  @override
+  String get logAreaConnection => 'Connection';
+
+  @override
+  String get logAreaTransfer => 'Transfer';
+
+  @override
+  String get logAreaConfiguration => 'Configuration';
+
+  @override
+  String get logOutcomeStarted => 'Started';
+
+  @override
+  String get logOutcomeSucceeded => 'Succeeded';
+
+  @override
+  String get logOutcomeFailed => 'Failed';
+
+  @override
+  String get logOutcomeCancelled => 'Cancelled';
+
+  @override
+  String get logOutcomeInterrupted => 'Interrupted';
+
+  @override
+  String get logActionStart => 'Start';
+
+  @override
+  String get logActionDial => 'Connect';
+
+  @override
+  String get logActionCopy => 'Transfer';
+
+  @override
+  String get logActionPause => 'Pause';
+
+  @override
+  String get logActionCancel => 'Cancel';
+
+  @override
+  String get logActionRead => 'Read';
+
+  @override
+  String get logActionWrite => 'Write';
+
+  @override
+  String get logActionRecover => 'Recover';
+
+  @override
+  String get logActionUncaught => 'Unhandled error';
+
+  @override
+  String get logActionShutdown => 'Shut down';
+
+  @override
+  String get appBackgroundImage => 'Interface background';
+
+  @override
+  String get terminalBackgroundImage => 'Terminal background';
+
+  @override
+  String get backgroundChooseImage => 'Choose image';
+
+  @override
+  String get backgroundRestoreDefault => 'Restore default background';
+
+  @override
+  String get backgroundOpacity => 'Image opacity';
+
+  @override
+  String get backgroundImageTooLarge => 'Image exceeds the size limit.';
+
+  @override
+  String get backgroundImageUnsupported => 'Choose a static PNG or JPEG image.';
+
+  @override
+  String get backgroundImageUnreadable => 'Could not read the image.';
+
+  @override
+  String get commandHistory => 'Command history';
+
+  @override
+  String get commandHistoryEmpty => 'No commands';
+
+  @override
+  String get commandHistoryInsert => 'Insert command';
+
+  @override
+  String get commandHistoryClear => 'Clear history';
 }

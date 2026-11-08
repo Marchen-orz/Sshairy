@@ -1437,4 +1437,172 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get importPpk => '未使用 PuTTY .ppk 密钥，请先转换为 OpenSSH 格式';
+
+  @override
+  String get proxies => '代理';
+
+  @override
+  String get proxySearch => '搜索主机、分组或代理';
+
+  @override
+  String get proxyInherit => '继承';
+
+  @override
+  String get proxyConfiguredHere => '在此配置';
+
+  @override
+  String get proxyVia => '经跳板主机';
+
+  @override
+  String get proxyEditHop => '编辑跳板主机的代理';
+
+  @override
+  String get proxyNextConnection => '修改在下次连接时生效。';
+
+  @override
+  String get proxyInvalid => '请检查代理地址、端口和用户名。';
+
+  @override
+  String get proxyChanged => '配置已变化，请重新打开编辑器后再试。';
+
+  @override
+  String get proxyCleanupFailed => '代理配置已保存，但旧凭据未能完全清理。';
+
+  @override
+  String get logs => '日志';
+
+  @override
+  String get logArea => '区域';
+
+  @override
+  String get logOutcome => '结果';
+
+  @override
+  String get logAllAreas => '全部区域';
+
+  @override
+  String get logAllOutcomes => '全部结果';
+
+  @override
+  String get logCopyRecord => '复制选中记录';
+
+  @override
+  String get logEmpty => '暂无记录';
+
+  @override
+  String get logDisabled => '诊断记录已关闭。';
+
+  @override
+  String get logWriterFailed => '诊断记录因写入失败而停止。';
+
+  @override
+  String get logReadFailed => '无法读取诊断记录，可刷新重试。';
+
+  @override
+  String logSkipped(int count) {
+    return '已跳过 $count 条无效记录。';
+  }
+
+  @override
+  String logDropped(int count) {
+    return '已丢弃 $count 条排队记录。';
+  }
+
+  @override
+  String logElapsed(int milliseconds) {
+    return '$milliseconds 毫秒';
+  }
+
+  @override
+  String get logAreaApplication => '应用';
+
+  @override
+  String get logAreaConnection => '连接';
+
+  @override
+  String get logAreaTransfer => '传输';
+
+  @override
+  String get logAreaConfiguration => '配置';
+
+  @override
+  String get logOutcomeStarted => '开始';
+
+  @override
+  String get logOutcomeSucceeded => '成功';
+
+  @override
+  String get logOutcomeFailed => '失败';
+
+  @override
+  String get logOutcomeCancelled => '已取消';
+
+  @override
+  String get logOutcomeInterrupted => '已中断';
+
+  @override
+  String get logActionStart => '启动';
+
+  @override
+  String get logActionDial => '连接';
+
+  @override
+  String get logActionCopy => '传输';
+
+  @override
+  String get logActionPause => '暂停';
+
+  @override
+  String get logActionCancel => '取消';
+
+  @override
+  String get logActionRead => '读取';
+
+  @override
+  String get logActionWrite => '写入';
+
+  @override
+  String get logActionRecover => '恢复';
+
+  @override
+  String get logActionUncaught => '未处理错误';
+
+  @override
+  String get logActionShutdown => '退出';
+
+  @override
+  String get appBackgroundImage => '界面背景';
+
+  @override
+  String get terminalBackgroundImage => '终端背景';
+
+  @override
+  String get backgroundChooseImage => '选择图片';
+
+  @override
+  String get backgroundRestoreDefault => '恢复默认背景';
+
+  @override
+  String get backgroundOpacity => '图片不透明度';
+
+  @override
+  String get backgroundImageTooLarge => '图片超过大小限制。';
+
+  @override
+  String get backgroundImageUnsupported => '请选择静态 PNG 或 JPEG 图片。';
+
+  @override
+  String get backgroundImageUnreadable => '无法读取图片。';
+
+  @override
+  String get commandHistory => '命令历史';
+
+  @override
+  String get commandHistoryEmpty => '暂无命令';
+
+  @override
+  String get commandHistoryInsert => '插入命令';
+
+  @override
+  String get commandHistoryClear => '清空历史';
 }
