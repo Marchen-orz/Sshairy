@@ -499,6 +499,8 @@ class _FilePaneState extends ConsumerState<FilePane> {
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     switch (b.status) {
+      case BrowserStatus.idle when b.suspended:
+        return const SizedBox.shrink();
       case BrowserStatus.idle when widget.pickHost:
         return _HostList(browser: b);
       case BrowserStatus.idle || BrowserStatus.connecting:

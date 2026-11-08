@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app/composition.dart';
 import 'app/configuration.dart';
+import 'app/image_cache_budget.dart';
 import 'features/capabilities/api.dart';
 import 'platform/desktop_window.dart';
 import 'app/shutdown.dart';
@@ -80,7 +81,9 @@ class SshairyApp extends ConsumerWidget {
         settings.terminalFontFamily,
       ),
       themeMode: settings.themeMode,
-      builder: (context, child) => WindowBrandIcon(window: window, child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => ImageCacheBudget(
+        child: WindowBrandIcon(window: window, child: child ?? const SizedBox.shrink()),
+      ),
       locale: settings.locale == null ? null : Locale(settings.locale!),
       localizationsDelegates: const [
         AppLocalizations.delegate,

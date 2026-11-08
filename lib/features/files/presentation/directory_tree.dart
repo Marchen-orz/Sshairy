@@ -23,6 +23,8 @@ class _DirectoryTreeState extends State<DirectoryTree> {
   final _listing = <String>{};
   final _open = <String>{};
   final _scroll = ScrollController();
+  var _childCount = 0;
+  var _generation = 0;
   FileSystem? _fs;
   var _path = '';
   var _hidden = false;
@@ -60,12 +62,19 @@ class _DirectoryTreeState extends State<DirectoryTree> {
     if (!identical(fs, _fs) || b.showHidden != _hidden) {
       _fs = fs;
       _hidden = b.showHidden;
+      _generation++;
       _children.clear();
       _listing.clear();
+      _open.clear();
+      _childCount = 0;
+      _path = '';
     }
-    if (fs == null || !b.ready || b.path.isEmpty) return;
+    if (fs == null || !b.ready || b.path.isEmpty) {
+      if (mounted) setState(() {});
+      return;
+    }
     // The browser already listed where it is: that keeps the tree in step with folders made, renamed or deleted.
-    if (!b.loading && b.listError == null) _children[b.path] = _folders(b.entries);
+    if (!b.loading && b.listError == null) _cache(b.path, _folders(b.entries));
     if (b.path != _path) {
       _path = b.path;
       for (final (_, ancestor) in b.style.crumbs(b.path)) {
@@ -81,18 +90,49 @@ class _DirectoryTreeState extends State<DirectoryTree> {
       if (e.browsable && (_hidden || !e.hidden)) e.name,
   ]..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
+  void _cache(String path, List<String> folders) {
+    _childCount -= _children.remove(path)?.length ?? 0;
+    _children[path] = folders;
+    _childCount += folders.length;
+    _prune();
+  }
+
+  void _prune() {
+    final protected = {for (final (_, path) in b.style.crumbs(b.path)) path};
+    // shortcut: current ancestors can exceed the cache targets; never truncate a real directory listing.
+    while (_children.length > 128 || _childCount > 8192) {
+      final candidates = _children.keys.where((path) => !protected.contains(path)).toList();
+      if (candidates.isEmpty) break;
+      final path = candidates.firstWhere(
+        (path) => b.style.crumbs(path).any((crumb) => !_open.contains(crumb.$2)),
+        orElse: () => candidates.first,
+      );
+      _childCount -= _children.remove(path)!.length;
+      _open.remove(path);
+    }
+    // Expansion state for evicted descendants is cheap to recreate when their parent opens again.
+    _open.removeWhere((path) => !_children.containsKey(path) && !_listing.contains(path) && !protected.contains(path));
+  }
+
   Future<void> _load(String path) async {
     final fs = _fs;
-    if (fs == null || _children.containsKey(path) || !_listing.add(path)) return;
+    if (fs == null) return;
+    final cached = _children.remove(path);
+    if (cached != null) {
+      _children[path] = cached;
+      return;
+    }
+    if (!_listing.add(path)) return;
+    final gen = _generation;
     List<String> folders;
     try {
       folders = _folders(await fs.list(path));
     } on FsError {
       folders = const [];
     }
+    if (!mounted || gen != _generation || !identical(fs, _fs)) return;
     _listing.remove(path);
-    if (!mounted || !identical(fs, _fs)) return;
-    setState(() => _children[path] = folders);
+    setState(() => _cache(path, folders));
   }
 
   void _toggle(String path) {

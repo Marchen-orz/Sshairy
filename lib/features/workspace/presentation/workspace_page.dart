@@ -348,6 +348,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
               panel: session != null
                   ? SideFilesPanel(
                       host: session.host,
+                      active: state.active == tab.id,
                       tree: dock == FilesDock.bottom,
                       directory: session.directory,
                       toolbarActions: [
@@ -558,7 +559,10 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                           visible: state.files,
                           child: IgnorePointer(
                             ignoring: !state.files,
-                            child: ExcludeFocus(excluding: !state.files, child: const FilesPage()),
+                            child: ExcludeFocus(
+                              excluding: !state.files,
+                              child: FilesPage(active: state.files),
+                            ),
                           ),
                         ),
                       for (final tab in state.tabs)

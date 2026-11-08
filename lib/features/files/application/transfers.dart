@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/cancellation.dart';
@@ -78,6 +79,9 @@ class TransferManager extends Notifier<List<Transfer>> {
   Future<void> get saved => _file.idle;
 
   int get activeCount => state.where((t) => t.state.active).length;
+
+  @visibleForTesting
+  int get rememberedBatchCount => _policy.length;
 
   Transfer? byId(TransferId id) => state.where((t) => t.id == id).firstOrNull;
 
@@ -451,6 +455,12 @@ class TransferManager extends Notifier<List<Transfer>> {
 
   void _save() {
     final kept = pruneHistory(state, DateTime.now());
+    if (kept.length != state.length) state = kept;
+    final liveBatches = {
+      for (final t in kept)
+        if (t.state.active || t.checkpoint != null) t.batch,
+    };
+    _policy.removeWhere((batch, _) => !liveBatches.contains(batch));
     _file.write({
       'schemaVersion': 1,
       'transfers': [for (final t in kept) t.toJson()],

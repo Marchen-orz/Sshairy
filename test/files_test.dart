@@ -468,6 +468,73 @@ void main() {
       }
     });
 
+    test('completed history is bounded in memory without dropping queued or checkpoint records', () async {
+      c.dispose();
+      final now = DateTime.now();
+      final parked = [
+        for (final s in [TransferState.paused, TransferState.failed])
+          Transfer(
+            id: TransferId('park-${s.name}'),
+            batch: 'park-${s.name}',
+            source: FileEnd(null, at('src/a.txt')),
+            target: FileEnd(null, at('dst/park-${s.name}')),
+            created: now.subtract(const Duration(days: 40)),
+            state: s,
+            checkpoint: TransferCheckpoint(
+              offset: 1,
+              source: const FileEntry('a.txt', FileKind.file, size: 5),
+              target: at('dst/park-${s.name}'),
+              part: partPathFor(TransferManager.styleOf(null), at('dst/park-${s.name}'), TransferId('park-${s.name}')),
+              settled: true,
+            ),
+          ),
+      ];
+      File(at('transfers.json')).writeAsStringSync(
+        jsonEncode({
+          'schemaVersion': 1,
+          'transfers': [
+            for (var i = 0; i < 200; i++)
+              Transfer(
+                id: TransferId('done-$i'),
+                batch: 'old',
+                source: const FileEnd(null, 'unused-source'),
+                target: const FileEnd(null, 'unused-target'),
+                created: now.subtract(Duration(seconds: 200 - i)),
+                finished: now.subtract(Duration(seconds: 200 - i)),
+                state: TransferState.completed,
+              ).toJson(),
+            for (final t in parked) t.toJson(),
+          ],
+        }),
+      );
+      c = fresh();
+      final id = manager().enqueue(from: null, paths: [at('src/a.txt')], to: null, targetDir: at('dst')).single;
+      expect(manager().byId(id), isNotNull, reason: 'queued and running work is never history-pruned');
+      final done = await settle();
+      expect(manager().byId(id)?.state, TransferState.completed);
+      expect(done.where((t) => t.checkpoint == null), hasLength(200));
+      expect(manager().byId(const TransferId('done-0')), isNull);
+      for (final t in parked) {
+        expect(manager().byId(t.id)?.checkpoint?.part, t.checkpoint!.part);
+      }
+      await manager().saved;
+      expect(jsonDecode(File(at('transfers.json')).readAsStringSync())['transfers'], hasLength(202));
+    });
+
+    test('batch conflict choices survive queued siblings and are released on completion', () async {
+      File(at('dst/a.txt')).writeAsStringSync('old');
+      ui.answer = const ConflictAnswer(ConflictChoice.replace, all: true);
+      manager().enqueue(
+        from: null,
+        paths: [at('src/a.txt'), at('src/a.txt'), at('src/a.txt')],
+        to: null,
+        targetDir: at('dst'),
+      );
+      expect((await settle()).map((t) => t.state), everyElement(TransferState.completed));
+      expect(ui.asked, [ConflictKind.file]);
+      expect(manager().rememberedBatchCount, 0);
+    });
+
     test('copies a file and a directory', () async {
       manager().enqueue(from: null, paths: [at('src/a.txt'), at('src/sub')], to: null, targetDir: at('dst'));
       final done = await settle();
