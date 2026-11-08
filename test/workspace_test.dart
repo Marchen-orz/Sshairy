@@ -13,13 +13,15 @@ void main() {
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('sshairy-ws');
-    File('${dir.path}/hosts.json').writeAsStringSync(jsonEncode({
-      'schemaVersion': 1,
-      'hosts': [
-        {'id': 'h1', 'label': 'one', 'address': 'example.com', 'port': 22, 'username': 'u', 'auth': 'password'},
-        {'id': 'h2', 'label': 'two', 'address': 'example.org', 'port': 22, 'username': 'u', 'auth': 'password'},
-      ],
-    }));
+    File('${dir.path}/hosts.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'hosts': [
+          {'id': 'h1', 'label': 'one', 'address': 'example.com', 'port': 22, 'username': 'u', 'auth': 'password'},
+          {'id': 'h2', 'label': 'two', 'address': 'example.org', 'port': 22, 'username': 'u', 'auth': 'password'},
+        ],
+      }),
+    );
   });
 
   tearDown(() => dir.deleteSync(recursive: true));
@@ -29,26 +31,34 @@ void main() {
   Map<String, Object?> leaf(String pane, String session) => {'type': 'leaf', 'pane': pane, 'session': session};
 
   test('restores saved tabs unconnected, with the active one in front', () async {
-    File('${dir.path}/workspace.json').writeAsStringSync(jsonEncode({
-      'schemaVersion': 1,
-      'tabs': [
-        {'layout': {'root': leaf('p', 's'), 'focused': 'p'}, 'hosts': {'s': 'h1'}},
-        {
-          'layout': {
-            'root': {
-              'type': 'split',
-              'axis': 'horizontal',
-              'children': [leaf('a', 'sa'), leaf('b', 'sb')],
-              'ratios': [0.5, 0.5],
-            },
-            'focused': 'b',
+    File('${dir.path}/workspace.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'tabs': [
+          {
+            'layout': {'root': leaf('p', 's'), 'focused': 'p'},
+            'hosts': {'s': 'h1'},
           },
-          'hosts': {'sa': 'h1', 'sb': 'h2'},
-        },
-        {'layout': {'root': leaf('g', 'sg'), 'focused': 'g'}, 'hosts': {'sg': 'deleted'}},
-      ],
-      'active': 1,
-    }));
+          {
+            'layout': {
+              'root': {
+                'type': 'split',
+                'axis': 'horizontal',
+                'children': [leaf('a', 'sa'), leaf('b', 'sb')],
+                'ratios': [0.5, 0.5],
+              },
+              'focused': 'b',
+            },
+            'hosts': {'sa': 'h1', 'sb': 'h2'},
+          },
+          {
+            'layout': {'root': leaf('g', 'sg'), 'focused': 'g'},
+            'hosts': {'sg': 'deleted'},
+          },
+        ],
+        'active': 1,
+      }),
+    );
     final c = container();
     addTearDown(c.dispose);
     final state = c.read(workspaceProvider);
@@ -73,7 +83,11 @@ void main() {
     first.dispose();
 
     final second = container();
-    addTearDown(second.dispose);
+    addTearDown(() async {
+      await second.read(hostsProvider.notifier).saved;
+      await second.read(workspaceProvider.notifier).saved;
+      second.dispose();
+    });
     final state = second.read(workspaceProvider);
     expect(state.active, isNull);
     expect(state.tabs.single.layout.leaves, hasLength(2));
@@ -100,7 +114,11 @@ void main() {
     first.dispose();
 
     final second = container();
-    addTearDown(second.dispose);
+    addTearDown(() async {
+      await second.read(hostsProvider.notifier).saved;
+      await second.read(workspaceProvider.notifier).saved;
+      second.dispose();
+    });
     final restored = second.read(workspaceProvider).tabs;
     expect(restored.first.title, 'prod');
     final ws2 = second.read(workspaceProvider.notifier);
