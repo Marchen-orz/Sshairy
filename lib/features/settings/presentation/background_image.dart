@@ -36,7 +36,9 @@ class BackgroundImageView extends ConsumerWidget {
                   fit: BoxFit.cover,
                   width: double.infinity,
                   height: double.infinity,
-                  opacity: AlwaysStoppedAnimation(alpha),
+                  // Changing a static opacity animation does not invalidate RenderImage's paint.
+                  color: Colors.white.withValues(alpha: alpha),
+                  colorBlendMode: BlendMode.modulate,
                   gaplessPlayback: false,
                   errorBuilder: (_, _, _) => const SizedBox.expand(),
                 ),
