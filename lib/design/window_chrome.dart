@@ -56,7 +56,7 @@ class _WindowControlsState extends State<WindowControls> {
       if (!mounted) return;
       final box = _maximizeKey.currentContext?.findRenderObject() as RenderBox?;
       final bounds = box != null && box.hasSize && (ModalRoute.of(context)?.isCurrent ?? true)
-          ? box.localToGlobal(Offset.zero) & box.size
+          ? MatrixUtils.transformRect(box.getTransformTo(null), Offset.zero & box.size)
           : null;
       unawaited(_window.setMaximizeRect(bounds, View.of(context).devicePixelRatio));
     });

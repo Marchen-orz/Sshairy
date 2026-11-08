@@ -148,6 +148,7 @@ abstract final class SettingKeys {
     agentExposed: false,
   );
 
+  static const uiScale = DoubleSetting('uiScale', 1, .8, 1.5);
   static const uiFontFamily = FontSetting('uiFontFamily');
   static const uiFontSize = DoubleSetting('uiFontSize', AppFonts.uiSize, AppFonts.uiSizeMin, AppFonts.uiSizeMax);
 
@@ -198,6 +199,7 @@ abstract final class SettingKeys {
     accent,
     locale,
     renderer,
+    uiScale,
     uiFontFamily,
     uiFontSize,
     terminalFontFamily,
@@ -242,6 +244,7 @@ class Settings {
   double get fontSize => get(SettingKeys.fontSize);
   String? get uiFontFamily => get(SettingKeys.uiFontFamily);
   double get uiFontSize => get(SettingKeys.uiFontSize);
+  double get uiScale => get(SettingKeys.uiScale);
   String? get terminalFontFamily => get(SettingKeys.terminalFontFamily);
 
   Settings copyWith(Map<String, Object?> decoded) => Settings({..._values, ...decoded});

@@ -17,12 +17,14 @@ void main() {
       'locale': 'fr',
       'renderer': 'vulkan',
       'accent': 'unknownTheme',
+      'uiScale': 0.5,
     });
     expect(s.themeMode, ThemeMode.system);
     expect(s.fontSize, SettingKeys.fontSize.defaultValue);
     expect(s.locale, isNull);
     expect(s.renderer, Renderer.skia);
     expect(s.accent, Accent.blue);
+    expect(s.uiScale, 1);
   });
 
   test('Settings survives a JSON round trip', () {
@@ -33,6 +35,7 @@ void main() {
       'renderer': Renderer.impeller,
       'accent': Accent.violet,
       'scrollback': 5000,
+      'uiScale': 1.25,
     });
     final copy = Settings.fromJson(s.toJson());
     expect(copy.renderer, Renderer.impeller);
@@ -41,6 +44,7 @@ void main() {
     expect(copy.fontSize, 16);
     expect(copy.locale, 'zh');
     expect(copy.get(SettingKeys.scrollback), 5000);
+    expect(copy.uiScale, 1.25);
   });
 
   test('every definition accepts its own default and round-trips it', () {

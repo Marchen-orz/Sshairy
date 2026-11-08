@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/interface_scale.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/hosts/adapters/host_import_files.dart';
@@ -90,13 +91,14 @@ void main() {
   HostsNotifier hosts() => container.read(hostsProvider.notifier);
   bool offered() => container.read(settingsProvider).get(SettingKeys.importOffered);
 
-  Future<void> pumpVault(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 800));
+  Future<void> pumpVault(WidgetTester tester, {double scale = 1, Size size = const Size(1200, 800)}) async {
+    await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
+          builder: (_, child) => InterfaceScale(scale: scale, child: child!),
           theme: buildTheme(Brightness.light).copyWith(splashFactory: NoSplash.splashFactory),
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -213,6 +215,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(files.asked, [ImportFormat.xshell]);
     expect(find.text('/synthetic/hosts.csv'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('source tiles and guidance remain scrollable at 150% in the minimum window', (tester) async {
+    await pumpVault(tester, scale: 1.5, size: const Size(960, 640));
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('Xshell'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Xshell'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Choose folder'));
+    await tester.pumpAndSettle();
+    expect(files.asked, [ImportFormat.xshell]);
     expect(tester.takeException(), isNull);
   });
 

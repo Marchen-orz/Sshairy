@@ -148,10 +148,8 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
         children: [
           if (preview != null)
             ..._planned(l, theme, preview)
-          else if (_source != null)
-            _guidance(l, _source!)
           else
-            _sources(l),
+            Flexible(child: SingleChildScrollView(child: _source == null ? _sources(l) : _guidance(l, _source!))),
           if (_busy)
             const Padding(
               padding: EdgeInsets.only(top: Space.sm),

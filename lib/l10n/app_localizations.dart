@@ -98,6 +98,12 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @uiScale.
+  ///
+  /// In en, this message translates to:
+  /// **'Interface scale'**
+  String get uiScale;
+
   /// No description provided for @importChooseAgain.
   ///
   /// In en, this message translates to:

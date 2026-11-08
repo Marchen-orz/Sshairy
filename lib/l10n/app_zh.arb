@@ -1,5 +1,6 @@
 {
   "@@locale": "zh",
+  "uiScale": "界面缩放",
   "importChooseAgain": "重新选择来源",
   "importChooseFolder": "选择文件夹",
   "importChooseFile": "选择文件",

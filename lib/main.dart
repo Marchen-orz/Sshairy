@@ -14,6 +14,7 @@ import 'platform/desktop_window.dart';
 import 'app/shutdown.dart';
 import 'app/window_brand_icon.dart';
 import 'design/theme.dart';
+import 'design/interface_scale.dart';
 import 'features/settings/api.dart';
 import 'features/workspace/api.dart';
 import 'foundation/data_dir.dart';
@@ -82,7 +83,10 @@ class SshairyApp extends ConsumerWidget {
       ),
       themeMode: settings.themeMode,
       builder: (context, child) => ImageCacheBudget(
-        child: WindowBrandIcon(window: window, child: child ?? const SizedBox.shrink()),
+        child: WindowBrandIcon(
+          window: window,
+          child: InterfaceScale(scale: settings.uiScale, child: child ?? const SizedBox.shrink()),
+        ),
       ),
       locale: settings.locale == null ? null : Locale(settings.locale!),
       localizationsDelegates: const [

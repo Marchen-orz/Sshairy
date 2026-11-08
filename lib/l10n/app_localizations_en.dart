@@ -10,6 +10,9 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get uiScale => 'Interface scale';
+
+  @override
   String get importChooseAgain => 'Choose another source';
 
   @override

@@ -1,5 +1,6 @@
 {
   "@@locale": "en",
+  "uiScale": "Interface scale",
   "importChooseAgain": "Choose another source",
   "importChooseFolder": "Choose folder",
   "importChooseFile": "Choose file",

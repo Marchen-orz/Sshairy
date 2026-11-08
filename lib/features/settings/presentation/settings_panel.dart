@@ -127,6 +127,15 @@ class SettingsPanel extends ConsumerWidget {
           ),
           _Field.stacked(l.uiFont, font(SettingKeys.uiFontFamily, fallback: AppFonts.ui ?? AppFonts.cjk.first)),
           _Field.stacked(l.uiFontSize, slider(SettingKeys.uiFontSize)),
+          _Field.stacked(
+            l.uiScale,
+            _Choice<double>(
+              value: settings.uiScale,
+              choices: {.8, .9, 1.0, 1.1, 1.25, 1.5, settings.uiScale}.toList()..sort(),
+              label: (value) => '${(value * 100).round()}%',
+              onChanged: (value) => notifier.set(SettingKeys.uiScale, value),
+            ),
+          ),
           if (Platform.isWindows)
             _Field.stacked(
               l.renderer,

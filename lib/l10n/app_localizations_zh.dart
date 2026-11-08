@@ -10,6 +10,9 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get uiScale => '界面缩放';
+
+  @override
   String get importChooseAgain => '重新选择来源';
 
   @override

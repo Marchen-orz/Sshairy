@@ -11,7 +11,7 @@ enum PopupPlacement { below, right }
 /// The global rectangle [context]'s widget occupies, for anchoring a popup to it.
 Rect anchorOf(BuildContext context) {
   final box = context.findRenderObject()! as RenderBox;
-  return box.localToGlobal(Offset.zero) & box.size;
+  return MatrixUtils.transformRect(box.getTransformTo(null), Offset.zero & box.size);
 }
 
 /// A zero-size anchor at a pointer position, for context menus.
@@ -26,18 +26,23 @@ Future<T?> showAnchoredPopup<T>({
   double? width,
   double maxHeight = 440,
   double gap = 4,
-}) => Navigator.of(context).push(
-  _AnchoredRoute<T>(
-    anchor: anchor,
-    builder: builder,
-    placement: placement,
-    width: width,
-    maxHeight: maxHeight,
-    gap: gap,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    capturedThemes: InheritedTheme.capture(from: context, to: Navigator.of(context).context),
-  ),
-);
+}) {
+  final navigator = Navigator.of(context);
+  final viewport = navigator.context.findRenderObject()! as RenderBox;
+  final local = Rect.fromPoints(viewport.globalToLocal(anchor.topLeft), viewport.globalToLocal(anchor.bottomRight));
+  return navigator.push(
+    _AnchoredRoute<T>(
+      anchor: local,
+      builder: builder,
+      placement: placement,
+      width: width,
+      maxHeight: maxHeight,
+      gap: gap,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),
+    ),
+  );
+}
 
 class _AnchoredRoute<T> extends PopupRoute<T> {
   _AnchoredRoute({

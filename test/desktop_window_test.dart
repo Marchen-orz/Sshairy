@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/window_chrome.dart';
+import 'package:sshairy/design/interface_scale.dart';
 import 'package:sshairy/platform/desktop_window.dart';
 
 void main() {
@@ -170,6 +171,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls.lastWhere((call) => call.method == 'maximizeRect').arguments, isNotNull);
     // Unmount before the adapter is disposed, clearing its native hit-test rectangle.
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('scaled maximize hit area matches the whole painted button in physical pixels', (tester) async {
+    await window.initialize();
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (_, child) => InterfaceScale(scale: 1.5, child: child!),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topRight,
+            child: WindowControls(
+              window: window,
+              minimizeLabel: 'Minimize',
+              maximizeLabel: 'Maximize',
+              restoreLabel: 'Restore',
+              closeLabel: 'Close window',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final rect = tester.getRect(find.byType(TextButton).at(1));
+    final dpr = tester.view.devicePixelRatio;
+    expect(rect.width, closeTo(54, .001));
+    final bounds = calls.lastWhere((call) => call.method == 'maximizeRect').arguments as List;
+    expect(bounds[0], closeTo(rect.left * dpr, .001));
+    expect(bounds[1], closeTo(rect.top * dpr, .001));
+    expect(bounds[2], closeTo(rect.right * dpr, .001));
+    expect(bounds[3], closeTo(rect.bottom * dpr, .001));
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
