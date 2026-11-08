@@ -1,3 +1,4 @@
+export 'domain/command_assistance.dart';
 export 'adapters/terminal_session.dart';
 export 'application/sessions.dart';
 export 'domain/insertion.dart' show InsertResult, InsertPreview, ConfirmInsert;

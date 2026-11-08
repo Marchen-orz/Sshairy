@@ -14,6 +14,7 @@ class TerminalPane extends ConsumerStatefulWidget {
     this.session, {
     super.key,
     required this.active,
+    this.visible = true,
     this.onKeyEvent,
     this.focusNode,
     this.actions = const [],
@@ -21,6 +22,7 @@ class TerminalPane extends ConsumerStatefulWidget {
 
   final TerminalSession session;
   final bool active;
+  final bool visible;
 
   /// Sees keys before the terminal does, so application shortcuts are not sent to the shell.
   final FocusOnKeyEventCallback? onKeyEvent;
@@ -38,19 +40,28 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   final _controller = TerminalController();
   final _view = GlobalKey<TerminalViewState>();
   final _scroll = ScrollController();
+  final _terminalOwnsBackground = ValueNotifier<bool>(false);
   Rect? _imeRect;
   var _imeRectScheduled = false;
   var _searching = false;
+  var _candidateMode = false;
+  CommandCompletionRequest? _candidateRequest;
+  var _candidateIndex = 0;
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;
+
+  // The assistance extension lives outside the State subclass and may not call the protected setState.
+  void _update(VoidCallback change) => setState(change);
 
   @override
   void initState() {
     super.initState();
     _session.addListener(_focusWhenConnected);
     _terminal.addListener(_scheduleImeRect);
+    _terminal.addListener(_backgroundChanged);
     _focus.addListener(_scheduleImeRect);
+    _focus.addListener(_assistanceFocusChanged);
     _markViewed();
     // A pane can be rebuilt (moved into a split, a tab restored): only a session that never ran dials by itself.
     if (_session.status == SessionStatus.idle && _session.autoConnect) {
@@ -85,6 +96,28 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     }
   }
 
+  void _backgroundChanged() {
+    _terminalOwnsBackground.value = _terminal.backgroundColorOverride != null || _terminal.reverseDisplayMode;
+  }
+
+  void _assistanceFocusChanged() {
+    if (mounted) {
+      setState(() {
+        _candidateMode = false;
+        _candidateRequest = null;
+      });
+    }
+  }
+
+  double _completionBottomInset() {
+    final view = _view.currentState;
+    final box = context.findRenderObject();
+    if (view == null || box is! RenderBox || !box.hasSize) return Space.sm;
+    final cursor = box.globalToLocal(view.globalCursorRect.topLeft);
+    final above = box.size.height - cursor.dy + Space.sm;
+    return above.clamp(Space.sm, max(Space.sm, box.size.height - 240));
+  }
+
   /// xterm2 never sends the composing rect, so Windows puts the IME candidate window at the window corner.
   /// Its editable transform is the identity, so the cursor's global rect is what the engine expects.
   void _scheduleImeRect() {
@@ -112,6 +145,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   @override
   void dispose() {
     _terminal.removeListener(_scheduleImeRect);
+    _terminal.removeListener(_backgroundChanged);
+    _terminalOwnsBackground.dispose();
+    _focus.removeListener(_assistanceFocusChanged);
     _session.removeListener(_focusWhenConnected);
     _session.viewed = false;
     _controller.dispose();
@@ -121,6 +157,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final assistance = _assistanceKey(event);
+    if (assistance != null) return assistance;
     final keys = HardwareKeyboard.instance;
     if (event is KeyDownEvent && keys.isControlPressed && keys.isShiftPressed && !keys.isAltPressed) {
       if (event.logicalKey == LogicalKeyboardKey.keyF) {
@@ -207,7 +245,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   }
 
   Future<void> _onSecondaryTapUp(TapUpDetails details, CellOffset cell) async {
-    if (ref.read(settingsProvider).get(SettingKeys.rightClick) == RightClick.paste) {
+    if (ref.read(settingsProvider).get(SettingKeys.rightClick) == RightClick.paste &&
+        !HardwareKeyboard.instance.isShiftPressed) {
       return _paste();
     }
     final l = AppLocalizations.of(context);
@@ -228,6 +267,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
         item(l.paste, Icons.content_paste_outlined, _paste),
         item(l.selectAll, Icons.select_all, _selectAll),
         item(l.find, Icons.search, () => setState(() => _searching = true)),
+        item(l.commandHistory, Icons.history, _showHistory),
         item(l.clearScreen, Icons.clear_all, _terminal.clear),
         if (widget.actions.isNotEmpty) const AppMenuDivider(),
         for (final a in widget.actions) item(a.label, a.icon, a.run),
@@ -247,93 +287,115 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     final l = AppLocalizations.of(context);
     final settings = ref.watch(settingsProvider);
     final copyOnSelect = settings.get(SettingKeys.copyOnSelect);
+    final palette = TerminalPalette.of(Theme.of(context));
+    final imageOpacity =
+        ref.watch(backgroundImagesProvider)[BackgroundSlot.terminal] ??
+        settings.get<double>(SettingKeys.terminalBackgroundOpacity);
+    final imageAvailable =
+        widget.visible &&
+        imageOpacity > 0 &&
+        ref.watch(backgroundImageStoreProvider).file(settings.get(SettingKeys.terminalBackgroundImage)) != null;
     return ListenableBuilder(
-      listenable: _session,
-      builder: (context, _) => Stack(
-        children: [
-          Positioned.fill(
-            child: Listener(
-              onPointerUp: copyOnSelect ? (_) => _copy() : null,
-              child: TerminalView(
-                _terminal,
-                key: _view,
-                focusNode: _focus,
-                controller: _controller,
-                scrollController: _scroll,
-                onKeyEvent: _onKey,
-                padding: const EdgeInsets.all(Space.sm),
-                theme: _terminalTheme(TerminalPalette.of(Theme.of(context))),
-                cursorType: switch (settings.get(SettingKeys.cursorShape)) {
-                  CursorShape.block => TerminalCursorType.block,
-                  CursorShape.underline => TerminalCursorType.underline,
-                  CursorShape.bar => TerminalCursorType.verticalBar,
-                },
-                onPaste: _paste,
-                onTapUp: _onTapUp,
-                onSecondaryTapUp: _onSecondaryTapUp,
-                textStyle: TerminalStyle(
-                  fontSize: settings.fontSize,
-                  fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
-                  fontFamilyFallback: const [...AppFonts.monoFallback, 'Menlo', 'DejaVu Sans Mono'],
-                ),
+      listenable: Listenable.merge([_session, _terminalOwnsBackground]),
+      builder: (context, _) {
+        final hasImage = imageAvailable && _terminal.backgroundColorOverride == null && !_terminal.reverseDisplayMode;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // The image is drawn opaque over the theme colour; the renderer's own fill above it
+                  // carries 1 - opacity, so the image shows through at exactly the chosen opacity.
+                  if (hasImage)
+                    BackgroundImageView(slot: BackgroundSlot.terminal, baseColor: palette.background, opacity: 1),
+                  Listener(
+                    onPointerUp: copyOnSelect ? (_) => _copy() : null,
+                    child: TerminalView(
+                      _terminal,
+                      key: _view,
+                      focusNode: _focus,
+                      controller: _controller,
+                      scrollController: _scroll,
+                      onKeyEvent: _onKey,
+                      padding: const EdgeInsets.all(Space.sm),
+                      theme: _terminalTheme(palette),
+                      backgroundOpacity: hasImage ? 1 - imageOpacity : 1,
+                      cursorType: switch (settings.get(SettingKeys.cursorShape)) {
+                        CursorShape.block => TerminalCursorType.block,
+                        CursorShape.underline => TerminalCursorType.underline,
+                        CursorShape.bar => TerminalCursorType.verticalBar,
+                      },
+                      onPaste: _paste,
+                      onTapUp: _onTapUp,
+                      onSecondaryTapUp: _onSecondaryTapUp,
+                      textStyle: TerminalStyle(
+                        fontSize: settings.fontSize,
+                        fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
+                        fontFamilyFallback: const [...AppFonts.monoFallback, 'Menlo', 'DejaVu Sans Mono'],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          if (_searching)
-            Positioned(
-              top: Space.sm,
-              right: Space.lg,
-              child: _SearchBar(terminal: _terminal, controller: _controller, reveal: _reveal, onClose: _closeSearch),
-            ),
-          if (_session.status != SessionStatus.connected)
-            Center(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Space.lg),
-                  child: switch (_session) {
-                    TerminalSession(status: SessionStatus.connecting) => Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                        const SizedBox(width: Space.md),
-                        Text(l.connecting),
-                      ],
-                    ),
-                    TerminalSession(reconnectIn: final n?) => Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_message(l, _session)),
-                        const SizedBox(height: Space.sm),
-                        Text(l.reconnectingIn(n)),
-                        const SizedBox(height: Space.md),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextButton(onPressed: _session.stopReconnect, child: Text(l.stop)),
-                            const SizedBox(width: Space.sm),
-                            FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
-                          ],
-                        ),
-                      ],
-                    ),
-                    _ => Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_session.status == SessionStatus.idle ? _session.host.target : _message(l, _session)),
-                        const SizedBox(height: Space.md),
-                        FilledButton(
-                          autofocus: true,
-                          onPressed: _connect,
-                          child: Text(_session.status == SessionStatus.idle ? l.connect : l.retry),
-                        ),
-                      ],
-                    ),
-                  },
+            _completionOverlay(),
+            if (_searching)
+              Positioned(
+                top: Space.sm,
+                right: Space.lg,
+                child: _SearchBar(terminal: _terminal, controller: _controller, reveal: _reveal, onClose: _closeSearch),
+              ),
+            if (_session.status != SessionStatus.connected)
+              Center(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Space.lg),
+                    child: switch (_session) {
+                      TerminalSession(status: SessionStatus.connecting) => Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                          const SizedBox(width: Space.md),
+                          Text(l.connecting),
+                        ],
+                      ),
+                      TerminalSession(reconnectIn: final n?) => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_message(l, _session)),
+                          const SizedBox(height: Space.sm),
+                          Text(l.reconnectingIn(n)),
+                          const SizedBox(height: Space.md),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextButton(onPressed: _session.stopReconnect, child: Text(l.stop)),
+                              const SizedBox(width: Space.sm),
+                              FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      _ => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_session.status == SessionStatus.idle ? _session.host.target : _message(l, _session)),
+                          const SizedBox(height: Space.md),
+                          FilledButton(
+                            autofocus: true,
+                            onPressed: _connect,
+                            child: Text(_session.status == SessionStatus.idle ? l.connect : l.retry),
+                          ),
+                        ],
+                      ),
+                    },
+                  ),
                 ),
               ),
-            ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 

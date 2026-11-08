@@ -2,12 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm2/xterm.dart';
 
+import '../../../design/dialog.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
 import '../../../design/terminal_palette.dart';
@@ -19,6 +20,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
+import '../domain/command_assistance.dart';
 import '../domain/directory.dart';
 import '../domain/insertion.dart';
 import '../presentation/confirm_insert.dart';
@@ -27,6 +29,8 @@ import 'terminal_output.dart';
 
 part 'terminal_pane.dart';
 part 'terminal_search.dart';
+part 'terminal_assistance.dart';
+part 'terminal_assistance_ui.dart';
 
 /// [idle] has never connected; a restored tab waits there until the user connects.
 enum SessionStatus { idle, connecting, connected, failed, disconnected }
@@ -40,8 +44,10 @@ class TerminalSession extends ChangeNotifier {
     this.autoConnect = true,
     int scrollback = 2000,
     bool Function()? autoReconnect,
+    this._completionProvider,
   }) : _terminal = Terminal(maxLines: scrollback),
        _autoReconnect = autoReconnect ?? (() => false) {
+    _terminal.onSemanticPrompt = _semanticPrompt;
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
     _terminal.onClipboardQuery = (_) => null;
@@ -69,6 +75,34 @@ class TerminalSession extends ChangeNotifier {
   var _closed = false;
   var _shellEnded = true;
   final _insertions = <CancellationToken>{};
+  final CommandCompletionProvider? _completionProvider;
+  final _commands = CommandHistory();
+  final _history = ValueNotifier<List<String>>(const []);
+  final _assistance = ValueNotifier<CommandAssistanceState>(const CommandAssistanceState());
+  Timer? _completionTimer;
+  CancellationToken? _completionCancel;
+  var _shellGeneration = 0, _draftRevision = 0;
+  var _semanticSeen = false, _semanticInput = false;
+  int? _promptRow, _promptColumn;
+  BufferLine? _submittedLine;
+  String? _submittedText;
+  var _inputPending = false;
+
+  ValueListenable<CommandAssistanceState> get commandAssistance => _assistance;
+  ValueListenable<List<String>> get commandHistory => _history;
+  int get shellGeneration => _shellGeneration;
+
+  /// The view calls this before forwarding a user Enter; terminal responses are never recorded.
+  void commandSubmitted() => _submitCommand();
+  void clearCommandHistory() {
+    if (_closed) return;
+    _commands.clear();
+    _history.value = const [];
+    _invalidateCommandDraft();
+    _syncCommandDraft();
+  }
+
+  Future<InsertResult> acceptCommand(CommandCompletionRequest request, String text) => _acceptCommand(request, text);
 
   /// Output arrived while no pane showed this session.
   var unread = false;
@@ -131,6 +165,8 @@ class TerminalSession extends ChangeNotifier {
       send: () {
         _terminal.paste(text);
         if (run) {
+          _rememberCommand(text);
+          _markCommandSubmitted();
           shell!.write(utf8.encode('\r'));
           _entered();
         }
@@ -189,14 +225,18 @@ class TerminalSession extends ChangeNotifier {
       _lease = lease;
       _shell = shell;
       _shellEnded = false;
+      _resetCommandDraft();
       void ended() {
         if (!identical(_shell, shell)) return;
         _shellEnded = true;
+        if (!_closed) _resetCommandDraft();
         _dismissInsertions();
       }
 
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
+        _inputPending = true;
+        _invalidateCommandDraft();
         shell.write(utf8.encode(data));
         if (data.contains('\r')) _entered();
       };
@@ -256,6 +296,19 @@ class TerminalSession extends ChangeNotifier {
 
   void _output(String data) {
     _terminal.write(data);
+    _inputPending = false;
+    final buffer = _terminal.buffer;
+    final row = buffer.absoluteCursorY;
+    if (_submittedLine != null && row >= 0 && row < buffer.lines.length) {
+      final text = _rowText(row, 0, buffer.cursorX);
+      if (data.contains('\n') ||
+          !identical(buffer.lines[row], _submittedLine) ||
+          (text != _submittedText && visibleShellCommand(text, '') != null)) {
+        _submittedLine = null;
+        _submittedText = null;
+      }
+    }
+    _syncCommandDraft();
     if (!_viewed && !unread) {
       unread = true;
       notifyListeners();
@@ -342,6 +395,15 @@ class TerminalSession extends ChangeNotifier {
     if (_closed) return;
     _closed = true;
     _shellEnded = true;
+    _completionTimer?.cancel();
+    _completionCancel?.cancel();
+    _commands.clear();
+    _history.value = const [];
+    _assistance.value = const CommandAssistanceState();
+    _submittedLine = null;
+    _submittedText = null;
+    _history.dispose();
+    _assistance.dispose();
     _dismissInsertions();
     _stopTimer();
     _cancelLookups();
