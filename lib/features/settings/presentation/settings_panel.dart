@@ -101,9 +101,8 @@ class SettingsPanel extends ConsumerWidget {
     };
 
     final extra = ref.watch(settingsSectionsProvider);
-    // End padding keeps the scrollbar off the controls.
     return ListView(
-      padding: const EdgeInsets.only(right: Space.md),
+      padding: EdgeInsets.zero,
       children: [
         Text(l.settings, style: theme.textTheme.titleMedium),
         _Section(l.appearance, [

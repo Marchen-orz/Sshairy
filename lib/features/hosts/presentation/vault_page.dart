@@ -7,6 +7,7 @@ import '../../../design/dialog.dart';
 import '../../../design/double_click.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
+import '../../../design/scrolling.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
@@ -307,14 +308,15 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                 : LayoutBuilder(
                     builder: (context, constraints) {
                       final list = view == HostView.list;
+                      final contentWidth = constraints.maxWidth - AppScrollBehavior.gutterOf(context);
                       // Fixed row extents give the hosts' height exactly; the watermark only fills space they leave.
                       final rows = list
                           ? matches.length
-                          : (matches.length / (constraints.maxWidth / (_gridTile + Space.sm)).ceil()).ceil();
+                          : (matches.length / (contentWidth / (_gridTile + Space.sm)).ceil()).ceil();
                       final used = list ? rows * (WorkspaceSize.listRow + Space.xs) : rows * (_gridRow + Space.sm);
                       final spare =
                           constraints.maxHeight - used >= BrandWatermark.height + Space.xl + Space.lg &&
-                          constraints.maxWidth >= BrandWatermark.width * 3;
+                          contentWidth >= BrandWatermark.width * 3;
                       return Stack(
                         fit: StackFit.expand,
                         children: [

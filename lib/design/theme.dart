@@ -268,6 +268,7 @@ ThemeData buildTheme(
       visualDensity: VisualDensity.compact,
     ),
     scrollbarTheme: ScrollbarThemeData(
+      crossAxisMargin: 0,
       thickness: const WidgetStatePropertyAll(6),
       radius: const Radius.circular(3),
       thumbColor: WidgetStateProperty.resolveWith(

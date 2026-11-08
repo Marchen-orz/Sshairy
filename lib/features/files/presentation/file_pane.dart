@@ -8,6 +8,7 @@ import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
+import '../../../design/scrolling.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/file_system.dart';
@@ -527,8 +528,9 @@ class _FilePaneState extends ConsumerState<FilePane> {
     final items = b.visible;
     return LayoutBuilder(
       builder: (context, box) {
-        final wide = box.maxWidth >= 560, medium = box.maxWidth >= 380;
-        final columns = _Columns(modified: medium, size: box.maxWidth >= 300, mode: wide && !b.local);
+        final width = box.maxWidth - AppScrollBehavior.gutterOf(context);
+        final wide = width >= 560, medium = width >= 380;
+        final columns = _Columns(modified: medium, size: width >= 300, mode: wide && !b.local);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -541,7 +543,9 @@ class _FilePaneState extends ConsumerState<FilePane> {
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
                 ),
               ),
-            _Header(browser: b, columns: columns),
+            ScrollGutter(
+              child: _Header(browser: b, columns: columns),
+            ),
             if (b.loading) const LinearProgressIndicator(minHeight: 2) else const SizedBox(height: 2),
             Expanded(
               child: Focus(

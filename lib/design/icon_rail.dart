@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'theme.dart';
+import 'scrolling.dart';
 
 class RailItem {
   const RailItem({required this.icon, required this.label, required this.onTap, this.selected = false});
@@ -52,18 +53,24 @@ class IconRail extends StatelessWidget {
               ),
               const SizedBox(height: Space.xs),
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      for (final (i, group) in groups.indexed) ...[
-                        if (i > 0)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.lg),
-                            child: SizedBox(width: expanded ? double.infinity : 20, child: const Divider()),
-                          ),
-                        for (final item in group) _RailButton(item, expanded: expanded),
-                      ],
-                    ],
+                child: ScrollbarTheme(
+                  data: ScrollbarTheme.of(context).copyWith(thickness: const WidgetStatePropertyAll(4)),
+                  child: ScrollConfiguration(
+                    behavior: AppScrollBehavior(gutter: expanded ? Space.lg : 0),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (final (i, group) in groups.indexed) ...[
+                            if (i > 0)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.lg),
+                                child: SizedBox(width: expanded ? double.infinity : 20, child: const Divider()),
+                              ),
+                            for (final item in group) _RailButton(item, expanded: expanded),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),

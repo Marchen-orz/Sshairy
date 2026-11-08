@@ -11,6 +11,7 @@ import 'package:xterm2/xterm.dart';
 import '../../../design/dialog.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
+import '../../../design/scrolling.dart';
 import '../../../design/terminal_palette.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';

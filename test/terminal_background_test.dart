@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/settings/adapters/background_images.dart';
@@ -52,12 +53,13 @@ void main() {
       manager,
       autoConnect: false,
     );
-    Future<void> show({bool visible = true}) async {
+    Future<void> show({bool visible = true, ScrollBehavior behavior = const AppScrollBehavior()}) async {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
-            theme: buildTheme(Brightness.light),
+            scrollBehavior: behavior,
+            theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
@@ -94,6 +96,15 @@ void main() {
       expect(container.read(settingsProvider).get(SettingKeys.appBackgroundImage), isNull);
 
       final terminal = tester.widget<TerminalView>(find.byType(TerminalView)).terminal;
+      final grid = (terminal.viewWidth, terminal.viewHeight);
+      await show(behavior: const MaterialScrollBehavior());
+      expect(
+        (terminal.viewWidth, terminal.viewHeight),
+        grid,
+        reason: 'global gutters must not shrink terminal columns',
+      );
+      await show();
+      expect((terminal.viewWidth, terminal.viewHeight), grid);
       terminal.write('\x1b]11;#223344\x07');
       await tester.pump();
       expect(find.byType(BackgroundImageView), findsNothing);

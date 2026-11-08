@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/interface_scale.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/settings/settings.dart';
 import 'package:sshairy/features/settings/presentation/settings_panel.dart';
 import 'package:sshairy/foundation/data_dir.dart';
@@ -28,7 +29,8 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
-          theme: buildTheme(Brightness.light),
+          scrollBehavior: const AppScrollBehavior(),
+          theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,

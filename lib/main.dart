@@ -14,6 +14,7 @@ import 'platform/desktop_window.dart';
 import 'app/shutdown.dart';
 import 'app/window_brand_icon.dart';
 import 'design/theme.dart';
+import 'design/scrolling.dart';
 import 'design/interface_scale.dart';
 import 'features/settings/api.dart';
 import 'features/workspace/api.dart';
@@ -66,6 +67,7 @@ class SshairyApp extends ConsumerWidget {
     final settings = problem == null ? ref.watch(settingsProvider) : const Settings();
     return MaterialApp(
       title: 'sshairy',
+      scrollBehavior: const AppScrollBehavior(),
       debugShowCheckedModeBanner: false,
       theme: buildTheme(
         Brightness.light,

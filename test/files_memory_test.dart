@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/files/application/browser.dart';
 import 'package:sshairy/features/files/presentation/directory_tree.dart';
@@ -223,7 +224,8 @@ void main() {
           connectionManagerProvider.overrideWithValue(connections),
         ],
         child: MaterialApp(
-          theme: buildTheme(Brightness.light),
+          scrollBehavior: const AppScrollBehavior(),
+          theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -233,6 +235,21 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('file headings align with rows outside the scrollbar gutter', (tester) async {
+    folders['/'] = [for (var i = 0; i < 40; i++) 'folder-$i'];
+    final b = await browser();
+    await pumpPage(tester, FilePane(browser: b));
+    final name = tester.getRect(find.text('Name'));
+    final entry = tester.getRect(find.text('folder-0'));
+    expect(name.left, entry.left);
+    final header = find.ancestor(of: find.text('Name'), matching: find.byType(ScrollGutter));
+    expect(header, findsOneWidget);
+    final headerContent = tester.getRect(find.descendant(of: header, matching: find.byType(Row)).first);
+    final list = tester.getRect(find.byType(ListView).first);
+    expect(list.right - headerContent.right, Space.lg + Space.md);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('hidden side panel releases after idle and follows the latest directory on return', (tester) async {
     final active = ValueNotifier(true);

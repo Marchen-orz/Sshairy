@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../design/dialog.dart';
 import '../../../design/menu.dart';
+import '../../../design/scrolling.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
@@ -233,7 +234,7 @@ class _ProcessDialogState extends State<ProcessDialog> {
                 const SizedBox(height: Space.md),
                 _toolbar(l, rows.length),
                 const SizedBox(height: Space.sm),
-                _header(l),
+                ScrollGutter(child: _header(l)),
                 Expanded(
                   child: Focus(
                     focusNode: _focus,
