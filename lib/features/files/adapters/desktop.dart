@@ -8,9 +8,25 @@ Future<List<String>> pickFiles() async => [for (final f in await selector.openFi
 /// A folder the user picks in the system dialog; null when cancelled.
 Future<String?> pickDirectory() => selector.getDirectoryPath();
 
+/// A program the user picks in the system dialog; null when cancelled.
+Future<String?> pickProgram() async {
+  final file = await selector.openFile(
+    acceptedTypeGroups: const [
+      selector.XTypeGroup(label: 'exe', extensions: ['exe']),
+    ],
+  );
+  return file?.path;
+}
+
 /// Takes files dragged in from the system's file manager; [onHover] tells when a drag is over it.
 class OsDropZone extends StatelessWidget {
-  const OsDropZone({super.key, required this.enabled, required this.onHover, required this.onDrop, required this.child});
+  const OsDropZone({
+    super.key,
+    required this.enabled,
+    required this.onHover,
+    required this.onDrop,
+    required this.child,
+  });
 
   final bool enabled;
   final ValueChanged<bool> onHover;
@@ -19,13 +35,13 @@ class OsDropZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DropTarget(
-        enable: enabled,
-        onDragEntered: (_) => onHover(true),
-        onDragExited: (_) => onHover(false),
-        onDragDone: (d) {
-          onHover(false);
-          onDrop([for (final f in d.files) f.path]);
-        },
-        child: child,
-      );
+    enable: enabled,
+    onDragEntered: (_) => onHover(true),
+    onDragExited: (_) => onHover(false),
+    onDragDone: (d) {
+      onHover(false);
+      onDrop([for (final f in d.files) f.path]);
+    },
+    child: child,
+  );
 }

@@ -7,12 +7,13 @@ import '../../../foundation/data_dir.dart';
 import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/json_file.dart';
-import '../../../foundation/open_external.dart';
 import '../../../foundation/result.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
+import '../domain/open_with.dart';
 import 'file_ops.dart';
 import 'file_systems.dart';
+import 'open_with.dart';
 import 'transfers.dart';
 
 /// [conflict]: the remote file changed since it was downloaded; the user decides what wins.
@@ -98,9 +99,6 @@ const maxEditSize = 64 * 1024 * 1024;
 
 final editsProvider = NotifierProvider<ExternalEdits, List<ExternalEdit>>(ExternalEdits.new);
 
-/// Opens a copy in the program the system picks; separate so the edit flow can run without launching one.
-final fileOpenerProvider = Provider<Future<bool> Function(String)>((_) => openFile);
-
 /// The local deletion port is separate so locked-editor failures can be verified without changing OS permissions.
 final editCleanupProvider = Provider<Future<void> Function(String)>(
   (_) => (path) async {
@@ -132,12 +130,22 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   final _uploading = <String>{};
   final _again = <String>{};
   final _finishing = <String, Future<void>>{};
-  var _closing = false;
+  var _closing = false, _disposed = false;
   Completer<void>? _uploadsIdle;
+
+  /// Programs started for an edit whose end has not been seen yet.
+  final _watching = <String, int>{};
+  final _launching = <String, int>{};
+  final _settling = <String>{};
+
+  /// Edits whose file may be open somewhere the app cannot see: opened by the system, handed to a program that was
+  /// already running, or started before the app did. They end only when the user ends them.
+  final _unobserved = <String>{};
 
   @override
   List<ExternalEdit> build() {
     ref.onDispose(() {
+      _disposed = true;
       for (final w in _watchers.values) {
         w.cancel();
       }
@@ -151,7 +159,11 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       final e = ExternalEdit.fromJson((j as Map).cast());
       _checkCopy(e);
       // A copy that is gone has nothing to recover.
-      if (File(e.localPath).existsSync()) edits.add(e);
+      if (File(e.localPath).existsSync()) {
+        edits.add(e);
+        // Whatever program had it open belonged to the previous run.
+        _unobserved.add(e.id);
+      }
     }
     Future.microtask(() {
       for (final e in edits) {
@@ -186,15 +198,15 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   FileSystems get _pool => ref.read(fileSystemsProvider);
   ExternalEdit? _byId(String id) => state.where((e) => e.id == id).firstOrNull;
 
-  /// Downloads [remotePath] and opens it in the system's program for its type. An edit already open for the
-  /// same file is reopened, not downloaded over.
-  Future<Result<void>> open(Host host, String remotePath) async {
+  /// Downloads [remotePath] and opens it in [app], or in the program chosen for its type, or in the system's. An
+  /// edit already open for the same file is reopened, not downloaded over. Saves are uploaded as they happen
+  /// unless the user turns that off for this edit.
+  Future<Result<void>> open(Host host, String remotePath, {OpenWithApp? app}) async {
     if (_closing) return const Err(AppError('closing'));
     final existing = state.where((e) => e.host == host.id && e.remotePath == remotePath).firstOrNull;
     if (existing != null) {
       _checkCopy(existing);
-      await ref.read(fileOpenerProvider)(existing.localPath);
-      return const Ok(null);
+      return await _launch(existing, app) ? const Ok(null) : const Err(AppError('launchFailed'));
     }
     _pool.remember(host);
     final FsHandle handle;
@@ -221,14 +233,15 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
         remotePath: remotePath,
         localPath: local,
         baseline: remote,
+        autoUpload: true,
       );
       _set([...state, edit]);
       registered = true;
       await saved;
       _remember(edit);
       _watch(edit);
-      await ref.read(fileOpenerProvider)(local);
-      return const Ok(null);
+      // A program that does not start leaves the copy registered, to be opened again or ended by hand.
+      return await _launch(edit, app) ? const Ok(null) : const Err(AppError('launchFailed'));
     } on Object catch (e) {
       if (!registered) await dir.delete(recursive: true).then((_) {}, onError: (Object _) {});
       return Err(e is FsError ? AppError(e.kind.name, detail: e.detail) : AppError('failed', detail: '$e'));
@@ -237,15 +250,100 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
     }
   }
 
-  Future<void> reopen(String id) async {
+  /// Opens the copy again, in [app] or the usual program for its type.
+  Future<bool> reopen(String id, {OpenWithApp? app}) async {
     final e = _byId(id);
-    if (e != null) await ref.read(fileOpenerProvider)(e.localPath);
+    return e != null && await _launch(e, app);
   }
 
   void setAutoUpload(String id, bool on) {
     _change(id, (e) => e.copyWith(autoUpload: on));
+    if (!on) _again.remove(id);
     final e = _byId(id);
-    if (on && e?.state == EditState.modified) upload(id);
+    if (on && e?.state == EditState.modified) unawaited(upload(id));
+  }
+
+  /// Starts [app], else the program chosen for the file's type, else the system's. A chosen default that cannot
+  /// start falls back to the system's so that double clicking still opens the file; a program picked just now does not.
+  Future<bool> _launch(ExternalEdit edit, OpenWithApp? app) async {
+    if (_disposed || _closing || _finishing.containsKey(edit.id)) return false;
+    _launching[edit.id] = (_launching[edit.id] ?? 0) + 1;
+    try {
+      final launcher = ref.read(editorLauncherProvider);
+      final preferred = app ?? ref.read(editorAppsProvider).forFile(edit.name);
+      var launch = await launcher.launch(preferred ?? const OpenWithApp.system(), edit.localPath);
+      if (_disposed) return false;
+      if (!launch.started && app == null && preferred != null) {
+        launch = await launcher.launch(const OpenWithApp.system(), edit.localPath);
+      }
+      if (_disposed || !launch.started) return false;
+      _track(edit.id, launch);
+      return true;
+    } finally {
+      final left = (_launching[edit.id] ?? 1) - 1;
+      if (left > 0) {
+        _launching[edit.id] = left;
+      } else {
+        _launching.remove(edit.id);
+      }
+    }
+  }
+
+  /// Only a document-aware wait command may end an edit. An unobserved launch keeps the copy for manual finishing.
+  void _track(String id, EditorLaunch launch) {
+    final exited = launch.exited;
+    if (exited == null) {
+      _unobserved.add(id);
+      return;
+    }
+    _watching[id] = (_watching[id] ?? 0) + 1;
+    unawaited(
+      exited.then((how) => _editorExited(id, how), onError: (Object _) => _editorExited(id, EditorExit.handedOff)),
+    );
+  }
+
+  void _editorExited(String id, EditorExit how) {
+    if (_disposed) return;
+    final left = (_watching[id] ?? 1) - 1;
+    if (left <= 0) {
+      _watching.remove(id);
+    } else {
+      _watching[id] = left;
+    }
+    if (how == EditorExit.handedOff) _unobserved.add(id);
+    if (left > 0 || !_canAutoFinish(id)) return;
+    unawaited(_settleAndFinish(id));
+  }
+
+  /// The program that had the file is gone: take its last save, upload it when synchronising is on, and end the
+  /// edit only if nothing is left unsynchronised. Changes that are not on the server, a conflict and a failure all
+  /// keep the copy and its record.
+  bool _canAutoFinish(String id) =>
+      !_disposed && !_closing && !_watching.containsKey(id) && !_launching.containsKey(id) && !_unobserved.contains(id);
+
+  Future<void> _settleAndFinish(String id) async {
+    if (!_canAutoFinish(id) || _finishing.containsKey(id) || _byId(id) == null || !_settling.add(id)) return;
+    try {
+      _debounce.remove(id)?.cancel();
+      // The program may have saved just before it ended, before the watcher's delay ran out.
+      await _changed(id);
+      for (var round = 0; round < 4; round++) {
+        while (_uploading.contains(id)) {
+          await (_uploadsIdle?.future ?? Future<void>.delayed(const Duration(milliseconds: 50)));
+          if (!_canAutoFinish(id)) return;
+        }
+        if (!_canAutoFinish(id)) return;
+        final edit = _byId(id);
+        if (edit == null) return;
+        if (edit.state != EditState.modified || !edit.autoUpload) break;
+        await upload(id);
+      }
+      if (!_canAutoFinish(id)) return;
+      final edit = _byId(id);
+      if (edit != null && edit.state == EditState.clean && !_uploading.contains(id)) await finish(id);
+    } finally {
+      _settling.remove(id);
+    }
   }
 
   /// Uploads the local copy over the remote file if that is still the one downloaded; otherwise marks a
@@ -289,7 +387,7 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
         (e) => e.copyWith(remotePath: target, baseline: now, state: dirty ? EditState.modified : EditState.clean),
       );
       if (stamp != null) _localStamp[id] = stamp;
-      if (dirty && edit.autoUpload) _again.add(id);
+      if (dirty && _byId(id)?.autoUpload == true) _again.add(id);
     } on Object catch (e) {
       final code = switch (e) {
         OpFailure(:final code) => code,
@@ -368,6 +466,8 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       return;
     }
     _localStamp.remove(id);
+    _watching.remove(id);
+    _unobserved.remove(id);
     _set([
       for (final e in state)
         if (e.id != id) e,

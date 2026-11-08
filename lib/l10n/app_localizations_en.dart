@@ -25,6 +25,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get completionTruncated => 'Type more to narrow the list';
 
   @override
+  String get openWith => 'Open with…';
+
+  @override
+  String get systemDefaultApp => 'System default';
+
+  @override
+  String get defaultApp => 'Default';
+
+  @override
+  String get chooseProgram => 'Choose another app…';
+
+  @override
+  String alwaysOpenWith(String type) {
+    return 'Always use for $type';
+  }
+
+  @override
+  String get errLaunchFailed => 'Could not open the local copy.';
+
+  @override
   String get uiScale => 'Interface scale';
 
   @override

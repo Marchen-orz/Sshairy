@@ -25,6 +25,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get completionTruncated => '继续输入以缩小范围';
 
   @override
+  String get openWith => '打开方式…';
+
+  @override
+  String get systemDefaultApp => '系统默认';
+
+  @override
+  String get defaultApp => '默认';
+
+  @override
+  String get chooseProgram => '选择其他应用…';
+
+  @override
+  String alwaysOpenWith(String type) {
+    return '始终用于 $type';
+  }
+
+  @override
+  String get errLaunchFailed => '无法打开本地副本。';
+
+  @override
   String get uiScale => '界面缩放';
 
   @override

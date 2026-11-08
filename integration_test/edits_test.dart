@@ -37,6 +37,31 @@ class _Ui implements TransferUi {
   Future<ConflictAnswer?> conflict(Transfer transfer, Conflict conflict, CancellationToken cancel) async => null;
 }
 
+/// Stands in for the programs the machine would start: it records the file and starts nothing.
+class _Editor implements EditorLauncher {
+  _Editor(this.env);
+
+  final _Env env;
+
+  @override
+  bool get canChoose => false;
+
+  @override
+  Future<List<OpenWithApp>> apps(String fileName) async => const [];
+
+  @override
+  Future<OpenWithApp?> program(String executable) async => null;
+
+  @override
+  Future<EditorLaunch> launch(OpenWithApp app, String path) async {
+    env.opened.add(path);
+    if (!env.watch) return const EditorLaunch.started();
+    final exit = Completer<EditorExit>();
+    env.exits.add(exit);
+    return EditorLaunch.started(exited: exit.future);
+  }
+}
+
 class _Env {
   _Env(this.server, this.dir, this.hostId, this.root);
 
@@ -45,6 +70,10 @@ class _Env {
   final HostId hostId;
   final String root;
   final opened = <String>[];
+
+  /// With [watch] set, each launch can be ended by completing the matching entry, as a closing editor would.
+  final exits = <Completer<EditorExit>>[];
+  var watch = false;
   late ProviderContainer container = start();
 
   ProviderContainer start() {
@@ -52,10 +81,7 @@ class _Env {
       overrides: [
         dataDirProvider.overrideWithValue(dir.path),
         ...appOverrides(),
-        fileOpenerProvider.overrideWithValue((path) async {
-          opened.add(path);
-          return true;
-        }),
+        editorLauncherProvider.overrideWithValue(_Editor(this)),
       ],
     );
     c.read(transfersProvider.notifier).ui = _Ui(prompts);
@@ -154,8 +180,10 @@ void main() {
       expect(edit.localPath, startsWith(e.dir.path), reason: 'the copy lives in the private data directory');
       expect(e.opened, [edit.localPath]);
       expect(edit.baseline.size, 10);
+      expect(edit.autoUpload, isTrue, reason: 'saves are synchronised unless the user turns it off');
 
       // An atomic replace is noticed although the watched file itself disappears for a moment.
+      e.edits.setAutoUpload(edit.id, false);
       await e.atomicSave(edit, 'v2 atomic\n');
       await e.untilState('note.txt', EditState.modified);
       expect(await e.cat('note.txt'), 'v1 remote\n', reason: 'nothing is uploaded unless asked');
@@ -222,6 +250,7 @@ void main() {
       await e.remote("printf 'odd\\n' > '${e.root}/a b:c 中文.txt'");
       expect(await e.edits.open(e.host, '${e.root}/a b:c 中文.txt'), isA<Ok<void>>());
       final odd = e.edit('a b:c 中文.txt');
+      e.edits.setAutoUpload(odd.id, false);
       expect(File(odd.localPath).uri.pathSegments.last, 'a b_c 中文.txt');
       await e.inPlaceSave(odd, 'odd, saved\n');
       await e.untilState('a b:c 中文.txt', EditState.modified);
@@ -248,7 +277,8 @@ void main() {
       expect(await e.edits.open(e.host, '${e.root}/keep.txt'), isA<Ok<void>>());
       final edit = e.edit('keep.txt');
 
-      // Saved just before quitting, before the watcher's delay has run out.
+      // Saved just before quitting, before the watcher's delay has run out; quitting starts no upload even when
+      // saves are synchronised.
       await e.inPlaceSave(edit, 'saved while quitting\n');
       await e.edits.shutdown();
       expect(e.edit('keep.txt').state, EditState.modified, reason: 'the late save is still noticed');
@@ -263,9 +293,51 @@ void main() {
       expect(await e.cat('keep.txt'), 'saved while quitting\n');
 
       // The recovered copy is watched again.
+      e.edits.setAutoUpload(back.id, false);
       await e.inPlaceSave(back, 'after the restart\n');
       await e.untilState('keep.txt', EditState.modified);
       await e.edits.finish(back.id);
+      expect(e.container.read(editsProvider), isEmpty);
+    });
+  });
+
+  testWidgets('edits: closing the editor ends the edit only when nothing is left unsent', (tester) async {
+    await _withEnv((e) async {
+      e.watch = true;
+      await e.remote("printf 'one\\n' > '${e.root}/sync.txt'; printf 'one\\n' > '${e.root}/off.txt'");
+
+      // The last save is taken and uploaded before the edit ends, and the local copy goes with it.
+      expect(await e.edits.open(e.host, '${e.root}/sync.txt'), isA<Ok<void>>());
+      final sync = e.edit('sync.txt');
+      expect(sync.autoUpload, isTrue);
+      expect(e.exits, hasLength(1));
+      await e.inPlaceSave(sync, 'two, saved on exit\n');
+      e.exits.last.complete(EditorExit.closed);
+      await e.until('the edit to end', () => e.container.read(editsProvider).isEmpty);
+      expect(await e.cat('sync.txt'), 'two, saved on exit\n');
+      expect(Directory('${e.dir.path}${Platform.pathSeparator}edits').listSync(), isEmpty);
+
+      // A program that passed the file to a running copy says nothing about the document: the edit stays.
+      expect(await e.edits.open(e.host, '${e.root}/sync.txt'), isA<Ok<void>>());
+      e.exits.last.complete(EditorExit.handedOff);
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(e.edit('sync.txt').state, EditState.clean);
+      await e.edits.finish(e.edit('sync.txt').id);
+
+      // With synchronising off, a save that was never sent keeps the edit after the editor closed.
+      expect(await e.edits.open(e.host, '${e.root}/off.txt'), isA<Ok<void>>());
+      final off = e.edit('off.txt');
+      e.edits.setAutoUpload(off.id, false);
+      await e.inPlaceSave(off, 'kept local\n');
+      await e.untilState('off.txt', EditState.modified);
+      e.exits.last.complete(EditorExit.closed);
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(e.edit('off.txt').state, EditState.modified);
+      expect(await e.cat('off.txt'), 'one\n');
+
+      for (final left in [...e.container.read(editsProvider)]) {
+        await e.edits.finish(left.id);
+      }
       expect(e.container.read(editsProvider), isEmpty);
     });
   });

@@ -128,6 +128,42 @@ abstract class AppLocalizations {
   /// **'Type more to narrow the list'**
   String get completionTruncated;
 
+  /// No description provided for @openWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Open with…'**
+  String get openWith;
+
+  /// No description provided for @systemDefaultApp.
+  ///
+  /// In en, this message translates to:
+  /// **'System default'**
+  String get systemDefaultApp;
+
+  /// No description provided for @defaultApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Default'**
+  String get defaultApp;
+
+  /// No description provided for @chooseProgram.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose another app…'**
+  String get chooseProgram;
+
+  /// No description provided for @alwaysOpenWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Always use for {type}'**
+  String alwaysOpenWith(String type);
+
+  /// No description provided for @errLaunchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the local copy.'**
+  String get errLaunchFailed;
+
   /// No description provided for @uiScale.
   ///
   /// In en, this message translates to:

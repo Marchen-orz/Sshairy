@@ -21,9 +21,11 @@ import '../adapters/desktop.dart';
 import '../application/browser.dart';
 import '../application/edits.dart';
 import '../application/file_ops.dart';
+import '../application/open_with.dart';
 import '../application/transfers.dart';
 import '../domain/transfer.dart';
 import 'file_text.dart';
+import 'open_with_dialog.dart';
 
 const _rowHeight = 28.0;
 
@@ -102,6 +104,21 @@ class _FilePaneState extends ConsumerState<FilePane> {
       return;
     }
     final result = await ref.read(editsProvider.notifier).open(host, b.pathOf(e));
+    if (result case Err(:final error)) _toast(fileErrorCode(l, error.code));
+  }
+
+  /// Opens a remote file in a program picked now; the pick also becomes the file type's default unless declined.
+  Future<void> _openWith(FileEntry e) async {
+    final host = b.host;
+    if (host == null) return;
+    final choice = await showOpenWithDialog(context, e.name);
+    if (choice == null || !mounted) return;
+    if (choice.remember) {
+      final saved = await ref.read(editorAppsProvider.notifier).setDefault(e.name, choice.app);
+      if (saved case Err(:final error)) _toast(fileErrorCode(l, error.code));
+      if (!mounted) return;
+    }
+    final result = await ref.read(editsProvider.notifier).open(host, b.pathOf(e), app: choice.app);
     if (result case Err(:final error)) _toast(fileErrorCode(l, error.code));
   }
 
@@ -199,6 +216,8 @@ class _FilePaneState extends ConsumerState<FilePane> {
             single.browsable ? Icons.folder_open_outlined : Icons.edit_outlined,
             single.browsable || single.kind == FileKind.file ? () => _open(single) : null,
           ),
+          if (single.kind == FileKind.file && !b.local && ref.read(editorLauncherProvider).canChoose)
+            item(l.openWith, Icons.open_in_new, () => _openWith(single)),
         ],
         if (items.isNotEmpty) ...[
           if (other != null)

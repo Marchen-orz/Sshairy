@@ -8,13 +8,16 @@ import '../../../design/menu.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
+import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../application/edits.dart';
 import '../application/file_systems.dart' show localFiles;
+import '../application/open_with.dart';
 import '../application/transfers.dart';
 import '../domain/transfer.dart';
 import 'file_text.dart';
+import 'open_with_dialog.dart';
 
 /// Asks through dialogs in [context], the window's; registered once so queued work can ask from any page.
 class DialogTransferUi implements TransferUi {
@@ -297,6 +300,7 @@ class _EditRow extends ConsumerWidget {
     final scheme = theme.colorScheme;
     final muted = theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
     final edits = ref.read(editsProvider.notifier);
+    final canChoose = ref.read(editorLauncherProvider).canChoose;
 
     Future<void> finish() async {
       if (e.unsaved) {
@@ -317,6 +321,27 @@ class _EditRow extends ConsumerWidget {
         if (!(ok ?? false)) return;
       }
       await edits.finish(e.id);
+    }
+
+    void report(AppError error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(fileErrorCode(l, error.code))));
+      }
+    }
+
+    Future<void> reopen() async {
+      if (!await edits.reopen(e.id)) report(const AppError('launchFailed'));
+    }
+
+    Future<void> openWith() async {
+      final apps = ref.read(editorAppsProvider.notifier);
+      final choice = await showOpenWithDialog(context, e.name);
+      if (choice == null) return;
+      if (choice.remember) {
+        final saved = await apps.setDefault(e.name, choice.app);
+        if (saved case Err(:final error)) report(error);
+      }
+      if (!await edits.reopen(e.id, app: choice.app)) report(const AppError('launchFailed'));
     }
 
     final status = switch (e.state) {
@@ -362,26 +387,27 @@ class _EditRow extends ConsumerWidget {
                   onPressed: () => edits.upload(e.id),
                   icon: const Icon(Icons.upload, size: 16),
                 ),
-              IconButton(
-                tooltip: l.open,
-                onPressed: () => edits.reopen(e.id),
-                icon: const Icon(Icons.open_in_new, size: 16),
-              ),
+              IconButton(tooltip: l.open, onPressed: () => reopen(), icon: const Icon(Icons.open_in_new, size: 16)),
               AppMenuButton<VoidCallback>(
                 tooltip: l.more,
                 icon: const Icon(Icons.more_horiz, size: 16),
                 onSelected: (run) => run(),
                 items: () => [
-                  AppMenuItem(
-                    checked: e.autoUpload,
-                    value: () => edits.setAutoUpload(e.id, !e.autoUpload),
-                    label: l.autoUpload,
-                  ),
+                  if (canChoose) AppMenuItem(value: openWith, label: l.openWith),
                   AppMenuItem(value: () => edits.redownload(e.id), label: l.redownload),
                   AppMenuItem(value: finish, label: l.finishEdit),
                 ],
               ),
             ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: AppToggleRow(
+              checkbox: true,
+              title: l.autoUpload,
+              value: e.autoUpload,
+              onChanged: (on) => edits.setAutoUpload(e.id, on),
+            ),
           ),
           if (e.state == EditState.conflict)
             Padding(
