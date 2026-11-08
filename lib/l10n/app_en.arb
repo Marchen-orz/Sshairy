@@ -115,6 +115,7 @@
   "@seconds": {"placeholders": {"n": {"type": "int"}}},
   "appliesNextConnection": "Applies to new connections",
   "appliesNewSessions": "Applies to new sessions",
+  "hostKeys": "Host keys",
   "trustedKeys": "Trusted host keys",
   "none": "None",
   "remove": "Remove",

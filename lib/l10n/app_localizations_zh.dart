@@ -356,6 +356,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get appliesNewSessions => '新会话生效';
 
   @override
+  String get hostKeys => '主机密钥';
+
+  @override
   String get trustedKeys => '已信任的主机密钥';
 
   @override

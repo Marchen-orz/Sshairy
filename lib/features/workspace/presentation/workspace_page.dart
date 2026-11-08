@@ -535,7 +535,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   RailItem(icon: Icons.lan_outlined, label: l.proxy, onTap: _openProxies),
                   RailItem(icon: Icons.route_outlined, label: l.portForwarding, onTap: _openForwarding),
                   RailItem(icon: Icons.code, label: l.snippets, onTap: _openSnippets),
-                  RailItem(icon: Icons.verified_user_outlined, label: l.trustedKeys, onTap: _openTrust),
+                  RailItem(icon: Icons.verified_user_outlined, label: l.hostKeys, onTap: _openTrust),
                   RailItem(icon: Icons.receipt_long_outlined, label: l.logs, onTap: _openLogs),
                 ],
               ],

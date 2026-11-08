@@ -752,6 +752,12 @@ abstract class AppLocalizations {
   /// **'Applies to new sessions'**
   String get appliesNewSessions;
 
+  /// No description provided for @hostKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Host keys'**
+  String get hostKeys;
+
   /// No description provided for @trustedKeys.
   ///
   /// In en, this message translates to:

@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/misc.dart';
 
 import '../features/capabilities/api.dart';
-import '../features/connections/api.dart';
 import '../features/credentials/api.dart';
 import '../features/hosts/api.dart';
 import '../features/settings/api.dart';
@@ -57,5 +56,4 @@ List<Override> appOverrides() => [
     snippetPaletteEntries,
     forwardPaletteEntries,
   ]),
-  settingsSectionsProvider.overrideWithValue([trustSettingsSection]),
 ];

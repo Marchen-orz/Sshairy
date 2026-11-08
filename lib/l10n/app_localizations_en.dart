@@ -361,6 +361,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appliesNewSessions => 'Applies to new sessions';
 
   @override
+  String get hostKeys => 'Host keys';
+
+  @override
   String get trustedKeys => 'Trusted host keys';
 
   @override

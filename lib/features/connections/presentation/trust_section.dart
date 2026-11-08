@@ -12,7 +12,7 @@ import '../application/providers.dart';
 import '../domain/known_hosts.dart';
 import 'known_hosts_dialog.dart';
 
-/// Trust records under Data & security. Removing one means the next connection asks again; only the user
+/// The sidebar's host-key panel. Removing a record makes the next connection ask again; only the user
 /// manages these, never the agent (docs/SECURITY.md).
 final trustSettingsSection = SettingsSection((l) => l.dataSecurity, (_) => const _TrustedKeys());
 

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/design/brand.dart';
@@ -66,7 +67,11 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1400, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final container = ProviderContainer(
-      overrides: [dataDirProvider.overrideWithValue(dir.path), hostsProvider.overrideWith(_Hosts.new)],
+      overrides: [
+        ...appOverrides(),
+        dataDirProvider.overrideWithValue(dir.path),
+        hostsProvider.overrideWith(_Hosts.new),
+      ],
     );
     addTearDown(container.dispose);
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -88,7 +93,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(BrandWatermark), findsOneWidget, reason: 'three hosts leave the lower page blank');
-    for (final label in ['Hosts', 'SFTP', 'Keys', 'Proxy', 'Logs', 'Trusted host keys', 'Snippets', 'Settings']) {
+    for (final label in ['Hosts', 'SFTP', 'Keys', 'Proxy', 'Logs', 'Host keys', 'Snippets', 'Settings']) {
       expect(find.byTooltip(label), findsOneWidget, reason: label);
     }
     expect(find.byTooltip('Server monitor'), findsNothing, reason: 'no terminal tab is open');
@@ -123,10 +128,11 @@ void main() {
     }
 
     // Panels open as flyouts beside the rail and close with Escape.
-    await tester.tap(find.byTooltip('Trusted host keys'));
+    await tester.tap(find.byTooltip('Host keys'));
     await tester.pumpAndSettle();
     final flyout = find.descendant(of: find.byType(PopupSurface), matching: find.text('Trusted host keys'));
     expect(flyout, findsOneWidget);
+    expect(find.byTooltip('Import known_hosts'), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(flyout, findsNothing);
@@ -138,12 +144,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byType(IconRail)).width, WorkspaceSize.navigationExpanded);
     expect(find.text('Hosts'), findsOneWidget);
-    expect(find.text('Trusted host keys'), findsOneWidget);
+    expect(find.text('Host keys'), findsOneWidget);
     expect(find.byType(BrandLogo), findsOneWidget);
     expect(tester.getTopLeft(find.byType(BrandLogo)).dy, greaterThanOrEqualTo(Space.sm));
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(find.byType(PopupSurface)).dx, WorkspaceSize.navigationExpanded + Space.xs);
+    expect(container.read(settingsSectionsProvider), isEmpty);
+    expect(find.text('Trusted host keys'), findsNothing);
+    expect(find.byTooltip('Import known_hosts'), findsNothing);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 

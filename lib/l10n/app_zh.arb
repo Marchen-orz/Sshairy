@@ -109,6 +109,7 @@
   "seconds": "{n} 秒",
   "appliesNextConnection": "新连接生效",
   "appliesNewSessions": "新会话生效",
+  "hostKeys": "主机密钥",
   "trustedKeys": "已信任的主机密钥",
   "none": "无",
   "remove": "移除",
