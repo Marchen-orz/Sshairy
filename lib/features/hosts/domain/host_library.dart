@@ -195,8 +195,75 @@ class HostLibrary {
   String groupPath(String? id) => ancestors(id).map((g) => g.name).join('/');
   String? groupIdFor(String path) => groups.where((g) => groupPath(g.id) == path).firstOrNull?.id;
 
-  /// Full paths of every group, including empty ones, sorted.
-  List<String> get groupPaths => [for (final g in groups) groupPath(g.id)]..sort();
+  /// The groups directly under [parentId] (null: the top level) in display order.
+  List<HostGroup> groupChildren(String? parentId) => [
+    for (final g in groups)
+      if (g.parentId == parentId) g,
+  ]..sort(_byOrder);
+
+  /// Every group with parents before their children and siblings in display order.
+  List<HostGroup> get orderedGroups {
+    final chains = {for (final g in groups) g.id: ancestors(g.id)};
+    return groups.toList()..sort((a, b) {
+      final x = chains[a.id]!, y = chains[b.id]!;
+      for (var i = 0; i < x.length && i < y.length; i++) {
+        final c = _byOrder(x[i], y[i]);
+        if (c != 0) return c;
+      }
+      return x.length - y.length;
+    });
+  }
+
+  /// Full paths of every group, including empty ones, in display order.
+  List<String> get groupPaths => [for (final g in orderedGroups) groupPath(g.id)];
+
+  /// Siblings go by [HostGroup.order], then name; groups nobody has ordered all share 0 and so stay alphabetical.
+  static int _byOrder(HostGroup a, HostGroup b) {
+    final byOrder = a.order.compareTo(b.order);
+    if (byOrder != 0) return byOrder;
+    final byName = a.name.compareTo(b.name);
+    return byName != 0 ? byName : a.id.compareTo(b.id);
+  }
+
+  /// Where a group added to [parentId] sorts last. Siblings nobody has ordered take 0 and stay alphabetical.
+  int _appendOrder(String? parentId) {
+    final highest = groupChildren(parentId).fold(0, (top, g) => g.order > top ? g.order : top);
+    return highest == 0 ? 0 : highest + 1;
+  }
+
+  /// Gives [sequence], the children of one parent, the orders 0..n-1 and leaves every other group alone.
+  HostLibrary _withSequence(List<HostGroup> sequence) {
+    final orders = {for (var i = 0; i < sequence.length; i++) sequence[i].id: i};
+    return copyWith(
+      groups: [
+        for (final g in groups)
+          if (orders[g.id] case final order? when order != g.order) g.copyWith(order: order) else g,
+      ],
+    );
+  }
+
+  /// Puts group [id] right before its sibling [beforeId], or last when that is null. Only the siblings' orders change;
+  /// a drop that leaves the display order as it is returns this library. A missing group, or a [beforeId] under
+  /// another parent, is refused.
+  HostLibrary withGroupBefore(String id, String? beforeId) {
+    final group = groupById(id);
+    if (group == null) throw ArgumentError.value(id, 'id', 'missing group');
+    if (beforeId == id) return this;
+    final before = beforeId == null ? null : groupById(beforeId);
+    if (beforeId != null) {
+      if (before == null) throw ArgumentError.value(beforeId, 'beforeId', 'missing group');
+      if (before.parentId != group.parentId) throw ArgumentError.value(beforeId, 'beforeId', 'not a sibling');
+    }
+    final siblings = groupChildren(group.parentId);
+    final sequence = [
+      for (final g in siblings)
+        if (g.id != id) g,
+    ];
+    sequence.insert(before == null ? sequence.length : sequence.indexWhere((g) => g.id == beforeId), group);
+    final unchanged = [for (var i = 0; i < sequence.length; i++) sequence[i].id == siblings[i].id]
+        .every((same) => same);
+    return unchanged ? this : _withSequence(sequence);
+  }
 
   /// What a connection gets from the built-in defaults, [defaults], and the groups above and including [groupId],
   /// then [own] on top. A null [own] answers "what would a host here inherit".
@@ -421,7 +488,7 @@ class HostLibrary {
         parent = existing.id;
         continue;
       }
-      final group = HostGroup(id: newGroupId(), name: name, parentId: parent);
+      final group = HostGroup(id: newGroupId(), name: name, parentId: parent, order: library._appendOrder(parent));
       library = library.copyWith(groups: [...library.groups, group]);
       parent = group.id;
     }
@@ -480,20 +547,28 @@ class HostLibrary {
     final names = normalizeGroup(path).split('/').where((s) => s.isNotEmpty).toList();
     if (group == null || names.isEmpty) throw ArgumentError('invalid group');
     final (library, parent) = withGroupPath(names.take(names.length - 1).join('/'), newGroupId: newGroupId);
-    return library.withGroup(group.copyWith(name: names.last, parentId: () => parent));
+    // A new parent starts it at the end; a rename keeps its place.
+    final order = parent == group.parentId ? group.order : library._appendOrder(parent);
+    return library.withGroup(group.copyWith(name: names.last, parentId: () => parent, order: order));
   }
 
   /// Removes a group and keeps what it held: subgroups and hosts move to its parent, and its defaults are gone.
   HostLibrary withoutGroup(String id) {
     final group = groupById(id);
     if (group == null) return this;
-    return copyWith(
+    final siblings = groupChildren(group.parentId), moved = groupChildren(id);
+    final next = copyWith(
       groups: [
         for (final g in groups)
           if (g.id != id) g.parentId == id ? g.copyWith(parentId: () => group.parentId) : g,
       ],
       hosts: [for (final h in hosts) h.groupId == id ? h.copyWith(groupId: () => group.parentId) : h],
     );
+    // Once anyone has ordered them, its subgroups take its place in the sequence.
+    if ([...siblings, ...moved].every((g) => g.order == 0)) return next;
+    return next._withSequence([
+      for (final g in siblings) ...(g.id == id ? moved : [g]),
+    ]);
   }
 
   HostLibrary withIdentity(HostIdentity identity) {

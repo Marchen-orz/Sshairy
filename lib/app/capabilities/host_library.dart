@@ -308,7 +308,7 @@ List<Capability> hostLibraryCapabilities(Ref ref) {
     FunctionCapability(
       'group.list',
       Effect.query,
-      guarded((_) async => [for (final g in library().groups) groupDto(library(), g)]),
+      guarded((_) async => [for (final g in library().orderedGroups) groupDto(library(), g)]),
     ),
     FunctionCapability(
       'group.create',
@@ -340,6 +340,32 @@ List<Capability> hostLibraryCapabilities(Ref ref) {
         final defaults = patchConnection(ref, a, group.defaults, login: loginOf(library(), group.defaults));
         await notifier().updateGroup(group.id, path: a.optional<String>('path'), defaults: defaults);
         return groupDto(library(), library().groupById(group.id)!);
+      }),
+    ),
+    FunctionCapability(
+      'group.reorder',
+      Effect.localChange,
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'groupId': {'type': 'string'},
+          'beforeId': {
+            'type': ['string', 'null'],
+            'description': 'A group under the same parent to go in front of; null puts the group last.',
+          },
+        },
+        'required': ['groupId', 'beforeId'],
+      },
+      guarded((a) async {
+        if (!a.has('beforeId')) throw const Rejected('invalidArgument', 'beforeId');
+        final group = findGroup(a);
+        final beforeId = a.optional<String>('beforeId');
+        if (beforeId != null) {
+          final before = library().groupById(beforeId) ?? (throw const Rejected('notFound', 'beforeId'));
+          if (before.parentId != group.parentId) throw const Rejected('invalidArgument', 'beforeId');
+        }
+        await notifier().reorderGroup(group.id, beforeId);
+        return [for (final g in library().groupChildren(group.parentId)) groupDto(library(), g)];
       }),
     ),
     FunctionCapability(

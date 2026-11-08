@@ -78,7 +78,7 @@ class _ProxyPanelState extends ConsumerState<ProxyPanel> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final library = ref.watch(hostLibraryProvider);
-    final groups = library.groups.toList()..sort((a, b) => library.groupPath(a.id).compareTo(library.groupPath(b.id)));
+    final groups = library.orderedGroups;
     final targets = <_Target>[
       (host: null, group: null),
       for (final group in groups) (host: null, group: group),

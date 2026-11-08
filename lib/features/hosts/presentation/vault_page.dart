@@ -120,6 +120,16 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     }
   }
 
+  Future<void> _reorderGroup(String id, String? beforeId, int revision) async {
+    try {
+      await _hosts.reorderGroup(id, beforeId, expectedRevision: revision);
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).errSave)));
+      }
+    }
+  }
+
   Future<void> _groupMenu(String path, Offset p) async {
     final l = AppLocalizations.of(context);
     final library = ref.read(hostLibraryProvider);
@@ -264,7 +274,8 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     final settings = ref.watch(settingsProvider);
     final view = settings.get(SettingKeys.hostView);
     final order = settings.get(SettingKeys.hostOrder);
-    final groups = ref.watch(hostLibraryProvider).groupPaths;
+    final library = ref.watch(hostLibraryProvider);
+    final groups = library.groupPaths;
     if (_group.isNotEmpty && !groups.contains(_group)) _group = '';
     final matches = sortHosts(
       hosts.where((h) => inGroup(h, _group) && hostMatches(h, query)),
@@ -373,23 +384,30 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                   for (final g in ['', ...groups])
                     Padding(
                       padding: const EdgeInsets.only(right: Space.sm),
-                      child: GestureDetector(
-                        onSecondaryTapUp: g.isEmpty ? null : (d) => _groupMenu(g, d.globalPosition),
-                        child: ChoiceChip(
-                          showCheckmark: false,
-                          visualDensity: VisualDensity.compact,
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (g.isNotEmpty) ...[
-                                Icon(Icons.folder_outlined, size: 16, color: theme.colorScheme.primary),
-                                const SizedBox(width: Space.xs),
+                      child: _GroupOrderChip(
+                        group: library.groupById(library.groupIdFor(g)),
+                        siblings: library.groupChildren(library.groupById(library.groupIdFor(g))?.parentId),
+                        revision: _hosts.revision,
+                        onReorder: _reorderGroup,
+                        child: GestureDetector(
+                          onSecondaryTapUp: g.isEmpty ? null : (d) => _groupMenu(g, d.globalPosition),
+                          child: ChoiceChip(
+                            key: ValueKey('group-chip-$g'),
+                            showCheckmark: false,
+                            visualDensity: VisualDensity.compact,
+                            label: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (g.isNotEmpty) ...[
+                                  Icon(Icons.folder_outlined, size: 16, color: theme.colorScheme.primary),
+                                  const SizedBox(width: Space.xs),
+                                ],
+                                Text(g.isEmpty ? l.allHosts : g),
                               ],
-                              Text(g.isEmpty ? l.allHosts : g),
-                            ],
+                            ),
+                            selected: _group == g,
+                            onSelected: (_) => setState(() => _group = g),
                           ),
-                          selected: _group == g,
-                          onSelected: (_) => setState(() => _group = g),
                         ),
                       ),
                     ),
@@ -473,6 +491,63 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GroupDrag {
+  const _GroupDrag(this.id, this.parent, this.revision);
+  final String id;
+  final String? parent;
+  final int revision;
+}
+
+class _GroupOrderChip extends StatelessWidget {
+  const _GroupOrderChip({
+    required this.group,
+    required this.siblings,
+    required this.revision,
+    required this.onReorder,
+    required this.child,
+  });
+
+  final HostGroup? group;
+  final List<HostGroup> siblings;
+  final int revision;
+  final Future<void> Function(String, String?, int) onReorder;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final group = this.group;
+    if (group == null) return child;
+    final scheme = Theme.of(context).colorScheme;
+    return DragTarget<_GroupDrag>(
+      onWillAcceptWithDetails: (details) => details.data.id != group.id && details.data.parent == group.parentId,
+      onAcceptWithDetails: (details) {
+        final box = context.findRenderObject()! as RenderBox;
+        final after = box.globalToLocal(details.offset).dx >= box.size.width / 2;
+        final index = siblings.indexWhere((item) => item.id == group.id);
+        final before = after ? (index + 1 < siblings.length ? siblings[index + 1].id : null) : group.id;
+        onReorder(details.data.id, before, details.data.revision);
+      },
+      builder: (context, candidates, rejected) => Draggable<_GroupDrag>(
+        data: _GroupDrag(group.id, group.parentId, revision),
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        affinity: Axis.horizontal,
+        feedback: Material(
+          type: MaterialType.transparency,
+          child: Opacity(opacity: .85, child: child),
+        ),
+        childWhenDragging: Opacity(opacity: .35, child: child),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Radii.control),
+            border: candidates.isEmpty ? null : Border.all(color: scheme.primary, width: 2),
+          ),
+          child: child,
+        ),
       ),
     );
   }

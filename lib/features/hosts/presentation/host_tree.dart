@@ -28,7 +28,14 @@ class _HostTreeState extends ConsumerState<HostTree> {
     final l = AppLocalizations.of(context);
     final hosts = sortHosts(ref.watch(hostsProvider).where((h) => hostMatches(h, _query)));
     // Empty groups show while browsing; a search shows only the groups its matches sit in.
-    final groups = _query.trim().isEmpty ? ref.watch(hostLibraryProvider).groupPaths : allGroups(hosts);
+    final ordered = ref.watch(hostLibraryProvider).groupPaths;
+    final matched = allGroups(hosts).toSet();
+    final groups = _query.trim().isEmpty
+        ? ordered
+        : [
+            for (final path in ordered)
+              if (matched.contains(path)) path,
+          ];
     final scheme = Theme.of(context).colorScheme;
 
     List<Widget> rows(String group, int depth) => [

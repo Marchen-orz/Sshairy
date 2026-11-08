@@ -165,6 +165,46 @@ void main() {
     expect(container.read(hostsProvider), hasLength(4));
   });
 
+  testWidgets('group chip dragging persists sibling order and keeps the selected group', (tester) async {
+    await mount(tester);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Personal'));
+    await tester.pumpAndSettle();
+    final source = tester.getCenter(find.byKey(const ValueKey('group-chip-Team')));
+    final target = tester.getRect(find.byKey(const ValueKey('group-chip-Personal')));
+    final gesture = await tester.startGesture(source);
+    await gesture.moveBy(const Offset(-12, 0));
+    await tester.pump();
+    await gesture.moveTo(Offset(target.left + 3, target.center.dy));
+    await tester.pump();
+    await gesture.up();
+    for (var i = 0; i < 100 && hosts.library.groupPaths.first != 'Team'; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pumpAndSettle();
+    expect(hosts.library.groupPaths, ['Team', 'Personal']);
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Personal')).selected, isTrue);
+    final reopened = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(data.path)]);
+    expect(reopened.read(hostLibraryProvider).groupPaths, ['Team', 'Personal']);
+    reopened.dispose();
+
+    final moved = tester.getCenter(find.byKey(const ValueKey('group-chip-Team')));
+    final last = tester.getRect(find.byKey(const ValueKey('group-chip-Personal')));
+    final reverse = await tester.startGesture(moved);
+    await reverse.moveBy(const Offset(12, 0));
+    await tester.pump();
+    await reverse.moveTo(Offset(last.right - 3, last.center.dy));
+    await tester.pump();
+    await reverse.up();
+    for (var i = 0; i < 100 && hosts.library.groupPaths.first != 'Personal'; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pumpAndSettle();
+    expect(hosts.library.groupPaths, ['Personal', 'Team']);
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Personal')).selected, isTrue);
+  });
+
   testWidgets('empty home keeps the pose and shows a short localized instruction below it', (tester) async {
     await mount(tester, count: 0);
     expect(find.byType(BrandEmptyState), findsOneWidget);

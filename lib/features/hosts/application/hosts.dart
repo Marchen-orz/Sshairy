@@ -235,6 +235,17 @@ class HostsNotifier extends Notifier<List<Host>> {
   Future<void> saveGroup(HostGroup group, {int? expectedRevision}) =>
       _apply((library) => library.withGroup(group), expectedRevision: expectedRevision);
 
+  /// Drops group [id] before its sibling [beforeId], or last when that is null, renumbering only those siblings in one
+  /// write. A missing group or a [beforeId] under another parent is refused; a drop that changes nothing writes nothing.
+  Future<void> reorderGroup(String id, String? beforeId, {int? expectedRevision}) => _apply(
+    (library) {
+      final next = library.withGroupBefore(id, beforeId);
+      return identical(next, library) ? null : next;
+    },
+    expectedRevision: expectedRevision,
+    routes: false,
+  );
+
   /// Subgroups and hosts move to the parent; the group's own defaults are discarded.
   Future<void> deleteGroup(String id, {int? expectedRevision}) => _apply(
     (library) => library.groupById(id) == null ? null : library.withoutGroup(id),
