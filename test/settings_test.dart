@@ -67,6 +67,34 @@ void main() {
     expect(c.read(settingsProvider).get(SettingKeys.scrollback), 10000);
   });
 
+  test('showFiles is a boolean off by default; settings.patch changes it and a restart keeps it', () async {
+    final setting = SettingKeys.showFiles;
+    expect(SettingKeys.all, contains(setting));
+    expect(setting.defaultValue, isFalse);
+    expect(setting.agentExposed, isTrue);
+    expect([true, false].every(setting.accepts), isTrue);
+    for (final value in ['true', 1, 0, null, <bool>[]]) {
+      expect(setting.accepts(value), isFalse, reason: '$value');
+    }
+    expect(Settings.fromJson({'showFiles': 'yes'}).get(setting), isFalse);
+    expect(Settings.fromJson(const Settings({'showFiles': true}).toJson()).get(setting), isTrue);
+
+    final dir = Directory.systemTemp.createTempSync('sshairy-show-files');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final c = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(c.dispose);
+    final n = c.read(settingsProvider.notifier);
+    expect(await n.patch({'showFiles': 1}, exposedOnly: true), isA<Err<void>>());
+    expect(await n.patch({'showFiles': true, 'monitorWidth': 999}), isA<Err<void>>());
+    expect(c.read(settingsProvider).get(setting), isFalse, reason: 'all or nothing');
+    expect(await n.patch({'showFiles': true}, exposedOnly: true), isA<Ok<void>>());
+    expect(c.read(settingsProvider).get(setting), isTrue);
+
+    final restarted = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(restarted.dispose);
+    expect(restarted.read(settingsProvider).get(setting), isTrue);
+  });
+
   test('Every accent keeps readable text on itself in both modes', () {
     for (final a in Accent.values) {
       for (final b in Brightness.values) {

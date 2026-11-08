@@ -47,9 +47,6 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   final _paneFocus = <PaneId, FocusNode>{};
   var _overlayOpen = false;
 
-  /// Tabs showing the files panel beside their terminals.
-  final _sideFiles = <TabId>{};
-
   /// The SFTP page connects nothing until first shown, then stays alive like a tab.
   var _filesBuilt = false;
 
@@ -234,7 +231,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     ref.read(settingsProvider.notifier).set(SettingKeys.monitorWidth, width);
   }
 
-  void _toggleFiles(TabId id) => setState(() => _sideFiles.contains(id) ? _sideFiles.remove(id) : _sideFiles.add(id));
+  /// Open or closed for every tab, and for the next start, like the monitor.
+  void _setSideFiles(bool open) => ref.read(settingsProvider.notifier).set(SettingKeys.showFiles, open);
 
   void _refocus(TabId tabId, PaneId pane) {
     final focused = ref.read(workspaceProvider).tabs.where((t) => t.id == tabId).firstOrNull?.layout.focused;
@@ -265,11 +263,11 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
       node.dispose();
       return true;
     });
-    _sideFiles.removeWhere((id) => !state.tabs.any((t) => t.id == id));
     final vault = state.active == null && !state.files;
     _filesBuilt |= state.files;
     final wide = MediaQuery.sizeOf(context).width >= WorkspaceSize.wideBreakpoint;
     final showMonitor = settings.get(SettingKeys.showMonitor);
+    final showFiles = settings.get(SettingKeys.showFiles);
     final dock = settings.get(SettingKeys.filesDock);
     final settingsNotifier = ref.read(settingsProvider.notifier);
     ref.listen(settingsProvider, (before, now) {
@@ -355,50 +353,56 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
         sidebar: session != null && showMonitor && wide
             ? MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: session.host, active: state.active == tab.id)
             : null,
-        child: DockPanel(
-          open: _sideFiles.contains(tab.id) && session != null,
-          side: switch (dock) {
-            FilesDock.left => DockSide.left,
-            FilesDock.right => DockSide.right,
-            FilesDock.bottom => DockSide.bottom,
-          },
-          onClose: () => setState(() => _sideFiles.remove(tab.id)),
-          closeLabel: l.closePane,
-          resizeLabel: l.resizeToolPanel,
-          showHeader: false,
-          panel: session != null
-              ? SideFilesPanel(
-                  host: session.host,
-                  active: state.active == tab.id,
-                  tree: dock == FilesDock.bottom,
-                  directory: session.directory,
-                  toolbarActions: [
-                    AppMenuButton<FilesDock>(
-                      tooltip: l.dockPosition,
-                      icon: const Icon(Icons.space_dashboard_outlined, size: 16),
-                      minWidth: 0,
-                      items: () => [
-                        for (final (side, shape, label) in [
-                          (FilesDock.left, DockSide.left, l.dockLeft),
-                          (FilesDock.right, DockSide.right, l.dockRight),
-                          (FilesDock.bottom, DockSide.bottom, l.dockBottom),
-                        ])
-                          AppMenuItem(value: side, label: label, glyph: DockSideIcon(shape), checked: side == dock),
-                      ],
-                      onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
-                    ),
-                    IconButton(
-                      tooltip: l.closePane,
-                      onPressed: () => setState(() => _sideFiles.remove(tab.id)),
-                      icon: const Icon(Icons.close, size: 16),
-                    ),
-                  ],
-                )
-              : const SizedBox.shrink(),
+        // Rebuilt as the session changes: the panel dials, so it waits for the terminal's connection and joins it.
+        // A restored, refused or dropped session shows no panel instead of dialing again.
+        child: ListenableBuilder(
+          listenable: Listenable.merge([?session]),
           child: LayoutView(
             root: tab.layout.root,
             leaf: (l) => leaf(tab, l),
             onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
+          ),
+          builder: (context, panes) => DockPanel(
+            open: showFiles && session != null && session.status == SessionStatus.connected,
+            side: switch (dock) {
+              FilesDock.left => DockSide.left,
+              FilesDock.right => DockSide.right,
+              FilesDock.bottom => DockSide.bottom,
+            },
+            onClose: () => _setSideFiles(false),
+            closeLabel: l.closePane,
+            resizeLabel: l.resizeToolPanel,
+            showHeader: false,
+            panel: session != null
+                ? SideFilesPanel(
+                    host: session.host,
+                    active: state.active == tab.id,
+                    tree: dock == FilesDock.bottom,
+                    directory: session.directory,
+                    toolbarActions: [
+                      AppMenuButton<FilesDock>(
+                        tooltip: l.dockPosition,
+                        icon: const Icon(Icons.space_dashboard_outlined, size: 16),
+                        minWidth: 0,
+                        items: () => [
+                          for (final (side, shape, label) in [
+                            (FilesDock.left, DockSide.left, l.dockLeft),
+                            (FilesDock.right, DockSide.right, l.dockRight),
+                            (FilesDock.bottom, DockSide.bottom, l.dockBottom),
+                          ])
+                            AppMenuItem(value: side, label: label, glyph: DockSideIcon(shape), checked: side == dock),
+                        ],
+                        onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
+                      ),
+                      IconButton(
+                        tooltip: l.closePane,
+                        onPressed: () => _setSideFiles(false),
+                        icon: const Icon(Icons.close, size: 16),
+                      ),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+            child: panes!,
           ),
         ),
       );
@@ -484,8 +488,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 _BarToggle(
                   tooltip: l.files,
                   icon: Icons.folder_outlined,
-                  selected: _sideFiles.contains(activeTab.id),
-                  onPressed: () => _toggleFiles(activeTab.id),
+                  selected: showFiles,
+                  onPressed: () => _setSideFiles(!showFiles),
                 ),
                 AppMenuButton<SplitAxis>(
                   tooltip: l.split,

@@ -222,6 +222,9 @@ abstract final class SettingKeys {
 
   static const showMonitor = BoolSetting('showMonitor', true);
 
+  /// The files panel beside every terminal tab; where it docks and how big it is are separate.
+  static const showFiles = BoolSetting('showFiles', false);
+
   /// Seconds between monitor samples; the panel offers 1, 2, 3, 5 and 10.
   static const monitorInterval = IntSetting('monitorInterval', 3, 1, 10);
 
@@ -277,6 +280,7 @@ abstract final class SettingKeys {
     hostView,
     hostOrder,
     showMonitor,
+    showFiles,
     monitorInterval,
     monitorWidth,
     filesDock,

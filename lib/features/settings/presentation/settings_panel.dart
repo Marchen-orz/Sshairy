@@ -176,6 +176,7 @@ class SettingsPanel extends ConsumerWidget {
         ]),
         _Section(l.workspaceSection, [
           _Field(l.monitor, toggle(SettingKeys.showMonitor)),
+          _Field(l.files, toggle(SettingKeys.showFiles)),
           _Field(
             l.filesDock,
             segmented(SettingKeys.filesDock, {

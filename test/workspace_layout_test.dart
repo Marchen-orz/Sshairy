@@ -14,12 +14,15 @@ import 'package:sshairy/design/icon_rail.dart';
 import 'package:sshairy/design/dock_panel.dart';
 import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/features/connections/api.dart';
+import 'package:sshairy/features/files/api.dart' show SideFilesPanel;
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/monitor/api.dart';
 import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
+import 'package:sshairy/features/workspace/api.dart' show workspaceProvider;
 import 'package:sshairy/features/workspace/presentation/workspace_page.dart';
 import 'package:sshairy/foundation/data_dir.dart';
+import 'package:sshairy/foundation/file_system.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
 
@@ -60,6 +63,110 @@ Future<void> _settled(WidgetTester tester, ProviderContainer container, bool Fun
   expect(done(container.read(settingsProvider)), isTrue);
 }
 
+/// A server with an empty home folder: the files panel has a connection to open and nothing to list.
+class _Server extends FakeTransport {
+  @override
+  Future<FileSystem> openFiles() async => _Files();
+}
+
+class _Files implements FileSystem {
+  @override
+  PathStyle get style => PathStyle.posix;
+  @override
+  bool get canReplace => false;
+  @override
+  bool get canChmod => false;
+  @override
+  Future<String> home() async => '/home/u';
+  @override
+  Future<String> resolve(String path) async => path;
+  @override
+  Future<List<FileEntry>> list(String dir) async => const [];
+  @override
+  Future<void> close() async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('${invocation.memberName}');
+}
+
+/// Lets connects, rebuilds and the panels' first frames run; none of it needs real time.
+Future<void> _frames(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
+/// Disk writes started by tab changes and settings finish before the directory goes.
+Future<void> _flush(WidgetTester tester, ProviderContainer container) async {
+  var done = false;
+  final saved = Future.wait([
+    container.read(workspaceProvider.notifier).saved,
+    container.read(settingsProvider.notifier).saved,
+  ]).then((_) => done = true);
+  for (var i = 0; i < 400 && !done; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  expect(done, isTrue, reason: 'queued writes finish before disposing the workspace');
+  await saved;
+}
+
+Map<String, dynamic> _savedSettings(Directory dir) =>
+    jsonDecode(File('${dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>;
+
+Map<String, Object?> _savedTab(String pane, String session, String host) => {
+  'layout': {
+    'root': {'type': 'leaf', 'pane': pane, 'session': session},
+    'focused': pane,
+  },
+  'hosts': {session: host},
+};
+
+/// The workspace over [dir], wide enough for the monitor, with a server that records the address of every dial and
+/// refuses authentication for the addresses left in [refused].
+Future<ProviderContainer> _mountWorkspace(
+  WidgetTester tester,
+  Directory dir,
+  List<String> dials, {
+  Set<String> refused = const {},
+}) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(1400, 800);
+  addTearDown(tester.view.reset);
+  final manager = ConnectionManager((host, _, _) async {
+    dials.add(host.address);
+    if (refused.contains(host.address)) throw const ConnectError(ConnectFailure.auth);
+    return _Server();
+  }, park: Duration.zero);
+  addTearDown(manager.closeAll);
+  final container = ProviderContainer(
+    overrides: [
+      dataDirProvider.overrideWithValue(dir.path),
+      hostsProvider.overrideWith(_Hosts.new),
+      connectionManagerProvider.overrideWithValue(manager),
+    ],
+  );
+  addTearDown(container.dispose);
+  addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: DefaultAssetBundle(
+        bundle: _TestAssets(),
+        child: MaterialApp(
+          scrollBehavior: const AppScrollBehavior(),
+          theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: WorkspacePage(openPalette: (_) async {}),
+        ),
+      ),
+    ),
+  );
+  return container;
+}
+
 void main() {
   testWidgets('split headers put close at the pane edge and file docking menu stays compact with position icons', (
     tester,
@@ -91,7 +198,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1400, 800);
     addTearDown(tester.view.reset);
-    final manager = ConnectionManager((_, _, _) async => FakeTransport(), park: Duration.zero);
+    final manager = ConnectionManager((_, _, _) async => _Server(), park: Duration.zero);
     final container = ProviderContainer(
       overrides: [
         dataDirProvider.overrideWithValue(dir.path),
@@ -121,14 +228,19 @@ void main() {
     for (var i = 0; i < 2; i++) {
       expect(tester.getRect(close.at(i)).right, closeTo(tester.getRect(panes.at(i)).right, 5));
     }
+    // The files panel waits for its terminal, which a restored tab only starts on request.
+    await tester.tap(find.descendant(of: panes, matching: find.text('Connect')).first);
+    await _frames(tester);
     await tester.tap(find.byTooltip('Files'));
-    await tester.pumpAndSettle();
+    await _settled(tester, container, (s) => s.get(SettingKeys.showFiles));
+    await _frames(tester);
     await tester.tap(find.byTooltip('Dock position'));
-    await tester.pumpAndSettle();
+    await _frames(tester);
     expect(find.byType(DockSideIcon), findsNWidgets(3));
     expect(tester.getSize(find.byType(PopupSurface).last).width, lessThan(170));
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
+    await _frames(tester);
+    await _flush(tester, container);
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
     manager.closeAll();
@@ -402,6 +514,239 @@ void main() {
     await _settled(tester, container, (s) => s.get(SettingKeys.monitorWidth) == WorkspaceSize.monitor);
     final saved = jsonDecode(File('${dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>;
     expect((saved['monitorWidth'], saved['showMonitor']), (WorkspaceSize.monitor, true));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the files switch is saved and shared by every tab; a restored tab does not dial for it', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-files-switch-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/settings.json').writeAsStringSync(
+      jsonEncode({'schemaVersion': 1, 'showFiles': true, 'filesDock': 'left', 'monitorWidth': 320.0}),
+    );
+    File('${dir.path}/workspace.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'tabs': [_savedTab('p1', 's1', 'web'), _savedTab('p2', 's2', 'db')],
+        'active': 0,
+      }),
+    );
+    final dials = <String>[];
+    final container = await _mountWorkspace(tester, dir, dials);
+    final workspace = container.read(workspaceProvider.notifier);
+    final panels = find.byType(SideFilesPanel);
+    List<String> active() => [
+      for (final p in tester.widgetList<SideFilesPanel>(panels))
+        if (p.active) p.host.label,
+    ];
+    void show(int tab) => workspace.activate(container.read(workspaceProvider).tabs[tab].id);
+    Future<void> connect() async {
+      await tester.tap(find.descendant(of: find.byType(TerminalPane), matching: find.text('Connect')).first);
+      await _frames(tester);
+    }
+
+    // The switch was left on, but a restored tab is unconnected and the panel would dial.
+    await _frames(tester);
+    expect(container.read(settingsProvider).get(SettingKeys.showFiles), isTrue);
+    expect(panels, findsNothing);
+    expect(dials, isEmpty);
+
+    await connect();
+    expect(dials, ['web.example']);
+    expect(active(), ['web-1']);
+    expect(panels, findsOneWidget, reason: 'the second tab has not started');
+
+    show(1);
+    await _frames(tester);
+    expect(dials, ['web.example'], reason: 'showing a restored tab connects nothing');
+    expect(panels, findsOneWidget);
+    await connect();
+    expect(dials, ['web.example', 'db.example']);
+    expect(panels, findsNWidgets(2));
+    expect(active(), ['db-1']);
+
+    show(0);
+    await _frames(tester);
+    expect(active(), ['web-1']);
+    expect(dials, hasLength(2), reason: 'the panel uses the terminal connection');
+
+    // Closing from the panel is saved for every tab and leaves the dock side and widths alone.
+    await tester.tap(find.byTooltip('Close pane').first);
+    await _settled(tester, container, (s) => !s.get(SettingKeys.showFiles));
+    await _frames(tester);
+    expect(panels, findsNothing);
+    final saved = _savedSettings(dir);
+    expect((saved['showFiles'], saved['filesDock'], saved['monitorWidth']), (false, 'left', 320.0));
+
+    await tester.tap(find.byTooltip('Files'));
+    await _settled(tester, container, (s) => s.get(SettingKeys.showFiles));
+    await _frames(tester);
+    expect(panels, findsNWidgets(2));
+    expect(active(), ['web-1']);
+    expect(dials, hasLength(2), reason: 'reopening reuses the connections');
+
+    // A window too narrow for both covers the terminal; the scrim closes the panel like the button does.
+    tester.view.physicalSize = const Size(800, 600);
+    await _frames(tester);
+    final scrims = find.descendant(of: find.byType(DockPanel), matching: find.byType(ModalBarrier));
+    expect(scrims, findsNWidgets(2));
+    await tester.tapAt(const Offset(700, 300));
+    await _settled(tester, container, (s) => !s.get(SettingKeys.showFiles));
+    await _frames(tester);
+    expect(panels, findsNothing);
+    expect(scrims, findsNothing);
+    expect(_savedSettings(dir)['showFiles'], isFalse);
+
+    await _flush(tester, container);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a tab opened later shows the files panel as it was left, open or closed', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-files-switch-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final dials = <String>[];
+    final container = await _mountWorkspace(tester, dir, dials);
+    final workspace = container.read(workspaceProvider.notifier);
+    final panels = find.byType(SideFilesPanel);
+    List<String> active() => [
+      for (final p in tester.widgetList<SideFilesPanel>(panels))
+        if (p.active) p.host.label,
+    ];
+    // Quick-connect hosts are not saved, so opening them writes nothing but the workspace.
+    const quick = [
+      Host(id: HostId(''), label: 'web-1', address: 'web.example', username: 'u'),
+      Host(id: HostId(''), label: 'db-1', address: 'db.example', username: 'u'),
+      Host(id: HostId(''), label: 'local', address: 'localhost', username: 'u'),
+    ];
+
+    workspace.openHost(quick[0]);
+    await _frames(tester);
+    expect(dials, ['web.example']);
+    expect(panels, findsNothing, reason: 'closed until someone opens it');
+
+    await tester.tap(find.byTooltip('Files'));
+    await _settled(tester, container, (s) => s.get(SettingKeys.showFiles));
+    await _frames(tester);
+    expect(active(), ['web-1']);
+    expect(dials, ['web.example'], reason: 'the panel uses the terminal connection');
+
+    workspace.openHost(quick[1]);
+    await _frames(tester);
+    expect(active(), ['db-1']);
+    expect(panels, findsNWidgets(2));
+    expect(dials, ['web.example', 'db.example']);
+
+    await tester.tap(find.byTooltip('Files'));
+    await _settled(tester, container, (s) => !s.get(SettingKeys.showFiles));
+    await _frames(tester);
+    expect(panels, findsNothing);
+
+    workspace.openHost(quick[2]);
+    await _frames(tester);
+    expect(dials, ['web.example', 'db.example', 'localhost']);
+    expect(panels, findsNothing, reason: 'closed stays closed for the next tab');
+    expect(_savedSettings(dir)['showFiles'], isFalse);
+
+    await _flush(tester, container);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a refused terminal connection shows no files panel and makes no second dial until it succeeds', (
+    tester,
+  ) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-files-refused-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/settings.json').writeAsStringSync(jsonEncode({'schemaVersion': 1, 'showFiles': true}));
+    File('${dir.path}/workspace.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'tabs': [_savedTab('p1', 's1', 'web')],
+        'active': 0,
+      }),
+    );
+    final dials = <String>[];
+    final refused = {'web.example'};
+    final container = await _mountWorkspace(tester, dir, dials, refused: refused);
+    final panels = find.byType(SideFilesPanel);
+    Future<void> press(String label) async {
+      await tester.tap(find.descendant(of: find.byType(TerminalPane), matching: find.text(label)).first);
+      await _frames(tester);
+    }
+
+    await _frames(tester);
+    expect(panels, findsNothing, reason: 'restored and unconnected');
+    expect(dials, isEmpty);
+
+    await press('Connect');
+    await _frames(tester);
+    expect(dials, ['web.example']);
+    expect(find.text('Reconnect'), findsOneWidget, reason: 'the terminal failed');
+    expect(panels, findsNothing, reason: 'a refused session is not dialed again for the panel');
+    expect(container.read(settingsProvider).get(SettingKeys.showFiles), isTrue, reason: 'the switch is left alone');
+
+    refused.clear();
+    await press('Reconnect');
+    expect(dials, ['web.example', 'web.example']);
+    expect(panels, findsOneWidget);
+    expect(tester.widget<SideFilesPanel>(panels).active, isTrue);
+
+    await _flush(tester, container);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the tab menu closes the tabs beside the clicked one and disables an empty side', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-tab-menu-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/workspace.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'tabs': [_savedTab('p1', 's1', 'web'), _savedTab('p2', 's2', 'db'), _savedTab('p3', 's3', 'local')],
+        'active': 0,
+      }),
+    );
+    final container = await _mountWorkspace(tester, dir, []);
+    final workspace = container.read(workspaceProvider.notifier);
+    List<String> open() => [
+      for (final t in container.read(workspaceProvider).tabs)
+        workspace.session(t.layout.focusedLeaf.session)!.host.label,
+    ];
+    Future<void> menu(String tab) async {
+      final title = find.descendant(of: find.byType(ReorderableListView), matching: find.text(tab));
+      await tester.tap(title, buttons: kSecondaryButton);
+      await _frames(tester);
+    }
+
+    Future<void> choose(String item) async {
+      await tester.tap(find.text(item));
+      await _frames(tester);
+    }
+
+    await _frames(tester);
+    expect(open(), ['web-1', 'db-1', 'local']);
+
+    await menu('web-1');
+    await choose('Close tabs to the left');
+    expect(open(), hasLength(3), reason: 'nothing is left of the first tab');
+    expect(find.text('Close other tabs'), findsOneWidget, reason: 'a disabled entry leaves the menu open');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await _frames(tester);
+
+    await menu('db-1');
+    await choose('Close tabs to the right');
+    expect(open(), ['web-1', 'db-1']);
+
+    await menu('db-1');
+    await choose('Close tabs to the right');
+    expect(open(), ['web-1', 'db-1'], reason: 'nothing is right of the last tab');
+    await choose('Close tabs to the left');
+    expect(open(), ['db-1']);
+
+    await menu('db-1');
+    await choose('Close other tabs');
+    expect(open(), ['db-1'], reason: 'a lone tab has no others');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await _frames(tester);
+
+    await _flush(tester, container);
     expect(tester.takeException(), isNull);
   });
 
