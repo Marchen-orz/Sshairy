@@ -14,6 +14,8 @@ import '../../../foundation/open_external.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../platform/system_fonts.dart';
 import '../settings.dart';
+import '../domain/background.dart';
+import 'background_image.dart';
 
 const appVersion = '0.1.0';
 
@@ -136,6 +138,7 @@ class SettingsPanel extends ConsumerWidget {
               onChanged: (value) => notifier.set(SettingKeys.uiScale, value),
             ),
           ),
+          _Field.stacked(l.appBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.app)),
           if (Platform.isWindows)
             _Field.stacked(
               l.renderer,
@@ -144,6 +147,7 @@ class SettingsPanel extends ConsumerWidget {
             ),
         ]),
         _Section(l.terminal, [
+          _Field.stacked(l.terminalBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.terminal)),
           _Field.stacked(l.terminalFont, font(SettingKeys.terminalFontFamily, fallback: AppFonts.mono, monoOnly: true)),
           _Field.stacked(l.fontSize, slider(SettingKeys.fontSize)),
           _Field.stacked(

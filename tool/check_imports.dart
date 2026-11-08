@@ -22,6 +22,7 @@ const adapters = {
     'lib/features/files/adapters/',
     'lib/features/hosts/adapters/',
     'lib/features/connections/adapters/',
+    'lib/features/settings/adapters/',
   ],
 };
 

@@ -5,6 +5,7 @@ import '../../design/theme.dart';
 import '../../foundation/data_dir.dart';
 import '../../foundation/json_file.dart';
 import '../../foundation/result.dart';
+import 'domain/background.dart';
 
 /// Chosen by the Windows runner before the engine starts (ADR-11), so a change applies after a restart.
 enum Renderer { skia, impeller }
@@ -136,6 +137,21 @@ class FontSetting extends SettingDef<String?> {
   };
 }
 
+/// An owned image identifier; arbitrary source paths and URLs are never settings values.
+class BackgroundImageSetting extends SettingDef<String?> {
+  const BackgroundImageSetting(String key) : super(key, null, agentExposed: false);
+
+  @override
+  bool accepts(Object? raw) => raw == null || validBackgroundImageId(raw);
+  @override
+  String? decode(Object? raw) => raw as String?;
+  @override
+  Map<String, Object?> get schema => {
+    'type': ['string', 'null'],
+    'pattern': r'^bg-[0-9a-f]{1,16}-[0-9a-f]{16}\.png$',
+  };
+}
+
 abstract final class SettingKeys {
   static const themeMode = EnumSetting('themeMode', ThemeMode.system, ThemeMode.values);
   static const accent = EnumSetting('accent', Accent.blue, Accent.values);
@@ -151,6 +167,16 @@ abstract final class SettingKeys {
   static const uiScale = DoubleSetting('uiScale', 1, .8, 1.5);
   static const uiFontFamily = FontSetting('uiFontFamily');
   static const uiFontSize = DoubleSetting('uiFontSize', AppFonts.uiSize, AppFonts.uiSizeMin, AppFonts.uiSizeMax);
+
+  static const appBackgroundImage = BackgroundImageSetting('appBackgroundImage');
+  static const appBackgroundOpacity = DoubleSetting('appBackgroundOpacity', BackgroundImageLimits.opacity, 0, 1);
+  static const terminalBackgroundImage = BackgroundImageSetting('terminalBackgroundImage');
+  static const terminalBackgroundOpacity = DoubleSetting(
+    'terminalBackgroundOpacity',
+    BackgroundImageLimits.opacity,
+    0,
+    1,
+  );
 
   static const terminalFontFamily = FontSetting('terminalFontFamily');
 
@@ -202,6 +228,10 @@ abstract final class SettingKeys {
     uiScale,
     uiFontFamily,
     uiFontSize,
+    appBackgroundImage,
+    appBackgroundOpacity,
+    terminalBackgroundImage,
+    terminalBackgroundOpacity,
     terminalFontFamily,
     fontSize,
     scrollback,

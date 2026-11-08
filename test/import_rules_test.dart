@@ -48,6 +48,16 @@ void main() {
     expect(errors.every((e) => e.contains('only the app composition layer may depend on app')), isTrue);
   });
 
+  test('background file selection stays inside the settings adapter', () {
+    source('features/settings/adapters/background_store.dart', "import 'package:file_selector/file_selector.dart';");
+    expect(checkImports(lib), isEmpty);
+    source(
+      'features/settings/presentation/background_controls.dart',
+      "import 'package:file_selector/file_selector.dart';",
+    );
+    expect(checkImports(lib), hasLength(1));
+  });
+
   test('cross-feature internals and cycles remain rejected', () {
     source('features/hosts/api.dart', "import '../credentials/application/keys.dart';");
     source('features/credentials/application/keys.dart', "import '../../hosts/api.dart';");
