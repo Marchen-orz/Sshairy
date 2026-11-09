@@ -686,6 +686,28 @@ void main() {
       expect(client.forceClosed, isTrue);
     });
 
+    test('optional email is sent only as the exact encoded de parameter', () async {
+      const email = 'desktop+ssh@example.com';
+      final client = _Client(
+        _Request(
+          _Response.json({
+            'responseStatus': 200,
+            'responseData': {'translatedText': '说明'},
+          }),
+        ),
+      );
+      final engine = MyMemoryCompletionTranslationEngine(createClient: () => client, email: email);
+      addTearDown(engine.dispose);
+      expect(await engine.translate('Description', 'zh-CN', CancellationToken()), '说明');
+      expect(client.uri!.queryParameters, {'q': 'Description', 'langpair': 'en|zh-CN', 'mt': '1', 'de': email});
+      expect(client.uri!.host, 'api.mymemory.translated.net');
+      expect(client.uri!.scheme, 'https');
+      expect(client.uri!.userInfo, isEmpty);
+      for (final invalid in ['bad email', 'person@example.com\n', 'person@example.com&key=x']) {
+        expect(() => MyMemoryCompletionTranslationEngine(email: invalid), throwsArgumentError);
+      }
+    });
+
     test('direct engine callers cannot bypass target and input restrictions', () async {
       var clients = 0;
       final engine = MyMemoryCompletionTranslationEngine(

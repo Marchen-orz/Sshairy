@@ -152,6 +152,33 @@ void main() {
     expect(File('${dir.path}/settings.json').readAsStringSync(), isNot(contains('must-not-be-stored')));
   });
 
+  test('MyMemory email persists as user-only config and invalid emails reject the whole patch', () async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-translation-email');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(container.dispose);
+    final notifier = container.read(settingsProvider.notifier);
+    const config = TranslationConfig(myMemoryEmail: 'desktop+ssh@example.com');
+    final key = SettingKeys.completionTranslationConfig.key;
+    expect(await notifier.patch({key: config.toJson()}, exposedOnly: true), isA<Err<void>>());
+    expect(
+      await notifier.patch({
+        key: {...config.toJson(), 'myMemoryEmail': 'bad email'},
+        'fontSize': 18,
+      }),
+      isA<Err<void>>(),
+    );
+    expect(container.read(settingsProvider).fontSize, 14);
+    expect(container.read(settingsProvider).get(SettingKeys.completionTranslationConfig).myMemoryEmail, isEmpty);
+    expect(await notifier.patch({key: config.toJson()}), isA<Ok<void>>());
+    final restarted = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(restarted.dispose);
+    expect(
+      restarted.read(settingsProvider).get(SettingKeys.completionTranslationConfig).myMemoryEmail,
+      'desktop+ssh@example.com',
+    );
+  });
+
   test('showFiles is a boolean off by default; settings.patch changes it and a restart keeps it', () async {
     final setting = SettingKeys.showFiles;
     expect(SettingKeys.all, contains(setting));

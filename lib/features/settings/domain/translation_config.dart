@@ -8,10 +8,11 @@ class TranslationConfig {
     this.model = '',
     this.region = '',
     this.deepLFree = true,
+    this.myMemoryEmail = '',
   });
 
   final TranslationProvider provider;
-  final String endpoint, model, region;
+  final String endpoint, model, region, myMemoryEmail;
   final bool deepLFree;
 
   static final _model = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$');
@@ -27,6 +28,26 @@ class TranslationConfig {
             code == 0xfeff,
       );
   static const _keys = {'provider', 'endpoint', 'model', 'region', 'deepLFree'};
+  static final _emailLocal = RegExp(r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+$");
+  static final _emailLabel = RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$');
+
+  static bool validMyMemoryEmail(String value) {
+    if (value.isEmpty) return true;
+    if (value.length > 254 || value.codeUnits.any((code) => code < 33 || code > 126)) return false;
+    final parts = value.split('@');
+    if (parts.length != 2) return false;
+    final local = parts[0], domain = parts[1];
+    if (local.isEmpty ||
+        local.length > 64 ||
+        _emailLocal.stringMatch(local) != local ||
+        local.startsWith('.') ||
+        local.endsWith('.') ||
+        local.contains('..')) {
+      return false;
+    }
+    final labels = domain.split('.');
+    return labels.length >= 2 && labels.every((label) => _emailLabel.stringMatch(label) == label);
+  }
 
   static bool validModel(String value) => _model.stringMatch(value) == value;
   static bool validRegion(String value) => value.isEmpty || _region.stringMatch(value) == value;
@@ -63,11 +84,13 @@ class TranslationConfig {
     }
   }
 
-  bool get isValid => switch (provider) {
-    TranslationProvider.openAi => validEndpoint(endpoint) && validModel(model) && region.isEmpty,
-    TranslationProvider.microsoft => endpoint.isEmpty && model.isEmpty && validRegion(region),
-    _ => endpoint.isEmpty && model.isEmpty && region.isEmpty,
-  };
+  bool get isValid =>
+      (provider == TranslationProvider.myMemory ? validMyMemoryEmail(myMemoryEmail) : myMemoryEmail.isEmpty) &&
+      switch (provider) {
+        TranslationProvider.openAi => validEndpoint(endpoint) && validModel(model) && region.isEmpty,
+        TranslationProvider.microsoft => endpoint.isEmpty && model.isEmpty && validRegion(region),
+        _ => endpoint.isEmpty && model.isEmpty && region.isEmpty,
+      };
 
   /// The API base URL, including its path; the router adds /chat/completions.
   String get canonicalEndpoint => validEndpoint(endpoint) ? _canonicalEndpoint(Uri.parse(endpoint)) : '';
@@ -94,8 +117,10 @@ class TranslationConfig {
 
   factory TranslationConfig.fromJson(Object? json) {
     if (json is! Map ||
-        json.length != _keys.length ||
-        !json.keys.every(_keys.contains) ||
+        (json.length != _keys.length && json.length != _keys.length + 1) ||
+        !_keys.every(json.containsKey) ||
+        !json.keys.every((key) => _keys.contains(key) || key == 'myMemoryEmail') ||
+        (json.containsKey('myMemoryEmail') && json['myMemoryEmail'] is! String) ||
         json['provider'] is! String ||
         json['endpoint'] is! String ||
         json['model'] is! String ||
@@ -111,6 +136,7 @@ class TranslationConfig {
       model: json['model'] as String,
       region: json['region'] as String,
       deepLFree: json['deepLFree'] as bool,
+      myMemoryEmail: json['myMemoryEmail'] as String? ?? '',
     );
     if (!config.isValid) throw const FormatException('invalid translation config');
     return config;
@@ -122,5 +148,6 @@ class TranslationConfig {
     'model': model,
     'region': region,
     'deepLFree': deepLFree,
+    'myMemoryEmail': myMemoryEmail,
   };
 }

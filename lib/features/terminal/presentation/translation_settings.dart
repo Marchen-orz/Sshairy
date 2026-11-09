@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/controls.dart';
-import '../../../design/dialog.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
@@ -32,113 +32,32 @@ class TranslationSettings extends ConsumerStatefulWidget {
 }
 
 class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
-  var _saving = false, _saveFailed = false;
-
-  Future<void> _save<T>(SettingDef<T> setting, T value) async {
-    if (_saving) return;
-    setState(() {
-      _saving = true;
-      _saveFailed = false;
-    });
-    try {
-      await ref.read(settingsProvider.notifier).set(setting, value);
-    } catch (_) {
-      if (mounted) setState(() => _saveFailed = true);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final settings = ref.watch(settingsProvider);
-    final config = settings.get(SettingKeys.completionTranslationConfig);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppToggleRow(
-          title: l.completionTranslation,
-          subtitle: l.completionTranslationHint,
-          value: settings.get(SettingKeys.completionTranslation),
-          onChanged: _saving ? null : (value) => _save(SettingKeys.completionTranslation, value),
-        ),
-        const SizedBox(height: Space.sm),
-        Row(
-          children: [
-            Expanded(child: Text(l.translationConcurrency)),
-            const SizedBox(width: Space.md),
-            AppSelect<int>(
-              width: 208,
-              value: settings.get(SettingKeys.completionTranslationConcurrency),
-              options: [
-                AppOption(0, l.translationConcurrencyAuto),
-                for (var value = 1; value <= SettingKeys.completionTranslationConcurrency.max; value++)
-                  AppOption(value, '$value'),
-              ],
-              onChanged: _saving ? null : (value) => _save(SettingKeys.completionTranslationConcurrency, value),
-            ),
-          ],
-        ),
-        const SizedBox(height: Space.sm),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            onPressed: _saving
-                ? null
-                : () => showAppDialog<void>(
-                    context: context,
-                    builder: (_) => _TranslationDialog(
-                      initial: config,
-                      revision: ref.read(settingsProvider.notifier).revision,
-                      credentials: widget.credentials,
-                      onCredentialsChanged: widget.onCredentialsChanged,
-                    ),
-                  ),
-            child: Text('${l.translationService} · ${_providerLabel(config.provider, l)}'),
-          ),
-        ),
-        if (_saveFailed) Text(l.errSave, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-      ],
-    );
-  }
-}
-
-class _TranslationDialog extends ConsumerStatefulWidget {
-  const _TranslationDialog({
-    required this.initial,
-    required this.revision,
-    required this.credentials,
-    this.onCredentialsChanged,
-  });
-
-  final TranslationConfig initial;
-  final int revision;
-  final TranslationCredentials credentials;
-  final VoidCallback? onCredentialsChanged;
-
-  @override
-  ConsumerState<_TranslationDialog> createState() => _TranslationDialogState();
-}
-
-class _TranslationDialogState extends ConsumerState<_TranslationDialog> {
-  late var _provider = widget.initial.provider;
-  late var _deepLFree = widget.initial.deepLFree;
-  late final _endpoint = TextEditingController(text: widget.initial.endpoint);
-  late final _model = TextEditingController(text: widget.initial.model);
-  late final _region = TextEditingController(text: widget.initial.region);
+  late TranslationConfig _initial;
+  late TranslationProvider _provider;
+  late bool _deepLFree;
+  late int _revision;
+  final _endpoint = TextEditingController();
+  final _model = TextEditingController();
+  final _region = TextEditingController();
+  final _email = TextEditingController();
   final _key = TextEditingController();
   final _form = GlobalKey<FormState>();
   Timer? _checkTimer;
   var _checkGeneration = 0;
-  var _busy = false, _checking = false, _hasKey = false, _keyError = false, _removeKey = false;
+  var _busy = false, _saving = false, _saveFailed = false, _conflict = false;
+  var _checking = false, _hasKey = false, _keyError = false, _removeKey = false;
   String? _checkedIdentity, _error;
+  (int, String)? _ownWrite;
+
+  bool get _working => _busy || _saving;
+  bool get _dirty => _key.text.isNotEmpty || _removeKey || jsonEncode(_draft.toJson()) != jsonEncode(_initial.toJson());
 
   TranslationConfig get _draft => TranslationConfig(
     provider: _provider,
     endpoint: _provider == TranslationProvider.openAi ? _endpoint.text.trim() : '',
     model: _provider == TranslationProvider.openAi ? _model.text.trim() : '',
     region: _provider == TranslationProvider.microsoft ? _region.text.trim() : '',
+    myMemoryEmail: _provider == TranslationProvider.myMemory ? _email.text.trim() : '',
     deepLFree: _deepLFree,
   );
 
@@ -155,16 +74,84 @@ class _TranslationDialogState extends ConsumerState<_TranslationDialog> {
   @override
   void initState() {
     super.initState();
+    _load(ref.read(settingsProvider).get(SettingKeys.completionTranslationConfig));
     _checkCredential();
   }
 
   @override
   void dispose() {
     _checkTimer?.cancel();
-    for (final controller in [_endpoint, _model, _region, _key]) {
+    for (final controller in [_endpoint, _model, _region, _email, _key]) {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  void _load(TranslationConfig config) {
+    _checkTimer?.cancel();
+    _checkGeneration++;
+    _initial = config;
+    _revision = ref.read(settingsProvider.notifier).revision;
+    _provider = config.provider;
+    _deepLFree = config.deepLFree;
+    _endpoint.text = config.endpoint;
+    _model.text = config.model;
+    _region.text = config.region;
+    _email.text = config.myMemoryEmail;
+    _key.clear();
+    _checkedIdentity = null;
+    _hasKey = _keyError = _removeKey = _conflict = false;
+    _error = null;
+    _checking = _identity != null;
+  }
+
+  void _settingsChanged(Settings? previous, Settings next) {
+    final revision = ref.read(settingsProvider.notifier).revision;
+    if (_ownWrite case (final before, final expected)
+        when !_conflict && _revision == before && revision == before + 1 && jsonEncode(next.toJson()) == expected) {
+      _revision = revision;
+      return;
+    }
+    if (revision == _revision) return;
+    if (!_dirty && !_busy) {
+      final config = next.get(SettingKeys.completionTranslationConfig);
+      if (jsonEncode(config.toJson()) == jsonEncode(_initial.toJson())) {
+        _revision = revision;
+      } else {
+        setState(() => _load(config));
+        _checkCredential();
+      }
+    } else {
+      setState(() => _conflict = true);
+    }
+  }
+
+  void _reset() {
+    _form.currentState?.reset();
+    setState(() => _load(ref.read(settingsProvider).get(SettingKeys.completionTranslationConfig)));
+    _checkCredential();
+  }
+
+  void _changed() => setState(() => _error = null);
+
+  Future<void> _saveSetting<T>(SettingDef<T> setting, T value) async {
+    if (_working) return;
+    setState(() {
+      _saving = true;
+      _saveFailed = false;
+    });
+    final notifier = ref.read(settingsProvider.notifier);
+    try {
+      await notifier.saved;
+      if (!mounted) return;
+      _ownWrite = (notifier.revision, jsonEncode(ref.read(settingsProvider).copyWith({setting.key: value}).toJson()));
+      await notifier.set(setting, value);
+    } catch (_) {
+      if (mounted) setState(() => _saveFailed = true);
+    } finally {
+      _ownWrite = null;
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   void _identityChanged({bool debounce = false}) {
@@ -214,11 +201,12 @@ class _TranslationDialogState extends ConsumerState<_TranslationDialog> {
   }
 
   Future<void> _save() async {
-    if (!_form.currentState!.validate() || _busy || _checking || _keyError) return;
+    if (_working || _checking || _keyError || !_dirty || !_form.currentState!.validate()) return;
     final l = AppLocalizations.of(context);
     final config = _draft;
     if (!config.isValid) return;
     final identity = _identity;
+    final revision = _revision;
     final notifier = ref.read(settingsProvider.notifier);
     setState(() {
       _busy = true;
@@ -227,9 +215,9 @@ class _TranslationDialogState extends ConsumerState<_TranslationDialog> {
     try {
       await notifier.saved;
       if (!mounted) return;
-      if (notifier.revision != widget.revision) {
+      if (_conflict || notifier.revision != revision) {
         setState(() {
-          _busy = false;
+          _conflict = true;
           _error = l.translationConflict;
         });
         return;
@@ -248,164 +236,219 @@ class _TranslationDialogState extends ConsumerState<_TranslationDialog> {
         }
         widget.onCredentialsChanged?.call();
       }
+      _ownWrite = (
+        revision,
+        jsonEncode(ref.read(settingsProvider).copyWith({SettingKeys.completionTranslationConfig.key: config}).toJson()),
+      );
       final result = await notifier.patch({
-        'completionTranslationConfig': config.toJson(),
-      }, expectedRevision: widget.revision);
+        SettingKeys.completionTranslationConfig.key: config.toJson(),
+      }, expectedRevision: revision);
       if (!mounted) return;
       if (result is Err<void>) {
-        setState(() {
-          _busy = false;
-          _error = l.translationSaveFailed;
-        });
+        setState(() => _error = l.translationSaveFailed);
         return;
       }
-      setState(() => _busy = false);
-      Navigator.pop(context);
+      setState(() => _load(ref.read(settingsProvider).get(SettingKeys.completionTranslationConfig)));
+      _checkCredential();
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = l.translationSaveFailed;
-      });
+      if (mounted) setState(() => _error = l.translationSaveFailed);
+    } finally {
+      _ownWrite = null;
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(settingsProvider, _settingsChanged);
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final settings = ref.watch(settingsProvider);
     const gap = SizedBox(height: Space.lg);
     final hasCredentials = _provider != TranslationProvider.myMemory;
-    return PopScope(
-      canPop: !_busy,
-      child: AppDialog(
-        title: Text(l.translationService),
-        width: 480,
-        content: SingleChildScrollView(
-          child: Form(
-            key: _form,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                AppSelect<TranslationProvider>(
-                  value: _provider,
-                  label: l.translationProvider,
-                  options: [
-                    for (final provider in TranslationProvider.values) AppOption(provider, _providerLabel(provider, l)),
-                  ],
-                  onChanged: _busy
-                      ? null
-                      : (value) {
-                          setState(() => _provider = value);
-                          _identityChanged();
-                        },
-                ),
-                if (_provider == TranslationProvider.myMemory) ...[
-                  const SizedBox(height: Space.sm),
-                  Text(l.translationMyMemoryHint, style: theme.textTheme.bodySmall),
-                ],
-                if (_provider == TranslationProvider.deepL) ...[
-                  gap,
-                  AppToggleRow(
-                    title: l.translationDeepLFree,
-                    value: _deepLFree,
-                    onChanged: _busy
-                        ? null
-                        : (value) {
-                            setState(() => _deepLFree = value);
-                            _identityChanged();
-                          },
-                  ),
-                ],
-                if (_provider == TranslationProvider.microsoft) ...[
-                  gap,
-                  TextFormField(
-                    controller: _region,
-                    enabled: !_busy,
-                    decoration: InputDecoration(labelText: l.translationRegion),
-                    validator: (value) =>
-                        TranslationConfig.validRegion(value!.trim()) ? null : l.translationRegionInvalid,
-                    onChanged: (_) => _identityChanged(debounce: true),
-                  ),
-                ],
-                if (_provider == TranslationProvider.openAi) ...[
-                  gap,
-                  TextFormField(
-                    controller: _endpoint,
-                    enabled: !_busy,
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    decoration: InputDecoration(
-                      labelText: l.translationEndpoint,
-                      helperText: l.translationEndpointHint,
-                      helperMaxLines: 2,
-                    ),
-                    validator: (value) =>
-                        TranslationConfig.validEndpoint(value!.trim()) ? null : l.translationEndpointInvalid,
-                    onChanged: (_) => _identityChanged(debounce: true),
-                  ),
-                  gap,
-                  TextFormField(
-                    controller: _model,
-                    enabled: !_busy,
-                    autocorrect: false,
-                    decoration: InputDecoration(labelText: l.translationModel),
-                    validator: (value) =>
-                        TranslationConfig.validModel(value!.trim()) ? null : l.translationModelInvalid,
-                  ),
-                ],
-                if (hasCredentials) ...[
-                  gap,
-                  TextField(
-                    controller: _key,
-                    enabled: !_busy && !_checking && !_keyError && _identity != null,
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    decoration: InputDecoration(labelText: l.translationApiKey),
-                    onChanged: (_) {
-                      if (_removeKey) setState(() => _removeKey = false);
-                    },
-                  ),
-                  const SizedBox(height: Space.xs),
-                  Text(
-                    _checking
-                        ? l.translationKeyLoading
-                        : _keyError
-                        ? l.translationKeyLoadFailed
-                        : _removeKey
-                        ? l.translationKeyRemoved
-                        : _hasKey
-                        ? l.translationKeySaved
-                        : l.translationKeyMissing,
-                    style: theme.textTheme.bodySmall?.copyWith(color: _keyError ? theme.colorScheme.error : null),
-                  ),
-                  if (_hasKey && !_removeKey)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () => setState(() {
-                                _removeKey = true;
-                                _key.clear();
-                              }),
-                        child: Text(l.translationRemoveKey),
-                      ),
-                    ),
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: Space.sm),
-                  Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-                ],
-              ],
-            ),
+    final error = _error ?? (_conflict ? l.translationConflict : null);
+    return Form(
+      key: _form,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppToggleRow(
+            title: l.completionTranslation,
+            subtitle: l.completionTranslationHint,
+            value: settings.get(SettingKeys.completionTranslation),
+            onChanged: _working ? null : (value) => _saveSetting(SettingKeys.completionTranslation, value),
           ),
-        ),
-        actions: [
-          TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: Text(l.cancel)),
-          FilledButton(onPressed: _busy || _checking || _keyError ? null : _save, child: Text(l.save)),
+          const SizedBox(height: Space.sm),
+          AppSelect<TranslationProvider>(
+            value: _provider,
+            options: [
+              for (final provider in TranslationProvider.values) AppOption(provider, _providerLabel(provider, l)),
+            ],
+            onChanged: _working
+                ? null
+                : (value) {
+                    setState(() {
+                      _provider = value;
+                      _error = null;
+                    });
+                    _identityChanged();
+                  },
+          ),
+          if (_provider == TranslationProvider.myMemory) ...[
+            const SizedBox(height: Space.sm),
+            Text(l.translationMyMemoryHint, style: theme.textTheme.bodySmall),
+            gap,
+            TextFormField(
+              controller: _email,
+              enabled: !_working,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: InputDecoration(
+                labelText: l.translationEmail,
+                helperText: l.translationEmailHint,
+                helperMaxLines: 3,
+              ),
+              validator: (value) =>
+                  TranslationConfig.validMyMemoryEmail(value!.trim()) ? null : l.translationEmailInvalid,
+              onChanged: (_) => _changed(),
+            ),
+          ],
+          if (_provider == TranslationProvider.deepL) ...[
+            gap,
+            AppToggleRow(
+              title: l.translationDeepLFree,
+              value: _deepLFree,
+              onChanged: _working
+                  ? null
+                  : (value) {
+                      setState(() {
+                        _deepLFree = value;
+                        _error = null;
+                      });
+                      _identityChanged();
+                    },
+            ),
+          ],
+          if (_provider == TranslationProvider.microsoft) ...[
+            gap,
+            TextFormField(
+              controller: _region,
+              enabled: !_working,
+              decoration: InputDecoration(labelText: l.translationRegion),
+              validator: (value) => TranslationConfig.validRegion(value!.trim()) ? null : l.translationRegionInvalid,
+              onChanged: (_) {
+                _changed();
+                _identityChanged(debounce: true);
+              },
+            ),
+          ],
+          if (_provider == TranslationProvider.openAi) ...[
+            gap,
+            TextFormField(
+              controller: _endpoint,
+              enabled: !_working,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: InputDecoration(
+                labelText: l.translationEndpoint,
+                helperText: l.translationEndpointHint,
+                helperMaxLines: 2,
+              ),
+              validator: (value) =>
+                  TranslationConfig.validEndpoint(value!.trim()) ? null : l.translationEndpointInvalid,
+              onChanged: (_) {
+                _changed();
+                _identityChanged(debounce: true);
+              },
+            ),
+            gap,
+            TextFormField(
+              controller: _model,
+              enabled: !_working,
+              autocorrect: false,
+              decoration: InputDecoration(labelText: l.translationModel),
+              validator: (value) => TranslationConfig.validModel(value!.trim()) ? null : l.translationModelInvalid,
+              onChanged: (_) => _changed(),
+            ),
+          ],
+          if (hasCredentials) ...[
+            gap,
+            TextField(
+              controller: _key,
+              enabled: !_working && !_checking && !_keyError && _identity != null,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(labelText: l.translationApiKey),
+              onChanged: (_) => setState(() {
+                _removeKey = false;
+                _error = null;
+              }),
+            ),
+            const SizedBox(height: Space.xs),
+            Text(
+              _checking
+                  ? l.translationKeyLoading
+                  : _keyError
+                  ? l.translationKeyLoadFailed
+                  : _removeKey
+                  ? l.translationKeyRemoved
+                  : _hasKey
+                  ? l.translationKeySaved
+                  : l.translationKeyMissing,
+              style: theme.textTheme.bodySmall?.copyWith(color: _keyError ? theme.colorScheme.error : null),
+            ),
+            if (_hasKey && !_removeKey)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _working
+                      ? null
+                      : () => setState(() {
+                          _removeKey = true;
+                          _key.clear();
+                          _error = null;
+                        }),
+                  child: Text(l.translationRemoveKey),
+                ),
+              ),
+          ],
+          if (error != null) ...[
+            const SizedBox(height: Space.sm),
+            Text(error, style: TextStyle(color: theme.colorScheme.error)),
+          ],
+          const SizedBox(height: Space.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
+              const SizedBox(width: Space.sm),
+              FilledButton(
+                onPressed: _working || _checking || _keyError || _conflict || !_dirty ? null : _save,
+                child: Text(l.save),
+              ),
+            ],
+          ),
+          gap,
+          Row(
+            children: [
+              Expanded(child: Text(l.translationConcurrency)),
+              const SizedBox(width: Space.md),
+              AppSelect<int>(
+                width: 208,
+                value: settings.get(SettingKeys.completionTranslationConcurrency),
+                options: [
+                  AppOption(0, l.translationConcurrencyAuto),
+                  for (var value = 1; value <= SettingKeys.completionTranslationConcurrency.max; value++)
+                    AppOption(value, '$value'),
+                ],
+                onChanged: _working
+                    ? null
+                    : (value) => _saveSetting(SettingKeys.completionTranslationConcurrency, value),
+              ),
+            ],
+          ),
+          if (_saveFailed) Text(l.errSave, style: TextStyle(color: theme.colorScheme.error)),
         ],
       ),
     );

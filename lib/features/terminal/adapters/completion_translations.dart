@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 import '../../../foundation/cancellation.dart';
+import '../../settings/api.dart' show TranslationConfig;
 import '../domain/completion_translation.dart';
 
 const _target = 'zh-CN';
@@ -454,9 +455,15 @@ class CompletionTranslations extends ChangeNotifier {
 
 /// A fresh client per request allows cancellation even before getUrl resolves.
 class MyMemoryCompletionTranslationEngine implements CompletionTranslationEngine {
-  MyMemoryCompletionTranslationEngine({HttpClient Function()? createClient, this.timeout = const Duration(seconds: 5)})
-    : _createClient = createClient ?? HttpClient.new;
+  MyMemoryCompletionTranslationEngine({
+    HttpClient Function()? createClient,
+    this.timeout = const Duration(seconds: 5),
+    this.email = '',
+  }) : _createClient = createClient ?? HttpClient.new {
+    if (!TranslationConfig.validMyMemoryEmail(email)) throw ArgumentError('Invalid MyMemory email');
+  }
 
+  final String email;
   final HttpClient Function() _createClient;
   final Duration timeout;
   final _active = <void Function()>{};
@@ -512,6 +519,7 @@ class MyMemoryCompletionTranslationEngine implements CompletionTranslationEngine
           'q': original,
           'langpair': 'en|zh-CN',
           'mt': '1',
+          if (email.isNotEmpty) 'de': email,
         });
         final opened = await connection.getUrl(uri);
         if (stopped) {

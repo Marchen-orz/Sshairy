@@ -5,6 +5,7 @@ void main() {
   test('translation configs round-trip exact public fields', () {
     for (final config in [
       const TranslationConfig(),
+      const TranslationConfig(myMemoryEmail: 'translator+desktop@example.com'),
       const TranslationConfig(provider: TranslationProvider.deepL, deepLFree: false),
       const TranslationConfig(provider: TranslationProvider.google),
       const TranslationConfig(provider: TranslationProvider.microsoft, region: 'eastus'),
@@ -30,6 +31,47 @@ void main() {
     ]) {
       expect(() => TranslationConfig.fromJson(invalid), throwsFormatException, reason: '$invalid');
     }
+  });
+
+  test('optional MyMemory email validates and old configurations load without it', () {
+    final legacy = const TranslationConfig().toJson()..remove('myMemoryEmail');
+    expect(TranslationConfig.fromJson(legacy).myMemoryEmail, isEmpty);
+    for (final email in ['', 'person@example.com', 'desktop+ssh@example.co.uk', '${'x' * 64}@example.com']) {
+      expect(TranslationConfig.validMyMemoryEmail(email), isTrue, reason: email);
+      expect(TranslationConfig(myMemoryEmail: email).isValid, isTrue);
+    }
+    for (final email in [
+      'no-domain',
+      '@example.com',
+      'a@',
+      'a@localhost',
+      'a@@example.com',
+      ' a@example.com',
+      'a@example.com\n',
+      'a\u0000@example.com',
+      '.a@example.com',
+      'a.@example.com',
+      'a..b@example.com',
+      'a@-example.com',
+      'a@example-.com',
+      'a@ex_ample.com',
+      'a@example..com',
+      '中文@example.com',
+      '${'x' * 65}@example.com',
+      'a@${'x' * 64}.com',
+    ]) {
+      expect(TranslationConfig.validMyMemoryEmail(email), isFalse, reason: email);
+      expect(() => TranslationConfig.fromJson({...legacy, 'myMemoryEmail': email}), throwsFormatException);
+    }
+    expect(TranslationConfig.validMyMemoryEmail('${'x' * 64}@${'d' * 63}.${'e' * 63}.${'f' * 62}'), isFalse);
+    expect(() => TranslationConfig.fromJson({...legacy, 'myMemoryEmail': null}), throwsFormatException);
+    for (final provider in TranslationProvider.values.where((p) => p != TranslationProvider.myMemory)) {
+      expect(TranslationConfig(provider: provider, myMemoryEmail: 'person@example.com').isValid, isFalse);
+    }
+    expect(
+      const TranslationConfig(myMemoryEmail: 'person@example.com').credentialId,
+      const TranslationConfig().credentialId,
+    );
   });
 
   test('custom endpoints require HTTPS except exact loopback HTTP', () {

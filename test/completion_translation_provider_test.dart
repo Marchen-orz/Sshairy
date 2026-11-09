@@ -79,6 +79,50 @@ void main() {
     }
   });
 
+  test('MyMemory email changes recreate the engine without changing translation history', () async {
+    final directory = Directory.systemTemp.createTempSync('sshairy-email-cache-');
+    final cache = File('${directory.path}/cache/completion-translations/myMemory/completion-translations.json');
+    await cache.parent.create(recursive: true);
+    await cache.writeAsString(
+      jsonEncode({
+        'version': 1,
+        'identity': jsonEncode(['myMemory', 1]),
+        'entries': [
+          ['Public description', 'zh-CN', '公开说明'],
+        ],
+      }),
+    );
+    final credentials = _Credentials();
+    final container = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(directory.path),
+        translationCredentialsProvider.overrideWithValue(credentials),
+      ],
+    );
+    final settings = container.read(settingsProvider.notifier);
+    final subscription = container.listen(completionTranslationsProvider, (_, _) {});
+    try {
+      final initial = container.read(completionTranslationsProvider);
+      await initial.ready;
+      await settings.set(
+        SettingKeys.completionTranslationConfig,
+        const TranslationConfig(myMemoryEmail: 'desktop@example.com'),
+      );
+      final updated = container.read(completionTranslationsProvider);
+      await updated.ready;
+      expect(identical(initial, updated), isFalse);
+      expect(updated.lookup('Public description', 'zh'), '公开说明');
+      expect(credentials.reads, 0);
+      await Future.wait([initial.saved, updated.saved]);
+      expect(await cache.readAsString(), isNot(contains('desktop@example.com')));
+    } finally {
+      subscription.close();
+      await settings.saved;
+      container.dispose();
+      directory.deleteSync(recursive: true);
+    }
+  });
+
   test('concurrency changes replace the translator while reusing the same service cache', () async {
     final directory = Directory.systemTemp.createTempSync('sshairy-translation-cache-');
     final credentials = _Credentials();

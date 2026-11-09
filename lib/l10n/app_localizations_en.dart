@@ -460,7 +460,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get translationMyMemoryHint =>
-      'No key required · 5,000 free characters/day';
+      'No key required · 5,000 characters/day, or 50,000 with a valid email';
+
+  @override
+  String get translationEmail => 'Email (optional)';
+
+  @override
+  String get translationEmailHint =>
+      'Sent only to MyMemory so they can contact you if needed.';
+
+  @override
+  String get translationEmailInvalid =>
+      'Enter a valid email address of up to 254 ASCII characters.';
 
   @override
   String get translationDeepLFree => 'Use DeepL API Free';
@@ -498,7 +509,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get translationKeyLoadFailed =>
-      'Could not check secure storage. Reopen to try again.';
+      'Could not check secure storage. Cancel to try again.';
 
   @override
   String get translationEndpointInvalid =>
@@ -514,7 +525,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get translationConflict =>
-      'Settings changed. Reopen this dialog before saving.';
+      'Settings changed. Cancel your edits before trying again.';
 
   @override
   String get translationSaveFailed =>

@@ -923,8 +923,26 @@ abstract class AppLocalizations {
   /// No description provided for @translationMyMemoryHint.
   ///
   /// In en, this message translates to:
-  /// **'No key required · 5,000 free characters/day'**
+  /// **'No key required · 5,000 characters/day, or 50,000 with a valid email'**
   String get translationMyMemoryHint;
+
+  /// No description provided for @translationEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email (optional)'**
+  String get translationEmail;
+
+  /// No description provided for @translationEmailHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent only to MyMemory so they can contact you if needed.'**
+  String get translationEmailHint;
+
+  /// No description provided for @translationEmailInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid email address of up to 254 ASCII characters.'**
+  String get translationEmailInvalid;
 
   /// No description provided for @translationDeepLFree.
   ///
@@ -995,7 +1013,7 @@ abstract class AppLocalizations {
   /// No description provided for @translationKeyLoadFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not check secure storage. Reopen to try again.'**
+  /// **'Could not check secure storage. Cancel to try again.'**
   String get translationKeyLoadFailed;
 
   /// No description provided for @translationEndpointInvalid.
@@ -1019,7 +1037,7 @@ abstract class AppLocalizations {
   /// No description provided for @translationConflict.
   ///
   /// In en, this message translates to:
-  /// **'Settings changed. Reopen this dialog before saving.'**
+  /// **'Settings changed. Cancel your edits before trying again.'**
   String get translationConflict;
 
   /// No description provided for @translationSaveFailed.

@@ -444,7 +444,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get translationOpenAi => 'OpenAI 兼容服务';
 
   @override
-  String get translationMyMemoryHint => '无需密钥 · 每天免费 5000 字符';
+  String get translationMyMemoryHint => '无需密钥 · 每天 5000 字符，提供有效邮箱可用 50000 字符';
+
+  @override
+  String get translationEmail => '邮箱（可选）';
+
+  @override
+  String get translationEmailHint => '仅发送给 MyMemory，供其在需要时联系你。';
+
+  @override
+  String get translationEmailInvalid => '请输入有效邮箱，最多 254 个 ASCII 字符。';
 
   @override
   String get translationDeepLFree => '使用 DeepL API Free';
@@ -481,7 +490,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get translationKeyLoading => '正在检查安全存储…';
 
   @override
-  String get translationKeyLoadFailed => '无法检查安全存储，请重新打开后重试。';
+  String get translationKeyLoadFailed => '无法检查安全存储，请取消编辑后重试。';
 
   @override
   String get translationEndpointInvalid => '请使用 HTTPS 或本机 HTTP，不含凭据、查询参数或片段。';
@@ -493,7 +502,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get translationRegionInvalid => '请使用最多 64 位小写字母、数字或连字符。';
 
   @override
-  String get translationConflict => '设置已变化，请重新打开此窗口后保存。';
+  String get translationConflict => '设置已变化，请取消当前编辑后重试。';
 
   @override
   String get translationSaveFailed => '未能完成保存，密钥变更可能已写入安全存储。';

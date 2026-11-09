@@ -28,7 +28,7 @@ final completionTranslationsProvider = Provider<CompletionTranslations>((ref) {
     cacheIdentity: identity,
     maxConcurrent: concurrency == 0 ? 32 : concurrency,
     engine: config.provider == TranslationProvider.myMemory
-        ? MyMemoryCompletionTranslationEngine()
+        ? MyMemoryCompletionTranslationEngine(email: config.myMemoryEmail)
         : ConfiguredCompletionTranslationEngine(config: config, credentials: ref.watch(translationCredentialsProvider)),
   );
   ref.onDispose(translations.dispose);
