@@ -221,6 +221,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('process preview headers and values stay left aligned while sorting and hovering', (tester) async {
+    await pump(tester, sortable: true);
+    final preview = find.ancestor(of: find.byTooltip('Show all processes'), matching: find.byType(MonitorCard));
+    final allRows = find.descendant(of: preview, matching: find.byType(Row));
+    final header = tester.widgetList<Row>(allRows).firstWhere((row) => row.children.length == 5);
+    final headerElements = [
+      for (final label in ['Memory', 'CPU', 'Processes']) find.descendant(of: preview, matching: find.text(label)),
+    ];
+    void aligned() {
+      final origins = headerElements.map((finder) => tester.getTopLeft(finder).dx).toList();
+      for (final row in tester.widgetList<Row>(allRows).where((row) => row.children.length == 4)) {
+        final values = find.descendant(of: find.byWidget(row), matching: find.byType(Text));
+        final texts = tester.widgetList<Text>(values).toList();
+        expect(texts, hasLength(3));
+        for (var index = 0; index < texts.length; index++) {
+          expect(tester.getTopLeft(values.at(index)).dx, closeTo(origins[index], .1));
+          if (index < 2) expect(texts[index].textAlign, TextAlign.left);
+        }
+      }
+    }
+
+    expect(header.children, hasLength(5));
+    aligned();
+    final origins = headerElements.map((finder) => tester.getTopLeft(finder).dx).toList();
+    final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await pointer.addPointer(location: tester.getCenter(headerElements.first));
+    for (final finder in headerElements) {
+      await pointer.moveTo(tester.getCenter(finder));
+      await tester.tap(finder);
+      await tester.pump();
+      aligned();
+      expect(headerElements.map((element) => tester.getTopLeft(element).dx).toList(), origins);
+    }
+    await pointer.removePointer();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a detected GPU adds a page that queries the card only while shown', (tester) async {
     final server = await pump(tester, gpu: true);
     expect(server.commands.last, isNot(contains('@@nvgpu')));

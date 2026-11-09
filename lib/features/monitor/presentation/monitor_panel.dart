@@ -450,7 +450,7 @@ class _ProcessPreviewState extends State<_ProcessPreview> {
     final rows = List.of(widget.snapshot.processes)..sort(_compare);
     void expand() => showProcessDialog(context, widget.monitor);
 
-    Widget header(_ProcessSort column, String label, {bool numeric = true}) {
+    Widget header(_ProcessSort column, String label) {
       final selected = _sort == column;
       return Semantics(
         button: true,
@@ -461,7 +461,7 @@ class _ProcessPreviewState extends State<_ProcessPreview> {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: Space.xs),
             child: Row(
-              mainAxisAlignment: numeric ? MainAxisAlignment.end : MainAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
                 Flexible(
                   child: Text(
@@ -492,7 +492,7 @@ class _ProcessPreviewState extends State<_ProcessPreview> {
               SizedBox(width: 48, child: header(_ProcessSort.memory, l.memory)),
               SizedBox(width: 40, child: header(_ProcessSort.cpu, l.cpu)),
               const SizedBox(width: Space.sm),
-              Expanded(child: header(_ProcessSort.name, l.processes, numeric: false)),
+              Expanded(child: header(_ProcessSort.name, l.processes)),
               IconButton(
                 tooltip: l.showAllProcesses,
                 onPressed: expand,
@@ -510,11 +510,11 @@ class _ProcessPreviewState extends State<_ProcessPreview> {
                 children: [
                   SizedBox(
                     width: 48,
-                    child: Text(formatShortBytes(p.residentBytes), style: figures, textAlign: TextAlign.right),
+                    child: Text(formatShortBytes(p.residentBytes), style: figures, textAlign: TextAlign.left),
                   ),
                   SizedBox(
                     width: 40,
-                    child: Text(formatCpu(p.cpu), style: figures, textAlign: TextAlign.right),
+                    child: Text(formatCpu(p.cpu), style: figures, textAlign: TextAlign.left),
                   ),
                   const SizedBox(width: Space.sm),
                   Expanded(
