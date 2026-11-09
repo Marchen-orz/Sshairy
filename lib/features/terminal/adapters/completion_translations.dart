@@ -106,16 +106,20 @@ class CompletionTranslations extends ChangeNotifier {
     required String cacheDirectory,
     CompletionTranslationEngine? engine,
     DateTime Function()? now,
-    Duration interval = const Duration(milliseconds: 750),
+    int maxConcurrent = 32,
+    Duration interval = Duration.zero,
     Duration retryDelay = const Duration(minutes: 1),
     String cacheIdentity = 'mymemory',
   }) : _directory = Directory.fromUri(Directory(cacheDirectory).absolute.uri.normalizePath()),
        _engine = engine ?? MyMemoryCompletionTranslationEngine(),
        _now = now ?? DateTime.now,
+       _maxConcurrent = maxConcurrent,
        _interval = interval,
        _retryDelay = retryDelay,
        _cacheIdentity = cacheIdentity {
-    if (interval.isNegative ||
+    if (maxConcurrent < 1 ||
+        maxConcurrent > 32 ||
+        interval.isNegative ||
         retryDelay.isNegative ||
         cacheIdentity.isEmpty ||
         utf8.encode(cacheIdentity).length > 4096) {
@@ -128,6 +132,7 @@ class CompletionTranslations extends ChangeNotifier {
   final Directory _directory;
   final CompletionTranslationEngine _engine;
   final DateTime Function() _now;
+  final int _maxConcurrent;
   final Duration _interval, _retryDelay;
   final String _cacheIdentity;
   final _cache = <_TranslationKey, _CachedTranslation>{};
@@ -136,7 +141,7 @@ class CompletionTranslations extends ChangeNotifier {
   late final Future<void> _ready;
   late int _cacheBytes;
   Future<void>? _writing;
-  _TranslationJob? _active;
+  final _active = <_TranslationJob>{};
   Timer? _requestTimer, _saveTimer;
   DateTime? _nextRequest, _blockedUntil;
   bool _disposed = false, _dirty = false;
@@ -158,6 +163,11 @@ class CompletionTranslations extends ChangeNotifier {
     return entry.text;
   }
 
+  bool isPending(String original, String languageCode) {
+    final target = _normalizeTarget(languageCode);
+    return !_disposed && target != null && _validOriginal(original) && _jobs.containsKey((original, target));
+  }
+
   Future<String?> translate(String original, String languageCode, {CancellationToken? cancel}) async {
     final target = _normalizeTarget(languageCode);
     if (_disposed || cancel?.isCancelled == true || target == null || !_validOriginal(original)) {
@@ -172,6 +182,7 @@ class CompletionTranslations extends ChangeNotifier {
 
     final key = (original, target);
     var job = _jobs[key];
+    final created = job == null;
     if (job == null) {
       if (_pending.length >= 32) return null;
       job = _TranslationJob(key);
@@ -188,16 +199,18 @@ class CompletionTranslations extends ChangeNotifier {
       if (attachedJob.waiters.isEmpty) {
         attachedJob.cancel.cancel();
         _pending.remove(attachedJob);
-        if (identical(_jobs[key], attachedJob)) _jobs.remove(key);
+        _finish(attachedJob, null);
+        _pump();
       }
     };
     if (cancel != null) _watchCancellation(cancel, waiter.cancellation);
+    if (created) notifyListeners();
     _pump();
     return waiter.result.future;
   }
 
   void _pump() {
-    if (_disposed || _active != null || _pending.isEmpty) return;
+    if (_disposed || _active.length >= _maxConcurrent || _pending.isEmpty) return;
     _requestTimer?.cancel();
     _requestTimer = null;
     final now = _now();
@@ -205,14 +218,16 @@ class CompletionTranslations extends ChangeNotifier {
       _dropPending();
       return;
     }
-    if (_nextRequest case final next? when now.isBefore(next)) {
-      _requestTimer = Timer(next.difference(now), _pump);
-      return;
+    while (_active.length < _maxConcurrent && _pending.isNotEmpty) {
+      if (_nextRequest case final next? when now.isBefore(next)) {
+        _requestTimer = Timer(next.difference(now), _pump);
+        return;
+      }
+      final job = _pending.removeFirst();
+      _active.add(job);
+      _nextRequest = now.add(_interval);
+      unawaited(_run(job));
     }
-    final job = _pending.removeFirst();
-    _active = job;
-    _nextRequest = now.add(_interval);
-    unawaited(_run(job));
   }
 
   Future<void> _run(_TranslationJob job) async {
@@ -234,10 +249,10 @@ class CompletionTranslations extends ChangeNotifier {
         _dirty = true;
         _scheduleSave();
         _finish(job, text);
-        notifyListeners();
       } else {
         final delay = quota && _retryDelay < const Duration(hours: 1) ? const Duration(hours: 1) : _retryDelay;
-        _blockedUntil = _now().add(delay);
+        final until = _now().add(delay);
+        if (_blockedUntil == null || until.isAfter(_blockedUntil!)) _blockedUntil = until;
         _finish(job, null);
         _dropPending();
       }
@@ -245,16 +260,18 @@ class CompletionTranslations extends ChangeNotifier {
       _finish(job, null);
     }
     job.cancel.cancel();
-    if (identical(_active, job)) _active = null;
+    _active.remove(job);
     _pump();
   }
 
   void _finish(_TranslationJob job, String? text) {
-    if (identical(_jobs[job.key], job)) _jobs.remove(job.key);
+    final removed = identical(_jobs[job.key], job);
+    if (removed) _jobs.remove(job.key);
     for (final waiter in job.waiters) {
       waiter.finish(text);
     }
     job.waiters.clear();
+    if (removed && !_disposed) notifyListeners();
   }
 
   void _dropPending() {
@@ -424,7 +441,10 @@ class CompletionTranslations extends ChangeNotifier {
       job.cancel.cancel();
       _finish(job, null);
     }
-    _active?.cancel.cancel();
+    for (final job in _active) {
+      job.cancel.cancel();
+    }
+    _active.clear();
     _pending.clear();
     _engine.dispose();
     unawaited(_flush());

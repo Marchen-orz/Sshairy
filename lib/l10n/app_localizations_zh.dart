@@ -420,6 +420,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get translationService => '翻译服务';
 
   @override
+  String get translationConcurrency => '翻译并发数';
+
+  @override
+  String get translationConcurrencyAuto => '自动（所有可见项）';
+
+  @override
   String get translationProvider => '服务商';
 
   @override

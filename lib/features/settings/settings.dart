@@ -248,6 +248,13 @@ abstract final class SettingKeys {
   /// Guards against pasting commands that run at once; not the agent's to turn off.
   static const confirmPaste = BoolSetting('confirmPaste', true, agentExposed: false);
   static const completionTranslation = BoolSetting('completionTranslation', true, agentExposed: false);
+  static const completionTranslationConcurrency = IntSetting(
+    'completionTranslationConcurrency',
+    0,
+    0,
+    32,
+    agentExposed: false,
+  );
   static const completionTranslationConfig = TranslationConfigSetting('completionTranslationConfig');
 
   static const connectTimeout = IntSetting('connectTimeout', 20, 5, 120, apply: ApplyMode.nextConnection);
@@ -312,6 +319,7 @@ abstract final class SettingKeys {
     rightClick,
     confirmPaste,
     completionTranslation,
+    completionTranslationConcurrency,
     completionTranslationConfig,
     connectTimeout,
     keepAlive,

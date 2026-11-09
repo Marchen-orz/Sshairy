@@ -25,7 +25,6 @@ import '../../settings/api.dart';
 import '../application/completion_translations.dart';
 import '../domain/command_assistance.dart';
 import '../domain/completion_command_metadata.dart';
-import '../presentation/completion_descriptions.dart';
 import '../domain/directory.dart';
 import '../domain/insertion.dart';
 import '../domain/terminal_paths.dart';

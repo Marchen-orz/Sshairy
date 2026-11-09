@@ -872,6 +872,18 @@ abstract class AppLocalizations {
   /// **'Translation service'**
   String get translationService;
 
+  /// No description provided for @translationConcurrency.
+  ///
+  /// In en, this message translates to:
+  /// **'Concurrent translations'**
+  String get translationConcurrency;
+
+  /// No description provided for @translationConcurrencyAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto (all visible)'**
+  String get translationConcurrencyAuto;
+
   /// No description provided for @translationProvider.
   ///
   /// In en, this message translates to:

@@ -435,6 +435,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get translationService => 'Translation service';
 
   @override
+  String get translationConcurrency => 'Concurrent translations';
+
+  @override
+  String get translationConcurrencyAuto => 'Auto (all visible)';
+
+  @override
   String get translationProvider => 'Provider';
 
   @override

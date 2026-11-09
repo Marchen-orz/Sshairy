@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/design/controls.dart';
 import 'package:sshairy/design/dialog.dart';
 import 'package:sshairy/design/select.dart';
 import 'package:sshairy/design/theme.dart';
@@ -44,15 +45,49 @@ class _Credentials implements TranslationCredentials {
   }
 }
 
+class _ControlledSettings extends SettingsNotifier {
+  Completer<void>? holdSave;
+  var failWrites = false;
+
+  @override
+  Settings build() => const Settings();
+
+  @override
+  Future<void> get saved async {}
+
+  @override
+  Future<void> set<T>(SettingDef<T> setting, T value) async {
+    final held = holdSave;
+    if (held != null) await held.future;
+    if (failWrites) throw const FileSystemException('disk full');
+    // Keep the held operation in FakeAsync; persistence has separate real-IO coverage.
+    state = state.copyWith({setting.key: value});
+  }
+}
+
 void main() {
   Future<ProviderContainer> showSettings(
     WidgetTester tester,
     _Credentials credentials,
     TranslationConfig config, {
     VoidCallback? onCredentialsChanged,
+    bool openDialog = true,
+    bool wholePanel = false,
+    _ControlledSettings? controlledSettings,
   }) async {
     final dir = Directory.systemTemp.createTempSync('sshairy-translation-settings');
-    final container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    final section = SettingsSection(
+      (l) => l.translationService,
+      (_) => TranslationSettings(credentials: credentials, onCredentialsChanged: onCredentialsChanged),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        if (controlledSettings != null) settingsProvider.overrideWith(() => controlledSettings),
+        if (wholePanel) settingsSectionsProvider.overrideWithValue([section]),
+        if (wholePanel) systemFontsProvider.overrideWith((_) async => []),
+      ],
+    );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(() => container.read(settingsProvider.notifier).saved);
@@ -71,14 +106,19 @@ void main() {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
-            body: TranslationSettings(credentials: credentials, onCredentialsChanged: onCredentialsChanged),
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(width: 400, child: wholePanel ? const SettingsPanel() : Builder(builder: section.build)),
+            ),
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(TextButton).first);
-    await tester.pumpAndSettle();
+    if (openDialog) {
+      await tester.tap(find.byType(TextButton).first);
+      await tester.pumpAndSettle();
+    }
     return container;
   }
 
@@ -90,6 +130,81 @@ void main() {
     });
     await tester.pumpAndSettle();
   }
+
+  testWidgets('translation switch, concurrency and service configuration share one settings section', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final credentials = _Credentials();
+    final container = await showSettings(
+      tester,
+      credentials,
+      const TranslationConfig(),
+      openDialog: false,
+      wholePanel: true,
+    );
+    final label = find.text('Translate completion descriptions automatically');
+    expect(find.text('Confirm multi-line paste'), findsOneWidget);
+    final section = find.byType(TranslationSettings);
+    expect(label, findsOneWidget);
+    expect(find.descendant(of: section, matching: label), findsOneWidget);
+    expect(find.descendant(of: section, matching: find.byType(AppSwitch)), findsOneWidget);
+    expect(find.descendant(of: section, matching: find.text('Concurrent translations')), findsOneWidget);
+    expect(find.descendant(of: section, matching: find.text('Translation service · MyMemory')), findsOneWidget);
+    final select = tester.widget<AppSelect<int>>(find.byType(AppSelect<int>).last);
+    expect(select.value, 0);
+    expect(select.options.map((option) => option.value), List.generate(33, (value) => value));
+    expect(select.options.first.label, 'Auto (all visible)');
+
+    await tester.runAsync(() async {
+      select.onChanged!(3);
+      await Future<void>.delayed(Duration.zero);
+      await container.read(settingsProvider.notifier).saved;
+    });
+    await tester.pumpAndSettle();
+    expect(container.read(settingsProvider).get(SettingKeys.completionTranslationConcurrency), 3);
+    expect(tester.widget<AppSelect<int>>(find.byType(AppSelect<int>).last).value, 3);
+    expect(credentials.saved, isEmpty);
+    expect(credentials.cleared, isEmpty);
+    expect(credentials.reads, 0);
+  });
+
+  testWidgets('translation settings disable while saving and keep failed values unchanged', (tester) async {
+    final settings = _ControlledSettings();
+    final container = await showSettings(
+      tester,
+      _Credentials(),
+      const TranslationConfig(),
+      openDialog: false,
+      controlledSettings: settings,
+    );
+    settings.holdSave = Completer<void>();
+    await tester.tap(find.byType(AppSwitch));
+    await tester.pump();
+    expect(tester.widget<AppSwitch>(find.byType(AppSwitch)).onChanged, isNull);
+    expect(tester.widget<AppSelect<int>>(find.byType(AppSelect<int>)).onChanged, isNull);
+    expect(tester.widget<TextButton>(find.byType(TextButton)).onPressed, isNull);
+    expect(container.read(settingsProvider).get(SettingKeys.completionTranslation), isTrue);
+    settings.holdSave!.complete();
+    await tester.pumpAndSettle();
+    expect(container.read(settingsProvider).get(SettingKeys.completionTranslation), isFalse);
+    expect(tester.widget<AppSwitch>(find.byType(AppSwitch)).onChanged, isNotNull);
+
+    settings.holdSave = null;
+    settings.failWrites = true;
+    tester.widget<AppSelect<int>>(find.byType(AppSelect<int>)).onChanged!(2);
+    await tester.pumpAndSettle();
+    expect(find.text('Could not save. Check access to the data directory and secure storage.'), findsOneWidget);
+    expect(container.read(settingsProvider).get(SettingKeys.completionTranslationConcurrency), 0);
+    expect(tester.widget<AppSelect<int>>(find.byType(AppSelect<int>)).value, 0);
+    expect(tester.widget<AppSwitch>(find.byType(AppSwitch)).onChanged, isNotNull);
+    expect(tester.takeException(), isNull);
+
+    settings.failWrites = false;
+    tester.widget<AppSelect<int>>(find.byType(AppSelect<int>)).onChanged!(2);
+    await tester.pumpAndSettle();
+    expect(container.read(settingsProvider).get(SettingKeys.completionTranslationConcurrency), 2);
+    expect(find.text('Could not save. Check access to the data directory and secure storage.'), findsNothing);
+  });
 
   testWidgets('blank key retains the saved key; removal is explicit and never reads its value', (tester) async {
     final credentials = _Credentials()..values['google'] = const Secret('existing-secret');

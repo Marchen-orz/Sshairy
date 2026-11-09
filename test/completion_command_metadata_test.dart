@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/terminal/domain/command_assistance.dart';
 import 'package:sshairy/features/terminal/domain/completion_command_metadata.dart';
 import 'package:sshairy/features/terminal/domain/completion_spec.dart';
-import 'package:sshairy/features/terminal/presentation/completion_descriptions.dart';
 
 void main() {
   test('root metadata matches every packaged command and alias without loading nested specs', () {
@@ -58,7 +57,7 @@ void main() {
     expect(completionCommandMetadata('git status'), isNull);
   });
 
-  test('root explanations use the same offline locale translation as other candidates', () {
+  test('root explanations preserve the original specification without bundled translations', () {
     final metadata = completionCommandMetadata('git')!;
     final candidate = CommandCandidate(
       'git',
@@ -66,7 +65,6 @@ void main() {
       kind: CommandKind.command,
       detail: metadata.description,
     );
-    expect(translatedCompletionDescription('zh', candidate), '分布式版本控制工具');
-    expect(translatedCompletionDescription('en', candidate), 'Distributed version control system');
+    expect(candidate.detail, 'Distributed version control system');
   });
 }

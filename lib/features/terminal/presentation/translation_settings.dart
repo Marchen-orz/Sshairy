@@ -21,30 +21,85 @@ String _providerLabel(TranslationProvider provider, AppLocalizations l) => switc
   TranslationProvider.openAi => l.translationOpenAi,
 };
 
-class TranslationSettings extends ConsumerWidget {
+class TranslationSettings extends ConsumerStatefulWidget {
   const TranslationSettings({super.key, required this.credentials, this.onCredentialsChanged});
 
   final TranslationCredentials credentials;
   final VoidCallback? onCredentialsChanged;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TranslationSettings> createState() => _TranslationSettingsState();
+}
+
+class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
+  var _saving = false, _saveFailed = false;
+
+  Future<void> _save<T>(SettingDef<T> setting, T value) async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _saveFailed = false;
+    });
+    try {
+      await ref.read(settingsProvider.notifier).set(setting, value);
+    } catch (_) {
+      if (mounted) setState(() => _saveFailed = true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final config = ref.watch(settingsProvider).get(SettingKeys.completionTranslationConfig);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton(
-        onPressed: () => showAppDialog<void>(
-          context: context,
-          builder: (_) => _TranslationDialog(
-            initial: config,
-            revision: ref.read(settingsProvider.notifier).revision,
-            credentials: credentials,
-            onCredentialsChanged: onCredentialsChanged,
+    final settings = ref.watch(settingsProvider);
+    final config = settings.get(SettingKeys.completionTranslationConfig);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppToggleRow(
+          title: l.completionTranslation,
+          subtitle: l.completionTranslationHint,
+          value: settings.get(SettingKeys.completionTranslation),
+          onChanged: _saving ? null : (value) => _save(SettingKeys.completionTranslation, value),
+        ),
+        const SizedBox(height: Space.sm),
+        Row(
+          children: [
+            Expanded(child: Text(l.translationConcurrency)),
+            const SizedBox(width: Space.md),
+            AppSelect<int>(
+              width: 208,
+              value: settings.get(SettingKeys.completionTranslationConcurrency),
+              options: [
+                AppOption(0, l.translationConcurrencyAuto),
+                for (var value = 1; value <= SettingKeys.completionTranslationConcurrency.max; value++)
+                  AppOption(value, '$value'),
+              ],
+              onChanged: _saving ? null : (value) => _save(SettingKeys.completionTranslationConcurrency, value),
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.sm),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: _saving
+                ? null
+                : () => showAppDialog<void>(
+                    context: context,
+                    builder: (_) => _TranslationDialog(
+                      initial: config,
+                      revision: ref.read(settingsProvider.notifier).revision,
+                      credentials: widget.credentials,
+                      onCredentialsChanged: widget.onCredentialsChanged,
+                    ),
+                  ),
+            child: Text('${l.translationService} · ${_providerLabel(config.provider, l)}'),
           ),
         ),
-        child: Text('${l.translationService} · ${_providerLabel(config.provider, l)}'),
-      ),
+        if (_saveFailed) Text(l.errSave, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      ],
     );
   }
 }

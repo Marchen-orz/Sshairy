@@ -91,6 +91,38 @@ void main() {
     expect(restarted.read(settingsProvider).get(setting), isFalse);
   });
 
+  test('translation concurrency defaults to auto, validates bounds, stays user-only and persists', () async {
+    final setting = SettingKeys.completionTranslationConcurrency;
+    expect(SettingKeys.all, contains(setting));
+    expect(setting.defaultValue, 0);
+    expect(const Settings().get(setting), 0);
+    expect(setting.agentExposed, isFalse);
+    expect([0, 1, 32].every(setting.accepts), isTrue);
+    for (final value in [-1, 33, 1.5, '1', null]) {
+      expect(setting.accepts(value), isFalse, reason: '$value');
+    }
+    expect(Settings.fromJson({setting.key: 33}).get(setting), 0);
+    expect(setting.schema, {'type': 'integer', 'minimum': 0, 'maximum': 32});
+
+    final dir = Directory.systemTemp.createTempSync('sshairy-translation-concurrency');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(container.dispose);
+    final notifier = container.read(settingsProvider.notifier);
+    expect(await notifier.patch({setting.key: 2}, exposedOnly: true), isA<Err<void>>());
+    expect(await notifier.patch({setting.key: 33, 'fontSize': 18}), isA<Err<void>>());
+    expect(container.read(settingsProvider).get(setting), 0);
+    expect(container.read(settingsProvider).fontSize, 14);
+    await notifier.set(setting, 4);
+    expect(container.read(settingsProvider).get(setting), 4);
+
+    final restarted = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(restarted.dispose);
+    expect(restarted.read(settingsProvider).get(setting), 4);
+    expect(await notifier.patch({setting.key: 0}), isA<Ok<void>>());
+    expect(container.read(settingsProvider).get(setting), 0);
+  });
+
   test('translation provider config is validated, user-only and persists without secrets', () async {
     final setting = SettingKeys.completionTranslationConfig;
     expect(SettingKeys.all, contains(setting));

@@ -399,11 +399,19 @@ void main() {
     CompletionTranslations? paneTranslations;
     Directory? translationsDir;
 
-    Future<CompletionTranslations> translations(WidgetTester tester, _TranslationEngine engine) async {
+    Future<CompletionTranslations> translations(
+      WidgetTester tester,
+      _TranslationEngine engine, {
+      int maxConcurrent = 32,
+    }) async {
       late CompletionTranslations value;
       await tester.runAsync(() async {
         translationsDir = Directory.systemTemp.createTempSync('sshairy-pane-translations-');
-        value = CompletionTranslations(cacheDirectory: translationsDir!.path, engine: engine, interval: Duration.zero);
+        value = CompletionTranslations(
+          cacheDirectory: translationsDir!.path,
+          engine: engine,
+          maxConcurrent: maxConcurrent,
+        );
         await value.ready;
       });
       return value;
@@ -875,13 +883,25 @@ void main() {
       }
     });
 
-    testWidgets('compact descriptions follow the app language and expose complete hover tips', (tester) async {
-      final shell = await mount(tester, locale: const Locale('zh'));
+    testWidgets('compact descriptions show originals before online results and expose complete hover tips', (
+      tester,
+    ) async {
+      final engine = _TranslationEngine(hold: true);
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
       try {
         await _feed(tester, shell, 'u@box:~\$ git st');
         final popup = find.byKey(const ValueKey('command-completion-popup'));
+        expect(find.text('Show the working tree status'), findsOneWidget);
+        expect(find.text('显示工作区和暂存区状态'), findsNothing);
+        await drainTranslations(tester);
+        expect(engine.calls.single.original, 'Show the working tree status');
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        engine.calls.single.result.complete('显示工作区和暂存区状态');
+        await drainTranslations(tester);
         final translated = find.text('显示工作区和暂存区状态');
         expect(translated, findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(tester.getSize(popup).width, lessThanOrEqualTo(CompletionSize.width));
         final title = find.text('status');
         final gap = tester.getTopLeft(translated).dx - tester.getTopRight(title).dx;
@@ -914,6 +934,8 @@ void main() {
         await tester.pump();
         expect(find.text('Show the working tree status'), findsOneWidget);
         expect(translated, findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(engine.calls, hasLength(1));
         expect(shell.writes, isEmpty);
         expect(tester.takeException(), isNull);
       } finally {
@@ -979,6 +1001,72 @@ void main() {
       expect(engine.disposed, isTrue);
     });
 
+    testWidgets('queued and active descriptions retain originals beside bounded loading indicators', (tester) async {
+      final engine = _TranslationEngine(hold: true);
+      final service = await translations(tester, engine, maxConcurrent: 1);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        await drainTranslations(tester);
+        final visible = visibleTmuxDescriptions(tester);
+        expect(visible.length, greaterThan(1));
+        expect(engine.calls, hasLength(1));
+        expect(visible.every((original) => service.isPending(original, 'zh')), isTrue);
+        for (final original in visible) {
+          final tooltip = find.byTooltip(original);
+          expect(find.text(original), findsOneWidget);
+          final indicator = find.descendant(of: tooltip, matching: find.byType(CircularProgressIndicator));
+          expect(indicator, findsOneWidget);
+          expect(tester.getSize(indicator), const Size.square(12));
+          final row = find.ancestor(of: tooltip, matching: find.byType(InkWell)).first;
+          expect(tester.getRect(indicator).right, lessThanOrEqualTo(tester.getRect(row).right));
+          expect(tester.getTopLeft(indicator).dx - tester.getTopRight(find.text(original)).dx, closeTo(Space.xs, .1));
+        }
+        final first = engine.calls.single;
+        first.result.complete('排队完成的说明');
+        await drainTranslations(tester);
+        expect(service.isPending(first.original, 'zh'), isFalse);
+        expect(find.byTooltip('排队完成的说明\n${first.original}'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byTooltip('排队完成的说明\n${first.original}'),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsNothing,
+        );
+        expect(engine.calls, hasLength(2));
+        expect(engine.calls.last.cancel.isCancelled, isFalse);
+        expect(shell.writes, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('a failed translation keeps its original and clears active and queued loading indicators', (
+      tester,
+    ) async {
+      final engine = _TranslationEngine(hold: true);
+      final service = await translations(tester, engine, maxConcurrent: 1);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        await drainTranslations(tester);
+        expect(find.byType(CircularProgressIndicator), findsWidgets);
+        engine.calls.single.result.complete(null);
+        await drainTranslations(tester);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.text('tmux action 0'), findsOneWidget);
+        expect(find.byTooltip('tmux action 0'), findsOneWidget);
+        expect(find.text('子命令'), findsNothing);
+        expect(engine.calls, hasLength(1));
+        expect(visibleTmuxDescriptions(tester).every((original) => !service.isPending(original, 'zh')), isTrue);
+        expect(shell.writes, isEmpty);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
     testWidgets('online descriptions keep stable demand while individual translations finish', (tester) async {
       final engine = _TranslationEngine(hold: true);
       final service = await translations(tester, engine);
@@ -988,7 +1076,10 @@ void main() {
         await drainTranslations(tester);
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.pump();
-        final first = engine.calls.single;
+        final visible = visibleTmuxDescriptions(tester);
+        expect(engine.calls.map((call) => call.original).toSet(), visible);
+        expect(engine.calls.length, greaterThan(1));
+        final first = engine.calls.first;
         expect(first.original, 'tmux action 0');
         first.result.complete('在线说明');
         await drainTranslations(tester);
@@ -996,8 +1087,8 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(find.byTooltip('在线说明\ntmux action 0'), findsOneWidget);
-        expect(engine.calls.length, greaterThan(1));
-        expect(engine.calls[1].cancel.isCancelled, isFalse);
+        expect(engine.calls, hasLength(visible.length));
+        expect(engine.calls.skip(1).every((call) => !call.cancel.isCancelled), isTrue);
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         expect(shell.writes.join(), 'command-1 ');
       } finally {
@@ -1013,7 +1104,9 @@ void main() {
         try {
           await _feed(tester, shell, 'u@box:~\$ tmux ');
           await drainTranslations(tester);
-          final first = engine.calls.single;
+          final calls = engine.calls.toList();
+          expect(calls.length, greaterThan(1));
+          expect(find.byType(CircularProgressIndicator), findsWidgets);
           switch (change) {
             case 'locale':
               await mountView(tester, locale: const Locale('en'));
@@ -1039,24 +1132,57 @@ void main() {
           }
           await tester.pump();
           await tester.pump();
-          expect(first.cancel.isCancelled, isTrue);
+          expect(calls.every((call) => call.cancel.isCancelled), isTrue);
           expect(engine.disposed, isFalse);
-          first.result.complete('迟到的说明');
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          for (final call in calls) {
+            call.result.complete('迟到的说明');
+          }
           await drainTranslations(tester);
-          expect(engine.calls, hasLength(1));
+          expect(engine.calls, hasLength(calls.length));
           expect(find.text('迟到的说明'), findsNothing);
-          expect(service.lookup(first.original, 'zh'), isNull);
+          expect(calls.every((call) => service.lookup(call.original, 'zh') == null), isTrue);
           expect(shell.writes.where((text) => text != '\x1b'), isEmpty);
           if (change == 'hidden' || change == 'inactive') {
             await _feed(tester, shell, '\r\nu@box:~\$ tmux command-');
             await drainTranslations(tester);
-            expect(engine.calls, hasLength(1));
+            expect(engine.calls, hasLength(calls.length));
           }
         } finally {
           await unmount(tester);
         }
       });
     }
+
+    testWidgets('hiding one pane retains a shared translation requested by another owner', (tester) async {
+      final engine = _TranslationEngine(hold: true);
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      final other = CancellationToken();
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        await drainTranslations(tester);
+        final first = engine.calls.first;
+        final count = engine.calls.length;
+        final shared = service.translate(first.original, 'zh', cancel: other);
+        await drainTranslations(tester);
+        expect(engine.calls, hasLength(count));
+        expect(first.cancel.isCancelled, isFalse);
+        await mountView(tester, locale: const Locale('zh'), visible: false);
+        await drainTranslations(tester);
+        expect(first.cancel.isCancelled, isFalse);
+        expect(engine.calls.skip(1).every((call) => call.cancel.isCancelled), isTrue);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        first.result.complete('另一窗口仍需要的说明');
+        await drainTranslations(tester);
+        expect(await shared, '另一窗口仍需要的说明');
+        expect(service.lookup(first.original, 'zh'), '另一窗口仍需要的说明');
+        expect(shell.writes, isEmpty);
+      } finally {
+        other.cancel();
+        await unmount(tester);
+      }
+    });
 
     testWidgets('scrolling cancels obsolete rows and requests only the next visible demand', (tester) async {
       final engine = _TranslationEngine(hold: true);
@@ -1065,24 +1191,21 @@ void main() {
       try {
         await _feed(tester, shell, 'u@box:~\$ tmux ');
         await drainTranslations(tester);
-        final first = engine.calls.single;
+        final previous = engine.calls.toList();
         final list = candidateList(tester);
         list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
         await tester.pump();
         final visible = visibleTmuxDescriptions(tester);
         await drainTranslations(tester);
-        expect(first.cancel.isCancelled, isTrue);
-        expect(engine.calls, hasLength(2));
-        expect(visible, contains(engine.calls.last.original));
-        for (var i = 1; i < 32 && !engine.calls.last.result.isCompleted; i++) {
-          final call = engine.calls.last;
-          expect(visible, contains(call.original));
-          expect(call.cancel.isCancelled, isFalse);
+        expect(previous.every((call) => call.cancel.isCancelled), isTrue);
+        final current = engine.calls.skip(previous.length).toList();
+        expect(current.map((call) => call.original).toSet(), visible);
+        expect(current.every((call) => !call.cancel.isCancelled), isTrue);
+        for (final call in current) {
           call.result.complete('译文 ${call.original}');
-          await drainTranslations(tester);
         }
-        expect(engine.calls.skip(1).map((call) => call.original).toSet(), visible);
-        expect(engine.calls, hasLength(visible.length + 1));
+        await drainTranslations(tester);
+        expect(engine.calls, hasLength(previous.length + visible.length));
         expect(engine.disposed, isFalse);
       } finally {
         await unmount(tester);
@@ -1111,18 +1234,19 @@ void main() {
       try {
         await _feed(tester, shell, 'u@box:~\$ tmux ');
         await drainTranslations(tester);
-        final first = engine.calls.single;
+        final oldCalls = engine.calls.toList();
         final candidates = session.commandAssistance.value.candidates;
         container.updateOverrides([
           dataDirProvider.overrideWithValue(dir.path),
           completionTranslationsProvider.overrideWithValue(replacement),
         ]);
         await drainTranslations(tester);
-        expect(first.cancel.isCancelled, isTrue);
+        expect(oldCalls.every((call) => call.cancel.isCancelled), isTrue);
         expect(engine.disposed, isFalse);
-        expect(replacementEngine.calls.single.cancel.isCancelled, isFalse);
-        first.result.complete('旧服务说明');
-        replacementEngine.calls.single.result.complete('新服务说明');
+        expect(replacementEngine.calls.length, greaterThan(1));
+        expect(replacementEngine.calls.every((call) => !call.cancel.isCancelled), isTrue);
+        oldCalls.first.result.complete('旧服务说明');
+        replacementEngine.calls.first.result.complete('新服务说明');
         await drainTranslations(tester);
         expect(find.byTooltip('新服务说明\ntmux action 0'), findsOneWidget);
         expect(find.text('旧服务说明'), findsNothing);
@@ -1155,7 +1279,11 @@ void main() {
         list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
         await drainTranslations(tester);
         expect(engine.calls, hasLength(count));
-        expect(find.text('子命令'), findsWidgets);
+        final original = visibleTmuxDescriptions(tester).first;
+        expect(find.text(original), findsOneWidget);
+        expect(find.byTooltip(original), findsOneWidget);
+        expect(find.text('子命令'), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(shell.writes, isEmpty);
       } finally {
         await unmount(tester);
@@ -1309,27 +1437,88 @@ void main() {
       }
     });
 
-    testWidgets('reviewed offline descriptions never request online translation', (tester) async {
-      final engine = _TranslationEngine();
+    testWidgets('Chinese category labels appear only when a specification has no description', (tester) async {
+      final engine = _TranslationEngine(hold: true);
       final service = await translations(tester, engine);
       final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
       try {
         await _feed(tester, shell, 'u@box:~\$ git st');
+        expect(find.text('Show the working tree status'), findsOneWidget);
+        expect(find.text('子命令'), findsOneWidget);
         await drainTranslations(tester);
-        expect(find.text('显示工作区和暂存区状态'), findsOneWidget);
-        expect(engine.calls, isEmpty);
+        expect(engine.calls.single.original, 'Show the working tree status');
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(shell.writes, isEmpty);
       } finally {
         await unmount(tester);
       }
     });
 
-    testWidgets('untranslated specification explanations retain the original in a Chinese tooltip', (tester) async {
+    testWidgets('an available original takes precedence over a catalog explanation without authorizing translation', (
+      tester,
+    ) async {
+      final engine = _TranslationEngine();
+      final service = await translations(tester, engine);
+      final provider = _Provider();
+      final shell = await mount(
+        tester,
+        locale: const Locale('zh'),
+        completionTranslations: service,
+        provider: provider,
+      );
+      try {
+        await _feed(tester, shell, 'u@box:~\$ private');
+        provider.pending.single.complete(const [
+          CommandCandidate(
+            'private-original',
+            source: CommandCandidateSource.builtin,
+            description: CommandDescription.toolTmux,
+            detail: 'Exact original English explanation',
+          ),
+        ]);
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Exact original English explanation'), findsOneWidget);
+        expect(find.byTooltip('Exact original English explanation'), findsOneWidget);
+        await drainTranslations(tester);
+        expect(engine.calls, isEmpty);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(shell.writes, isEmpty);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('packaged root descriptions use online history and never a bundled translation', (tester) async {
+      final engine = _TranslationEngine(hold: true);
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ gi');
+        expect(find.text('Distributed version control system'), findsOneWidget);
+        expect(find.text('分布式版本控制工具'), findsNothing);
+        await drainTranslations(tester);
+        expect(engine.calls.single.original, 'Distributed version control system');
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        engine.calls.single.result.complete('在线版本控制说明');
+        await drainTranslations(tester);
+        expect(find.byTooltip('在线版本控制说明\nDistributed version control system'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('untranslated specification explanations display their original with a complete tooltip', (
+      tester,
+    ) async {
       final shell = await mount(tester, locale: const Locale('zh'));
       try {
         await _feed(tester, shell, 'u@box:~\$ tmux command-0');
         await _feed(tester, shell, '\b \b');
-        expect(find.text('子命令'), findsWidgets);
-        expect(find.byTooltip('子命令\ntmux action 0'), findsOneWidget);
+        expect(find.text('tmux action 0'), findsOneWidget);
+        expect(find.text('子命令'), findsNothing);
+        expect(find.byTooltip('tmux action 0'), findsOneWidget);
         expect(
           tester.getSize(find.byKey(const ValueKey('command-completion-popup'))).width,
           lessThan(CompletionSize.width),
@@ -1341,6 +1530,47 @@ void main() {
     });
 
     for (final scale in [1.0, 1.5]) {
+      testWidgets('completion reserves one scrollbar gutter and no extra trailing row padding at $scale scale', (
+        tester,
+      ) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final shell = await mount(tester, scale: scale);
+        try {
+          await _feed(tester, shell, 'u@box:~\$ tmux ');
+          await tester.pump();
+          await tester.pump();
+          final popup = find.byKey(const ValueKey('command-completion-popup'));
+          final scrollbar = find.descendant(of: popup, matching: find.byType(Scrollbar));
+          final viewport = find.descendant(of: popup, matching: find.byType(ShrinkWrappingViewport));
+          final row = find.ancestor(of: find.text('tmux action 0'), matching: find.byType(InkWell)).first;
+          final detailRow = find.ancestor(of: find.text('tmux action 0'), matching: find.byType(Tooltip)).first;
+          final list = candidateList(tester);
+          expect(list.controller!.position.maxScrollExtent, greaterThan(0));
+          expect(scrollbar, findsOneWidget);
+          expect(viewport, findsOneWidget);
+          expect(tester.getRect(scrollbar).right - tester.getRect(viewport).right, closeTo(Space.lg * scale, .1));
+          expect(tester.getRect(row).right, closeTo(tester.getRect(viewport).right, .1));
+          expect(tester.getRect(detailRow).right, closeTo(tester.getRect(row).right, .1));
+
+          await _feed(tester, shell, '\r\x1b[2Ku@box:~\$ tmux command-3');
+          await tester.pump();
+          await tester.pump();
+          final shortList = candidateList(tester);
+          expect(session.commandAssistance.value.candidates, hasLength(2));
+          expect(shortList.controller!.position.maxScrollExtent, 0);
+          final shortScrollbar = find.descendant(of: popup, matching: find.byType(Scrollbar));
+          final shortViewport = find.descendant(of: popup, matching: find.byType(ShrinkWrappingViewport));
+          final shortRow = find.ancestor(of: find.text('tmux action 30'), matching: find.byType(InkWell)).first;
+          final shortDetail = find.ancestor(of: find.text('tmux action 30'), matching: find.byType(Tooltip)).first;
+          expect(tester.getRect(shortScrollbar).right, closeTo(tester.getRect(shortViewport).right, .1));
+          expect(tester.getRect(shortRow).right - tester.getRect(shortDetail).right, closeTo(Space.sm * scale, .1));
+          expect(tester.takeException(), isNull);
+        } finally {
+          await unmount(tester);
+        }
+      });
+
       testWidgets('completion tracks the caret at $scale scale and stays inside the pane', (tester) async {
         await tester.binding.setSurfaceSize(const Size(1400, 800));
         addTearDown(() => tester.binding.setSurfaceSize(null));

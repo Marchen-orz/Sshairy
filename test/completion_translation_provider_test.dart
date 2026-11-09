@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,7 +26,7 @@ class _Credentials implements TranslationCredentials {
 }
 
 void main() {
-  test('active translator follows only service settings and credential invalidation', () async {
+  test('active translator follows only service settings, concurrency and credential invalidation', () async {
     final directory = Directory.systemTemp.createTempSync('sshairy-translation-provider-');
     final credentials = _Credentials();
     final container = ProviderContainer(
@@ -43,6 +44,11 @@ void main() {
       await settings.set(SettingKeys.completionTranslation, false);
       expect(identical(container.read(completionTranslationsProvider), initial), isTrue);
 
+      await settings.set(SettingKeys.completionTranslationConcurrency, 3);
+      final limited = container.read(completionTranslationsProvider);
+      await limited.ready;
+      expect(identical(limited, initial), isFalse);
+
       await settings.set(
         SettingKeys.completionTranslationConfig,
         const TranslationConfig(
@@ -53,7 +59,7 @@ void main() {
       );
       final configured = container.read(completionTranslationsProvider);
       await configured.ready;
-      expect(identical(configured, initial), isFalse);
+      expect(identical(configured, limited), isFalse);
 
       container.invalidate(completionTranslationsProvider);
       final refreshed = container.read(completionTranslationsProvider);
@@ -64,7 +70,64 @@ void main() {
         directory.listSync(recursive: true).whereType<File>().any((file) => file.path.endsWith('apiKey')),
         isFalse,
       );
-      await Future.wait([initial.saved, configured.saved, refreshed.saved]);
+      await Future.wait([initial.saved, limited.saved, configured.saved, refreshed.saved]);
+    } finally {
+      subscription.close();
+      await settings.saved;
+      container.dispose();
+      directory.deleteSync(recursive: true);
+    }
+  });
+
+  test('concurrency changes replace the translator while reusing the same service cache', () async {
+    final directory = Directory.systemTemp.createTempSync('sshairy-translation-cache-');
+    final credentials = _Credentials();
+    final cache = File('${directory.path}/cache/completion-translations/openAi/completion-translations.json');
+    await cache.parent.create(recursive: true);
+    await cache.writeAsString(
+      jsonEncode({
+        'version': 1,
+        'identity': jsonEncode(['openAi', 'https://example.com/v1', 'model', 1]),
+        'entries': [
+          ['Public command description', 'zh-CN', '公开命令说明'],
+        ],
+      }),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(directory.path),
+        translationCredentialsProvider.overrideWithValue(credentials),
+      ],
+    );
+    final settings = container.read(settingsProvider.notifier);
+    await settings.set(
+      SettingKeys.completionTranslationConfig,
+      const TranslationConfig(provider: TranslationProvider.openAi, endpoint: 'https://example.com/v1', model: 'model'),
+    );
+    final subscription = container.listen(completionTranslationsProvider, (_, _) {});
+    try {
+      final initial = container.read(completionTranslationsProvider);
+      await initial.ready;
+      expect(initial.lookup('Public command description', 'zh'), '公开命令说明');
+      await settings.set(SettingKeys.completionTranslationConcurrency, 1);
+      final limited = container.read(completionTranslationsProvider);
+      await limited.ready;
+      expect(identical(limited, initial), isFalse);
+      expect(limited.lookup('Public command description', 'zh'), '公开命令说明');
+      await settings.set(SettingKeys.completionTranslationConcurrency, 0);
+      final automatic = container.read(completionTranslationsProvider);
+      await automatic.ready;
+      expect(identical(automatic, limited), isFalse);
+      expect(automatic.lookup('Public command description', 'zh'), '公开命令说明');
+      expect(credentials.reads, 0, reason: 'changing concurrency must reuse the cache without a request');
+      await Future.wait([initial.saved, limited.saved, automatic.saved]);
+      expect(
+        directory
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((file) => file.path.endsWith('completion-translations.json')),
+        hasLength(1),
+      );
     } finally {
       subscription.close();
       await settings.saved;

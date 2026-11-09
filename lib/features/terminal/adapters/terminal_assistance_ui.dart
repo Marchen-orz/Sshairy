@@ -190,11 +190,7 @@ extension _AssistancePane on _TerminalPaneState {
       for (var i = first; i < end; i++) {
         final candidate = state.candidates[i];
         final original = _session._translationSources[candidate];
-        if (original != null &&
-            candidate.description == null &&
-            translatedCompletionDescription(locale, candidate) == null) {
-          originals.add(original);
-        }
+        if (original != null) originals.add(original);
       }
       // Retain fulfilled rows in demand so cache notifications do not cancel their neighbors.
       if (identical(translations, _candidateTranslations) &&
@@ -220,12 +216,11 @@ extension _AssistancePane on _TerminalPaneState {
 
   Widget _completionOverlay() {
     final enabled = ref.watch(settingsProvider.select((settings) => settings.get(SettingKeys.completionTranslation)));
-    if (!enabled) _cancelCandidateTranslations();
     final translations = _session._translations ?? ref.watch<CompletionTranslations>(completionTranslationsProvider);
-    return _completionList(translations);
+    return ScrollGutterScope(child: _completionList(translations, enabled));
   }
 
-  Widget _completionList(CompletionTranslations translations) => ListenableBuilder(
+  Widget _completionList(CompletionTranslations translations, bool enabled) => ListenableBuilder(
     listenable: Listenable.merge([_session.commandAssistance, _completionCursor, translations]),
     builder: (context, _) {
       final state = _session.commandAssistance.value;
@@ -236,21 +231,41 @@ extension _AssistancePane on _TerminalPaneState {
       final l = AppLocalizations.of(context);
       final rowHeight = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
       final browse = state.browse;
+      final locale = l.localeName.toLowerCase().replaceAll('_', '-').split('-').first;
+      final gutter = ScrollGutterScope.gapOf(context);
+      final rowEndPadding = gutter == 0 ? Space.sm : 0.0;
+      String? originalDescription(CommandCandidate candidate) {
+        final original = _session._translationSources[candidate] ?? candidate.detail;
+        return original == null || original.trim().isEmpty ? null : original;
+      }
+
       String? description(CommandCandidate candidate) {
+        final original = originalDescription(candidate);
+        if (original != null) {
+          final trusted = _session._translationSources[candidate];
+          return (trusted == null ? null : translations.lookup(trusted, locale)) ?? original;
+        }
         final own = candidate.description?.text(l);
         if (own != null) return own;
-        final translated = translatedCompletionDescription(l.localeName, candidate);
-        if (translated != null) return translated;
-        final original = _session._translationSources[candidate];
-        final cached = original == null ? null : translations.lookup(original, l.localeName);
-        if (cached != null) return cached;
-        if (!l.localeName.startsWith('zh') || candidate.source != CommandCandidateSource.builtin) return null;
+        if (locale != 'zh' || candidate.source != CommandCandidateSource.builtin) return null;
         return switch (candidate.kind) {
           CommandKind.command => l.completionCommand,
           CommandKind.subcommand => l.completionSubcommand,
           CommandKind.option => l.completionOption,
           _ => l.completionArgument,
         };
+      }
+
+      bool pending(CommandCandidate candidate) {
+        final original = _session._translationSources[candidate];
+        return enabled &&
+            locale == 'zh' &&
+            original != null &&
+            identical(translations, _candidateTranslations) &&
+            locale == _candidateTranslationLocale &&
+            _candidateTranslationOriginals.contains(original) &&
+            translations.lookup(original, locale) == null &&
+            translations.isPending(original, locale);
       }
 
       double textWidth(String text, TextStyle? style) {
@@ -272,10 +287,23 @@ extension _AssistancePane on _TerminalPaneState {
         widest(state.candidates.map((c) => c.displayText ?? c.text), Theme.of(context).textTheme.bodyMedium),
       );
       final details = state.candidates.map(description).whereType<String>().toList();
-      final detailWidth = min(CompletionSize.detailWidth, widest(details, Theme.of(context).textTheme.bodySmall));
+      final detailWidth = min(
+        CompletionSize.detailWidth,
+        state.candidates.fold(0.0, (width, candidate) {
+          final detail = description(candidate);
+          return detail == null
+              ? width
+              : max(
+                  width,
+                  textWidth(detail, Theme.of(context).textTheme.bodySmall) + (pending(candidate) ? Space.xs + 12 : 0),
+                );
+        }),
+      );
       final hasBranch = state.candidates.any((candidate) => candidate.preview != null);
       final width =
-          (Space.lg +
+          (Space.sm +
+                  rowEndPadding +
+                  gutter +
                   14 +
                   Space.sm +
                   titleWidth +
@@ -359,7 +387,8 @@ extension _AssistancePane on _TerminalPaneState {
                           final candidate = state.candidates[index];
                           final title = candidate.displayText ?? candidate.text;
                           final detail = description(candidate);
-                          final original = candidate.detail;
+                          final loading = pending(candidate);
+                          final original = originalDescription(candidate);
                           final explanation = detail != null && original != null && detail != original
                               ? '$detail\n$original'
                               : detail;
@@ -391,7 +420,7 @@ extension _AssistancePane on _TerminalPaneState {
                                     _focus.requestFocus();
                                   },
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                                    padding: EdgeInsetsDirectional.only(start: Space.sm, end: rowEndPadding),
                                     child: Row(
                                       children: [
                                         Icon(
@@ -434,12 +463,27 @@ extension _AssistancePane on _TerminalPaneState {
                                                   Expanded(
                                                     child: Tooltip(
                                                       message: explanation!,
-                                                      child: Text(
-                                                        detail,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: Theme.of(context).textTheme.bodySmall
-                                                            ?.copyWith(color: scheme.onSurfaceVariant),
+                                                      child: LayoutBuilder(
+                                                        builder: (context, constraints) => Row(
+                                                          children: [
+                                                            Flexible(
+                                                              child: Text(
+                                                                detail,
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                                style: Theme.of(context).textTheme.bodySmall
+                                                                    ?.copyWith(color: scheme.onSurfaceVariant),
+                                                              ),
+                                                            ),
+                                                            if (loading && constraints.maxWidth >= Space.xs + 12) ...[
+                                                              const SizedBox(width: Space.xs),
+                                                              const SizedBox.square(
+                                                                dimension: 12,
+                                                                child: CircularProgressIndicator(strokeWidth: 1.5),
+                                                              ),
+                                                            ],
+                                                          ],
+                                                        ),
                                                       ),
                                                     ),
                                                   ),

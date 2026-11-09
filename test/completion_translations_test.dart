@@ -27,6 +27,7 @@ void main() {
   CompletionTranslations service({
     CompletionTranslationEngine? engine,
     DateTime Function()? now,
+    int maxConcurrent = 32,
     Duration interval = Duration.zero,
     Duration retryDelay = const Duration(minutes: 1),
     String identity = 'mymemory',
@@ -36,6 +37,7 @@ void main() {
       cacheDirectory: path ?? directory.path,
       engine: engine ?? _Engine(),
       now: now,
+      maxConcurrent: maxConcurrent,
       interval: interval,
       retryDelay: retryDelay,
       cacheIdentity: identity,
@@ -51,6 +53,26 @@ void main() {
     await cacheFile().writeAsString(jsonEncode({'version': 1, 'identity': identity, 'entries': entries}));
   }
 
+  test('a fresh cache has no preset translations, requests, or file before a successful result', () async {
+    final engine = _Engine();
+    final translations = service(engine: engine);
+    await translations.ready;
+    for (final source in ['List files', 'Show help', 'Display version information']) {
+      expect(translations.lookup(source, 'zh'), isNull);
+      expect(translations.isPending(source, 'zh'), isFalse);
+    }
+    await translations.saved;
+    expect(engine.calls, isEmpty);
+    expect(await cacheFile().exists(), isFalse);
+    expect(await directory.list().isEmpty, isTrue);
+    expect(await translations.translate('List files', 'zh'), '译文');
+    await translations.saved;
+    expect(engine.calls.single.original, 'List files');
+    expect((jsonDecode(await cacheFile().readAsString()) as Map)['entries'], [
+      ['List files', 'zh-CN', '译文'],
+    ]);
+  });
+
   test('successful exact originals persist across restart and normalize Chinese only', () async {
     final engine = _Engine();
     final first = service(engine: engine);
@@ -59,7 +81,7 @@ void main() {
     expect(await first.translate('  List Files.  ', 'ZH_hans'), '译文');
     expect(engine.calls.single.original, '  List Files.  ');
     expect(engine.calls.single.target, 'zh-CN');
-    expect(changes, 1);
+    expect(changes, 2);
     await first.saved;
     first.dispose();
 
@@ -67,7 +89,9 @@ void main() {
     final restarted = service(engine: restartedEngine);
     await restarted.ready;
     expect(restarted.lookup('  List Files.  ', 'zh_TW'), '译文');
+    expect(restarted.isPending('  List Files.  ', 'zh_TW'), isFalse);
     expect(await restarted.translate('  List Files.  ', 'zh'), '译文');
+    expect(restarted.isPending('  List Files.  ', 'zh'), isFalse);
     expect(restartedEngine.calls, isEmpty);
     for (final changed in ['List Files.', '  list Files.  ', '  List Files!  ']) {
       expect(restarted.lookup(changed, 'zh'), isNull);
@@ -170,6 +194,85 @@ void main() {
     expect(translations.lookup('List files', 'zh'), '列出文件');
   });
 
+  test('pending queries and notifications cover queued and active demand without new requests', () async {
+    final pending = Completer<String?>();
+    final engine = _Engine((_, _, _) => pending.future);
+    final translations = service(engine: engine, maxConcurrent: 1);
+    await translations.ready;
+    for (final source in ['Active', 'Queued', '', 'two\nlines']) {
+      expect(translations.isPending(source, 'zh'), isFalse);
+      expect(translations.lookup(source, 'zh'), isNull);
+    }
+    expect(engine.calls, isEmpty);
+    final statuses = <List<bool>>[];
+    translations.addListener(() {
+      statuses.add([translations.isPending('Active', 'ZH_hans'), translations.isPending('Queued', 'zh-CN')]);
+    });
+    final firstCancel = CancellationToken(), queuedCancel = CancellationToken();
+    final active = translations.translate('Active', 'zh', cancel: firstCancel);
+    final shared = translations.translate('Active', 'zh-CN');
+    final queued = translations.translate('Queued', 'zh', cancel: queuedCancel);
+    await _eventually(() => statuses.length == 2);
+    expect(statuses, [
+      [true, false],
+      [true, true],
+    ]);
+    expect(translations.isPending('Active', 'en'), isFalse);
+    expect(translations.isPending('active', 'zh'), isFalse);
+    expect(translations.isPending('Queued', 'zh'), isTrue);
+    firstCancel.cancel();
+    expect(await active, isNull);
+    expect(statuses.length, 2);
+    expect(engine.calls.single.cancel.isCancelled, isFalse);
+    queuedCancel.cancel();
+    expect(await queued, isNull);
+    expect(statuses.last, [true, false]);
+    pending.complete('完成');
+    expect(await shared, '完成');
+    expect(statuses, [
+      [true, false],
+      [true, true],
+      [true, false],
+      [false, false],
+    ]);
+    expect(await translations.translate('Active', 'zh'), '完成');
+    expect(translations.isPending('Active', 'zh'), isFalse);
+    expect(statuses.length, 4);
+    expect(engine.calls.length, 1);
+  });
+
+  test('cancelling one concurrent flight releases a slot and leaves another shared flight running', () async {
+    final pending = {
+      for (final source in ['Cancelled', 'Shared', 'Queued']) source: Completer<String?>(),
+    };
+    final engine = _Engine((source, _, _) => pending[source]!.future);
+    final translations = service(engine: engine, maxConcurrent: 2);
+    final cancel = CancellationToken(), sharedCancel = CancellationToken();
+    final cancelled = translations.translate('Cancelled', 'zh', cancel: cancel);
+    final shared = translations.translate('Shared', 'zh', cancel: sharedCancel);
+    final retained = translations.translate('Shared', 'zh');
+    final queued = translations.translate('Queued', 'zh');
+    await _eventually(() => engine.calls.length == 2);
+    cancel.cancel();
+    expect(await cancelled, isNull);
+    await _eventually(() => engine.calls.length == 3);
+    expect(engine.calls.first.cancel.isCancelled, isTrue);
+    expect(engine.calls[1].cancel.isCancelled, isFalse);
+    expect(engine.calls.last.original, 'Queued');
+    expect(translations.isPending('Cancelled', 'zh'), isFalse);
+    expect(translations.isPending('Shared', 'zh'), isTrue);
+    sharedCancel.cancel();
+    expect(await shared, isNull);
+    expect(engine.calls[1].cancel.isCancelled, isFalse);
+    pending['Cancelled']!.complete('迟到');
+    pending['Shared']!.complete('共享');
+    pending['Queued']!.complete('排队');
+    expect(await retained, '共享');
+    expect(await queued, '排队');
+    expect(translations.lookup('Cancelled', 'zh'), isNull);
+    expect(translations.lookup('Shared', 'zh'), '共享');
+  });
+
   test('last waiter aborts its flight and a late response cannot enter the cache', () async {
     final pending = Completer<String?>();
     final engine = _Engine((_, _, _) => pending.future);
@@ -188,7 +291,7 @@ void main() {
   test('already cancelled and cancelled queued work do not start requests', () async {
     final pending = Completer<String?>();
     final engine = _Engine((_, _, _) => pending.future);
-    final translations = service(engine: engine);
+    final translations = service(engine: engine, maxConcurrent: 1);
     final cancelled = CancellationToken()..cancel();
     expect(await translations.translate('Never start', 'zh', cancel: cancelled), isNull);
     final active = translations.translate('Active', 'zh');
@@ -204,21 +307,71 @@ void main() {
     expect(engine.calls.length, 1);
   });
 
-  test('single active request and at most 32 pending jobs bound demand', () async {
+  test('concurrency rejects limits outside one to 32', () {
+    for (final limit in [-1, 0, 33]) {
+      expect(() => service(maxConcurrent: limit), throwsArgumentError);
+    }
+  });
+
+  test('default starts all 32 visible requests concurrently and bounds the queue at 32', () async {
     final pending = Completer<String?>();
     final engine = _Engine((_, _, _) => pending.future);
-    final translations = service(engine: engine);
-    final active = translations.translate('Active', 'zh');
-    await _eventually(() => engine.calls.isNotEmpty);
+    final translations = CompletionTranslations(cacheDirectory: directory.path, engine: engine);
+    services.add(translations);
+    final active = [for (var i = 0; i < 32; i++) translations.translate('Visible $i', 'zh')];
+    await _eventually(() => engine.calls.length == 32);
+    expect(engine.calls.every((call) => !call.cancel.isCancelled), isTrue);
     final queued = [for (var i = 0; i < 32; i++) translations.translate('Queued $i', 'zh')];
     expect(await translations.translate('Queue overflow', 'zh'), isNull);
-    expect(engine.calls.length, 1);
+    expect(engine.calls.length, 32);
+    expect(translations.isPending('Visible 31', 'zh'), isTrue);
+    expect(translations.isPending('Queued 31', 'zh'), isTrue);
+    expect(translations.isPending('Queue overflow', 'zh'), isFalse);
     translations.dispose();
-    expect(await active, isNull);
-    expect(await Future.wait(queued), everyElement(isNull));
+    expect(await Future.wait([...active, ...queued]), everyElement(isNull));
+    expect(engine.calls.every((call) => call.cancel.isCancelled), isTrue);
+    expect(translations.isPending('Visible 31', 'zh'), isFalse);
+    expect(translations.isPending('Queued 31', 'zh'), isFalse);
     pending.complete('迟到');
     await _settle();
     expect(engine.disposed, isTrue);
+  });
+
+  test('configured concurrency starts queued work as each active request finishes', () async {
+    final pending = {
+      for (final source in ['First', 'Second', 'Third', 'Fourth']) source: Completer<String?>(),
+    };
+    final engine = _Engine((source, _, _) => pending[source]!.future);
+    final translations = service(engine: engine, maxConcurrent: 2);
+    final results = {for (final source in pending.keys) source: translations.translate(source, 'zh')};
+    await _eventually(() => engine.calls.length == 2);
+    expect(engine.calls.map((call) => call.original), ['First', 'Second']);
+    pending['Second']!.complete('第二');
+    expect(await results['Second'], '第二');
+    await _eventually(() => engine.calls.length == 3);
+    expect(engine.calls.last.original, 'Third');
+    expect(translations.isPending('First', 'zh'), isTrue);
+    expect(translations.isPending('Fourth', 'zh'), isTrue);
+    pending['First']!.complete('第一');
+    expect(await results['First'], '第一');
+    await _eventually(() => engine.calls.length == 4);
+    expect(engine.calls.last.original, 'Fourth');
+    pending['Third']!.complete('第三');
+    pending['Fourth']!.complete('第四');
+    expect(await results['Third'], '第三');
+    expect(await results['Fourth'], '第四');
+    expect(pending.keys.every((source) => !translations.isPending(source, 'zh')), isTrue);
+  });
+
+  test('a shared job accepts at most 32 waiters without duplicating requests', () async {
+    final pending = Completer<String?>();
+    final engine = _Engine((_, _, _) => pending.future);
+    final translations = service(engine: engine);
+    final waiters = [for (var i = 0; i < 32; i++) translations.translate('Shared', 'zh')];
+    expect(await translations.translate('Shared', 'zh'), isNull);
+    expect(engine.calls.length, 1);
+    pending.complete('共享');
+    expect(await Future.wait(waiters), everyElement('共享'));
   });
 
   test('requests retain the configured start interval', () async {
@@ -236,7 +389,7 @@ void main() {
     var now = DateTime.utc(2026, 11, 9);
     final pending = Completer<String?>();
     final engine = _Engine((_, _, _) => pending.future);
-    final translations = service(engine: engine, now: () => now);
+    final translations = service(engine: engine, now: () => now, maxConcurrent: 1);
     final failed = translations.translate('Unavailable', 'zh');
     await _eventually(() => engine.calls.isNotEmpty);
     final queued = translations.translate('Other description', 'zh');
@@ -252,6 +405,63 @@ void main() {
     engine.handler = (_, _, _) async => '恢复';
     expect(await translations.translate('Unavailable', 'zh'), '恢复');
     expect(engine.calls.length, 2);
+  });
+
+  test('one concurrent failure drops queued work and preserves successful unrelated flights', () async {
+    final pending = {
+      for (final source in ['Failed', 'Survives', 'Queued']) source: Completer<String?>(),
+    };
+    final engine = _Engine((source, _, _) => source == 'Done' ? Future.value('已完成') : pending[source]!.future);
+    final translations = service(engine: engine, maxConcurrent: 2);
+    expect(await translations.translate('Done', 'zh'), '已完成');
+    final failed = translations.translate('Failed', 'zh');
+    final survives = translations.translate('Survives', 'zh');
+    final queued = translations.translate('Queued', 'zh');
+    await _eventually(() => engine.calls.length == 3);
+    pending['Failed']!.completeError(const CompletionTranslationFailure());
+    expect(await failed, isNull);
+    expect(await queued, isNull);
+    expect(translations.isPending('Failed', 'zh'), isFalse);
+    expect(translations.isPending('Queued', 'zh'), isFalse);
+    expect(translations.isPending('Survives', 'zh'), isTrue);
+    expect(engine.calls.singleWhere((call) => call.original == 'Survives').cancel.isCancelled, isFalse);
+    pending['Survives']!.complete('仍然完成');
+    expect(await survives, '仍然完成');
+    expect(translations.lookup('Done', 'zh'), '已完成');
+    expect(translations.lookup('Survives', 'zh'), '仍然完成');
+    expect(translations.lookup('Failed', 'zh'), isNull);
+    expect(await translations.translate('Not during cooldown', 'zh'), isNull);
+    expect(engine.calls.length, 3);
+    await translations.saved;
+    final entries = (jsonDecode(await cacheFile().readAsString()) as Map)['entries'];
+    expect(entries, [
+      ['Done', 'zh-CN', '已完成'],
+      ['Survives', 'zh-CN', '仍然完成'],
+    ]);
+  });
+
+  test('a later concurrent network failure cannot shorten a quota cooldown', () async {
+    var now = DateTime.utc(2026, 11, 9);
+    final pending = {
+      for (final source in ['Quota', 'Network']) source: Completer<String?>(),
+    };
+    final engine = _Engine((source, _, _) => pending[source]!.future);
+    final translations = service(engine: engine, now: () => now);
+    final quota = translations.translate('Quota', 'zh');
+    final network = translations.translate('Network', 'zh');
+    await _eventually(() => engine.calls.length == 2);
+    pending['Quota']!.completeError(const CompletionTranslationFailure(quotaExceeded: true));
+    expect(await quota, isNull);
+    now = now.add(const Duration(minutes: 1));
+    pending['Network']!.completeError(const CompletionTranslationFailure());
+    expect(await network, isNull);
+    now = now.add(const Duration(minutes: 58));
+    expect(await translations.translate('Still blocked', 'zh'), isNull);
+    expect(engine.calls.length, 2);
+    now = now.add(const Duration(minutes: 1));
+    engine.handler = (_, _, _) async => '恢复';
+    expect(await translations.translate('Recovered', 'zh'), '恢复');
+    expect(engine.calls.length, 3);
   });
 
   test('quota failure pauses all online work for at least an hour and is never cached', () async {
@@ -429,14 +639,15 @@ void main() {
     var notifications = 0;
     translations.addListener(() => notifications++);
     final active = translations.translate('Active', 'zh');
-    await _eventually(() => engine.calls.length == 2);
-    final queued = translations.translate('Queued', 'zh');
-    await _settle();
+    final other = translations.translate('Other active', 'zh');
+    await _eventually(() => engine.calls.length == 3);
+    expect(notifications, 2);
+    notifications = 0;
     translations.dispose();
     translations.dispose();
     expect(await active, isNull);
-    expect(await queued, isNull);
-    expect(engine.calls.last.cancel.isCancelled, isTrue);
+    expect(await other, isNull);
+    expect(engine.calls.skip(1).every((call) => call.cancel.isCancelled), isTrue);
     expect(engine.disposed, isTrue);
     pending.complete('迟到');
     await _settle();

@@ -132,6 +132,8 @@
   "completionTranslation": "自动翻译补全说明",
   "completionTranslationHint": "仅向所选服务发送公开命令说明，关闭后仍可使用缓存译文。",
   "translationService": "翻译服务",
+  "translationConcurrency": "翻译并发数",
+  "translationConcurrencyAuto": "自动（所有可见项）",
   "translationProvider": "服务商",
   "translationMyMemory": "MyMemory",
   "translationDeepL": "DeepL",

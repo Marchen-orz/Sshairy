@@ -137,6 +137,8 @@
   "completionTranslation": "Translate completion descriptions automatically",
   "completionTranslationHint": "Sends only public command descriptions to the selected service. Cached translations remain when off.",
   "translationService": "Translation service",
+  "translationConcurrency": "Concurrent translations",
+  "translationConcurrencyAuto": "Auto (all visible)",
   "translationProvider": "Provider",
   "translationMyMemory": "MyMemory",
   "translationDeepL": "DeepL",

@@ -13,6 +13,9 @@ final completionTranslationsProvider = Provider<CompletionTranslations>((ref) {
   final config = ref.watch(
     settingsProvider.select((settings) => settings.get(SettingKeys.completionTranslationConfig)),
   );
+  final concurrency = ref.watch(
+    settingsProvider.select((settings) => settings.get(SettingKeys.completionTranslationConcurrency)),
+  );
   final identity = jsonEncode(switch (config.provider) {
     TranslationProvider.myMemory => ['myMemory', 1],
     TranslationProvider.deepL => ['deepL', config.deepLFree, 1],
@@ -23,6 +26,7 @@ final completionTranslationsProvider = Provider<CompletionTranslations>((ref) {
   final translations = CompletionTranslations(
     cacheDirectory: '${ref.watch(dataDirProvider)}/cache/completion-translations/${config.provider.name}',
     cacheIdentity: identity,
+    maxConcurrent: concurrency == 0 ? 32 : concurrency,
     engine: config.provider == TranslationProvider.myMemory
         ? MyMemoryCompletionTranslationEngine()
         : ConfiguredCompletionTranslationEngine(config: config, credentials: ref.watch(translationCredentialsProvider)),
