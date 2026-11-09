@@ -6,10 +6,13 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/features/connections/api.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/foundation/secret.dart';
+
+import 'credentials.dart';
 
 class TestServer {
   TestServer._(this.user, this.address, this.port, this.password);
@@ -66,8 +69,13 @@ class ScriptedPrompts implements ConnectPrompts {
 
 /// The app's own providers over a throwaway data directory, so a host is saved, resolved and dialled the way
 /// the application does it.
-ProviderContainer appContainer(Directory dir) =>
-    ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path), ...appOverrides()]);
+ProviderContainer appContainer(Directory dir) => ProviderContainer(
+  overrides: [
+    dataDirProvider.overrideWithValue(dir.path),
+    ...appOverrides(),
+    secretStoreProvider.overrideWithValue(EphemeralSecretStore()),
+  ],
+);
 
 extension ServerCalls on ProviderContainer {
   /// Runs [command] on [host] and returns its output; fails the call on a non-zero exit.

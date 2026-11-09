@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/design/controls.dart';
 import 'package:sshairy/design/dialog.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/files/api.dart';
 import 'package:sshairy/features/files/presentation/file_pane.dart';
 import 'package:sshairy/features/settings/api.dart';
@@ -24,6 +25,8 @@ import 'package:sshairy/foundation/file_system.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/main.dart';
 import 'package:xterm2/xterm.dart';
+
+import 'credentials.dart';
 
 final target = Platform.environment['SSHAIRY_TEST_TARGET']!;
 final password = Platform.environment['SSHAIRY_TEST_PASSWORD']!;
@@ -90,6 +93,7 @@ extension AppDriver on WidgetTester {
             dataDirProvider.overrideWithValue(dir.path),
             runningRendererProvider.overrideWithValue(Renderer.skia),
             ...appOverrides(),
+            secretStoreProvider.overrideWithValue(EphemeralSecretStore()),
           ],
           child: const SshairyApp(),
         ),
@@ -99,9 +103,9 @@ extension AppDriver on WidgetTester {
   }
 
   Future<void> quickConnect() async {
-    await enterText(find.byType(TextField).first, target);
+    await enterText(find.byType(TextField).hitTestable().first, target);
     await pump();
-    await tapAndPump(find.widgetWithIcon(OutlinedButton, Icons.bolt));
+    await tapAndPump(find.widgetWithIcon(OutlinedButton, Icons.bolt).hitTestable());
   }
 
   Future<void> answerPassword(String value, {bool remember = false}) async {
@@ -196,7 +200,7 @@ extension AppDriver on WidgetTester {
   }
 
   /// The visible file panes, left to right.
-  Finder pane(int i) => find.byType(FilePane).at(i);
+  Finder pane(int i) => find.byType(FilePane).hitTestable().at(i);
 
   Finder rowFinder(int i, String name) => find.descendant(of: pane(i), matching: find.text(name));
 
@@ -206,7 +210,7 @@ extension AppDriver on WidgetTester {
 
   /// Ready, after a password prompt when the files channel needed a connection of its own.
   Future<void> untilReady(int i) async {
-    bool ready() => find.byType(FilePane).evaluate().length > i && widget<FilePane>(pane(i)).browser.ready;
+    bool ready() => find.byType(FilePane).hitTestable().evaluate().length > i && widget<FilePane>(pane(i)).browser.ready;
     await until('pane $i ready or asking', () => ready() || find.byType(AppDialog).evaluate().isNotEmpty);
     if (!ready()) await answerPassword(password);
     await until('pane $i ready', ready);

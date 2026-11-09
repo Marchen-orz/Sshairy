@@ -20,7 +20,7 @@ import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/design/select.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
-import 'package:sshairy/features/credentials/adapters/secure_store.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/files/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/settings/api.dart';
@@ -341,7 +341,7 @@ void main() {
 
     final hosts = jsonDecode(await File('${dir.path}/hosts.json').readAsString()) as Map<String, dynamic>;
     final ref = SecretRef.hostPassword(HostId((hosts['hosts'] as List<dynamic>).single['id'] as String));
-    const secrets = SecretStore();
+    final secrets = AppDriver(t).container.read(secretStoreProvider);
     addTearDown(() => secrets.delete(ref));
     expect(await secrets.read(ref), isNull);
 
@@ -507,7 +507,7 @@ void main() {
     final keys = jsonDecode(await File('${dir.path}/keys.json').readAsString()) as Map<String, dynamic>;
     final key = (keys['keys'] as List<dynamic>).single as Map<String, dynamic>;
     final privateRef = SecretRef.privateKey(key['id'] as String);
-    const secrets = SecretStore();
+    final secrets = AppDriver(t).container.read(secretStoreProvider);
     addTearDown(() => secrets.delete(privateRef));
     expect((await secrets.read(privateRef))?.reveal(), contains('OPENSSH PRIVATE KEY'));
     expect(jsonEncode(keys), isNot(contains('PRIVATE KEY')));

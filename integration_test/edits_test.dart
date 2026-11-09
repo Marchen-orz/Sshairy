@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/features/connections/api.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/files/api.dart';
 import 'package:sshairy/features/files/application/edits.dart';
 import 'package:sshairy/features/files/domain/transfer.dart';
@@ -22,6 +23,7 @@ import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/foundation/result.dart';
 
 import 'support/server.dart';
+import 'support/credentials.dart';
 
 // ignore: avoid_print
 void report(String line) => print('REPORT $line');
@@ -81,6 +83,7 @@ class _Env {
       overrides: [
         dataDirProvider.overrideWithValue(dir.path),
         ...appOverrides(),
+        secretStoreProvider.overrideWithValue(EphemeralSecretStore()),
         editorLauncherProvider.overrideWithValue(_Editor(this)),
       ],
     );
