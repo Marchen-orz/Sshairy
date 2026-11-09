@@ -22,6 +22,8 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | TransportLease | openShell / exec / openFiles（SFTP，返回 foundation 的 FileSystem）/ connectTo（direct-tcpip，返回 Tunnel，用于本地与动态转发和跳板）/ listen（tcpip-forward，返回 RemoteListener）；不泄露 dartssh2 类型 |
 | TerminalSessionManager | open / reconnect / close / readSnapshot；保留模型独立于视图 |
 | TerminalIo | 有序 bytes、writeInput、resize、close；数据路径不 JSON 化 |
+| Terminal AI 端口（M4，待实现） | 受限环境/草稿/历史投影 → 行内生成或补全，带 requestId/目标/代次/草稿/授权/目的地修订；不含 shell/目录列表；terminal 定义 DTO/端口、app 注入 AI 实现，无循环依赖 |
+| TerminalDraftAcceptor（M4，待实现） | 用户接受完整生成命令时须空提示符，接受补全只追加精确回显前缀的后缀；重验输入状态/代次，无换行/删行/自动执行参数；不是 Agent 工具 |
 | TransferManager | enqueue / cancel / retry / watch；任务不由 SftpPane 持有 |
 | SettingsService | get / patch(expectedRevision)；类型、范围、策略统一验证 |
 | WorkspaceService | openTab / split / move / focus / close；布局只引用 sessionId |
@@ -44,7 +46,8 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | 监控 exec 租约 | 监控面板的 ServerMonitor | 面板卸载、标签切走、会话断开时停止轮询并归还；只在主机已连接时取用，不自己拨号 |
 | 文件 watcher / 临时副本 | ExternalEditManager | 用户结束编辑或退出处理完成；失败稿保留 |
 | Auth/host-key challenge | ConnectionAttempt | 完成、取消、超时或 generation 过期时失效 |
-| AI stream / tool jobs | AgentRuntime | 单 turn 终态后清理；持续 job 需显式归属与上限 |
+| Agent stream / tool jobs | AgentRuntime | 单 turn 终态后清理；长 job 的所有者/期限/输出有界，Stop 不与独立轻量请求串错 |
+| 行内生成 / AI 补全（M4） | 当前会话输入控制器持短请求 token，共用 AI 网络调度 | 草稿/焦点/代次/上下文/授权/目的地变化取消，迟到结果不回填；关闭总 AI/退出全部收束，本地 loading 不写远端 |
 
 关闭标签只关闭其中 shell；传输、隧道可继续持有 transport。断开主机是另一动作，需列出受影响任务。一个 acquire 等待者取消不得撤销其他等待者的共享拨号。
 

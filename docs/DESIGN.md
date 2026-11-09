@@ -26,7 +26,7 @@
 | [CONTRACTS.md](CONTRACTS.md) | 能力调用、资源所有权、错误与事件 |
 | [SECURITY.md](SECURITY.md) | 凭据、主机信任、存储与安全边界 |
 | [UI.md](UI.md) | 视觉、布局、交互、键盘与无障碍 |
-| [AI.md](AI.md) | 二期 harness 与模型协议 |
+| [AI.md](AI.md) | 侧栏 Agent、行内命令生成、AI 补全与共用运行底座 |
 | [TESTING.md](TESTING.md) | 真实环境测试规则、技术实验、功能检查 |
 | [ROADMAP.md](ROADMAP.md) | 当前进度、待办、最近一次交接 |
 | [HOST_INHERITANCE.md](HOST_INHERITANCE.md) | 分组、身份、全局默认值与三态继承 |
@@ -55,7 +55,7 @@
 | M1 SSH 可用版 | 主机/分组、密码/密钥/交互认证、凭据、known hosts、多标签、重连、设置、命令面板 |
 | M2 文件工作流 | SFTP 浏览、可靠上传下载、队列、冲突处理、外部编辑 |
 | M3 桌面主力版 | 分屏、跳板/代理、L/R/D 转发、片段、SSH config 导入、布局恢复 |
-| M4 AI 首版 | 两类模型协议、诊断循环、审批、终端上下文、应用设置/布局能力 |
+| M4 SSH 专用 AI | 侧栏完整 Agent、行内命令生成、AI 提示补全；共用两类模型协议与授权/资源底座，逐阶段开放软件和多机业务工具 |
 | M5 按反馈扩展 | 本地 PTY、ssh-agent、应用锁、广播、关键词高亮、加密备份（服务器监控已于 2026-11-07 按作者要求提前，见 MODULES §8） |
 
 一期 = M0–M3；AI 在 M4。M5 不阻塞 AI。分屏领域模型可以先做，正式交付在 M3。
