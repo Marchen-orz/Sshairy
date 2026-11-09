@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
 import '../../../design/controls.dart';
+import '../../../design/dialog.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../design/theme_names.dart';
@@ -31,6 +32,48 @@ class SettingsSection {
 final settingsSectionsProvider = Provider<List<SettingsSection>>((_) => const []);
 
 final systemFontsProvider = FutureProvider<List<SystemFont>>((_) => loadSystemFonts());
+
+final _settingsDialogs = Expando<Future<void>>();
+
+Future<void> showSettingsDialog(BuildContext context) {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  final existing = _settingsDialogs[navigator];
+  if (existing != null) return existing;
+
+  Future<void> open() async {
+    try {
+      await showAppDialog<void>(
+        context: context,
+        builder: (context) => CallbackShortcuts(
+          bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context)},
+          child: Focus(
+            autofocus: true,
+            child: AppDialog(
+              width: WorkspaceSize.settingsDialog,
+              title: Row(
+                children: [
+                  Expanded(child: Text(AppLocalizations.of(context).settings)),
+                  IconButton(
+                    tooltip: AppLocalizations.of(context).close,
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              content: const SettingsPanel(),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      _settingsDialogs[navigator] = null;
+    }
+  }
+
+  final future = open();
+  _settingsDialogs[navigator] = future;
+  return future;
+}
 
 class SettingsPanel extends ConsumerWidget {
   const SettingsPanel({super.key});
@@ -101,132 +144,136 @@ class SettingsPanel extends ConsumerWidget {
     };
 
     final extra = ref.watch(settingsSectionsProvider);
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        Text(l.settings, style: theme.textTheme.titleMedium),
-        _Section(l.appearance, [
-          _Field.stacked(
-            l.theme,
-            segmented(SettingKeys.themeMode, {
-              ThemeMode.system: l.themeSystem,
-              ThemeMode.light: l.themeLight,
-              ThemeMode.dark: l.themeDark,
-            }),
-          ),
-          _Field.stacked(
-            l.accent,
-            _ThemeGrid(selected: settings.accent, onChanged: (a) => notifier.set(SettingKeys.accent, a)),
-          ),
-          _Field.stacked(
-            l.language,
-            AppSegmented<String>(
-              segments: {'': l.themeSystem, 'zh': l.langZh, 'en': l.langEn},
-              selected: settings.locale ?? '',
-              onChanged: (v) => notifier.set(SettingKeys.locale, v.isEmpty ? null : v),
-            ),
-          ),
-          _Field.stacked(l.uiFont, font(SettingKeys.uiFontFamily, fallback: AppFonts.ui ?? AppFonts.cjk.first)),
-          _Field.stacked(l.uiFontSize, slider(SettingKeys.uiFontSize)),
-          _Field.stacked(
-            l.uiScale,
-            _Choice<double>(
-              value: settings.uiScale,
-              choices: {.8, .9, 1.0, 1.1, 1.25, 1.5, settings.uiScale}.toList()..sort(),
-              label: (value) => '${(value * 100).round()}%',
-              onChanged: (value) => notifier.set(SettingKeys.uiScale, value),
-            ),
-          ),
-          _Field.stacked(l.appBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.app)),
-          if (Platform.isWindows)
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Section(l.appearance, [
             _Field.stacked(
-              l.renderer,
-              segmented(SettingKeys.renderer, const {Renderer.skia: 'Skia', Renderer.impeller: 'Impeller'}),
-              hint: hint(SettingKeys.renderer),
+              l.theme,
+              segmented(SettingKeys.themeMode, {
+                ThemeMode.system: l.themeSystem,
+                ThemeMode.light: l.themeLight,
+                ThemeMode.dark: l.themeDark,
+              }),
             ),
-        ]),
-        _Section(l.terminal, [
-          _Field.stacked(l.terminalBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.terminal)),
-          _Field.stacked(l.terminalFont, font(SettingKeys.terminalFontFamily, fallback: AppFonts.mono, monoOnly: true)),
-          _Field.stacked(l.fontSize, slider(SettingKeys.fontSize)),
-          _Field.stacked(
-            l.cursorShape,
-            segmented(SettingKeys.cursorShape, {
-              CursorShape.block: l.cursorBlock,
-              CursorShape.underline: l.cursorUnderline,
-              CursorShape.bar: l.cursorBar,
-            }),
-          ),
-          _Field(
-            l.scrollback,
-            _Choice<int>(
-              value: settings.get(SettingKeys.scrollback),
-              choices: {1000, 2000, 5000, 10000, 20000, settings.get(SettingKeys.scrollback)}.toList()..sort(),
-              label: (n) => '$n',
-              onChanged: (v) => notifier.set(SettingKeys.scrollback, v),
+            _Field.stacked(
+              l.accent,
+              _ThemeGrid(selected: settings.accent, onChanged: (a) => notifier.set(SettingKeys.accent, a)),
             ),
-            hint: hint(SettingKeys.scrollback),
-          ),
-          _Field(
-            l.rightClick,
-            segmented(SettingKeys.rightClick, {RightClick.menu: l.rightClickMenu, RightClick.paste: l.paste}),
-          ),
-          _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
-          _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
-        ]),
-        _Section(l.workspaceSection, [
-          _Field(l.monitor, toggle(SettingKeys.showMonitor)),
-          _Field(l.files, toggle(SettingKeys.showFiles)),
-          _Field(
-            l.filesDock,
-            segmented(SettingKeys.filesDock, {
-              FilesDock.left: l.dockLeft,
-              FilesDock.right: l.dockRight,
-              FilesDock.bottom: l.dockBottom,
-            }),
-          ),
-          _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
-        ]),
-        _Section(l.connection, [
-          _Field(
-            l.connectTimeout,
-            seconds(SettingKeys.connectTimeout, const [10, 20, 30, 60]),
-            hint: hint(SettingKeys.connectTimeout),
-          ),
-          _Field(
-            l.keepAlive,
-            seconds(SettingKeys.keepAlive, const [0, 15, 30, 60], zeroIsOff: true),
-            hint: hint(SettingKeys.keepAlive),
-          ),
-          _Field(l.idleTtl, seconds(SettingKeys.idleTtl, const [0, 30, 60, 120, 300], zeroIsOff: true)),
-          _Field(l.autoReconnect, toggle(SettingKeys.autoReconnect)),
-        ]),
-        _Section(l.files, [
-          _Field(l.hiddenFiles, toggle(SettingKeys.showHidden)),
-          _Field(
-            l.transferConcurrency,
-            _Choice<int>(
-              value: settings.get(SettingKeys.transferConcurrency),
-              choices: const [1, 2, 3, 4, 6, 8],
-              label: (n) => '$n',
-              onChanged: (v) => notifier.set(SettingKeys.transferConcurrency, v),
+            _Field.stacked(
+              l.language,
+              AppSegmented<String>(
+                segments: {'': l.themeSystem, 'zh': l.langZh, 'en': l.langEn},
+                selected: settings.locale ?? '',
+                onChanged: (v) => notifier.set(SettingKeys.locale, v.isEmpty ? null : v),
+              ),
             ),
-          ),
-        ]),
-        for (final s in extra) _Section(s.title(l), [s.build(context)]),
-        _Section(l.about, [
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: Space.md),
-            child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
-          ),
-          _Field(l.version, Text(appVersion, style: theme.textTheme.bodyMedium)),
-          _Field(
-            l.dataDir,
-            TextButton(onPressed: () => openExternal(ref.read(dataDirProvider)), child: Text(l.open)),
-            hint: ref.read(dataDirProvider),
-          ),
-        ]),
-      ],
+            _Field.stacked(l.uiFont, font(SettingKeys.uiFontFamily, fallback: AppFonts.ui ?? AppFonts.cjk.first)),
+            _Field.stacked(l.uiFontSize, slider(SettingKeys.uiFontSize)),
+            _Field.stacked(
+              l.uiScale,
+              _Choice<double>(
+                value: settings.uiScale,
+                choices: {.8, .9, 1.0, 1.1, 1.25, 1.5, settings.uiScale}.toList()..sort(),
+                label: (value) => '${(value * 100).round()}%',
+                onChanged: (value) => notifier.set(SettingKeys.uiScale, value),
+              ),
+            ),
+            _Field.stacked(l.appBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.app)),
+            if (Platform.isWindows)
+              _Field.stacked(
+                l.renderer,
+                segmented(SettingKeys.renderer, const {Renderer.skia: 'Skia', Renderer.impeller: 'Impeller'}),
+                hint: hint(SettingKeys.renderer),
+              ),
+          ]),
+          _Section(l.terminal, [
+            _Field.stacked(l.terminalBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.terminal)),
+            _Field.stacked(
+              l.terminalFont,
+              font(SettingKeys.terminalFontFamily, fallback: AppFonts.mono, monoOnly: true),
+            ),
+            _Field.stacked(l.fontSize, slider(SettingKeys.fontSize)),
+            _Field.stacked(
+              l.cursorShape,
+              segmented(SettingKeys.cursorShape, {
+                CursorShape.block: l.cursorBlock,
+                CursorShape.underline: l.cursorUnderline,
+                CursorShape.bar: l.cursorBar,
+              }),
+            ),
+            _Field(
+              l.scrollback,
+              _Choice<int>(
+                value: settings.get(SettingKeys.scrollback),
+                choices: {1000, 2000, 5000, 10000, 20000, settings.get(SettingKeys.scrollback)}.toList()..sort(),
+                label: (n) => '$n',
+                onChanged: (v) => notifier.set(SettingKeys.scrollback, v),
+              ),
+              hint: hint(SettingKeys.scrollback),
+            ),
+            _Field(
+              l.rightClick,
+              segmented(SettingKeys.rightClick, {RightClick.menu: l.rightClickMenu, RightClick.paste: l.paste}),
+            ),
+            _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
+            _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
+          ]),
+          _Section(l.workspaceSection, [
+            _Field(l.monitor, toggle(SettingKeys.showMonitor)),
+            _Field(l.files, toggle(SettingKeys.showFiles)),
+            _Field(
+              l.filesDock,
+              segmented(SettingKeys.filesDock, {
+                FilesDock.left: l.dockLeft,
+                FilesDock.right: l.dockRight,
+                FilesDock.bottom: l.dockBottom,
+              }),
+            ),
+            _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
+          ]),
+          _Section(l.connection, [
+            _Field(
+              l.connectTimeout,
+              seconds(SettingKeys.connectTimeout, const [10, 20, 30, 60]),
+              hint: hint(SettingKeys.connectTimeout),
+            ),
+            _Field(
+              l.keepAlive,
+              seconds(SettingKeys.keepAlive, const [0, 15, 30, 60], zeroIsOff: true),
+              hint: hint(SettingKeys.keepAlive),
+            ),
+            _Field(l.idleTtl, seconds(SettingKeys.idleTtl, const [0, 30, 60, 120, 300], zeroIsOff: true)),
+            _Field(l.autoReconnect, toggle(SettingKeys.autoReconnect)),
+          ]),
+          _Section(l.files, [
+            _Field(l.hiddenFiles, toggle(SettingKeys.showHidden)),
+            _Field(
+              l.transferConcurrency,
+              _Choice<int>(
+                value: settings.get(SettingKeys.transferConcurrency),
+                choices: const [1, 2, 3, 4, 6, 8],
+                label: (n) => '$n',
+                onChanged: (v) => notifier.set(SettingKeys.transferConcurrency, v),
+              ),
+            ),
+          ]),
+          for (final s in extra) _Section(s.title(l), [s.build(context)]),
+          _Section(l.about, [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: Space.md),
+              child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
+            ),
+            _Field(l.version, Text(appVersion, style: theme.textTheme.bodyMedium)),
+            _Field(
+              l.dataDir,
+              TextButton(onPressed: () => openExternal(ref.read(dataDirProvider)), child: Text(l.open)),
+              hint: ref.read(dataDirProvider),
+            ),
+          ]),
+        ],
+      ),
     );
   }
 }

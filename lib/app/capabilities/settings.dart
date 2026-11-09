@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../design/side_drawer.dart';
 import '../../design/theme.dart';
 import '../../design/theme_names.dart';
 import '../../foundation/result.dart';
@@ -56,7 +55,7 @@ List<PaletteEntry> settingsPaletteEntries(PaletteContext c) {
       icon: Icons.settings_outlined,
       run: () async {
         if (!c.context.mounted) return;
-        await showFlyout<void>(c.context, (_) => const SettingsPanel(), width: WorkspaceSize.flyoutWide);
+        await showSettingsDialog(c.context);
       },
     ),
     entry('${l.theme}: ${l.themeLight}', Icons.light_mode_outlined, {'themeMode': 'light'}),

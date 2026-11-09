@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'popup.dart';
 import 'theme.dart';
 
-/// A centred modal for decisions that cannot wait: security confirmations, authentication, quitting (UI §5).
+/// A centred modal for security confirmations, authentication, quitting and settings (UI §5).
 Future<T?> showAppDialog<T>({
   required BuildContext context,
   required WidgetBuilder builder,

@@ -90,7 +90,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   void _flyout(WidgetBuilder builder, {double width = WorkspaceSize.flyout}) =>
       _overlay(() => showFlyout<void>(_surfaceContext, builder, width: width));
 
-  void _openSettings() => _flyout((_) => const SettingsPanel(), width: WorkspaceSize.flyoutWide);
+  void _openSettings() => _overlay(() => showSettingsDialog(_surfaceContext));
   void _openSnippets() => _flyout((_) => const SnippetsPanel());
   void _openForwarding() => _flyout((_) => const ForwardingPanel());
   void _openProxies() => _flyout((_) => const ProxyPanel());

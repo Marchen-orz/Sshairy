@@ -13,6 +13,7 @@ import 'package:sshairy/design/brand.dart';
 import 'package:sshairy/design/icon_rail.dart';
 import 'package:sshairy/design/dock_panel.dart';
 import 'package:sshairy/design/popup.dart';
+import 'package:sshairy/design/dialog.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/files/api.dart' show SideFilesPanel;
 import 'package:sshairy/features/hosts/api.dart';
@@ -335,7 +336,8 @@ void main() {
     expect(tester.getTopLeft(find.byType(BrandLogo)).dy, greaterThanOrEqualTo(Space.sm));
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.byType(PopupSurface)).dx, WorkspaceSize.navigationExpanded + Space.xs);
+    expect(find.byType(AppDialog), findsOneWidget);
+    expect(tester.getCenter(find.byType(PopupSurface)).dx, 400);
     final sections = container.read(settingsSectionsProvider);
     expect(sections, hasLength(1));
     final settingsContext = tester.element(find.byType(SettingsPanel));
@@ -373,7 +375,8 @@ void main() {
     );
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.byType(PopupSurface)).dx, railWidth() + Space.xs);
+    expect(find.byType(AppDialog), findsOneWidget);
+    expect(tester.getCenter(find.byType(PopupSurface)).dx, 400);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     await tester.tapAt(divider(), kind: PointerDeviceKind.mouse);

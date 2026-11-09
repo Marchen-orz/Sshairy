@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/interface_scale.dart';
+import 'package:sshairy/design/dialog.dart';
+import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/settings/settings.dart';
@@ -37,15 +39,16 @@ void main() {
           builder: (_, child) => Consumer(
             builder: (_, ref, _) => InterfaceScale(scale: ref.watch(settingsProvider).uiScale, child: child!),
           ),
-          home: const Scaffold(
-            body: Align(
-              alignment: Alignment.topRight,
-              child: SizedBox(width: 440, child: SettingsPanel()),
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(onPressed: () => showSettingsDialog(context), child: const Text('Open')),
             ),
           ),
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('100%'));
     await tester.pumpAndSettle();
@@ -62,6 +65,16 @@ void main() {
     expect(container.read(settingsProvider).fontSize, 14);
     await tester.ensureVisible(find.text('150%'));
     await tester.pumpAndSettle();
+    expect(find.byType(AppDialog), findsOneWidget);
+    final surface = tester.getRect(find.byType(PopupSurface));
+    expect(surface.left, greaterThanOrEqualTo(0));
+    expect(surface.top, greaterThanOrEqualTo(0));
+    expect(surface.right, lessThanOrEqualTo(960));
+    expect(surface.bottom, lessThanOrEqualTo(640));
+    await tester.ensureVisible(find.text('About'));
+    await tester.pumpAndSettle();
+    expect(find.text('About').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('Close').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     final reopened = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);

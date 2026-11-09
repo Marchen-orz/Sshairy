@@ -21,7 +21,7 @@ class SidePanelAnchor extends InheritedWidget {
 Future<T?> showSideDrawer<T>(BuildContext context, WidgetBuilder builder, {double width = WorkspaceSize.flyout}) =>
     _showPanel<T>(context, builder, width: width, right: true);
 
-/// A secondary panel beside the icon rail, for keys, forwarding, snippets, trust records and settings.
+/// A secondary panel beside the icon rail, for keys, forwarding, snippets and trust records.
 Future<T?> showFlyout<T>(BuildContext context, WidgetBuilder builder, {double width = WorkspaceSize.flyout}) =>
     _showPanel<T>(context, builder, width: width, right: false);
 
