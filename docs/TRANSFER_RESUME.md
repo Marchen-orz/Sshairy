@@ -1,10 +1,10 @@
 # 单文件暂停与续传（M3）
 
-实现依据：MODULES §4、SECURITY §5、TESTING F-04。本文先定义本轮行为；实际验证状态见 ROADMAP，不将设计当成通过结果。
+实现依据：MODULES §4、SECURITY §5、TESTING F-04。本文定义续传与清理规则，实际验证见 TESTING §6，不将设计当成通过结果。
 
 ## 范围与状态
 
-仅普通单文件支持暂停/续传；目录继续使用现有扫描、逐项冲突与取消，不支持目录 checkpoint。源文件必须能提供 size 和 mtime，缺少这些字段时仍可从头传输，但不开放暂停。queued → running → pausing → paused；手动恢复重新进入队列。程序正常退出中止单文件后为 interrupted，已落盘的有效 checkpoint 可在重启后由用户恢复，不自动拨号。
+仅普通单文件支持暂停/续传；目录继续使用现有扫描、逐项冲突与取消，不支持目录 checkpoint。源文件必须能提供 size 和 mtime，缺少这些字段时仍可从头传输，但不开放暂停。queued → running → pausing → paused；手动恢复重新进入队列。程序正常退出时可续传单文件停为 paused，重启后未完成任务变为 interrupted；已落盘的有效 checkpoint 可由用户恢复，不自动拨号。
 
 暂停停止继续读取源，但等待已发出的写入完成并关闭文件句柄，再 stat .part，记录稳定长度。不能把 SFTP writer.abort() 的立即返回当作写入已收束。取消则实际终止写入并清理本任务拥有的 .part。目录不保留续传资源。
 

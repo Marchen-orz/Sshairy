@@ -1,6 +1,6 @@
 # 功能与模块规格
 
-v0.2。M0–M5 定义以 DESIGN 为准。标明的默认值是 sshairy 的初始设计值，不代表 Netcatty 默认值或实测结果。安全规则见 SECURITY，资源契约见 CONTRACTS，检查编号见 TESTING。
+M0–M5 定义以 DESIGN 为准；本文件描述功能与约束，实际完成范围见 ROADMAP，运行结果见 TESTING。默认值不代表 Netcatty 默认值或实测结果。安全规则见 SECURITY，资源契约见 CONTRACTS。
 
 ## 1. hosts / credentials（M1）
 
@@ -30,15 +30,11 @@ v0.2。M0–M5 定义以 DESIGN 为准。标明的默认值是 sshairy 的初始
 
 当前实现：`hosts.json` schema 2 由独立的 Group（稳定 ID，路径按父子关系推导）、Identity、全局默认值与主机组成，主机的端口、登录、跳板、代理、legacy 为三态覆盖（继承/禁用/自有值），解析顺序与限制见 HOST_INHERITANCE。选中分组时包含子分组；分组可在抽屉里改路径和默认值，解散时成员上移、分组自己的默认值被丢弃。密钥库（`credentials`）把私钥原样存进系统安全存储，keys.json 只有算法、指纹和公钥；加密私钥导入时只校验口令，是否记住口令单独选择。生成的密钥是不加密的 Ed25519（安全存储即保护边界）。仍有主机使用的密钥不能删除。
 
-主机保存、删除、分组变更由 HostsNotifier 串行提交，持久化成功后才发布新状态。置顶与最近使用时间在队列执行时读取最新主机，只修改对应字段；已删除的主机不因迟到的元信息更新而复活。所有保存入口共用纯 Dart 结构校验；更换代理类型、地址、端口或用户名时，必须先删除该主机旧的代理凭据，失败则不提交新路由。已有连接不会被配置编辑隐式重连。
+主机保存、删除、分组变更由 HostsNotifier 串行提交，持久化成功后才发布新状态。置顶与最近使用时间在队列执行时读取最新主机，只修改对应字段；已删除的主机不因迟到的元信息更新而复活。所有保存入口共用纯 Dart 结构校验；代理配置提交后再清理旧凭据，清理失败报告部分完成，不能冒充配置已回滚，也不能把旧口令发给新代理。与导入共用队列的清理顺序及重试范围见 HOST_INHERITANCE。已有连接不会被配置编辑隐式重连。
 
 M3 路由字段：`jumpHostId` 指向另一台已保存主机作跳板，链由各主机的跳板依次串起；`proxy`（SOCKS5 或 HTTP CONNECT 的地址、端口、用户名）只在该主机是链的第一跳时使用，口令在代理要求时询问，可记住在安全存储 `host/<id>/proxy`；`legacy` 只为这一台主机追加 SHA-1 密钥交换与主机密钥签名、CBC 加密和 hmac-sha1，不影响链上其他主机。
 
-SSH config 导入（M3）：读 `~/.ssh/config` 或指定文件，Include 最多 4 层、共 32 个文件，输入总量最多 1 MiB；相对 Include 路径以所选文件的目录为基准。只取 Host/HostName/User/Port/IdentityFile/ProxyJump，按 OpenSSH 首个匹配值生效；通配 Host 可提供默认值，但不成为主机。Match 区块不应用，其他关键字和不能对应的 ProxyJump 列入报告；需要 ProxyCommand 或未解析跳板的草稿不可导入，避免静默改成直连。先生成草稿：与已有主机同地址同用户且同路由的“已存在”默认不选；同端点但跳板链不同的不当作已存在，另立草稿；选择目标时连同必要的新跳板一起选择，确认后一次 revision 校验写入。ProxyJump 按别名、地址匹配导入草稿或已有主机；多跳需要不同上游时复制跳板配置为新草稿，不修改已有主机。
-
-当前实现（验证状态见 ROADMAP）：`hosts/domain/ssh_config.dart` 解析、`import_plan.dart` 出草稿、`adapters/ssh_config_files.dart` 做有界 Include 展开，`adapters/host_import_files.dart` 找默认位置与选文件，`application/host_import.dart` 提供 detect/preview/regroup/commit，导入界面统一为主机库工具栏打开的居中对话框（`presentation/import_dialog.dart`），也接受 PuTTY、MobaXterm、SecureCRT、Xshell、FinalShell、Tabby 与 CSV，首次启动且主机库为空时自动打开一次（`docs/HOST_IMPORT.md`）。IdentityFile 只在绝对路径或 `~` 展开后有效，相对路径按主目录解释，与密钥库无联动——导入的主机带 `keyPath`，密钥仍按现有流程导入。设计文档 `docs/SSH_CONFIG_IMPORT.md`。
-
-主机保存与导入共用结构校验；代理地址、类型或用户名变化时先删除旧代理口令，再提交新配置，避免将旧口令发送给新代理。
+主机导入（M3）统一为主机库工具栏打开的居中对话框，也接受 OpenSSH、PuTTY、MobaXterm、SecureCRT、Xshell、FinalShell、Tabby 与 CSV；首次启动且主机库为空时自动打开一次。先检测与解析来源、生成预览草稿，确认后按 revision 原子提交；不执行导入配置里的命令，不静默把不支持的路由改成直连。OpenSSH 首值匹配、Include 边界、IdentityFile、ProxyJump 和各格式的支持范围见 HOST_IMPORT。主机保存与导入共用结构校验及提交后的旧代理凭据清理协议（HOST_INHERITANCE）。
 
 验收：H-01 继承与三态；H-02 并发编辑与坏数据恢复；H-03 搜索/IPv6/不支持语法；H-04 密钥与多因子。
 
@@ -69,7 +65,7 @@ idle → resolving → connecting → handshaking → verifyingHostKey
 - 代理只用于第一跳。SOCKS5 支持无认证与用户名/口令（RFC 1929），域名交给代理解析（ATYP 3），IP 字面量按 IPv4/IPv6 发送；HTTP 发 `CONNECT host:port`（IPv6 加方括号），407 视为代理认证失败。握手后多读到的字节（服务器 banner）原样交给 SSH。
 - 主机密钥按密钥类型记录：`rsa-sha2-256`、`rsa-sha2-512` 与 `ssh-rsa` 是同一把 RSA 密钥，都记为 `ssh-rsa`。
 - 池 key 包含跳板和代理，改了路由的主机不复用旧连接。
-- known_hosts 导入：设置的“数据与安全”里选择 OpenSSH known_hosts 文件（最大 2 MiB），先生成预览，用户确认后一次写入。支持普通主机名、`[host]:port`、逗号分隔的别名和 IPv6；密钥类型限 ssh-ed25519、ssh-rsa、ecdsa-sha2-nistp256/384/521，密钥数据必须与所写类型一致。哈希条目 `|1|…` 只在与已保存主机的地址和端口匹配时导入。标记（`@revoked`、`@cert-authority`）、通配与否定模式、其他密钥类型、无法解析的行和未匹配的哈希名只列入报告，绝不当作可信；`@revoked` 仅计数，不与已信任的密钥比较。与已保存记录同端点同类型但指纹不同的列为冲突，保留原记录；文件内同端点同类型出现两个不同密钥时都不采用。提交时按当时已保存的记录再判断一次。HostTrustService 的所有改动（信任、遗忘、导入）经同一队列，写盘成功后才对外可见；`verify()` 的判断规则不变。
+- known_hosts 导入：侧栏“主机密钥”选择 OpenSSH known_hosts 文件（最大 2 MiB），先生成预览，用户确认后一次写入。支持普通主机名、`[host]:port`、逗号分隔的别名和 IPv6；密钥类型限 ssh-ed25519、ssh-rsa、ecdsa-sha2-nistp256/384/521，密钥数据必须与所写类型一致。哈希条目 `|1|…` 只在与已保存主机的地址和端口匹配时导入。标记（`@revoked`、`@cert-authority`）、通配与否定模式、其他密钥类型、无法解析的行和未匹配的哈希名只列入报告，绝不当作可信；`@revoked` 仅计数，不与已信任的密钥比较。与已保存记录同端点同类型但指纹不同的列为冲突，保留原记录；文件内同端点同类型出现两个不同密钥时都不采用。提交时按当时已保存的记录再判断一次。HostTrustService 的所有改动（信任、遗忘、导入）经同一队列，写盘成功后才对外可见；`verify()` 的判断规则不变。
 
 验收：C-01 host trust；C-02 多因子/取消；C-03 池与租约；C-04 路由/断网/迟到结果。
 
@@ -86,10 +82,16 @@ SSH bytes → 有界入口队列 → 增量解码/VT 解析 → terminal model �
 
 - 不在任意字节边界截断 UTF-8 或 ANSI；内存限制针对已解析 scrollback，不能丢未解析控制序列。
 - 初值回滚 2000 行，设置范围 500–20000；实际内存还受列宽、字符属性和编码影响，不按行数推算 MB。
-- 输出队列初值高水位 1 MiB/低水位 256 KiB，消费后才返还额度；必须验证 dartssh2 的 pause 是否传递到 SSH 窗口，否则该方案不算完成。
-- 快速回显尽快解析；大输出每次有时间预算并让出 UI。不能只靠帧回调排空，隐藏/最小化窗口也要消费协议数据。
-- 隐藏页保留 model、停止绘制/光标动画；后台仍解析、保持有界回滚与流控。M1 不做 serialize/hibernate 系统。
+- 每个 shell 独立持有输出消费器；stdout/stderr 各有增量 UTF-8 解码状态，共用按实际接收回调顺序排列的字节队列。两流之间没有 SSH 保证的全局顺序；未解析字节不丢弃、不拼成应用状态通知、不写日志。
+- 队列高水位 1 MiB、低水位 256 KiB。高水位暂停两条订阅，消费到低水位一起恢复，暂停沿 ShellChannel stream 传递到 SSH 接收窗口；实际高水位验收见 TESTING。每个输入事件复制成独立、至多 8 KiB 的缓冲，消费完整缓冲后释放，避免 Uint8List 视图保留已消费前缀或更大的上游 backing buffer。`pendingBytes` 统计未消费载荷，`retainedBytes` 统计队列持有容量，两者在解析回调之间一致。
+- 订阅遵守暂停契约时，队列载荷上限为高水位加触发暂停的一个输入事件；至多一个正在解码的 8 KiB 缓冲、临时字符串与对象、库内 channel/window 缓冲及入口复制期间的上游事件另计。单个上游事件大小不由消费器控制，不能把队列预算当作整个连接的内存硬上限。
+- 每次最多解码/解析 64 KiB，按 8 KiB 分片检查 4 ms 预算，再用普通事件定时器让出执行权，不依赖绘制帧。第三方 VT 单次解析不可抢占，4 ms 不是硬实时承诺。UTF-8 decoder 和 ANSI parser 保留跨片段状态。
+- 消费器属于 shell/model；隐藏页停止绘制与光标动画，隐藏/最小化仍继续消费并保持有界回滚。M1 不做 serialize/hibernate 系统。
+- 正常 shell 结束后排空流尾部与队列再发布 disconnected。transport 结束则立即停输入、给未 EOF 的 decoder 排入结束标记，只排空应用已收到的尾部，不等上游另行 EOF；shell 先结束、transport 后丢失也必须收束。transport 尚未交给应用的缓冲不保证保留。流出错停止消费并报告连接失败。
+- 用户关闭会话取消订阅、定时器、待处理字节和未完成拨号。重连创建新消费器，旧 shell 的输出与完成回调经身份检查，不能修改新 shell。结束后关闭本 shell、归还自身租约，不关闭共享 transport。
 - resize 合并重复 rows/cols，拖动中节流，结束马上提交最终值；0×0 不发送。字体加载、DPI 变化要重新测量。
+
+流控回归需覆盖水位、backing buffer 释放、分片让出、UTF-8/ANSI 跨片段、双流、尾部排空、transport 丢失且流不 EOF、错误/取消及旧 shell 迟到结果；实网数据只在 TESTING 维护。
 
 ### 功能与输入
 
@@ -141,21 +143,21 @@ running → pausing → paused → preparing（M3 增量）
 
 ### 外部编辑
 
-下载到私有 temp → 系统默认或指定编辑器打开 → watcher + debounce → 显示修改待上传。默认显式上传；用户可为本编辑会话开启自动上传。
+下载到私有副本 → 系统默认或指定编辑器打开 → watcher + debounce → 同步修改。新稿默认保存时自动上传，用户可对本稿关闭并改为手动上传；历史稿保留已保存的开关。
 
-保存前重新验证远端基线，冲突时保留本地稿并提供重新下载/另存/明确覆盖；编辑器原子保存导致文件被替换时 watcher 要重新绑定。上传期间再次保存用 generation 串行追上最新版本，旧任务不能覆盖新版本。默认不转换编码/换行；失败稿跨重启可恢复。结束编辑与退出都提示未上传稿。
+保存前重新验证远端基线，冲突时保留本地稿并提供重新下载/另存/明确覆盖；原子保存后 watcher 重新绑定，上传期间新保存用 generation 串行追上最新版本。默认不转换编码/换行；失败稿跨重启可恢复，结束与退出提示未上传稿。默认应用、可靠关闭跟踪、失败保稿与清理边界只在 EXTERNAL_EDITS 维护；真实编辑器验收见 TESTING。
 
 ### 当前实现
 
 - 本机和远端共用 `FileSystem` 接口（`lib/foundation/file_system.dart`）：远端由 `TransportLease.openFiles()` 开一个 SFTP channel，本机用 dart:io。路径按各自语法拼接，远端一律 POSIX。
 - 主机库旁固定的 SFTP 页是左右双栏，每栏可选本机或任一主机；终端标签可打开文件面板（同一组件的单栏，跟随焦点 pane 的主机）；停靠在下方时左边加一栏目录树（宽 240，从 `/` 起按需列出子目录，当前路径的祖先自动展开，点目录即进入），右边是列表。面板打开时跟随终端目录（§3），打开时也从终端目录开始；用户在面板里另去别处后，只有终端目录再变化才会跳回。拖到另一栏、发送到另一侧、OS 拖入、选择文件上传都进同一队列。没有每主机书签；所有者/组取自 SFTP longname，没有就留空。
 - TransferManager 持有任务。每台主机的传输共用一个与浏览分开的 SFTP channel；全局并发取设置（默认 3），每主机 2；单文件 32 KiB 请求、最多 16 个在途。30s 没有进展判为停滞并失败。
-- 单文件暂停与续传（`docs/TRANSFER_RESUME.md`）：running → pausing → paused；暂停停读源、等写入收束后 stat `.part` 记稳定长度，只记 settled checkpoint。续传前重新 stat 源（类型/大小/修改时间变了报 sourceChanged），`.part` 必须是本任务 ID 派生的同目录文件且长度与 checkpoint 一致，否则 partInvalid；从偏移读源、只向已存在的 `.part` 追加，最后沿用原子发布与替换基线检查。取消、移除、从头重试先清理本任务拥有的 `.part`，清理失败保留记录并显示路径（leftoverPart）。暂停/中断任务保留目标锁，不占并发与 SSH 租约；正常退出时单文件停在 paused（重启后为 interrupted，可手动恢复），目录不暂停也不续传。SFTP 续传的哈希一致性等真实服务器验证见 ROADMAP F-04。
+- 单文件暂停与续传（`docs/TRANSFER_RESUME.md`）：running → pausing → paused；暂停停读源、等写入收束后 stat `.part` 记稳定长度，只记 settled checkpoint。续传前重新 stat 源（类型/大小/修改时间变了报 sourceChanged），`.part` 必须是本任务 ID 派生的同目录文件且长度与 checkpoint 一致，否则 partInvalid；从偏移读源、只向已存在的 `.part` 追加，最后沿用原子发布与替换基线检查。取消、移除、从头重试先清理本任务拥有的 `.part`，清理失败保留记录并显示路径（leftoverPart）。暂停/中断任务保留目标锁，不占并发与 SSH 租约；正常退出时单文件停在 paused（重启后为 interrupted，可手动恢复），目录不暂停也不续传。SFTP 续传的哈希一致性等真实服务器验证见 TESTING §6。
 - 写到目标旁的隐藏文件 `.名称.随机.part`（排他创建），写完 stat 核对长度再发布；可暂停的单文件改用 `.名称.任务ID.part`，重启后能再找到。目标不存在时 rename；dartssh2 在服务器支持 posix-rename 时 rename 会覆盖，所以先确认目标不存在，两步之间有竞态窗口。替换只在服务器支持 `posix-rename@openssh.com` 时进行，发布前再 stat 目标，大小或修改时间变了就放弃；不支持时保留原文件并报错。本机替换用 File.rename。
 - 冲突：跳过、保留两者（`名称 (1).ext`）、替换、取消；目录另有合并。“应用于全部”只作用于同一批次的同类冲突。目录扫描深度 32、条目 20000 上限，不跟随符号链接（跳过并计数）。
 - 删除目录逐项走 SFTP，确认框写明条目数；不拼 `rm -rf`。
 - transfers.json 只存白名单字段；重启时未完成的任务变为 interrupted，带 settled checkpoint 的可恢复续传，其余可从头重试；终态保留 200 个/30 天，带 checkpoint 的记录不因清空或裁剪被悄悄丢弃。
-- 外部编辑：下载到数据目录 `edits/<id>/`，用系统默认程序打开，监视该目录（防抖 500 ms）。默认手动上传，可为单个编辑开自动上传。上传前比对下载时记下的远端大小与修改时间，不一致时让用户选覆盖、另存副本或取消。edits.json 记着未上传的稿，重启后还能上传。
+- 外部编辑私有副本位于数据目录 `edits/<id>/`，目录 watcher 防抖 500 ms；edits.json 保留未上传稿及其开关，重启后恢复。完整生命周期见 EXTERNAL_EDITS。
 - 关窗经 ShutdownCoordinator：有进行中的传输或未上传的编辑时先询问。
 
 验收：F-01 浏览/文件名/链接；F-02 完整性与冲突；F-03 取消与共享连接；F-04 恢复续传；F-05 外部编辑；P-03 大文件/大目录。
@@ -170,11 +172,11 @@ running → pausing → paused → preparing（M3 增量）
 - 撤销远端监听超时应显示 stopFailed/状态未知；若必须断 transport，先说明关联会话影响，再执行用户选择。
 - 手动 stop 取消重连意图；自动重连沿用 connections 的有界策略。端口占用、权限不足、服务端拒绝转发分别提示。
 
-已实现（代码与单元测试在位，未经真实 SSH 服务器与真实套接字验证）：规则存 forwards.json，当前没有 revision 字段。运行中的规则持有一个 purpose 为 forward 的租约，与终端、SFTP 共用连接，关闭终端不影响转发；本地与动态监听走 `ForwardRuntime`（dart:io 只在 `adapters/`），远端监听用 tcpip-forward，停止时等服务器确认取消，确认不了显示为 stopFailed。绑定地址默认 127.0.0.1，填其他地址时表单和列表都标出“对外开放”，保存前必须确认（已保存且地址未变的规则不再询问）。动态转发是只支持 CONNECT、无认证的 SOCKS5 服务器（域名、IPv4、IPv6）。`autoStart` 由 `Forwards.autoStart()` 在应用启动时调用一次；`autoReconnect` 只在连接断开时按 1/2/4/8/16 s 重试 5 次，手动停止、认证失败和主机密钥问题不重试。
+当前规则存 forwards.json，规则对象没有独立 revision 字段。运行中的规则持有 purpose 为 forward 的租约，与终端、SFTP 共用连接，关闭终端不影响转发；本地与动态监听走 `ForwardRuntime`（dart:io 只在 `adapters/`），远端监听用 tcpip-forward，停止时等服务器确认取消，确认不了显示 stopFailed。默认绑定 127.0.0.1，其他地址在表单和列表标出“对外开放”，保存前确认（已保存且地址未变不重复询问）。动态转发仅为无认证的 SOCKS5 CONNECT，支持域名、IPv4、IPv6。`Forwards.autoStart()` 在启动时调用一次；`autoReconnect` 仅连接断开时按 1/2/4/8/16 s 重试 5 次，手动停止、认证失败和主机密钥问题不重试。
 
 约束：每条规则最多接收 128 个并发连接（包括握手和拨号中的连接），超出的直接关闭并记 limit；SOCKS5 握手及本机目标 TCP 拨号最多等待 15 s。错误发生在单个转发连接时只关闭该连接，规则继续监听并保留最近错误。停止确认失败时保留转发租约与失败状态，禁止直接重新启动、编辑或删除规则；只有确认解除监听或 SSH transport 已断开后才释放租约，断开后再次停止即可收尾。转发能力（forward.list/save/delete/start/stop）均不向 AI 开放（`agentExposed` 为 false）。
 
-接线已完成：工作区更多菜单、命令面板、应用退出时的 `shutdown()` 与启动时的 `autoStart()` 已由组合层接入；真实服务器（2026-11-07，`integration_test/forward_test.dart`）上验证了 L/R/D 通路与哈希、回环默认不在局域网地址应答、本进程已占用的端口报“端口已被占用”（Dart 对本进程内的重复监听不经操作系统直接拒绝，错误码 -1，已按此归类；别的进程占用则是系统错误码）、远端端口 0 由服务器选定、停止后两端端口释放、退出收束；断线重连与规则面板的界面行为尚未验证。已有 `test/forwarding_test.dart`（SOCKS5 解析、relay 半关闭与挂断、租约与状态生命周期、重连、128 上限、暴露确认与持久化）和 `test/app_lifecycle_test.dart` 的退出协调测试；模拟通道不等于真实通路验收。
+规则管理入口、命令面板、退出 `shutdown()` 与启动 `autoStart()` 由组合层接入。本进程内重复监听的 Dart 错误码 -1 也归类为端口占用，不能只识别操作系统错误码。验证覆盖 SOCKS5 解析、relay 半关闭与挂断、租约与状态生命周期、有界重连、连接上限、暴露确认、持久化和退出协调；真实 L/R/D 通路及尚未验证的界面/断线重连见 TESTING，模拟通道不代替实网验收。
 
 验收：R-01 L/R/D 正反向通路；R-02 stop/重连/共享资源；R-03 loopback 与端口冲突。
 
@@ -182,7 +184,7 @@ running → pausing → paused → preparing（M3 增量）
 
 保存 label、text、tags、order；默认“插入终端待用户 Enter”，执行另有明确动作。变量模板后续添加，需明确文本替换不是安全 shell 参数转义。首期不做脚本 runtime、输出触发器、登录自动执行或批量广播。
 
-当前实现（验证状态见 ROADMAP）：snippets.json 按保存顺序存 id、label、text、tags；面板提供搜索、增删改，单个片段最多 64 KiB 文本。面板通过 typed 用例调用插入，命令面板经 `snippet.insert` 能力调用同一用例，把文本粘到焦点终端；“运行”在插入后再发回车。与剪贴板共用 TerminalSession 的受控粘贴入口：多行按设置确认，控制字符和运行始终确认，预览显示目标与控制字符；确认绑定当时的 shell，断线、关闭或重连后不向新 shell 发送。没有可用终端或确认 UI 时拒绝发送。受控插入入口和片段能力不开放给 AI。
+当前实现（运行结果见 TESTING §6）：snippets.json 按保存顺序存 id、label、text、tags；面板提供搜索、增删改，单个片段最多 64 KiB 文本。面板通过 typed 用例调用插入，命令面板经 `snippet.insert` 能力调用同一用例，把文本粘到焦点终端；“运行”在插入后再发回车。与剪贴板共用 TerminalSession 的受控粘贴入口：多行按设置确认，控制字符和运行始终确认，预览显示目标与控制字符；确认绑定当时的 shell，断线、关闭或重连后不向新 shell 发送。没有可用终端或确认 UI 时拒绝发送。受控插入入口和片段能力不开放给 AI。
 
 实现约束：终端公开 typed insert 用例；多行按 confirmPaste 设置确认，控制字符与运行始终确认，确认绑定原 shell 与租约，取消、断线或重连后拒绝迟到输入。片段模块不依赖 workspace，焦点终端与确认入口由 app 注入，避免循环依赖。保存串行且落盘成功后发布；不展开模板，不记录片段执行内容。关闭片段面板取消尚未发送的插入；退出等待片段写入队列。确认窗口跟随插入取消关闭，避免取消后留下失效对话框；会话结束时同样撤销当前 shell 的待确认插入。
 
@@ -200,7 +202,7 @@ SettingDefinition 统一记录 key/type/default/range/effect/applyMode/agentExpo
 | 终端 | 字体（系统等宽字体，默认 Cascadia Mono）/字号（初值 14 logical px）、光标、回滚、选中复制（默认关）、右键行为、粘贴确认 |
 | 工作区 | 显示服务器监控（默认开）、监控刷新间隔（1/2/3/5/10 秒，默认 3）、监控面板宽度（240–400，默认 240）、文件面板停靠（左/右/下，默认右）、导航展开状态与宽度（176–320，默认收起、200）、退出前确认（默认开，不开放给 AI） |
 | 连接 | 超时、保活、idle TTL、自动重连；标明下次连接生效 |
-| 文件 | 并发、隐藏文件、默认外部程序；覆盖默认询问；自动上传默认关 |
+| 文件 | 并发、隐藏文件、默认外部程序；覆盖默认询问；新外部编辑稿保存时自动上传，可按稿关闭 |
 | 快捷键 | 按上下文修改、冲突检测、恢复默认 |
 | 数据与安全 | 数据目录、备份/恢复入口、信任管理；禁止由 AI 任意修改 |
 | 关于 | 版本、许可、诊断导出（脱敏）、更新说明 |
@@ -209,7 +211,7 @@ SettingDefinition 统一记录 key/type/default/range/effect/applyMode/agentExpo
 
 命令面板负责主机/会话/已注册能力搜索，AI 阶段新增“交给 AI”明确动作；**搜索不到时不自动把文本发给模型**。
 
-一期单主窗口，设置作为窗口内浮层；多窗口、托盘、自动更新不作为首版前置。退出经 ShutdownCoordinator，不因关窗让上传、编辑稿或配置悄悄丢失；`confirmQuit` 开着时每次退出都先确认，并列出将断开的会话数。
+一期单主窗口，设置在窗口内居中弹窗打开（UI §1）；多窗口、托盘、自动更新不作为首版前置。退出经 ShutdownCoordinator，不因关窗让上传、编辑稿或配置悄悄丢失；`confirmQuit` 开着时每次退出都先确认，并列出将断开的会话数。
 
 Windows 打包：`tool/package_windows.ps1` 构建 Release，将完整 runner 输出、README 和第三方许可证清单打成带时间戳的 ZIP（`dist/`，不覆盖旧包）。`tool/write_notices.dart` 从已解析的依赖读取 LICENSE/NOTICE，缺失时失败而非遗漏。当前只供本地验证，不代表已签名或正式发行；项目许可证未确定前不宣称 MIT 授权。
 

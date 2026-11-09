@@ -59,7 +59,7 @@ class _DockSidePainter extends CustomPainter {
   bool shouldRepaint(_DockSidePainter old) => old.side != side || old.color != color;
 }
 
-/// A resizable panel docked to one side of the main view (docs/WORKSPACE_LAYOUT.md). A left or right panel that
+/// A resizable panel docked to one side of the main view (docs/UI.md). A left or right panel that
 /// would squeeze the main view below [WorkspaceSize.terminalMin] covers it instead.
 class DockPanel extends StatefulWidget {
   const DockPanel({

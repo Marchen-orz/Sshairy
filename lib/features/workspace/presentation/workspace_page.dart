@@ -32,7 +32,7 @@ import '../application/workspace.dart';
 import '../domain/layout.dart';
 import 'split_view.dart';
 
-/// The window (docs/WORKSPACE_LAYOUT.md): icon rail, title bar with tabs, and the page or terminal tab below.
+/// The window (docs/UI.md): icon rail, title bar with tabs, and the page or terminal tab below.
 class WorkspacePage extends ConsumerStatefulWidget {
   const WorkspacePage({super.key, required this.openPalette});
 

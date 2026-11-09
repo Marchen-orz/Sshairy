@@ -1,59 +1,57 @@
-# 主机导入（2026-11-08）
+# 主机导入
 
-把其他 SSH 客户端或文件里的主机元信息导入主机库。只读本机文件和注册表，不连接服务器、不执行配置里的命令，也不读私钥内容。参考 Netcatty 的入口形式（首次引导、弹窗里选来源），实现自有，不复制代码。SSH config 的细则仍见 `SSH_CONFIG_IMPORT.md`。
+从本机 SSH 客户端配置或文件导入主机元信息。只读文件和注册表，不连接服务器、不执行配置命令、不读私钥内容、不修改来源。入口参考 Netcatty，代码与素材独立实现。验证状态见 ROADMAP、TESTING。
 
-## 入口
+## 入口与来源
 
-- 主机库工具栏的导入按钮（`Icons.input_rounded`），打开居中对话框（`AppDialog`），不用侧边抽屉。
-- 首次启动：主机库为空且设置 `importOffered` 为 false 时自动打开一次，底部按钮是“跳过”；打开时即写 `importOffered = true`，之后不再自动出现。该设置 `agentExposed: false`，AI 看不到也改不了。
-
-## 来源
-
-对话框第一步：上方是“从文件导入”（任意文件，按内容识别格式），下方是各软件的方块，使用独立绘制的简化 SVG 标识（OpenSSH、PuTTY、MobaXterm、SecureCRT、Xshell、FinalShell、Tabby；CSV 使用表格文件图形），不再用名称前两个字母代替图标，保留文字名称与所需文件/目录名。图形是导入来源识别用途，不复制 Netcatty 素材；SVG 随应用打包，不联网获取。检测已知位置的主机数量；有结果可直接预览，没有结果先展示该来源的选取指引、示例路径与选择按钮，再打开系统选择器，不能让用户猜测应选哪个目录。预览中可重新选择来源文件或文件夹。
-
-FinalShell 自动发现覆盖用户配置目录、Program Files、本地 Programs、系统盘根目录和 macOS app bundle 等已知位置；Windows 额外只读查询固定 App Paths 与名称匹配 FinalShell 的卸载信息（InstallLocation/DisplayIcon），不全盘搜索，不执行安装程序/卸载命令。跳过空目录，采用第一个含主机的来源，不合并不同来源；自定义便携目录可手动选择。预览显示真实来源路径，可重新选择。
+主机库导入按钮打开居中 `AppDialog`。库为空且 `importOffered` 为 false 时自动打开一次，可跳过；打开即保存该标记，它不向 AI 暴露。第一步提供“从文件导入”和各软件来源，使用随包、自行绘制的简化 SVG 及文字，不联网获取标识。有已发现主机可直接预览，否则先说明所需文件/目录、示例路径，再打开选择器；预览可重新选择来源。
 
 | 来源 | 默认位置 | 读取内容 |
 |---|---|---|
-| OpenSSH | `~/.ssh/config` | 沿用 SSH config 解析（Include、ProxyJump、IdentityFile） |
-| PuTTY | Windows 注册表 `HKCU\Software\SimonTatham\PuTTY\Sessions`；或 regedit 导出的 `.reg` | HostName、PortNumber、UserName、Protocol、PublicKeyFile。会话名按 PuTTY 的百分号编码解码 |
-| MobaXterm | `%APPDATA%\MobaXterm\MobaXterm.ini`；或 `.mxtsessions` 导出 | `[Bookmarks*]` 节中 `#109#` 类型（SSH）的会话：地址、端口、用户名；`SubRep` 作为分组 |
-| SecureCRT | `%APPDATA%\VanDyke\Config\Sessions` | 每个 `.ini`：`S:"Hostname"`、`S:"Username"`、`D:"[SSH2] Port"`（十六进制）、`S:"Protocol Name"`；子文件夹作为分组，跳过 `__FolderData__.ini` 与 `Default.ini` |
-| Xshell | `文档\NetSarang Computer\*\Xshell\Sessions` | 每个 `.xsh`（常为 UTF-16）：`[CONNECTION]` 的 Host、Port、Protocol，`[CONNECTION:AUTHENTICATION]` 的 UserName；子文件夹作为分组 |
-| FinalShell | 已知用户/安装目录的 `conn`，Windows 安装信息；macOS app bundle；Linux `~/.finalshell/conn` 等 | 每个 `*_connect_config.json`：name、host、port、user_name；选中来源后可迁移支持的 password |
-| Tabby | `%APPDATA%\tabby\config.yaml`、`~/Library/Application Support/tabby/config.yaml`、`~/.config/tabby/config.yaml` | `profiles` 中 `type: ssh` 的 name、group、options.host/port/user、首个 privateKeys（`file://` 或路径） |
-| CSV | 无 | 第一行是表头，按列名识别：名称（name/label/alias/名称）、地址（host/hostname/address/ip/主机/地址，必填）、端口、用户名、分组（group/folder/分组）、密钥路径（key/identityfile/密钥）；RFC 4180 引号 |
+| OpenSSH | `~/.ssh/config` | Host、Include、ProxyJump、IdentityFile，规则见下文 |
+| PuTTY | Windows `HKCU\Software\SimonTatham\PuTTY\Sessions` 或导出的 `.reg` | HostName、PortNumber、UserName、Protocol、PublicKeyFile；会话名按 PuTTY 百分号编码解码 |
+| MobaXterm | `%APPDATA%\MobaXterm\MobaXterm.ini` 或 `.mxtsessions` | `[Bookmarks*]` 中 `#109#` SSH 会话的地址、端口、用户；SubRep 为分组 |
+| SecureCRT | `%APPDATA%\VanDyke\Config\Sessions` | `.ini` 中 Hostname、Username、十六进制 SSH2 Port、Protocol Name；子目录作分组，跳过 `__FolderData__.ini` 和 `Default.ini` |
+| Xshell | `文档\NetSarang Computer\*\Xshell\Sessions` | `.xsh` 的 CONNECTION 与 AUTHENTICATION 中 Host、Port、Protocol、UserName；子目录作分组 |
+| FinalShell | 已知用户/安装目录的 `conn`、Windows 安装信息、macOS app bundle、Linux `~/.finalshell/conn` | `*_connect_config.json` 的 name、host、port、user_name；可迁移支持的保存密码 |
+| Tabby | `%APPDATA%\tabby\config.yaml`、`~/Library/Application Support/tabby/config.yaml`、`~/.config/tabby/config.yaml` | `type: ssh` profile 的 name、group、options.host/port/user、首个 privateKeys（路径或 `file://`） |
+| CSV | 手选 | RFC 4180 引号；名称（name/label/alias/名称）、地址（host/hostname/address/ip/主机/地址，必填）、端口、用户名、分组（group/folder/分组）、密钥路径（key/identityfile/密钥） |
 
-- 注册表经 `%SystemRoot%\System32\reg.exe query <固定路径> /s` 读取：固定参数、不经 shell、只读。其他平台没有 PuTTY 方块。
-- 文件识别：`.reg` 头或 PuTTY 注册表路径 → PuTTY；`[Bookmarks` 与 `#109#` → MobaXterm；`S:"Hostname"=` → SecureCRT；`[CONNECTION]` 与 `Host=` → Xshell；带 host 和 user_name 的 JSON → FinalShell；带 `profiles:` 的 YAML → Tabby；首行像表头的逗号分隔文本 → CSV；其余按 SSH config。选文件夹时按扩展名找 SecureCRT、Xshell、FinalShell 的会话文件。
-- 解码：带 BOM 的 UTF-8/UTF-16 按 BOM；否则先试 UTF-8，失败按系统代码页（中文 Windows 为 GBK）。
-- 上限：单文件 2 MiB（SSH config 仍为 1 MiB 总量）；文件夹深 8 层、最多 4096 个文件、共 16 MiB；每次最多 512 台主机，超出部分报告。
+FinalShell 自动发现只查已知用户/安装目录、Program Files、本地 Programs、系统盘根目录、macOS app bundle；Windows 另读固定 App Paths 和名称匹配 FinalShell 的卸载信息（InstallLocation/DisplayIcon）。不全盘搜索或执行安装/卸载命令，跳过空目录，取首个含主机的来源，不合并来源；便携目录可手选，预览显示实际路径。
+
+注册表通过 `%SystemRoot%\System32\reg.exe query <固定路径> /s` 只读查询，固定参数、不经 shell；其他平台不显示 PuTTY 来源。文件格式按特征识别：`.reg` 头/注册表路径、MobaXterm Bookmarks 与 `#109#`、SecureCRT `S:"Hostname"=`、Xshell CONNECTION 与 Host、FinalShell host/user_name JSON、Tabby profiles YAML、CSV 表头；其余按 SSH config。文件夹按扩展名读取会话文件。
+
+UTF-8/UTF-16 BOM 优先，否则先试 UTF-8，再按系统代码页（中文 Windows 为 GBK）。普通单文件最多 2 MiB；文件夹最多深 8 层、4096 文件、合计 16 MiB；每次最多 512 台主机，超限报告。OpenSSH 使用下方更小的读取上限。
+
+## OpenSSH 读取与解析
+
+- 用户选择 config；Include 仅可读取所选文件目录树内的相对路径，支持文件名 `*`/`?`，不支持绝对路径、`~`、`..`、环境替换或 `**`。规范化后还须检查真实路径，符号链接不能越界。最多 4 层 Include、32 次读取、合计 1 MiB；循环、缺失、超限、越界均报告。Include 在原位置展开，保持首值匹配顺序；任何 Include 未完整读取，整个预览禁止提交，防止遗漏路由后导入成直连。
+- 关键字不区分大小写，接受空格或 `=`、引号及引号外注释；非法行报告文件和行号。仅显式 Host 别名生成草稿，含 `*`、`?` 或否定的 Host 只提供按别名匹配的默认值；每项取第一个匹配值。
+- 支持 HostName、User、Port、IdentityFile、ProxyJump。缺省地址为别名、端口 22、用户为本机用户名。IdentityFile 只存路径引用；`~` 展开当前用户 home，支持 `%h`（解析后地址）、`%n`（别名）、`%r`（用户）、`%d`（home）、`%%`，其他变量阻止该草稿。多个 IdentityFile 仅取第一项并报告额外项。
+- Match 区块直到下个 Host 不应用并报告，不执行判断。ProxyCommand 不执行，有效非 `none` 值阻止对应草稿；其他未支持项仅报告关键字和位置，不展示可能含凭据的原始值。
+- 地址、用户、端口、路径变量无效，或跳板缺失、循环、超长，均阻止对应草稿，不静默删路由改成直连。ProxyJump 可引用配置别名或唯一匹配的已保存主机，支持 `user@host:port` 和括号 IPv6；多跳按入口到目标构建，引用链最多 8 台。
+- 不修改已保存跳板的上游；需要不同上游时复制为新的元信息草稿。必要的新跳板与目标作为整个新增集合提交。已有同地址（忽略大小写）/端口/用户的主机不覆盖且默认不选，路由与登录补齐限制同下文。
 
 ## 登录信息
 
-FinalShell 支持 `authentication_type` 缺省或为 `1`、无 `secret_key_id` 的旧式 Base64（8 字节头 + DES/ECB/PKCS5Padding）已保存登录密码；只用于本机用户主动选择的连接来源。实现独立依据公开格式整理，密码不显示、不导出。自动发现不解码；预览重新读取所选来源，仅输出逐项“已找到密码/连接时输入”等状态；提交重新读取并核对主机元信息，内存解码、写入系统安全存储，最后一次 revision 校验提交主机库。已有密码不覆盖；已有同端点/用户/路由且直接使用密码认证的主机可再次选中补齐。未知编码、未保存密码、密钥认证引用不当作可迁移密码，仍可导入元信息，连接时补充登录。
+FinalShell 仅支持 `authentication_type` 缺省或为 `1` 且无 `secret_key_id` 的旧式 Base64（8 字节头 + DES/ECB/PKCS5Padding）保存密码，用于用户主动选择的本机来源。迁移默认开启、可关闭；自动发现不解码。预览重读选中来源，只显示“已找到密码/连接时输入”等状态，不显示或导出秘密。提交再次读取并核对元信息，在内存解码后写入系统安全存储；配置草稿、日志和 AI 不含密码或配置原文。
 
-来源重新选择、返回或关闭会释放预览引用；预览不保存配置原文或秘密。Dart String 不能保证物理擦除，不宣称内存安全擦除。
+已有密码不覆盖；只有端点、用户、路由精确匹配且直接使用密码认证的已有主机，才可重新选中补缺。代理路由、未知编码、未保存密码和密钥认证引用不当作可迁移密码；仍可导入元信息并在连接时补登录。来源重选、返回、关闭释放预览引用；Dart String 不保证物理擦除，不宣称安全擦除。
 
-公开格式参考：[旧式密码编码](https://mg-freedom.org/mg/finalshell-decrypt-password/)、[私钥引用字段说明](https://github.com/BitsFlowCloud/DengShell/blob/main/build/FINALSHELL-IMPORT.md)。仅以合成配置验证算法及失败处理；未验证作者的真实 FinalShell 版本。
+格式参考：[旧式密码编码](https://mg-freedom.org/mg/finalshell-decrypt-password/)、[私钥引用字段](https://github.com/BitsFlowCloud/DengShell/blob/main/build/FINALSHELL-IMPORT.md)。算法与失败处理仅以合成配置验证，作者真实 FinalShell 版本未验。
 
-## 暂不支持
+## 不支持的内容
 
-- 其他软件的密码、私钥口令，以及 FinalShell 的专有密钥库引用（`secret_key_id`）。这类记录提示连接时补充登录信息，不把旧账号密码当作密钥口令。有已知可用密钥路径的其他来源继续保留路径。
-- PuTTY 的 `.ppk` 密钥路径不写入主机（dartssh2 不读 PPK），在报告里提示先转换。
-- 非 SSH 会话（Telnet、RDP、串口等）列入报告，标为“不是 SSH 会话”。
-- 代理、端口转发、终端外观、脚本等其他设置。各软件的跳板配置目前只有 OpenSSH 的 ProxyJump 会导入。
+- 其他软件的密码、私钥口令、FinalShell 专有密钥库引用（`secret_key_id`）。提示连接时补充，不把旧密码当密钥口令；可用的普通密钥路径仍保留。
+- PuTTY `.ppk` 路径不写入主机，报告需转换；非 SSH 会话列出并标记。
+- 代理、端口转发、终端外观与脚本等设置；跳板仅支持 OpenSSH ProxyJump。
 
 ## 预览与提交
 
-第二步：返回按钮与来源名、目标分组选择（不放入分组或已有分组），然后是主机列表。
+第二步显示来源与返回入口、目标分组（不分组或已有组）、可勾选主机及报告。每项显示名称、`用户@地址:端口`、来源分组和登录迁移状态；已有同端点/用户/路由的记录仅在可补登录时允许选中，阻止项解释原因。来源分组置于目标分组下；无法读取、跳过和超限报告带文件名。
 
-- 每项显示名称、`用户@地址:端口`、来源分组、可迁移登录信息状态；已存在（同地址、端口、用户名、路由）的仅在可补登录信息时允许勾选，无法导入的标出原因。
-- 来源分组保留在目标分组之下（`目标/来源`）。
-- 无法读取的文件、被跳过的会话、超出上限都在列表下方列出，带文件名。
-- 提交沿用 `HostsNotifier.importDrafts`：主机串行队列持有期间核对来源并迁移密码，凭据串行队列先只补缺失，再一次 revision 校验写入主机库；失败回收本次尝试写入的引用。预览期间主机库变了就要求重新选择；已有代理路由不接受直接来源的密码。凭据回收失败单独提示，不静默当作成功。
-- 关闭对话框不保存任何东西。
+提交经 `HostsNotifier.importDrafts` 单写队列：核对预览 hosts revision、来源与整个新增引用链；需要密码时在凭据串行队列只补缺失，再一次 revision 校验写盘后发布主机库。预览期间库变化要求重新预览；失败回收本次尝试写入的秘密引用，回收失败单独提示，不伪称完全成功。密钥路径不自动导入安全存储；以后连接仍经凭据流程和 HostTrustService。关闭不提交草稿或凭据，首次引导标记仍按入口规则保留。
 
-## 测试
+## 验证范围
 
-每种解析器都有单元测试（构造样例：注册表查询输出与 `.reg`、MobaXterm 书签、SecureCRT/Xshell 会话、FinalShell JSON、Tabby YAML、CSV 引号与中文表头），文件识别、编码、上限、首次引导和对话框流程有组件测试。新增的安装位置/注册表发现使用合成数据和临时目录；密码使用独立 PyCryptodome DES 生成的合成样本，覆盖 Unicode、负头字节、填充、未知格式、UTF-16 BOM、重复导入、代理端点拒绝、来源变化、revision 冲突、存储写后报错和不完整回收。组件测试覆盖 960×640 下的来源指引、重选路径、已有主机补密码与迁移开关。各软件的真实安装、默认位置和作者的 FinalShell 版本未验证；新流程没有连接真实服务器。
+解析、编码、Include 边界、跳板链、revision、读取上限和各格式使用构造样例；发现流程用合成注册表与临时目录。密码样本独立用 PyCryptodome DES 生成，覆盖 Unicode、负头字节、填充、未知格式、UTF-16 BOM、重复导入、代理拒绝、来源变化、并发冲突、写后报错与回收失败。组件测试覆盖来源指引、960×640、重选、首次引导和迁移开关；实际通过记录集中在 TESTING。各软件真实安装、默认位置、作者 FinalShell 版本及系统选择器未验，不由合成测试推定通过。

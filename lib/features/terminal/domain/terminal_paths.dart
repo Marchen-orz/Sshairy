@@ -1,4 +1,4 @@
-/// Which entries a remote directory holds, for path completion (docs/TERMINAL_PATHS.md). Rules, cache and query
+/// Which entries a remote directory holds, for path completion (docs/TERMINAL_ASSISTANCE.md). Rules, cache and query
 /// scheduling are here; the SFTP reader is `adapters/terminal_paths.dart`. Nothing in this file touches a shell.
 library;
 
@@ -220,7 +220,7 @@ abstract final class RemotePaths {
 }
 
 /// A [RemotePathSource] over one [RemoteDirectoryReader] (one connection generation). Same-directory queries share
-/// one listing; a query for another directory supersedes the running one. See docs/TERMINAL_PATHS.md.
+/// one listing; a query for another directory supersedes the running one. See docs/TERMINAL_ASSISTANCE.md.
 class RemotePathBrowser implements RemotePathSource {
   RemotePathBrowser(
     this._reader, {

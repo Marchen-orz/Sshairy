@@ -2,7 +2,7 @@
 
 Lightweight SSH. Powered by AI. Flutter 桌面 SSH 客户端（Win/macOS/Linux），开源，主要供作者自用，不提供兼容性和可用性保障；许可证发布前确定（建议 MIT）。
 
-开始工作前先读 `docs/DESIGN.md` 和 `docs/ROADMAP.md`，再按任务读专题：`MODULES`（功能）、`CONTRACTS`（API 与资源）、`SECURITY`（凭据与存储）、`UI`（界面）、`AI`（M4）、`TESTING`（测试）、`NETCATTY_REVIEW`（参考依据）。完成后更新 ROADMAP 的勾选和交接记录。
+开始工作前先读 `docs/DESIGN.md` 和 `docs/ROADMAP.md`，再按任务读专题：`MODULES`（功能）、`CONTRACTS`（API 与资源）、`SECURITY`（凭据与存储）、`UI`（界面）、`AI`（M4）、`TESTING`（测试）；参考来源按需查 `NETCATTY_REVIEW`。规则只在对应规范维护一处，状态与待办放 ROADMAP，实际验证放 TESTING §6。完成后更新 ROADMAP 勾选并替换最近交接，不追加逐轮流水；历史通过 Git 查询。
 
 ## 不可违反的规则
 1. 业务变更走 typed 用例；主机、连接、传输、持久化设置、布局命令按需登记为 Capability，命令面板和 AI 经 CapabilityDispatcher 调用。不把 UI 瞬时状态和终端按键做成 JSON 动作。

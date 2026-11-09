@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'theme.dart';
 
-/// A panel to the left of the page it shares a row with, such as the server monitor (docs/WORKSPACE_LAYOUT.md). Its
+/// A panel to the left of the page it shares a row with, such as the server monitor (docs/UI.md). Its
 /// divider resizes it the way the navigation and dock panels resize: a guide while dragging, committed on release;
 /// double-click restores the default; arrow keys and semantic increase/decrease step it.
 ///

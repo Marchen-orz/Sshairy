@@ -5,7 +5,7 @@ import '../../../foundation/file_system.dart';
 import '../../connections/api.dart' show TransportLease;
 import '../domain/terminal_paths.dart';
 
-/// Path completion over the SFTP channel of a lease the terminal already holds (docs/TERMINAL_PATHS.md). One
+/// Path completion over the SFTP channel of a lease the terminal already holds (docs/TERMINAL_ASSISTANCE.md). One
 /// instance per lease and connection [generation]; [dispose] closes its channel and leaves the lease to its owner.
 /// It never acquires a lease or dials, so everything it reads went through host verification.
 class LeaseRemotePathSource extends RemotePathBrowser {

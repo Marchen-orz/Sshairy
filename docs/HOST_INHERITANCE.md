@@ -19,4 +19,4 @@ MODULES §1 的具体落地；与当前 Host/连接端口保持兼容，用户�
 
 已知限制：合并到已有组路径被拒绝；解散组丢弃其默认值；密钥文件无法加载时“密钥→密码”主机连接失败，不静默降级；引用身份的主机不共享已记住的密码；代理凭据仍按主机 ID 与代理键保存；新建主机在无默认值时自带端口，不跟随之后才设的全局端口。折叠的“连接路由”区里的代理地址或端口校验失败时，保存会自动展开该区，错误可见。
 
-验证：纯三态/多层顺序/来源、认证整体替换、组循环与缺引用、schema1兼容、过期revision不覆盖、保存失败不发布、Identity引用的密钥不能删除、连接前解析（host_library_test、host_inheritance_test）；Capability 的字段词汇、归一化、拒绝与 inUse 映射（host_capabilities_test）；主机/组/全局默认值/身份/主机库的 widget 交互（host_editor_test，含组改名与拒绝已存在路径、解散确认、保存失败时展开折叠的路由区、被引用的跳板主机删除被拒并提示引用方）；主机库的删除保护与 `host.delete` 的 `inUse` 另见 host_library_test、host_inheritance_test、host_capabilities_test。真实服务器上的 key→password、keyboard-interactive 与密钥加载行为尚未验证，不由模型测试代替。
+验证：纯三态/多层顺序/来源、认证整体替换、组循环与缺引用、schema1兼容、过期revision不覆盖、保存失败不发布、Identity引用的密钥不能删除、连接前解析（host_library_test、host_inheritance_test）；Capability 的字段词汇、归一化、拒绝与 inUse 映射（host_capabilities_test）；主机/组/全局默认值/身份/主机库的 widget 交互（host_editor_test，含组改名与拒绝已存在路径、解散确认、保存失败时展开折叠的路由区、被引用的跳板主机删除被拒并提示引用方）；主机库的删除保护与 `host.delete` 的 `inUse` 另见 host_library_test、host_inheritance_test、host_capabilities_test。实际通过及真实认证的覆盖范围统一见 TESTING §6，不由模型测试推定通过。

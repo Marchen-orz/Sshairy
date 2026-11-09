@@ -28,26 +28,24 @@
 | [UI.md](UI.md) | 视觉、布局、交互、键盘与无障碍 |
 | [AI.md](AI.md) | 二期 harness 与模型协议 |
 | [TESTING.md](TESTING.md) | 真实环境测试规则、技术实验、功能检查 |
-| [ROADMAP.md](ROADMAP.md) | 里程碑、当前进度、交接记录 |
-| [NETCATTY_REVIEW.md](NETCATTY_REVIEW.md) | 固定版本源码证据和取舍理由 |
-| [CORRECTION.md](CORRECTION.md) | 2026-11-06 纠偏与自绘窗口实施约束 |
-| [BRAND.md](BRAND.md) | GPT 生成图标的设计约束、来源与导出 |
-| [DESIGN_AUDIT.md](DESIGN_AUDIT.md) | 对照最早设计的复核、已确认边界和未修复缺陷 |
+| [ROADMAP.md](ROADMAP.md) | 当前进度、待办、最近一次交接 |
 | [HOST_INHERITANCE.md](HOST_INHERITANCE.md) | 分组、身份、全局默认值与三态继承 |
+| [HOST_IMPORT.md](HOST_IMPORT.md) | OpenSSH 与其他客户端的主机导入 |
+| [PROXIES.md](PROXIES.md) | SSH 出站代理、继承与集中管理 |
 | [CONFIG_RECOVERY.md](CONFIG_RECOVERY.md) | 配置迁移、进程锁与快照恢复 |
 | [DIAGNOSTICS.md](DIAGNOSTICS.md) | 结构化、脱敏的诊断日志 |
+| [TRANSFER_RESUME.md](TRANSFER_RESUME.md) | 单文件续传、checkpoint 与安全清理 |
 | [EXTERNAL_EDITS.md](EXTERNAL_EDITS.md) | 外部编辑器、私有副本与清理 |
-| [TERMINAL_FLOW.md](TERMINAL_FLOW.md) | 终端输出的流控与背压 |
-| [WORKSPACE_LAYOUT.md](WORKSPACE_LAYOUT.md) | 工作区、主机树与工具面板布局 |
-| [MEMORY_USAGE.md](MEMORY_USAGE.md) | 内存保留边界、缓存预算与闲置资源释放 |
+| [MEMORY_USAGE.md](MEMORY_USAGE.md) | 资源保留边界与尚未解决的内存调查 |
 | [BACKGROUND_IMAGES.md](BACKGROUND_IMAGES.md) | 界面与终端背景图片、受管副本与透明度 |
-| [TERMINAL_ASSISTANCE.md](TERMINAL_ASSISTANCE.md) | 本地补全候选、会话历史与异步扩展端口 |
+| [TERMINAL_ASSISTANCE.md](TERMINAL_ASSISTANCE.md) | 补全交互、历史、翻译与有界远程路径来源 |
 | [COMPLETION_SPECS.md](COMPLETION_SPECS.md) | 固定 Fig 规格的静态导入、来源与许可 |
 | [COMPLETION_ENGINE.md](COMPLETION_ENGINE.md) | 纯 Dart 命令上下文、选项与路径请求 |
-| [TERMINAL_PATHS.md](TERMINAL_PATHS.md) | 复用可信租约的有界 SFTP 路径来源 |
-| [PROXIES.md](PROXIES.md) | SSH 出站代理、继承与集中管理 |
+| [BRAND.md](BRAND.md) | 当前六套主题、素材来源与导出 |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | 依赖许可、素材声明与发行审计边界 |
+| [NETCATTY_REVIEW.md](NETCATTY_REVIEW.md) | 按需查阅的固定版本参考证据与取舍 |
 
-每次先读本文件与 ROADMAP，再读对应专题。用户新指示优先于文档。发现代码、测试、文档冲突时记录并修订，不把待验证项当事实。涉及决策的修改同步更新对应规范，不机械要求每个代码变更都修改全套文档。
+每次先读本文件与 ROADMAP，再读任务所需专题。规则在对应规范维护一处，其他文档只链接；实现状态与待办集中在 ROADMAP，实际验证结果集中在 TESTING §6，未解决的专项调查留在对应专题。ROADMAP 只保留最近一次交接，修改过程、已修缺陷和旧打包流水通过 Git 查询，不另建归档文档。用户新指示优先于文档；发现冲突时修订，不把待验证项当事实，也不要求每次改动更新全套文档。
 
 ## 3. 范围与阶段
 
@@ -127,7 +125,7 @@ app -> 以上模块，负责跨模块流程组合
 
 统一的是业务用例及其授权校验，不是每次 setState。主机变更、连接、传输、持久化设置、布局命令可登记为 Capability；光标移动、hover、拖动中间帧、表单草稿和每个终端按键不经过 JSON 注册表，也不逐键审计。
 
-UI 可以通过 typed façade 调用同一用例；命令面板和 AI 经 CapabilityDispatcher 调用。所有有副作用的入口共享必要校验。调度器集中做来源、范围、审批和安全投影。凭据挑选、信任密钥变更等用户专属操作另有明确入口，AI 不获同等权限。
+UI 可以通过 typed façade 调用同一用例；命令面板和 AI 经 CapabilityDispatcher 调用。Capability 目录与命令面板数据源在 app 组合层装配，业务 feature 不反向依赖 capabilities。所有有副作用的入口共享必要校验；调度器集中做来源、范围、审批和安全投影。凭据挑选、信任密钥变更等用户专属操作另有明确入口，AI 不获同等权限。
 
 一期只实现已存在功能的少量能力描述，不建模型 provider、聊天表或 Agent 循环。不承诺二期“一行既有代码都不改”；目标是无需重写 SSH/SFTP/设置核心，只扩展公开契约与装配。
 
@@ -165,6 +163,6 @@ UI 可以通过 typed façade 调用同一用例；命令面板和 AI 经 Capabi
 | ADR-11 | Windows 默认 Skia 渲染 | 空白 Flutter 应用开 Impeller 就占 244 MB，最大化后 430 MB，主要是核显共享内存里的渲染缓冲；Skia 下 97/131 MB（TESTING §6）。界面以文字和平面控件为主，Impeller 预编译着色器的好处用不上。保留切换，作为 Skia 出问题或被移除时的退路 |
 | ADR-13 | 弹层与选择控件自行实现 | 作者于 2026-11-07 要求整体更圆润精致，Material 默认的对话框、菜单、下拉、分段、开关外观达不到；在 `lib/design/` 用 Route/Overlay/Focus/Semantics 组合自有组件，业务代码只用这些组件。按钮、输入框仍用 Flutter 控件，由主题统一外观，避免重写文字选择与焦点 |
 | ADR-14 | 服务器监控走已连接会话的 exec 租约 | 不在服务器装 agent，也不另开连接；固定片段组成的只读命令默认每 3 秒一次（可调 1–10 秒），面板不可见即停；唯一的写操作是用户在进程窗口确认后发出的结束进程信号（MODULES §8）。代价是每次开一个 SSH channel，作者的服务器上可接受；以后若要更低开销再考虑常驻 exec 流 |
-| ADR-12 | Windows 无系统顶栏、自绘窗口控件 | 用户于 2026-11-06 明确要求；Flutter 顶栏与标签区域融合，原生 runner 保留缩放、DPI 和系统关闭生命周期。macOS/Linux 尚无同等实测，不假装自绘已覆盖三端。实现和验证见 CORRECTION、ROADMAP |
+| ADR-12 | Windows 无系统顶栏、自绘窗口控件 | 用户于 2026-11-06 明确要求；Flutter 顶栏与标签区域融合，原生 runner 保留缩放、DPI 和系统关闭生命周期。macOS/Linux 尚无同等实测，不假装自绘已覆盖三端。窗口规则见 UI，验证见 TESTING §6 |
 
 新增决策在此记录，详细实现只放对应专题，避免多个文件维护不同默认值。

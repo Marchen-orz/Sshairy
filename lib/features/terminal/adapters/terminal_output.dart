@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-/// One shell's output, consumed independently of the view (docs/TERMINAL_FLOW.md).
+/// One shell's output, consumed independently of the view (docs/MODULES.md §3).
 class TerminalOutput {
   TerminalOutput(List<Stream<Uint8List>> streams, this._write) {
     for (final stream in streams) {

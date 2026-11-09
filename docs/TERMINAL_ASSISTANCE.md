@@ -1,6 +1,6 @@
 # 终端补全与命令历史
 
-2026-11-08：已接入规格库、上下文解析、多来源合并和文件层级浏览，实际验证以 ROADMAP 为准。取代此前手写 100 个根命令、总数截断 8 条及 Ctrl+Space 才能选择的方案；旧手写库仅在资源缺失或无规格时保守回退。
+本文维护补全交互、翻译与远程路径来源；纯 Dart 解析见 COMPLETION_ENGINE，静态数据导入与许可见 COMPLETION_SPECS，运行结果见 TESTING。内置常用命令仅在资源缺失或无规格时保守回退。
 
 ## 数据与边界
 
@@ -17,12 +17,41 @@
 
 接口依据（2026-11-09）：MyMemory `mymemory.translated.net/doc/spec.php`、`doc/usagelimits.php`；DeepL `developers.deepl.com/api-reference/translate/request-translation` 与官方 OpenAPI；Google `docs.cloud.google.com/docs/authentication/api-keys-use`、Translation v2 REST；Microsoft `learn.microsoft.com/azure/ai-services/translator/text-translation/reference/v3/translate` 与 authentication；OpenAI `developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create`。真实账号调用的验收状态单独记录，不以文档核对代替实际测试。
 
-## 文件层级浏览
+## 远程路径与层级浏览
 
-- 参数要求文件/目录，或用户明确输入路径前缀时，读取当前已认证连接的独立 SFTP 通道，只列目录元数据，不执行路径拼接 shell，不下载文件内容，不另行绕过主机信任建立连接。与文件面板/传输通道相互独立。
-- 相对路径使用当前会话可靠的目录信息；根路径、用户主目录与相对目录严格区分。目录未知时不把 SFTP 默认目录冒充当前 shell 目录。路径缓存绑定 shell/连接代次，TTL 5 秒、最多 16 个目录，查询有超时、扫描和结果上限；关闭、重连和新草稿撤销旧查询。
-- 文件候选采用层级浏览：目录可进入、返回父层，目录优先，按输入前缀过滤，未输入点时隐藏点文件。目录浏览只改变候选框状态，不向终端发送退格、方向键或预填路径。最终确认时一次补入选定路径的后缀；路径含空格、引号或 shell 特殊字符时按当前引号上下文编码。
-- 层级列表显示当前位置及返回入口，加载、空目录、失败使用简短状态。失败不影响终端连接，绝不把失败当成空目录成功。仅列元数据，不把文件名/目录发给 AI 或日志。
+路径来源位于 `terminal/domain/terminal_paths.dart`（规则、缓存、调度）和 `terminal/adapters/terminal_paths.dart`（SFTP）。它只回答目录元数据，TerminalSession 与界面决定查询时机和插入；不执行路径拼接 shell、不下载内容、不向终端写入。
+
+### 查询与路径规则
+
+- COMPLETION_ENGINE 的路径请求是入口：文件/目录模板在空参数时可列 cwd，未标模板的参数仅在用户输入显式路径时回退，不把主机、端口、用户、分支或容器空位当目录。`scp host:path`、`scp://…` 指向其他主机，不借当前连接列举；草稿解析器拒绝的重定向等上下文不查询。
+- `RemotePathQuery{directory, prefix, foldersOnly}` 接受绝对 `/…`、`~`、`~/…`；相对输入由调用方以可信 cwd 经 `RemotePaths.absolute` 拼成绝对路径。拒绝 `~user`、`~+`、`~-`。前缀区分大小写，不含 `/` 或控制字符，最多 255 UTF-8 字节。
+- 目录原串最多 4096 字符，规范化后最多 4096 UTF-8 字节、128 段；去空段和 `.`，保留 `..` 交服务器按物理路径解析，避免在符号链接处错误折叠。拒绝孤立代理项、NUL 和控制字符；仅开头的 `~` 表示家目录。
+- `RemotePathResult` 返回展开后的绝对目录、连接 generation、cached、最多 200 个条目和 truncated。目录及指向目录的符号链接在前，之后按 UTF-16 码元区分大小写排序。匹配超过 200 或扫描未读完均标 truncated，没匹配到不证明目录中不存在。
+- 条目含 name、kind（directory/file/symlink）、path、linkToDirectory。设备、管道、套接字按 file；目录或指向目录的链接可进入，断链/文件链接不再跟踪。`child`/`parent` 仅生成下一次 browse 路径，不写终端。
+- 丢弃空名、`.`、`..`、含 `/`、NUL、C0/DEL/C1、换行、U+2028/2029、双向控制符（U+061C、U+200E/F、U+202A–E、U+2066–9）、U+FFFD 或超过 255 UTF-8 字节的名字；不可还原的字节不拿来插入。点文件仅在前缀以 `.` 开头时显示，foldersOnly 只保留可进入目录。
+
+### 有界列目录
+
+- 复用已认证 `TransportLease`，`openFiles()` 返回 foundation 的 `FileSystem`，关闭它只关自有 SFTP channel。普通 `list` 会完整读取并逐个 stat 链接，补全优先使用可选 `BoundedFileListing.listBounded(directory, maxScanned, accept, cancel)`，由 `SftpFileSystem` 通过流式 readdir 实现。
+- 一次最多一个 READDIR 在途，批间检查取消；`.`/`..` 不计数。最多扫描 4096 个名字，遇第 4097 个即停止并返回 complete=false；恰好 4096 且随后 EOF 才算完整。名字被 accept 拒绝仍计 scanned，但不保留、不 stat；前缀、点文件和 foldersOnly 在扫描缓存上过滤，不扩大扫描范围。
+- 只对范围内且名字合规的符号链接做一次跟随 stat，最多 16 个并行，不递归。不存在、无权限、成环等服务器状态按非目录；noConnection、connectionLost 和传输错误向外抛。链接密集目录最多需要约 256 批 stat，慢链路可能先超时。
+- dartssh2 readdir 提前停止时不会公开关闭目录句柄；因此 complete=false、扫描失败或取消后必须关闭自有 channel，下一次重开。目录根本打不开时没有句柄，无需关；完整读完可以复用。`BoundedFileListing` 其他调用方也须履行这条契约。
+- 未实现有界接口的测试替身/本机文件系统回退到完整 list 再截断，complete 如实报告；完整 list 已读完，不因结果截断额外关 channel。回退不具有内存上界，只有查询期限，不能冒称同样有界。
+
+### 缓存、取消与寿命
+
+- 缓存键为（连接代，展开后的目录），TTL 5 秒、最多 16 目录/16384 条目，LRU 淘汰。浏览器仅保留读取器前 4096 名字，多出按未读完处理；每目录默认最多缓存 4096 名字，超缓存预算仍答复但不缓存。只存规范名字、类型和 complete，不存大小、属主、时间；缓存命中仍保留 truncated。
+- denied、notFound、timeout、failed 同样缓存 5 秒以免每键重试；unavailable、cancelled、invalid 不缓存。家目录 `home()` 为 SFTP realpath('.')，来源存续期间只取一次。
+- 同目录等待者共享一次扫描，一次只列一个目录；新目录取代旧目录。单个调用方取消只撤销自己的等待，最后一个等待者离开才中止扫描。整体查询（含 home）默认 3 秒，读取器每请求也有同样期限；取消或超时真正关闭自有 channel，不能只用 Future.timeout 停止等待。
+- channel 惰性打开、空闲 10 秒关闭；租约丢失或 dispose 立即关闭。一个来源绑定一个（租约，连接代），连接成功创建，shell 结束、换租约、重连或关闭时 dispose；来源不 acquire、不 release、不拨号，不绕过 HostTrustService，旧缓存随代失效。新草稿取消旧需求。
+- 错误只携 kind：invalid（参数）、unavailable（租约/来源/通道不可用）、denied、notFound、failed、timeout、cancelled。界面用简短本地化状态区分加载、空目录和失败，不阻断终端，不把失败当空成功，不记录原始异常、路径或名字。
+
+### 身份与插入边界
+
+- 相对目录必须来自可靠 OSC 7 或已验证目录提供器；未知时不把 SFTP 默认目录冒充 shell cwd。`~` 是 SSH 登录用户的家目录，切换用户或自定义 HOME 后可能与 shell 不同；已知不一致时不拼相对路径或展开 `~`。服务器以登录用户身份列目录，不作为内层 shell 的权限判断。
+- 当前从 OSC 7 或外层 shell 查询取 cwd，尚不能完整辨认 tmux、su、sudo -i、嵌套 ssh、自定义 HOME。不能把上述来源要求写成已实现的身份识别；已知这些场景应关闭候选或用明确绝对路径，可验证的 shell 身份协议仍待实现。
+- 目录进入/返回只改变候选状态，不发退格、方向键或预填路径；最终确认按当前引号上下文安全编码，只追加经验证的后缀。列表显示位置与返回入口；目录优先、按前缀过滤。
+- 远端名字是不可信数据，只显示和插入，不执行、不落盘、不进日志/诊断/AI；`CommandCompletionProvider`（含未来 AI）拿不到目录列表。
 
 ## 键盘与鼠标
 
@@ -42,4 +71,4 @@
 
 ## 验证
 
-需覆盖规格投影覆盖/许可/可重复生成、解析与取值、超过 8 项可滚动、历史优先/去重、层级路径与安全转义、目录查询有界和取消、迟到结果、连续 Tab 与回显、四方向导航、Esc/Enter 透传、IME composing、100%/150% 定位和原有连接/目录生命周期。真实服务器、原生输入法与最终窗口未运行不得写成通过。
+需覆盖规格投影/许可/可重复生成、解析与取值、候选滚动、历史优先/去重、连续 Tab 与回显、四方向导航、Esc/Enter 透传、IME composing、100%/150% 定位和原有连接生命周期。`test/terminal_paths_test.dart` 另覆盖路径/名字过滤、排序/200 上限、TTL/容量/代、单飞/取代、取消/超时关 channel、回退边界、READDIR 恰好及超过 4096、链接 16 并行与错误传播。真实 readdir/stat 接线、提前停止后的句柄回收、链接密集目录、原生输入法与最终窗口未运行不得写成通过；最新运行结果只在 TESTING §6 记录，待办状态见 ROADMAP。

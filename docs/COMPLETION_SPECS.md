@@ -1,6 +1,6 @@
 # Fig 静态补全规格
 
-2026-11-08。静态导入、运行时按需加载和补全接线已实现，实际数量与边界见文末“实现状态”。
+本文维护固定来源、许可、导入格式和运行时加载预算；数据规模见文末，实际运行结果见 TESTING。
 
 把固定版本的 [withfig/autocomplete](https://github.com/withfig/autocomplete) 规格离线转成纯数据 JSON，作为终端补全的静态命令树（TERMINAL_ASSISTANCE）。只取名称、说明、选项、子命令、参数与固定建议；不执行任何上游代码，也不声称等同 Fig 运行时。
 
@@ -15,7 +15,7 @@
 | 归档 SHA-256 | `44f11c63d150b2f77db35479871b026e0c9882e1049a29d201d0a8ab46c2aaab`（8,182,891 字节，2026-11-08 实测；GitHub 不保证归档字节永久稳定，只作溯源记录） |
 | 解析器 | npm `typescript@5.9.3`，`dist.integrity` = `sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==`（`npm pack --ignore-scripts` 核对） |
 
-许可证有不一致，如实保留：该提交根目录 `LICENSE` 是 MIT（Copyright (c) 2021 Hercules Labs Inc. (Fig)），而 `package.json` 的 `license` 写 ISC。本项目按仓库实际的 `LICENSE` 文件处理，原文逐字节放进 `assets/completions/LICENSE`，manifest 同时记录两处声明和 LICENSE 的 SHA-256。这不是法律结论；发布前许可证审计（ROADMAP“确定 LICENSE；审计依赖”）仍要复核，必要时联系上游澄清。上游规格里的说明文字是第三方内容，分发时随带上述许可证。
+许可证有不一致，如实保留：该提交根目录 `LICENSE` 是 MIT（Copyright (c) 2021 Hercules Labs Inc. (Fig)），而 `package.json` 的 `license` 写 ISC。本项目按仓库实际的 `LICENSE` 文件处理，原文逐字节放进 `assets/completions/LICENSE`，manifest 同时记录两处声明和 LICENSE 的 SHA-256。这不是法律结论；发布前许可证审计（见 ROADMAP）仍要复核，必要时联系上游澄清。上游规格里的说明文字是第三方内容，分发时随带上述许可证。
 
 不打包上游的图标（`icons/`、规格里的 `icon`）、运行时代码、生成器、构建脚本。Netcatty（GPL-3.0）的代码与数据不参与，只有 NETCATTY_REVIEW 里记录的交互参考。
 
@@ -142,13 +142,12 @@ Suggestion：只有名字时是字符串；否则 `{name, description?, displayN
 
 纯 Dart：读 `manifest.json` 建 `commands`/`nested` 两张表；用 `rootBundle` 按需读单个规格文件；缺省字段按 Fig 默认值（`isOptional` 假、`isVariadic` 假、`isRepeatable` 假、`isPersistent` 假）；遇到未知字段忽略；遇到 `loadSpec` 查 `nested`，目标可能互相引用成环，只在用户输入走到那里时才加载。`aws`、`az`、`gcloud` 的嵌套文件很大，不要一次性解析全部。
 
-## 实现状态
+## 数据规模与运行时加载
 
-2026-11-08 从上述固定归档重新生成：727 / 727 根成功，失败 0，738 个命令名（含别名）、744 个嵌套索引、1451 个规格文件，规格共 55,134,421 字节、681,944 个节点。根导出能投影成功不表示动态字段可用：生成器、运行时 loadSpec 和动态建议仍省略，细项见审计 JSON。
+固定归档投影为 727 个根、738 个命令名（含别名）、744 个嵌套索引、1451 个规格文件，共 55,134,421 字节、681,944 个节点。所有根可投影不表示动态字段可用：生成器、运行时 loadSpec 和动态建议仍省略，细项见审计 JSON。
 
-- `node --test tool/test/import_completion_specs.test.mjs` 使用固定 TypeScript 解析器，28 项通过；测试含恶意归档条目、静态 helper、预算和确定性。
-- `test/completion_assets_test.dart` 实际逐个解码 manifest 指向的全部 1451 个规格，检查常用命令的选项/子命令不再受 8 条限制，以及 AWS 嵌套规格接线。
-- 运行时通过 `CompletionSpecs` 惰性加载，仅追踪当前命令分支的嵌套引用（最多 16 轮、每轮最多 32 个缺失引用）。全局 LRU 最多 32 个资源，按输入字符串 UTF-16 大小估算的缓存成本最多 16 MiB；这不是解码后对象堆的精确上限。原始规格 `loadString(cache:false)` 不留在 AssetBundle 字符串缓存，同一路径在途加载合并。
-- 顶层候选的说明与可浏览标记另由 `tool/generate_completion_command_metadata.dart` 从随包 JSON 生成纯 Dart 小索引，覆盖 738 个命令名，不为名称列表加载完整规格；`--check` 验证与源数据一致。运行时明确的 `cd` 路径修正也体现在索引。该索引、离线中文映射和未覆盖说明的类型回退不改变来源 JSON、manifest 或许可统计；悬浮保留来源说明，中文映射不是全库完整翻译。
-- 上游 LICENSE 已加入 Flutter 许可注册与打包 notices，派生的根说明索引与译文沿用同一来源声明；包级 ISC 与文件级 MIT 的不一致仍保留说明，未替代正式发行的许可审计。
-- Release 包体与逐文件资源校验记录见 ROADMAP；真实窗口性能或大量大型规格加载的内存仍未实测。
+- `test/completion_assets_test.dart` 逐个解码 manifest 的全部规格，校验常用命令、候选上限和嵌套接线；导入器测试与 `--check` 的最近运行结果见 TESTING。
+- `CompletionSpecs` 惰性加载当前命令分支，嵌套引用最多 16 轮、每轮 32 个缺失引用。全局 LRU 最多 32 资源、输入字符串 UTF-16 成本估算 16 MiB；不是解码对象堆的精确上限。`loadString(cache:false)` 不留 AssetBundle 字符串缓存，同一路径在途加载合并。
+- `tool/generate_completion_command_metadata.dart` 从随包 JSON 生成覆盖 738 个命令名的轻量说明/可浏览索引，避免为名称列表加载全规格；`--check` 核对源数据一致性，`cd` 等明确路径修正同步进索引。不改来源 JSON、manifest 或许可统计。
+- 应用不带离线译文字典或预设缓存；说明仅使用此前成功在线翻译的缓存，未命中保留原文，固定交互文案走 i18n。授权、显示与缓存边界见 TERMINAL_ASSISTANCE。
+- 上游 LICENSE 随 Flutter 许可注册和打包 notices 分发，派生索引与译文沿用同一来源声明；ISC/MIT 不一致仍需发行审计。大型规格堆占用与真实窗口性能不能由资源解码测试推定，边界见 MEMORY_USAGE/TESTING。
