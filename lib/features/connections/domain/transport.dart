@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
 
 /// One authenticated SSH connection. Callers reach it only through a lease (docs/CONTRACTS.md §2).
@@ -15,8 +16,8 @@ abstract interface class Transport {
   /// An SFTP channel of its own; closing it leaves the transport and its other channels alone.
   Future<FileSystem> openFiles();
 
-  /// Runs [command] without a terminal and collects at most [limit] bytes of each stream.
-  Future<ExecResult> exec(String command, {int limit});
+  /// Collects at most [limit] bytes of each stream; cancellation and [timeout] close only this execution.
+  Future<ExecResult> exec(String command, {int limit, Duration? timeout, CancellationToken? cancel});
 
   /// A TCP connection from the server to [host]:[port] (direct-tcpip): local and dynamic forwards, jump hops.
   Future<Tunnel> connectTo(String host, int port);
@@ -61,6 +62,17 @@ abstract interface class RemoteListener {
   /// True once the server confirmed it stopped listening; false when it refused or the connection is gone, so
   /// the port may still be open.
   Future<bool> close();
+}
+
+enum ExecFailure { cancelled, timedOut }
+
+class ExecError implements Exception {
+  const ExecError(this.kind);
+
+  final ExecFailure kind;
+
+  @override
+  String toString() => 'ExecError(${kind.name})';
 }
 
 class ExecResult {

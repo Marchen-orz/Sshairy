@@ -6,20 +6,42 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/monitor/application/monitor.dart';
+import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/ids.dart';
+import 'package:sshairy/foundation/result.dart';
 
 import 'connection_manager_test.dart' show FakeTransport, NoPrompts;
 import 'monitor_test.dart' show sample;
 
 class _Server extends FakeTransport {
-  var samples = 0;
+  var samples = 0, active = 0, peak = 0, cancelled = 0, timedOut = 0;
   Completer<void>? gate;
+  final calls = <({CancellationToken? cancel, Duration? timeout})>[];
 
   @override
-  Future<ExecResult> exec(String command, {int limit = 0}) async {
+  Future<ExecResult> exec(String command, {int limit = 0, Duration? timeout, CancellationToken? cancel}) async {
     samples++;
-    await gate?.future;
-    return ExecResult(Uint8List.fromList(utf8.encode(sample(user: 100 + samples * 10))), Uint8List(0), 0);
+    calls.add((cancel: cancel, timeout: timeout));
+    active++;
+    if (active > peak) peak = active;
+    try {
+      if (gate case final pending?) {
+        final waiting = Future.any<void>([
+          pending.future,
+          if (cancel != null) cancel.whenCancelled.then((_) => throw const ExecError(ExecFailure.cancelled)),
+        ]);
+        await (timeout == null
+            ? waiting
+            : waiting.timeout(timeout, onTimeout: () => throw const ExecError(ExecFailure.timedOut)));
+      }
+      return ExecResult(Uint8List.fromList(utf8.encode(sample(user: 100 + samples * 10))), Uint8List(0), 0);
+    } on ExecError catch (error) {
+      if (error.kind == ExecFailure.cancelled) cancelled++;
+      if (error.kind == ExecFailure.timedOut) timedOut++;
+      rethrow;
+    } finally {
+      active--;
+    }
   }
 }
 
@@ -126,6 +148,67 @@ void main() {
     expect(monitor.state, MonitorState.live);
     expect(monitor.cpu, isEmpty, reason: 'the previous generation cannot seed a rate');
     monitor.stop();
+  });
+
+  testWidgets('timed out samples finish before polling again and stop cancels the current sample', (tester) async {
+    final server = _Server()..gate = Completer<void>();
+    final manager = ConnectionManager((_, _, _) async => server, park: Duration.zero);
+    final monitor = ServerMonitor(manager, host, interval: const Duration(seconds: 1));
+    addTearDown(manager.closeAll);
+    addTearDown(monitor.dispose);
+    final terminal = await manager.acquire(host, NoPrompts());
+    addTearDown(terminal.release);
+    monitor.start();
+    await tester.pump();
+    expect(server.active, 1);
+    expect(server.calls.single.timeout, const Duration(seconds: 10));
+    expect(server.calls.single.cancel, isNotNull);
+
+    await tester.pump(const Duration(seconds: 10));
+    expect(server.timedOut, 1);
+    expect(server.active, 0);
+    expect(monitor.state, MonitorState.failed);
+    await tester.pump(const Duration(seconds: 1));
+    expect(server.samples, 2);
+    expect(server.active, 1);
+    expect(server.peak, 1, reason: 'a timed out sample has finished before another starts');
+
+    monitor.stop();
+    expect(server.calls.last.cancel!.isCancelled, isTrue);
+    await tester.pump();
+    expect(server.active, 0);
+    expect(server.cancelled, 1);
+    await tester.pump(const Duration(seconds: 30));
+    expect(server.samples, 2);
+    expect(server.isClosed, isFalse, reason: 'the terminal still owns the shared connection');
+    server.gate!.complete();
+    await tester.pump();
+    expect(monitor.snapshot, isNull);
+  });
+
+  testWidgets('stopping cancels a pending process operation and sample without closing another lease', (tester) async {
+    final server = _Server()..gate = Completer<void>();
+    final manager = ConnectionManager((_, _, _) async => server, park: Duration.zero);
+    final monitor = ServerMonitor(manager, host);
+    addTearDown(manager.closeAll);
+    addTearDown(monitor.dispose);
+    final terminal = await manager.acquire(host, NoPrompts());
+    addTearDown(terminal.release);
+    monitor.start();
+    await tester.pump();
+    final signal = monitor.signal(400, ProcessSignal.term);
+    await tester.pump();
+    expect(server.active, 2);
+    expect(server.calls.every((call) => call.timeout == const Duration(seconds: 10)), isTrue);
+    monitor.stop();
+    expect(server.calls.every((call) => call.cancel!.isCancelled), isTrue);
+    await tester.pump();
+    expect(await signal, isA<Err<void>>());
+    expect(server.active, 0);
+    expect(server.cancelled, 2);
+    expect(server.isClosed, isFalse);
+    server.gate!.complete();
+    await tester.pump();
   });
 
   testWidgets('a connection to another host does not wake the offline monitor', (tester) async {

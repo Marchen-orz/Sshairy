@@ -31,7 +31,8 @@ class FakeTransport implements Transport {
   }
 
   @override
-  Future<ExecResult> exec(String command, {int limit = 0}) async => ExecResult(Uint8List(0), Uint8List(0), 0);
+  Future<ExecResult> exec(String command, {int limit = 0, Duration? timeout, CancellationToken? cancel}) async =>
+      ExecResult(Uint8List(0), Uint8List(0), 0);
 
   @override
   Future<FileSystem> openFiles() => throw UnimplementedError();

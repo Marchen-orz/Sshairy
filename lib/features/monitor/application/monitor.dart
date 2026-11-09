@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/result.dart';
 import '../../connections/api.dart';
@@ -43,6 +44,7 @@ class ServerMonitor extends ChangeNotifier {
   final gpuUtilization = <String, List<double>>{};
 
   TransportLease? _lease;
+  final _executions = <CancellationToken>{};
   Timer? _timer;
   StreamSubscription<HostId>? _connected;
   StatsSample? _previous;
@@ -119,6 +121,10 @@ class ServerMonitor extends ChangeNotifier {
   }
 
   void _drop() {
+    for (final cancel in _executions) {
+      cancel.cancel();
+    }
+    _executions.clear();
     _lease?.release();
     _lease = null;
     _previous = null;
@@ -174,6 +180,16 @@ class ServerMonitor extends ChangeNotifier {
     return lease;
   }
 
+  Future<ExecResult> _exec(TransportLease lease, String command, {required int limit}) async {
+    final cancel = CancellationToken();
+    _executions.add(cancel);
+    try {
+      return await lease.exec(command, limit: limit, timeout: _timeout, cancel: cancel);
+    } finally {
+      _executions.remove(cancel);
+    }
+  }
+
   Future<void> _poll(int generation) async {
     final lease = await _acquire(generation: generation);
     if (!_running || generation != _generation) return;
@@ -181,7 +197,7 @@ class ServerMonitor extends ChangeNotifier {
     final ExecResult result;
     try {
       final command = statsCommand(processes: _processViews > 0, gpu: _gpuVisible);
-      result = await lease.exec(command, limit: _limit).timeout(_timeout);
+      result = await _exec(lease, command, limit: _limit);
     } on Object {
       if (!_running || generation != _generation) return;
       if (lease.lost) {
@@ -235,7 +251,7 @@ class ServerMonitor extends ChangeNotifier {
     };
     final ExecResult result;
     try {
-      result = await lease.exec('kill -s $name $pid', limit: 4096).timeout(_timeout);
+      result = await _exec(lease, 'kill -s $name $pid', limit: 4096);
     } on Object catch (e) {
       return Err(AppError('failed', detail: '$e', retryable: true));
     }

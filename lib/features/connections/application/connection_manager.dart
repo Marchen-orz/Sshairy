@@ -277,7 +277,8 @@ class TransportLease {
   Future<ShellChannel> openShell({required int cols, required int rows, Map<String, String> environment = const {}}) =>
       _use().openShell(cols: cols, rows: rows, environment: environment);
 
-  Future<ExecResult> exec(String command, {int limit = 1 << 20}) => _use().exec(command, limit: limit);
+  Future<ExecResult> exec(String command, {int limit = 1 << 20, Duration? timeout, CancellationToken? cancel}) =>
+      _use().exec(command, limit: limit, timeout: timeout, cancel: cancel);
 
   /// The caller closes the file system before releasing the lease.
   Future<FileSystem> openFiles() => _use().openFiles();

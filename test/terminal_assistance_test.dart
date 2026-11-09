@@ -55,9 +55,17 @@ class _Transport extends FakeTransport {
   Completer<ExecResult>? directoryQuery;
 
   @override
-  Future<ExecResult> exec(String command, {int limit = 0}) {
+  Future<ExecResult> exec(String command, {int limit = 0, Duration? timeout, CancellationToken? cancel}) {
     queries.add(command);
-    return directoryQuery?.future ?? super.exec(command, limit: limit);
+    final pending = directoryQuery;
+    if (pending == null) return super.exec(command, limit: limit, timeout: timeout, cancel: cancel);
+    final waiting = Future.any<ExecResult>([
+      pending.future,
+      if (cancel != null) cancel.whenCancelled.then((_) => throw const ExecError(ExecFailure.cancelled)),
+    ]);
+    return timeout == null
+        ? waiting
+        : waiting.timeout(timeout, onTimeout: () => throw const ExecError(ExecFailure.timedOut));
   }
 
   @override

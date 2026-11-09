@@ -182,7 +182,8 @@ class ServerConnection implements Transport {
   @override
   Future<FileSystem> openFiles() => throw UnimplementedError();
   @override
-  Future<ExecResult> exec(String command, {int limit = 0}) => throw UnimplementedError();
+  Future<ExecResult> exec(String command, {int limit = 0, Duration? timeout, CancellationToken? cancel}) =>
+      throw UnimplementedError();
 }
 
 /// What the server does, for every connection made to it.

@@ -15,6 +15,7 @@ import '../application/connection_manager.dart';
 import '../domain/prompts.dart';
 import '../domain/transport.dart';
 import 'sftp_fs.dart';
+import 'ssh_exec.dart';
 import 'proxy.dart';
 import 'tunnel.dart';
 
@@ -89,20 +90,8 @@ class _SshTransport implements Transport {
   }
 
   @override
-  Future<ExecResult> exec(String command, {int limit = 1 << 20}) async {
-    final session = await _channel(_client.execute(command));
-    final out = BytesBuilder(copy: false), err = BytesBuilder(copy: false);
-    var truncated = false;
-    void collect(BytesBuilder into, Uint8List data) {
-      final room = limit - into.length;
-      if (data.length > room) truncated = true;
-      if (room > 0) into.add(data.length > room ? Uint8List.sublistView(data, 0, room) : data);
-    }
-
-    await Future.wait([session.stdout.forEach((d) => collect(out, d)), session.stderr.forEach((d) => collect(err, d))]);
-    await session.done;
-    return ExecResult(out.takeBytes(), err.takeBytes(), session.exitCode, truncated: truncated);
-  }
+  Future<ExecResult> exec(String command, {int limit = 1 << 20, Duration? timeout, CancellationToken? cancel}) =>
+      runSshExec(() => _channel(_client.execute(command)), limit: limit, timeout: timeout, cancel: cancel);
 
   @override
   Future<Tunnel> connectTo(String host, int port) async {

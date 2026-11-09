@@ -166,6 +166,7 @@ class TerminalSession extends ChangeNotifier {
   String? _reported;
   final _lookups = <Timer>[];
   Future<String?>? _directoryLookup;
+  CancellationToken? _directoryCancel;
   var _directoryRevision = 0;
 
   /// The shell's working directory, looked up only while something listens; null until known.
@@ -269,11 +270,13 @@ class TerminalSession extends ChangeNotifier {
       _lease = lease;
       _shell = shell;
       _shellEnded = false;
+      _cancelDirectoryLookup();
       _resetCommandDraft();
       _ownedPaths = remotePaths == null ? LeaseRemotePathSource(lease, generation: _shellGeneration) : null;
       void ended() {
         if (!identical(_shell, shell)) return;
         _shellEnded = true;
+        _cancelDirectoryLookup();
         if (!_closed) _resetCommandDraft();
         _dismissInsertions();
       }
@@ -334,6 +337,7 @@ class TerminalSession extends ChangeNotifier {
       output = null;
       if (identical(_connecting, cancel)) _connecting = null;
       if (identical(_shell, ownedShell)) {
+        _cancelDirectoryLookup();
         _terminal.onOutput = null;
         _terminal.onResize = null;
         _dismissInsertions();
@@ -370,7 +374,7 @@ class TerminalSession extends ChangeNotifier {
   /// Enter may have run a `cd`: look once the shell has had time, and again for a slow one.
   void _entered() {
     _directoryRevision++;
-    _directoryLookup = null;
+    _cancelDirectoryLookup();
     _reported = null;
     _directory.value = null;
     (remotePaths ?? _ownedPaths)?.invalidate();
@@ -399,20 +403,38 @@ class TerminalSession extends ChangeNotifier {
     _lookups.clear();
   }
 
+  void _cancelDirectoryLookup() {
+    _directoryCancel?.cancel();
+    _directoryCancel = null;
+    _directoryLookup = null;
+  }
+
   Future<String?> _look({bool force = false}) async {
     final lease = _lease, generation = _shellGeneration, revision = _directoryRevision;
-    if (_closed || lease == null || lease.lost || (!force && !_directory.followed)) return _directory.value;
+    if (_closed || _shellEnded || lease == null || lease.lost || (!force && !_directory.followed)) {
+      return _directory.value;
+    }
     final pending = _directoryLookup;
     if (pending != null) return pending;
+    final cancel = _directoryCancel = CancellationToken();
     Future<String?> query() async {
       String? found;
       try {
-        final result = await lease.exec(directoryQuery(_marker), limit: 4096).timeout(const Duration(seconds: 5));
+        final result = await lease.exec(
+          directoryQuery(_marker),
+          limit: 4096,
+          timeout: const Duration(seconds: 5),
+          cancel: cancel,
+        );
         found = parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
       } on Object {
         found = null;
       }
-      if (_closed || generation != _shellGeneration || revision != _directoryRevision || !identical(_lease, lease)) {
+      if (_closed ||
+          cancel.isCancelled ||
+          generation != _shellGeneration ||
+          revision != _directoryRevision ||
+          !identical(_lease, lease)) {
         return null;
       }
       // A server that refused the marker or has no /proc may still report through OSC 7.
@@ -427,6 +449,7 @@ class TerminalSession extends ChangeNotifier {
       return await lookup;
     } finally {
       if (identical(_directoryLookup, lookup)) _directoryLookup = null;
+      if (identical(_directoryCancel, cancel)) _directoryCancel = null;
     }
   }
 
@@ -478,6 +501,7 @@ class TerminalSession extends ChangeNotifier {
     _dismissInsertions();
     _stopTimer();
     _cancelLookups();
+    _cancelDirectoryLookup();
     _directory.dispose();
     _connecting?.cancel();
     _outputQueue?.cancel();

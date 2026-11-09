@@ -17,6 +17,7 @@ import 'package:sshairy/features/files/presentation/directory_tree.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/terminal/domain/directory.dart';
+import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/file_system.dart';
 import 'package:sshairy/foundation/ids.dart';
@@ -49,6 +50,8 @@ class _Server extends FakeTransport {
   Map<String, String>? environment;
   final opened = <_Shell>[];
   final queries = <String>[];
+  final calls = <({CancellationToken? cancel, Duration? timeout})>[];
+  var active = 0, peak = 0, cancelled = 0, timedOut = 0;
   String? cwd;
   Completer<ExecResult>? pendingQuery;
   _Files? files;
@@ -66,11 +69,30 @@ class _Server extends FakeTransport {
   }
 
   @override
-  Future<ExecResult> exec(String command, {int limit = 0}) async {
+  Future<ExecResult> exec(String command, {int limit = 0, Duration? timeout, CancellationToken? cancel}) async {
     queries.add(command);
-    if (pendingQuery != null) return pendingQuery!.future;
-    final out = cwd == null ? '' : '$cwd\n';
-    return ExecResult(Uint8List.fromList(utf8.encode(out)), Uint8List(0), 0);
+    calls.add((cancel: cancel, timeout: timeout));
+    active++;
+    if (active > peak) peak = active;
+    try {
+      if (pendingQuery case final pending?) {
+        final waiting = Future.any<ExecResult>([
+          pending.future,
+          if (cancel != null) cancel.whenCancelled.then((_) => throw const ExecError(ExecFailure.cancelled)),
+        ]);
+        return await (timeout == null
+            ? waiting
+            : waiting.timeout(timeout, onTimeout: () => throw const ExecError(ExecFailure.timedOut)));
+      }
+      final out = cwd == null ? '' : '$cwd\n';
+      return ExecResult(Uint8List.fromList(utf8.encode(out)), Uint8List(0), 0);
+    } on ExecError catch (error) {
+      if (error.kind == ExecFailure.cancelled) cancelled++;
+      if (error.kind == ExecFailure.timedOut) timedOut++;
+      rethrow;
+    } finally {
+      active--;
+    }
   }
 
   @override
@@ -201,13 +223,75 @@ void main() {
       await tester.pump(Duration.zero);
       expect(server.queries, hasLength(1));
       await enter('cd /next');
+      expect(server.calls.single.cancel!.isCancelled, isTrue);
       pending.complete(ExecResult(Uint8List.fromList(utf8.encode('/previous\n')), Uint8List(0), 0));
       await tester.pump();
+      expect(server.active, 0);
       expect(session.directory.value, isNull);
       server.pendingQuery = null;
       server.cwd = '/next';
       await tester.pump(const Duration(milliseconds: 400));
       expect(session.directory.value, '/next');
+      session.directory.removeListener(follow);
+    });
+
+    testWidgets('directory timeouts drain before another query and closing cancels the pending query', (tester) async {
+      await connect(tester);
+      final pending = Completer<ExecResult>();
+      server.pendingQuery = pending;
+      void follow() {}
+      session.directory.addListener(follow);
+      await tester.pump(Duration.zero);
+      expect(server.active, 1);
+      expect(server.calls.single.timeout, const Duration(seconds: 5));
+      expect(server.calls.single.cancel, isNotNull);
+      await tester.pump(const Duration(seconds: 5));
+      expect(server.timedOut, 1);
+      expect(server.active, 0);
+      expect(session.directory.value, isNull);
+
+      await enter('cd /next');
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(server.queries, hasLength(2));
+      expect(server.active, 1);
+      expect(server.peak, 1);
+      session.close();
+      expect(server.calls.last.cancel!.isCancelled, isTrue);
+      await tester.pump();
+      expect(server.active, 0);
+      expect(server.cancelled, 1);
+      pending.complete(ExecResult(Uint8List.fromList(utf8.encode('/late\n')), Uint8List(0), 0));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a lost shell cancels its query and a reconnect cannot receive the old directory', (tester) async {
+      await connect(tester);
+      final retained = await manager.acquire(host, NoPrompts());
+      addTearDown(retained.release);
+      final pending = Completer<ExecResult>();
+      server.pendingQuery = pending;
+      void follow() {}
+      session.directory.addListener(follow);
+      await tester.pump(Duration.zero);
+      expect(server.active, 1);
+      server.opened.single.close();
+      await tester.pump();
+      await tester.pump(Duration.zero); // Drain TerminalOutput's zero-delay EOF timer before reconnecting.
+      expect(server.calls.single.cancel!.isCancelled, isTrue);
+      expect(server.active, 0);
+      expect(session.status, SessionStatus.disconnected);
+      server.pendingQuery = null;
+      server.cwd = '/fresh';
+      unawaited(session.connect(NoPrompts()));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(server.opened, hasLength(2));
+      expect(session.directory.value, '/fresh');
+      pending.complete(ExecResult(Uint8List.fromList(utf8.encode('/previous\n')), Uint8List(0), 0));
+      await tester.pump();
+      expect(session.directory.value, '/fresh');
+      expect(server.active, 0);
       session.directory.removeListener(follow);
     });
 

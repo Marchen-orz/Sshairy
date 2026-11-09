@@ -27,6 +27,10 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | WorkspaceService | openTab / split / move / focus / close；布局只引用 sessionId |
 | CommandExecutor（M4） | start(command, target, cwd, deadline) → executionId + 事件 |
 
+`TransportLease.exec(command, limit, timeout, cancel)` 保留一次性有界结果；timeout 覆盖打开与运行，取消/超时返回稳定的 typed 执行错误，不能返回部分输出冒充成功。开始前取消不打开 channel；已返回的执行 session 在正常终态、错误、取消或超时时统一销毁本次 channel、取消订阅和计时器，不关闭共享 transport。监控停止/切换与目录查询失效要取消各自在途执行。关闭 channel 只证明客户端收束，不承诺远端全部子进程已终止，也不自动重跑结果未知的命令。
+
+当前 dartssh2 4.1.0 的公开 `execute` 在执行请求应答后才暴露 session：打开/应答期间取消会先结束调用者等待，并销毁之后迟到的 session；若服务器始终不回复请求，公开接口无法立即取得并销毁该内部 channel。`destroy` 完成本地关闭；库的内部 channel 登记仍需收到对端 `CHANNEL_CLOSE` 才移除，不能据本地收束承诺不合作对端下的全部底层对象立即回收。这些限制保留为待上游接口支持的边界，不通过断开其他任务使用的共享连接绕过。适配器在单次 exec 的错误 zone 内打开 session，承接库内部 channel 流未转发到 stdout/stderr 的异步错误，以失败收束本次执行；不能把错误后的部分输出当作正常结果。
+
 ## 2. 资源所有权
 
 | 资源 | 所有者 | 释放规则 |

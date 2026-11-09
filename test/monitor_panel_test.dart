@@ -13,6 +13,7 @@ import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/monitor/api.dart';
 import 'package:sshairy/features/monitor/presentation/monitor_widgets.dart';
 import 'package:sshairy/features/monitor/presentation/process_dialog.dart';
+import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
@@ -46,7 +47,7 @@ class _Server extends FakeTransport {
       : '1 S 0 500 1 1 3000 systemd\n400 R 1 ${1000 + _ticks} 4 9000 25600 worker';
 
   @override
-  Future<ExecResult> exec(String command, {int limit = 0}) async {
+  Future<ExecResult> exec(String command, {int limit = 0, Duration? timeout, CancellationToken? cancel}) async {
     commands.add(command);
     if (command.startsWith('kill ')) return ExecResult(Uint8List(0), Uint8List(0), 0);
     // Each sample: 200 ticks over two cores, all of one core's going to the worker.
