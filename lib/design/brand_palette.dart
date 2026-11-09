@@ -44,6 +44,7 @@ class BrandPalette extends ThemeExtension<BrandPalette> {
   Color get text => colors['text']!;
   Color get textSecondary => colors['text-secondary']!;
   Color get textMuted => colors['text-muted']!;
+  Color get disabledSurface => Color.alphaBlend(textMuted.withValues(alpha: .08), surface);
   Color get primary => colors['primary']!;
   Color get accent => colors['accent']!;
   Color get selection => colors['selection']!;

@@ -217,9 +217,14 @@ ThemeData buildTheme(
     inputDecorationTheme: InputDecorationTheme(
       isDense: true,
       filled: true,
-      fillColor: scheme.surface,
+      fillColor: WidgetStateColor.resolveWith(
+        (states) => states.contains(WidgetState.disabled) ? palette.disabledSurface : scheme.surface,
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+      labelStyle: WidgetStateTextStyle.resolveWith(
+        (states) => TextStyle(color: states.contains(WidgetState.disabled) ? palette.textMuted : null),
+      ),
       border: border(scheme.outline),
       enabledBorder: border(scheme.outline),
       disabledBorder: border(scheme.outlineVariant.withValues(alpha: .5)),

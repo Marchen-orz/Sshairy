@@ -82,9 +82,13 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final enabled = widget.onChanged != null;
+    final palette = BrandPalette.of(context);
+    final foreground = enabled ? scheme.onSurfaceVariant : palette.textMuted;
     final current = widget.options.where((o) => o.value == widget.value).firstOrNull;
     final error = widget.errorText;
-    final borderColor = error != null
+    final borderColor = !enabled
+        ? scheme.outlineVariant
+        : error != null
         ? scheme.error
         : _focused || _open
         ? scheme.primary
@@ -108,7 +112,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
         },
         actions: {ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) => _show())},
         child: GestureDetector(
-          onTap: _show,
+          onTap: enabled ? _show : null,
           child: AnimatedContainer(
             key: _field,
             duration: Motion.quick,
@@ -116,14 +120,14 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
             height: WorkspaceSize.control,
             padding: const EdgeInsets.only(left: 10, right: 6),
             decoration: BoxDecoration(
-              color: enabled ? scheme.surface : scheme.surfaceContainerLow,
+              color: enabled ? scheme.surface : palette.disabledSurface,
               borderRadius: BorderRadius.circular(Radii.control),
-              border: Border.all(color: borderColor, width: _focused || _open ? 1.5 : 1),
+              border: Border.all(color: borderColor, width: enabled && (_focused || _open) ? 1.5 : 1),
             ),
             child: Row(
               children: [
                 if (current?.icon != null) ...[
-                  Icon(current!.icon, size: 16, color: scheme.onSurfaceVariant),
+                  Icon(current!.icon, size: 16, color: foreground),
                   const SizedBox(width: Space.sm),
                 ],
                 Expanded(
@@ -131,15 +135,13 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                     current?.label ?? widget.hint ?? '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: current == null || !enabled ? scheme.onSurfaceVariant : scheme.onSurface,
-                    ),
+                    style: TextStyle(color: current == null || !enabled ? foreground : scheme.onSurface),
                   ),
                 ),
                 AnimatedRotation(
                   turns: _open ? .5 : 0,
                   duration: Motion.normal,
-                  child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: scheme.onSurfaceVariant),
+                  child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: foreground),
                 ),
               ],
             ),
@@ -148,7 +150,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
       ),
     );
     if (widget.label == null && error == null) return field;
-    final muted = theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: foreground);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,

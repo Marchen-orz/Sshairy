@@ -107,7 +107,13 @@ class _MenuList<T> extends StatelessWidget {
                                 if (checks)
                                   SizedBox(
                                     width: 22,
-                                    child: checked == true ? Icon(Icons.check, size: 15, color: scheme.primary) : null,
+                                    child: checked == true
+                                        ? Icon(
+                                            Icons.check,
+                                            size: 15,
+                                            color: enabled ? scheme.primary : BrandPalette.of(context).textMuted,
+                                          )
+                                        : null,
                                   ),
                                 if (icons)
                                   SizedBox(
@@ -116,7 +122,11 @@ class _MenuList<T> extends StatelessWidget {
                                         ? IconTheme(
                                             data: IconThemeData(
                                               size: 16,
-                                              color: entry.destructive ? scheme.error : scheme.onSurfaceVariant,
+                                              color: !enabled
+                                                  ? BrandPalette.of(context).textMuted
+                                                  : entry.destructive
+                                                  ? scheme.error
+                                                  : scheme.onSurfaceVariant,
                                             ),
                                             child: Center(child: glyph),
                                           )
@@ -125,7 +135,11 @@ class _MenuList<T> extends StatelessWidget {
                                         : Icon(
                                             icon,
                                             size: 16,
-                                            color: entry.destructive ? scheme.error : scheme.onSurfaceVariant,
+                                            color: !enabled
+                                                ? BrandPalette.of(context).textMuted
+                                                : entry.destructive
+                                                ? scheme.error
+                                                : scheme.onSurfaceVariant,
                                           ),
                                   ),
                                 Flexible(
@@ -133,7 +147,13 @@ class _MenuList<T> extends StatelessWidget {
                                     label,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(color: entry.destructive ? scheme.error : null),
+                                    style: TextStyle(
+                                      color: !enabled
+                                          ? BrandPalette.of(context).textMuted
+                                          : entry.destructive
+                                          ? scheme.error
+                                          : null,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: Space.md),

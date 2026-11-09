@@ -32,7 +32,7 @@ class _PressableState extends State<_Pressable> {
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
-      child: widget.builder(context, _hovered, _focused),
+      child: widget.builder(context, widget.onTap != null && _hovered, widget.onTap != null && _focused),
     ),
   );
 }
@@ -51,6 +51,7 @@ class AppSwitch extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onChanged != null;
+    final palette = BrandPalette.of(context);
     return Semantics(
       label: semanticLabel,
       toggled: value,
@@ -65,7 +66,9 @@ class AppSwitch extends StatelessWidget {
             height: 20,
             padding: const EdgeInsets.all(2),
             decoration: BoxDecoration(
-              color: value
+              color: !enabled
+                  ? scheme.outlineVariant
+                  : value
                   ? scheme.primary
                   : hovered
                   ? scheme.outline
@@ -82,8 +85,10 @@ class AppSwitch extends StatelessWidget {
                 height: 16,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: value ? scheme.onPrimary : Colors.white,
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .18), blurRadius: 2, offset: const Offset(0, 1))],
+                  color: !enabled ? palette.textMuted : (value ? scheme.onPrimary : Colors.white),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: .18), blurRadius: 2, offset: const Offset(0, 1)),
+                  ],
                 ),
               ),
             ),
@@ -105,6 +110,7 @@ class AppCheckbox extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final enabled = onChanged != null;
+    final palette = BrandPalette.of(context);
     return Semantics(
       label: semanticLabel,
       checked: value,
@@ -119,13 +125,17 @@ class AppCheckbox extends StatelessWidget {
             width: 16,
             height: 16,
             decoration: BoxDecoration(
-              color: value ? scheme.primary : scheme.surface,
+              color: !enabled ? palette.disabledSurface : (value ? scheme.primary : scheme.surface),
               borderRadius: BorderRadius.circular(4),
-              border: focused
+              border: !enabled
+                  ? Border.all(color: scheme.outlineVariant)
+                  : focused
                   ? Border.all(color: scheme.primary, width: 2)
                   : Border.all(color: value ? scheme.primary : (hovered ? scheme.onSurfaceVariant : scheme.outline)),
             ),
-            child: value ? Icon(Icons.check_rounded, size: 13, color: scheme.onPrimary) : null,
+            child: value
+                ? Icon(Icons.check_rounded, size: 13, color: enabled ? scheme.onPrimary : palette.textMuted)
+                : null,
           ),
         ),
       ),
@@ -145,11 +155,15 @@ class AppSegmented<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final enabled = onChanged != null;
+    final palette = BrandPalette.of(context);
     return Container(
       height: 30,
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: theme.brightness == Brightness.light ? 1 : .7),
+        color: enabled
+            ? scheme.surfaceContainerHighest.withValues(alpha: theme.brightness == Brightness.light ? 1 : .7)
+            : palette.disabledSurface,
         borderRadius: BorderRadius.circular(Radii.pill),
       ),
       child: Row(
@@ -158,6 +172,7 @@ class AppSegmented<T> extends StatelessWidget {
           for (final MapEntry(key: value, value: label) in segments.entries)
             Semantics(
               button: true,
+              enabled: enabled,
               selected: value == selected,
               child: _Pressable(
                 onTap: onChanged == null ? null : () => onChanged!(value),
@@ -167,18 +182,28 @@ class AppSegmented<T> extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: Space.md),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: value == selected ? scheme.surface : Colors.transparent,
+                    color: value == selected ? (enabled ? scheme.surface : scheme.outlineVariant) : Colors.transparent,
                     borderRadius: BorderRadius.circular(Radii.pill),
                     border: _ring(context, focused, 0),
-                    boxShadow: value == selected
-                        ? [BoxShadow(color: Colors.black.withValues(alpha: .1), blurRadius: 3, offset: const Offset(0, 1))]
+                    boxShadow: enabled && value == selected
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: .1),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
                         : null,
                   ),
                   child: Text(
                     label,
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: value == selected ? FontWeight.w600 : FontWeight.w500,
-                      color: value == selected || hovered ? scheme.onSurface : scheme.onSurfaceVariant,
+                      color: !enabled
+                          ? palette.textMuted
+                          : value == selected || hovered
+                          ? scheme.onSurface
+                          : scheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -213,7 +238,7 @@ class AppToggleRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title),
+        Text(title, style: onChanged == null ? TextStyle(color: BrandPalette.of(context).textMuted) : null),
         if (subtitle != null)
           Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
       ],
