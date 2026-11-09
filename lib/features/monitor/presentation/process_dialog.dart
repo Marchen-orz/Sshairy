@@ -34,11 +34,14 @@ class _ProcessDialogState extends State<ProcessDialog> {
   late final VoidCallback _unwatch = widget.monitor.watchProcesses();
   final _search = TextEditingController();
   final _scroll = ScrollController();
+  final _horizontal = ScrollController();
+  final _widths = <_Column, double>{};
   final _focus = FocusNode();
   var _sort = _Column.cpu;
   var _descending = true;
   var _paused = false;
   int? _selected;
+  double? _dragWidth;
 
   /// What the table shows while paused.
   StatsSnapshot? _frozen;
@@ -54,11 +57,12 @@ class _ProcessDialogState extends State<ProcessDialog> {
     _unwatch();
     _search.dispose();
     _scroll.dispose();
+    _horizontal.dispose();
     _focus.dispose();
     super.dispose();
   }
 
-  static const _widths = {
+  static const _defaultWidths = {
     _Column.pid: 64.0,
     _Column.user: 96.0,
     _Column.cpu: 60.0,
@@ -67,6 +71,19 @@ class _ProcessDialogState extends State<ProcessDialog> {
     _Column.state: 44.0,
     _Column.threads: 56.0,
     _Column.elapsed: 92.0,
+    _Column.command: 240.0,
+  };
+
+  static const _minimumWidths = {
+    _Column.pid: 56.0,
+    _Column.user: 64.0,
+    _Column.cpu: 56.0,
+    _Column.memory: 56.0,
+    _Column.resident: 64.0,
+    _Column.state: 44.0,
+    _Column.threads: 56.0,
+    _Column.elapsed: 80.0,
+    _Column.command: 160.0,
   };
 
   static const _numeric = {
@@ -227,35 +244,85 @@ class _ProcessDialogState extends State<ProcessDialog> {
             final live = widget.monitor.snapshot;
             final snap = _paused ? (_frozen ??= live) : live;
             final rows = _rows(snap);
-            return ScrollGutterScope(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (snap != null) _Summary(snap: snap),
-                  const SizedBox(height: Space.md),
-                  _toolbar(l, rows.length),
-                  const SizedBox(height: Space.sm),
-                  ScrollGutter(child: _header(l)),
-                  Expanded(
-                    child: Focus(
-                      focusNode: _focus,
-                      onKeyEvent: (_, event) => _key(rows, event),
-                      child: ListView.builder(
-                        controller: _scroll,
-                        itemExtent: WorkspaceSize.treeRow,
-                        itemCount: rows.length,
-                        itemBuilder: (context, i) => _row(rows[i]),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (snap != null) _Summary(snap: snap),
+                const SizedBox(height: Space.md),
+                _toolbar(l, rows.length),
+                const SizedBox(height: Space.sm),
+                Expanded(child: _table(l, rows)),
+              ],
             );
           },
         ),
       ),
     );
   }
+
+  Widget _table(AppLocalizations l, List<ProcessInfo> rows) => ScrollGutterLayout(
+    builder: (context, constraints) {
+      final gutter = ScrollGutterScope.gapOf(context);
+      final available = max(0.0, constraints.maxWidth - gutter);
+      final widths = {
+        for (final c in _Column.values)
+          c: (_widths[c] ?? _defaultWidths[c]!)
+              .clamp(_minimumWidths[c]!, max(_minimumWidths[c]!, available))
+              .toDouble(),
+      };
+      final fixed = widths.entries
+          .where((entry) => entry.key != _Column.command)
+          .fold(0.0, (sum, entry) => sum + entry.value);
+      widths[_Column.command] = max(widths[_Column.command]!, available - fixed);
+      final width = widths.values.fold(0.0, (sum, value) => sum + value) + gutter;
+      final overflowing = width > constraints.maxWidth;
+      final behavior = ScrollConfiguration.of(context);
+      return Scrollbar(
+        controller: _horizontal,
+        thumbVisibility: overflowing,
+        notificationPredicate: (notification) => notification.metrics.axis == Axis.horizontal,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: overflowing ? Space.md : 0),
+          child: ScrollConfiguration(
+            behavior: behavior.copyWith(scrollbars: false),
+            child: SingleChildScrollView(
+              controller: _horizontal,
+              scrollDirection: Axis.horizontal,
+              child: ScrollConfiguration(
+                behavior: behavior,
+                child: SizedBox(
+                  width: width,
+                  height: constraints.maxHeight - (overflowing ? Space.md : 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ScrollGutter(child: _header(l, widths, available)),
+                      Expanded(
+                        child: Focus(
+                          focusNode: _focus,
+                          onKeyEvent: (_, event) => _key(rows, event),
+                          child: ListView.builder(
+                            controller: _scroll,
+                            itemExtent: WorkspaceSize.treeRow,
+                            itemCount: rows.length,
+                            itemBuilder: (context, i) => _row(rows[i], widths),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  void _resize(_Column column, double width, double available) => setState(() {
+    _widths[column] = width.clamp(_minimumWidths[column]!, max(_minimumWidths[column]!, available)).toDouble();
+  });
 
   Widget _toolbar(AppLocalizations l, int count) {
     final theme = Theme.of(context);
@@ -296,7 +363,7 @@ class _ProcessDialogState extends State<ProcessDialog> {
     );
   }
 
-  Widget _header(AppLocalizations l) {
+  Widget _header(AppLocalizations l, Map<_Column, double> widths, double available) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final style = theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600);
@@ -325,8 +392,76 @@ class _ProcessDialogState extends State<ProcessDialog> {
           child: label,
         ),
       );
-      final width = _widths[c];
-      return width == null ? Expanded(child: button) : SizedBox(width: width, child: button);
+      final width = widths[c]!;
+      const step = Space.sm;
+      double clamp(double value) => value.clamp(_minimumWidths[c]!, max(_minimumWidths[c]!, available)).toDouble();
+      return SizedBox(
+        key: ValueKey('process-header-${c.name}'),
+        width: width,
+        child: Stack(
+          children: [
+            button,
+            Positioned(
+              top: 0,
+              bottom: 0,
+              right: 0,
+              width: WorkspaceSize.dividerGrab,
+              child: Semantics(
+                label: _label(l, c),
+                value: '${width.round()}',
+                increasedValue: '${clamp(width + step).round()}',
+                decreasedValue: '${clamp(width - step).round()}',
+                onIncrease: () => _resize(c, width + step, available),
+                onDecrease: () => _resize(c, width - step, available),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeColumn,
+                  child: Focus(
+                    onKeyEvent: (_, event) {
+                      if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+                      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                        _resize(c, width + step, available);
+                        return KeyEventResult.handled;
+                      }
+                      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                        _resize(c, width - step, available);
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: Builder(
+                      builder: (context) {
+                        final focused = Focus.of(context).hasFocus;
+                        return GestureDetector(
+                          key: ValueKey('process-resize-${c.name}'),
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (_) => Focus.of(context).requestFocus(),
+                          onDoubleTap: () => setState(() => _widths.remove(c)),
+                          onHorizontalDragStart: (_) {
+                            Focus.of(context).requestFocus();
+                            _dragWidth = width;
+                          },
+                          onHorizontalDragUpdate: (details) {
+                            _dragWidth = clamp((_dragWidth ?? width) + details.delta.dx);
+                            _resize(c, _dragWidth!, available);
+                          },
+                          onHorizontalDragEnd: (_) => _dragWidth = null,
+                          onHorizontalDragCancel: () => _dragWidth = null,
+                          child: Center(
+                            child: ColoredBox(
+                              color: focused ? scheme.primary : scheme.outlineVariant,
+                              child: const SizedBox(width: WorkspaceSize.divider, height: Space.lg),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return DecoratedBox(
@@ -337,7 +472,7 @@ class _ProcessDialogState extends State<ProcessDialog> {
     );
   }
 
-  Widget _row(ProcessInfo p) {
+  Widget _row(ProcessInfo p, Map<_Column, double> widths) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final style = theme.textTheme.bodySmall?.copyWith(fontFeatures: tabular);
@@ -353,8 +488,7 @@ class _ProcessDialogState extends State<ProcessDialog> {
           style: color == null ? style : style?.copyWith(color: color),
         ),
       );
-      final width = _widths[c];
-      return width == null ? Expanded(child: child) : SizedBox(width: width, child: child);
+      return SizedBox(key: ValueKey('process-cell-${p.pid}-${c.name}'), width: widths[c], child: child);
     }
 
     final selected = p.pid == _selected;

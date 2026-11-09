@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
@@ -186,6 +186,116 @@ void main() {
     expect(server.commands.skip(closed), [
       isNot(contains('@@ps')),
     ], reason: 'owners are only fetched while the window is open');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('process column boundaries resize headers and rows without sorting and support keyboard and reset', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.text('worker'));
+    await tester.pump();
+    await tester.pump(Motion.normal);
+    final dialog = find.byType(ProcessDialog);
+    Finder header(String column) => find.byKey(ValueKey('process-header-$column'));
+    Finder cell(String column) => find.byKey(ValueKey('process-cell-400-$column'));
+    Finder divider(String column) => find.byKey(ValueKey('process-resize-$column'));
+    double width(String column) => tester.getSize(header(column)).width;
+    String direction() {
+      final arrow = find.descendant(of: header('cpu'), matching: find.byIcon(Icons.arrow_downward));
+      expect(arrow, findsOneWidget);
+      return 'cpu descending';
+    }
+
+    void aligned() {
+      for (final column in ['pid', 'user', 'cpu', 'memory', 'resident', 'state', 'threads', 'elapsed', 'command']) {
+        final heading = tester.getRect(header(column));
+        final value = tester.getRect(cell(column));
+        expect(value.left, closeTo(heading.left, .01), reason: '$column left');
+        expect(value.width, closeTo(heading.width, .01), reason: '$column width');
+      }
+    }
+
+    Future<void> drag(String column, double delta) async {
+      final gesture = await tester.startGesture(tester.getCenter(divider(column)));
+      await gesture.moveBy(Offset(delta.sign * 20, 0));
+      await tester.pump();
+      await gesture.moveBy(Offset(delta, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+    }
+
+    aligned();
+    final original = width('pid');
+    expect(direction(), 'cpu descending');
+    await drag('pid', 80);
+    expect(width('pid'), greaterThan(original + 50));
+    expect(direction(), 'cpu descending', reason: 'dragging a boundary cannot sort');
+    aligned();
+    final expanded = width('pid');
+    final handle = tester.element(divider('pid'));
+    Focus.of(handle).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(width('pid'), expanded + Space.sm);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(width('pid'), expanded);
+    await tester.tap(divider('pid'));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(divider('pid'));
+    await tester.pumpAndSettle();
+    expect(width('pid'), original);
+    aligned();
+    await tester.tap(find.descendant(of: dialog, matching: find.text('PID')));
+    await tester.pump();
+    expect(find.descendant(of: header('pid'), matching: find.byIcon(Icons.arrow_upward)), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('resized process columns clamp and remain aligned in a narrow horizontally scrolling table', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.text('worker'));
+    await tester.pump();
+    await tester.pump(Motion.normal);
+    await tester.binding.setSurfaceSize(const Size(560, 700));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(ProcessDialog);
+    final horizontal = find.descendant(of: dialog, matching: find.byType(SingleChildScrollView));
+    expect(horizontal, findsOneWidget);
+    final controller = tester.widget<SingleChildScrollView>(horizontal).controller!;
+    expect(controller.position.maxScrollExtent, greaterThan(0));
+    Finder header(String column) => find.byKey(ValueKey('process-header-$column'));
+    Finder cell(String column) => find.byKey(ValueKey('process-cell-400-$column'));
+    final divider = find.byKey(const ValueKey('process-resize-pid'));
+    var gesture = await tester.startGesture(tester.getCenter(divider));
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(-2000, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(tester.getSize(header('pid')).width, 56);
+    gesture = await tester.startGesture(tester.getCenter(divider));
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(2000, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    final maxWidth = tester.getSize(horizontal).width;
+    expect(tester.getSize(header('pid')).width, lessThanOrEqualTo(maxWidth));
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pump();
+    for (final column in ['pid', 'user', 'command']) {
+      expect(tester.getRect(cell(column)).left, closeTo(tester.getRect(header(column)).left, .01));
+      expect(tester.getSize(cell(column)).width, tester.getSize(header(column)).width);
+    }
+    await tester.pump(kDoubleTapMinTime);
     expect(tester.takeException(), isNull);
   });
 
