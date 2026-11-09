@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
@@ -20,18 +21,52 @@ import 'package:sshairy/l10n/app_localizations.dart';
 
 import 'keys_test.dart' show MemorySecrets;
 
+class _HeldGroupOrder extends HostsNotifier {
+  final _ioZone = Zone.current;
+  Completer<void>? hold;
+  Object? failure;
+  var calls = 0;
+  final requests = <({String id, String? beforeId, int? revision})>[];
+
+  @override
+  Future<void> reorderGroup(String id, String? beforeId, {int? expectedRevision}) {
+    calls++;
+    requests.add((id: id, beforeId: beforeId, revision: expectedRevision));
+    final gate = hold;
+    final error = failure;
+    Future<void> commit() => _ioZone.run(() => super.reorderGroup(id, beforeId, expectedRevision: expectedRevision));
+    if (gate == null) {
+      if (error != null) throw error;
+      return commit();
+    }
+    return gate.future.then((_) {
+      if (error != null) throw error;
+      // Releasing a fake-clock gate must not move the real file-write chain into FakeAsync.
+      return commit();
+    });
+  }
+}
+
 void main() {
   late Directory data;
   late ProviderContainer container;
   late HostsNotifier hosts;
   final connected = <HostId>[];
 
-  setUp(() {
-    data = Directory.systemTemp.createTempSync('sshairy-vault-select-');
+  void createContainer([_HeldGroupOrder? controlled]) {
     container = ProviderContainer(
-      overrides: [dataDirProvider.overrideWithValue(data.path), secretStoreProvider.overrideWithValue(MemorySecrets())],
+      overrides: [
+        dataDirProvider.overrideWithValue(data.path),
+        secretStoreProvider.overrideWithValue(MemorySecrets()),
+        if (controlled != null) hostsProvider.overrideWith(() => controlled),
+      ],
     );
     hosts = container.read(hostsProvider.notifier);
+  }
+
+  setUp(() {
+    data = Directory.systemTemp.createTempSync('sshairy-vault-select-');
+    createContainer();
     connected.clear();
   });
 
@@ -40,8 +75,18 @@ void main() {
     await data.delete(recursive: true);
   });
 
-  Future<void> mount(WidgetTester tester, {int count = 4, HostView view = HostView.grid}) async {
+  Future<void> mount(
+    WidgetTester tester, {
+    int count = 4,
+    HostView view = HostView.grid,
+    _HeldGroupOrder Function()? controlled,
+  }) async {
     await tester.runAsync(() async {
+      if (controlled != null) {
+        container.dispose();
+        // HostsNotifier's initial write queue must share the real-IO setup zone.
+        createContainer(controlled());
+      }
       await container.read(settingsProvider.notifier).set(SettingKeys.importOffered, true);
       await container.read(settingsProvider.notifier).set(SettingKeys.hostView, view);
       if (count > 0) {
@@ -262,6 +307,204 @@ void main() {
     expect(hosts.library.groupPaths, paths);
     expect(tester.takeException(), isNull);
   }
+
+  Future<void> dropGroupBefore(WidgetTester tester, String sourcePath, String targetPath) async {
+    final target = tester.getRect(groupChip(targetPath));
+    final gesture = await tester.startGesture(tester.getCenter(groupChip(sourcePath)), kind: PointerDeviceKind.mouse);
+    await gesture.moveBy(const Offset(-24, 0));
+    await tester.pump();
+    await gesture.moveTo(target.center);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.getRect(groupChip(targetPath)).left, greaterThan(target.left));
+    await gesture.up();
+  }
+
+  void expectGroupOrder(WidgetTester tester, List<String> paths) {
+    for (var i = 1; i < paths.length; i++) {
+      expect(
+        tester.getRect(groupChip(paths[i - 1])).left,
+        lessThan(tester.getRect(groupChip(paths[i])).left),
+        reason: 'visible order is ${paths.join(', ')}',
+      );
+    }
+  }
+
+  testWidgets('dropped parent and child order stays visible on every frame until delayed saves commit', (tester) async {
+    late _HeldGroupOrder controlled;
+    await mount(tester, controlled: () => controlled = _HeldGroupOrder());
+    await tester.runAsync(() async {
+      await hosts.addGroup('Personal/Alpha');
+      await hosts.addGroup('Personal/Beta');
+    });
+    await tester.pumpAndSettle();
+    await click(tester, 0);
+    await click(tester, 1, modifier: LogicalKeyboardKey.controlLeft);
+    await tester.tap(groupChip('Personal'));
+    await tester.pumpAndSettle();
+    final original = ['Personal', 'Personal/Alpha', 'Personal/Beta', 'Team'];
+    final reordered = ['Team', 'Personal', 'Personal/Alpha', 'Personal/Beta'];
+    final base = hosts.library;
+    final revision = hosts.revision;
+    final all = tester.getRect(groupChip(''));
+    final held = Completer<void>();
+    controlled.hold = held;
+    await dropGroupBefore(tester, 'Team', 'Personal');
+    for (var frame = 0; frame < 60; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expectGroupOrder(tester, reordered);
+      expect(hosts.library, same(base));
+      expect(hosts.revision, revision);
+      expect(tester.getRect(groupChip('')), all);
+    }
+    expect(controlled.calls, 1);
+    expect(controlled.requests.single, (
+      id: base.groupIdFor('Team')!,
+      beforeId: base.groupIdFor('Personal'),
+      revision: revision,
+    ));
+    expect(tester.widget<ChoiceChip>(groupChip('Personal')).selected, isTrue);
+    expect(selected(tester), [0, 1]);
+    expect(
+      tester.widgetList<ReorderableDragStartListener>(find.byType(ReorderableDragStartListener)),
+      everyElement(isA<ReorderableDragStartListener>().having((listener) => listener.enabled, 'enabled', isFalse)),
+    );
+    final beforeCommit = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(data.path)]);
+    expect(beforeCommit.read(hostLibraryProvider).groupPaths, original);
+    beforeCommit.dispose();
+    final restoredWhileSaving = tester.getRect(groupChip('Personal'));
+    final retry = await tester.startGesture(tester.getCenter(groupChip('Team')), kind: PointerDeviceKind.mouse);
+    await retry.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await retry.moveTo(Offset(restoredWhileSaving.right + Space.md, restoredWhileSaving.center.dy));
+    await retry.up();
+    await tester.pumpAndSettle();
+    expect(controlled.calls, 1, reason: 'a pending write cannot start another reorder');
+    expectGroupOrder(tester, reordered);
+    await tester.tap(groupChip('Personal'), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Edit group'), findsOneWidget);
+    expect(find.text('Dissolve group'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    held.complete();
+    for (var frame = 0; frame < 100 && hosts.revision == revision; frame++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 16));
+      expectGroupOrder(tester, reordered);
+    }
+    await tester.pumpAndSettle();
+    expect(hosts.library.groupPaths, reordered);
+    expect(hosts.revision, revision + 1);
+    final reopened = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(data.path)]);
+    expect(reopened.read(hostLibraryProvider).groupPaths, reordered);
+    reopened.dispose();
+
+    final childBase = hosts.library;
+    final childRevision = hosts.revision;
+    final childHeld = Completer<void>();
+    controlled.hold = childHeld;
+    await dropGroupBefore(tester, 'Personal/Beta', 'Personal/Alpha');
+    final childOrder = ['Team', 'Personal', 'Personal/Beta', 'Personal/Alpha'];
+    for (var frame = 0; frame < 60; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expectGroupOrder(tester, childOrder);
+      expect(hosts.library, same(childBase));
+      expect(hosts.revision, childRevision);
+    }
+    expect(controlled.calls, 2);
+    childHeld.complete();
+    for (var frame = 0; frame < 100 && hosts.revision == childRevision; frame++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 16));
+      expectGroupOrder(tester, childOrder);
+    }
+    await tester.pumpAndSettle();
+    expect(hosts.library.groupPaths, childOrder);
+    expect(hosts.revision, childRevision + 1);
+    expect(selected(tester), [0, 1]);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final immediate in [false, true]) {
+    testWidgets('a ${immediate ? 'synchronous exception' : 'delayed failure'} restores committed group order', (
+      tester,
+    ) async {
+      late _HeldGroupOrder controlled;
+      await mount(tester, controlled: () => controlled = _HeldGroupOrder());
+      await click(tester, 0);
+      await tester.tap(groupChip('Personal'));
+      await tester.pumpAndSettle();
+      final base = hosts.library;
+      final revision = hosts.revision;
+      final held = immediate ? null : Completer<void>();
+      controlled.hold = held;
+      controlled.failure = immediate ? StateError('reorder failed') : const FileSystemException('disk full');
+      await dropGroupBefore(tester, 'Team', 'Personal');
+      for (var frame = 0; frame < 60; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        if (!immediate) expectGroupOrder(tester, ['Team', 'Personal']);
+      }
+      expect(controlled.calls, 1);
+      expect(hosts.library, same(base));
+      expect(hosts.revision, revision);
+      if (held != null) {
+        expect(find.text('Could not save. Check access to the data directory and secure storage.'), findsNothing);
+        held.complete();
+      }
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expectGroupOrder(tester, ['Personal', 'Team']);
+      expect(find.text('Could not save. Check access to the data directory and secure storage.'), findsOneWidget);
+      expect(hosts.library, same(base));
+      expect(hosts.revision, revision);
+      expect(tester.widget<ChoiceChip>(groupChip('Personal')).selected, isTrue);
+      expect(selected(tester), [0]);
+      final reopened = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(data.path)]);
+      expect(reopened.read(hostLibraryProvider).groupPaths, ['Personal', 'Team']);
+      reopened.dispose();
+      controlled.hold = null;
+      controlled.failure = null;
+      await dropGroupBefore(tester, 'Team', 'Personal');
+      await waitForOrder(tester, ['Team', 'Personal']);
+      expect(controlled.calls, 2, reason: 'a failed save must release the reorder guard');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a pending reorder cannot cover a newer committed library with its stale preview', (tester) async {
+    late _HeldGroupOrder controlled;
+    await mount(tester, controlled: () => controlled = _HeldGroupOrder());
+    final held = Completer<void>();
+    controlled.hold = held;
+    final revision = hosts.revision;
+    await dropGroupBefore(tester, 'Team', 'Personal');
+    for (var frame = 0; frame < 60; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expectGroupOrder(tester, ['Team', 'Personal']);
+    }
+    await tester.runAsync(() => hosts.addGroup('Work'));
+    await tester.pump();
+    expect(hosts.revision, revision + 1);
+    expectGroupOrder(tester, ['Personal', 'Team', 'Work']);
+    controlled.failure = null;
+    held.complete();
+    for (
+      var frame = 0;
+      frame < 100 &&
+          find.text('Could not save. Check access to the data directory and secure storage.').evaluate().isEmpty;
+      frame++
+    ) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 16));
+      expectGroupOrder(tester, ['Personal', 'Team', 'Work']);
+    }
+    await tester.pumpAndSettle();
+    expect(hosts.library.groupPaths, ['Personal', 'Team', 'Work']);
+    expect(hosts.revision, revision + 1);
+    expect(find.text('Could not save. Check access to the data directory and secure storage.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('group dragging shows the final gap before saving and keeps selection and the fixed All chip', (
     tester,

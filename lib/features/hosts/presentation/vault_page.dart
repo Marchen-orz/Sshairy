@@ -44,6 +44,8 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   var _group = '';
   final _selected = <HostId>{};
   HostId? _anchor;
+  HostLibrary? _groupOrderBase, _groupOrderPreview;
+  var _groupOrderSaving = false;
 
   /// The setting lands only after its write, so this keeps a second offer from opening meanwhile.
   var _offered = false;
@@ -123,11 +125,29 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   }
 
   Future<void> _reorderGroup(String id, String? beforeId, int revision) async {
+    if (_groupOrderSaving) return;
     try {
+      final base = _hosts.library;
+      final preview = base.withGroupBefore(id, beforeId);
+      if (identical(preview, base)) return;
+      // Native reorder clears its gap immediately; keep the dropped order until the committed library takes over.
+      setState(() {
+        _groupOrderBase = base;
+        _groupOrderPreview = preview;
+        _groupOrderSaving = true;
+      });
       await _hosts.reorderGroup(id, beforeId, expectedRevision: revision);
     } on Object {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).errSave)));
+      }
+    } finally {
+      if (mounted && _groupOrderSaving) {
+        setState(() {
+          _groupOrderBase = null;
+          _groupOrderPreview = null;
+          _groupOrderSaving = false;
+        });
       }
     }
   }
@@ -381,8 +401,9 @@ class _VaultPageState extends ConsumerState<VaultPage> {
             SizedBox(
               height: 32,
               child: _GroupOrderBar(
-                library: library,
+                library: identical(library, _groupOrderBase) ? _groupOrderPreview ?? library : library,
                 revision: _hosts.revision,
+                reorderEnabled: !_groupOrderSaving,
                 controller: _groupScroll,
                 selected: _group,
                 onSelected: (group) => setState(() => _group = group),
@@ -476,6 +497,7 @@ class _GroupOrderBar extends StatelessWidget {
   const _GroupOrderBar({
     required this.library,
     required this.revision,
+    required this.reorderEnabled,
     required this.controller,
     required this.selected,
     required this.onSelected,
@@ -485,6 +507,7 @@ class _GroupOrderBar extends StatelessWidget {
 
   final HostLibrary library;
   final int revision;
+  final bool reorderEnabled;
   final ScrollController controller;
   final String selected;
   final ValueChanged<String> onSelected;
@@ -571,11 +594,14 @@ class _GroupOrderBar extends StatelessWidget {
         padding: EdgeInsets.zero,
         buildDefaultDragHandles: false,
         itemCount: siblings.length,
-        onReorderItem: (from, to) => _move(siblings, from, to),
+        onReorderItem: (from, to) {
+          if (reorderEnabled) _move(siblings, from, to);
+        },
         proxyDecorator: (child, _, _) => Material(type: MaterialType.transparency, child: child),
         itemBuilder: (context, index) => ReorderableDragStartListener(
           key: ValueKey(siblings[index].id),
           index: index,
+          enabled: reorderEnabled,
           child: _branch(context, siblings[index], width),
         ),
       );
