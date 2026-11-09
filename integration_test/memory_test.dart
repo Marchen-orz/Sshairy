@@ -3,7 +3,8 @@
 // The numbers that matter come from a profile build (flutter drive does not run release on desktop):
 //   flutter drive --driver=test_driver/integration_test.dart --target=integration_test/memory_test.dart -d windows --profile
 // A debug build also keeps every provider state in Riverpod's devtool, so closed terminals stay reachable there.
-// Usage: SSHAIRY_TEST_TARGET=user@host SSHAIRY_TEST_PASSWORD=... as for the other integration tests.
+// Usage: SSHAIRY_TEST_ISOLATED=1 SSHAIRY_TEST_TARGET=user@host SSHAIRY_TEST_PASSWORD=... as for the other tests.
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:isolate';
@@ -53,6 +54,22 @@ void main() {
         await t.pump();
       }
       report('memory[$mode] $what: ${_mib()} MiB');
+      if (Platform.isWindows) {
+        final sample = await Process.run('pwsh', [
+          '-NoProfile',
+          '-Command',
+          r'$p = Get-Process -Id '
+              '$pid'
+              r'; $m = Get-CimInstance Win32_PerfRawData_PerfProc_Process -Filter "IDProcess = '
+              '$pid'
+              r'"; [pscustomobject]@{ workingSet = $p.WorkingSet64; privateWorkingSet = $m.WorkingSetPrivate; privateBytes = $p.PrivateMemorySize64; handles = $p.HandleCount; threads = $p.Threads.Count } | ConvertTo-Json -Compress',
+        ]);
+        if (sample.exitCode != 0) fail('Windows resource sampling failed');
+        final metrics = jsonDecode('${sample.stdout}') as Map<String, dynamic>;
+        expect(metrics.keys.toSet(), {'workingSet', 'privateWorkingSet', 'privateBytes', 'handles', 'threads'});
+        expect(metrics.values.every((value) => value is num && value >= 0), isTrue);
+        report('windows[$mode] $what: ${jsonEncode(metrics)}');
+      }
     }
 
     // Closed sessions should leave nothing behind: their terminals must become collectable.
@@ -65,7 +82,26 @@ void main() {
       if (uri == null) fail('the VM service is not running, so a collection cannot be requested');
       final service = await vmServiceConnectUri(uri.toString());
       try {
-        await service.getAllocationProfile(developer.Service.getIsolateId(Isolate.current)!, gc: true);
+        final isolate = developer.Service.getIsolateId(Isolate.current)!;
+        await service.getAllocationProfile(isolate, gc: true);
+        if (terminals.any((reference) => reference.target != null)) {
+          final classes = await service.getClassList(isolate);
+          for (final type in classes.classes!.where((type) => type.name == 'Terminal')) {
+            final instances = await service.getInstances(isolate, type.id!, 10);
+            for (final instance in instances.instances!) {
+              final path = await service.getRetainingPath(isolate, instance.id!, 160);
+              report(
+                'retainedTerminal root=${path.gcRootType} path=${path.elements!.map((entry) {
+                  final value = entry.value;
+                  final json = value?.json;
+                  final type = (json?['class'] as Map?)?['name'] ?? json?['type'];
+                  final closure = (json?['closureFunction'] as Map?)?['name'];
+                  return '$type${closure == null ? '' : ':$closure'}[${entry.parentField ?? ''}]';
+                }).join(' <- ')}',
+              );
+            }
+          }
+        }
       } finally {
         await service.dispose();
       }
@@ -86,7 +122,7 @@ void main() {
 
     Future<void> openFive({required bool first}) async {
       for (var n = 1; n <= 5; n++) {
-        if (n > 1) await t.tapAndPump(find.text('Hosts'));
+        if (n > 1) await t.tapAndPump(find.byTooltip('Hosts'));
         await t.quickConnect();
         if (first && n == 1) {
           await t.untilFound(find.text('Unknown host'));

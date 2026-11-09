@@ -14,6 +14,7 @@ import '../application/host_trust.dart';
 import '../application/connection_manager.dart';
 import '../domain/prompts.dart';
 import '../domain/transport.dart';
+import 'attempt_prompts.dart';
 import 'sftp_fs.dart';
 import 'ssh_exec.dart';
 import 'proxy.dart';
@@ -36,6 +37,15 @@ class _SshShell implements ShellChannel {
   void resize(int cols, int rows) => _session.resizeTerminal(cols, rows);
   @override
   void close() => _session.channel.destroy();
+}
+
+class _RouteLease {
+  TransportLease? lease;
+
+  void release() {
+    lease?.release();
+    lease = null;
+  }
 }
 
 class _SshTransport implements Transport {
@@ -155,7 +165,7 @@ class SshDialer {
   final ({Duration timeout, Duration? keepAlive}) Function() _options;
 
   Future<Transport> dial(List<Host> route, ConnectPrompts prompts, CancellationToken cancel) async {
-    final guarded = _AttemptPrompts(prompts, cancel);
+    final guarded = AttemptPrompts(prompts, cancel);
     final attempt = _dial(route, guarded, prompts, cancel);
     try {
       return await Future.any([
@@ -165,13 +175,15 @@ class SshDialer {
     } on Object {
       attempt.then((t) => t.close()).ignore();
       rethrow;
+    } finally {
+      guarded.detach();
     }
   }
 
   Future<Transport> _dial(
     List<Host> route,
     ConnectPrompts prompts,
-    ConnectPrompts routePrompts,
+    ConnectPrompts? routePrompts,
     CancellationToken cancel,
   ) async {
     final host = route.first;
@@ -200,17 +212,14 @@ class SshDialer {
 
     final options = _options();
     final SSHSocket socket;
-    TransportLease? jump;
-    void releaseRoute() {
-      jump?.release();
-      jump = null;
-    }
+    final routeLease = _RouteLease();
 
     try {
       if (route.length > 1) {
         // A shared jump dial has its own cancellation scope; one downstream waiter cannot cancel its prompts.
-        jump = await _jump(route.sublist(1), routePrompts, cancel);
-        socket = TunnelSocket(await jump!.connectTo(host.address, host.port));
+        routeLease.lease = await _jump(route.sublist(1), routePrompts!, cancel);
+        routePrompts = null;
+        socket = TunnelSocket(await routeLease.lease!.connectTo(host.address, host.port));
       } else if (host.proxy case final proxy?) {
         socket = await connectViaProxy(
           proxy,
@@ -237,13 +246,15 @@ class SshDialer {
         socket = await SSHSocket.connect(host.address, host.port, timeout: options.timeout);
       }
     } on Object catch (e) {
-      releaseRoute();
+      routePrompts = null;
+      routeLease.release();
       if (e is ConnectError) rethrow;
       throw ConnectError(ConnectFailure.network, '$e');
     }
+    routePrompts = null;
     if (cancel.isCancelled) {
       socket.destroy();
-      releaseRoute();
+      routeLease.release();
       throw const ConnectError(ConnectFailure.cancelled);
     }
 
@@ -289,7 +300,7 @@ class SshDialer {
     cancel.whenCancelled.then((_) {
       client.close();
       socket.destroy();
-      releaseRoute();
+      routeLease.release();
     }).ignore();
     try {
       await client.authenticated.timeout(const Duration(seconds: 120));
@@ -297,11 +308,11 @@ class SshDialer {
       for (final e in remember.entries) {
         await _secrets.remember(e.key, e.value);
       }
-      return _SshTransport(client, releaseRoute);
+      return _SshTransport(client, routeLease.release);
     } on Object catch (e) {
       client.close();
       socket.destroy();
-      releaseRoute();
+      routeLease.release();
       if (cancel.isCancelled) throw const ConnectError(ConnectFailure.cancelled);
       if (rejected) throw const ConnectError(ConnectFailure.hostKeyRejected);
       if (cancelled) throw const ConnectError(ConnectFailure.cancelled);
@@ -383,25 +394,3 @@ final _legacyAlgorithms = SSHAlgorithms(
   cipher: [..._ciphers, SSHCipherType.aes128cbc, SSHCipherType.aes192cbc, SSHCipherType.aes256cbc],
   mac: [...const SSHAlgorithms().mac, SSHMacType.hmacSha1],
 );
-
-class _AttemptPrompts implements ConnectPrompts {
-  _AttemptPrompts(this._inner, this._cancel);
-  final ConnectPrompts _inner;
-  final CancellationToken _cancel;
-
-  @override
-  Future<TrustChoice> hostKey(HostKeyPrompt prompt) async {
-    if (_cancel.isCancelled) return TrustChoice.reject;
-    final choice = await Future.any([_inner.hostKey(prompt), _cancel.whenCancelled.then((_) => TrustChoice.reject)])
-        .timeout(const Duration(seconds: 120), onTimeout: () => TrustChoice.reject);
-    return _cancel.isCancelled ? TrustChoice.reject : choice;
-  }
-
-  @override
-  Future<SecretAnswer?> secret(SecretRequest request) async {
-    if (_cancel.isCancelled) return null;
-    final answer = await Future.any([_inner.secret(request), _cancel.whenCancelled.then<SecretAnswer?>((_) => null)])
-        .timeout(const Duration(seconds: 120), onTimeout: () => null);
-    return _cancel.isCancelled ? null : answer;
-  }
-}

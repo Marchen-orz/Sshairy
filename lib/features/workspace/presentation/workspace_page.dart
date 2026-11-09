@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -216,6 +217,31 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     run?.call();
   }
 
+  // Semantics can retain old drag widgets; their children and callbacks must not capture live sessions.
+  Widget _tabs(WorkspaceState state) => ReorderableListView.builder(
+    scrollDirection: Axis.horizontal,
+    shrinkWrap: true,
+    buildDefaultDragHandles: false,
+    itemCount: state.tabs.length,
+    onReorderItem: _workspace.moveTab,
+    proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
+    itemBuilder: (context, i) {
+      final tab = state.tabs[i];
+      return ReorderableDragStartListener(
+        key: ValueKey(tab.id),
+        index: i,
+        child: _Tab(
+          tab: tab,
+          selected: state.active == tab.id,
+          onTap: () => _workspace.activate(tab.id),
+          onRename: (name) => _rename(tab, name),
+          onSecondaryTap: (name, p) => _tabMenu(tab, name, p),
+          onClose: () => _workspace.closeTab(tab.id),
+        ),
+      );
+    },
+  );
+
   void _setNavigation({bool? expanded, double? width}) {
     setState(() {
       _navigationExpanded = expanded ?? _navigationExpanded;
@@ -233,6 +259,27 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   /// Open or closed for every tab, and for the next start, like the monitor.
   void _setSideFiles(bool open) => ref.read(settingsProvider.notifier).set(SettingKeys.showFiles, open);
+
+  List<Widget> _fileToolbar(FilesDock dock) {
+    final l = AppLocalizations.of(context);
+    return [
+      AppMenuButton<FilesDock>(
+        tooltip: l.dockPosition,
+        icon: const Icon(Icons.space_dashboard_outlined, size: 16),
+        minWidth: 0,
+        items: () => [
+          for (final (side, shape, label) in [
+            (FilesDock.left, DockSide.left, l.dockLeft),
+            (FilesDock.right, DockSide.right, l.dockRight),
+            (FilesDock.bottom, DockSide.bottom, l.dockBottom),
+          ])
+            AppMenuItem(value: side, label: label, glyph: DockSideIcon(shape), checked: side == dock),
+        ],
+        onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
+      ),
+      IconButton(tooltip: l.closePane, onPressed: () => _setSideFiles(false), icon: const Icon(Icons.close, size: 16)),
+    ];
+  }
 
   void _refocus(TabId tabId, PaneId pane) {
     final focused = ref.read(workspaceProvider).tabs.where((t) => t.id == tabId).firstOrNull?.layout.focused;
@@ -379,27 +426,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     active: state.active == tab.id,
                     tree: dock == FilesDock.bottom,
                     directory: session.directory,
-                    toolbarActions: [
-                      AppMenuButton<FilesDock>(
-                        tooltip: l.dockPosition,
-                        icon: const Icon(Icons.space_dashboard_outlined, size: 16),
-                        minWidth: 0,
-                        items: () => [
-                          for (final (side, shape, label) in [
-                            (FilesDock.left, DockSide.left, l.dockLeft),
-                            (FilesDock.right, DockSide.right, l.dockRight),
-                            (FilesDock.bottom, DockSide.bottom, l.dockBottom),
-                          ])
-                            AppMenuItem(value: side, label: label, glyph: DockSideIcon(shape), checked: side == dock),
-                        ],
-                        onSelected: (v) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, v),
-                      ),
-                      IconButton(
-                        tooltip: l.closePane,
-                        onPressed: () => _setSideFiles(false),
-                        icon: const Icon(Icons.close, size: 16),
-                      ),
-                    ],
+                    toolbarActions: _fileToolbar(dock),
                   )
                 : const SizedBox.shrink(),
             child: panes!,
@@ -424,43 +451,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 const Positioned.fill(child: DesktopDragRegion(child: SizedBox.expand())),
                 Row(
                   children: [
-                    Flexible(
-                      child: ReorderableListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        shrinkWrap: true,
-                        buildDefaultDragHandles: false,
-                        itemCount: state.tabs.length,
-                        onReorderItem: _workspace.moveTab,
-                        proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
-                        itemBuilder: (context, i) {
-                          final tab = state.tabs[i];
-                          final session = sessions[tab.layout.focusedLeaf.session];
-                          final all = [for (final l in tab.layout.leaves) ?sessions[l.session]];
-                          final count = tab.layout.leaves.length;
-                          return ReorderableDragStartListener(
-                            key: ValueKey(tab.id),
-                            index: i,
-                            child: session == null
-                                ? const SizedBox.shrink()
-                                : ListenableBuilder(
-                                    listenable: Listenable.merge(all),
-                                    builder: (context, _) {
-                                      final name = tab.title ?? session.host.title;
-                                      return _Tab(
-                                        selected: state.active == tab.id,
-                                        onTap: () => _workspace.activate(tab.id),
-                                        onDoubleTap: () => _rename(tab, name),
-                                        onSecondaryTap: (p) => _tabMenu(tab, name, p),
-                                        leading: SessionStatusIcon(session.status, unread: all.any((s) => s.unread)),
-                                        title: count > 1 ? '$name · $count' : name,
-                                        onClose: () => _workspace.closeTab(tab.id),
-                                      );
-                                    },
-                                  ),
-                          );
-                        },
-                      ),
-                    ),
+                    Flexible(child: _tabs(state)),
                     Builder(
                       builder: (button) => IconButton(
                         tooltip: l.newConnection,
@@ -733,42 +724,70 @@ class _PaneHeader extends StatelessWidget {
   }
 }
 
-class _Tab extends StatefulWidget {
+class _Tab extends ConsumerStatefulWidget {
   const _Tab({
+    required this.tab,
     required this.selected,
     required this.onTap,
-    required this.leading,
-    required this.title,
-    this.onClose,
-    this.onDoubleTap,
-    this.onSecondaryTap,
+    required this.onRename,
+    required this.onSecondaryTap,
+    required this.onClose,
   });
 
+  final WorkspaceTab tab;
   final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback? onDoubleTap;
-  final void Function(Offset globalPosition)? onSecondaryTap;
-  final Widget leading;
-  final String title;
-  final VoidCallback? onClose;
+  final VoidCallback onTap, onClose;
+  final void Function(String name) onRename;
+  final void Function(String name, Offset globalPosition) onSecondaryTap;
 
   @override
-  State<_Tab> createState() => _TabState();
+  ConsumerState<_Tab> createState() => _TabState();
 }
 
-class _TabState extends State<_Tab> {
+class _TabState extends ConsumerState<_Tab> {
   final _clicks = DoubleClick();
+  List<TerminalSession> _sessions = [];
   var _hovered = false;
+
+  void _listen(List<TerminalSession> sessions) {
+    if (listEquals(_sessions, sessions)) return;
+    for (final session in _sessions) {
+      session.removeListener(_changed);
+    }
+    _sessions = sessions;
+    for (final session in _sessions) {
+      session.addListener(_changed);
+    }
+  }
+
+  void _changed() => setState(() {});
+
+  TerminalSession? get _focused =>
+      _sessions.where((session) => session.id == widget.tab.layout.focusedLeaf.session).firstOrNull;
+
+  String get _name => widget.tab.title ?? _focused?.host.title ?? '';
 
   void _tap() {
     widget.onTap();
-    if (widget.onDoubleTap != null && _clicks.hit) widget.onDoubleTap!();
+    if (_clicks.hit) widget.onRename(_name);
+  }
+
+  void _secondaryTap(TapUpDetails details) => widget.onSecondaryTap(_name, details.globalPosition);
+
+  @override
+  void dispose() {
+    _listen(const []);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final sessions = ref.watch(terminalSessionsProvider);
+    _listen([for (final leaf in widget.tab.layout.leaves) ?sessions[leaf.session]]);
+    if (_focused == null) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
     final selected = widget.selected;
+    final count = widget.tab.layout.leaves.length;
     return Padding(
       padding: const EdgeInsets.only(right: Space.xs),
       child: Center(
@@ -794,9 +813,7 @@ class _TabState extends State<_Tab> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(Radii.control),
                 onTap: _tap,
-                onSecondaryTapUp: widget.onSecondaryTap == null
-                    ? null
-                    : (d) => widget.onSecondaryTap!(d.globalPosition),
+                onSecondaryTapUp: _secondaryTap,
                 // Sized to the title within the limits; a short title leaves its room before the close button, which
                 // keeps to the right edge.
                 child: IntrinsicWidth(
@@ -808,33 +825,33 @@ class _TabState extends State<_Tab> {
                         padding: const EdgeInsets.only(left: Space.sm, right: Space.xs),
                         child: Row(
                           children: [
-                            SizedBox.square(dimension: 14, child: Center(child: widget.leading)),
+                            SizedBox.square(
+                              dimension: 14,
+                              child: Center(
+                                child: SessionStatusIcon(_focused!.status, unread: _sessions.any((s) => s.unread)),
+                              ),
+                            ),
                             const SizedBox(width: Space.sm),
                             Expanded(
                               child: Text(
-                                widget.title,
+                                count > 1 ? '$_name · $count' : _name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(color: selected ? scheme.onSurface : scheme.onSurfaceVariant),
                               ),
                             ),
-                            if (widget.onClose != null) ...[
-                              const SizedBox(width: Space.xs),
-                              // The close button shows on the current tab and on hover, so idle tabs read cleanly.
-                              Opacity(
-                                opacity: selected || _hovered ? 1 : 0,
-                                child: IconButton(
-                                  tooltip: AppLocalizations.of(context).close,
-                                  onPressed: widget.onClose,
-                                  constraints: const BoxConstraints.tightFor(width: 20, height: 20),
-                                  style: IconButton.styleFrom(
-                                    minimumSize: const Size(20, 20),
-                                    padding: EdgeInsets.zero,
-                                  ),
-                                  icon: const Icon(Icons.close, size: 13),
-                                ),
+                            const SizedBox(width: Space.xs),
+                            // The close button shows on the current tab and on hover, so idle tabs read cleanly.
+                            Opacity(
+                              opacity: selected || _hovered ? 1 : 0,
+                              child: IconButton(
+                                tooltip: AppLocalizations.of(context).close,
+                                onPressed: widget.onClose,
+                                constraints: const BoxConstraints.tightFor(width: 20, height: 20),
+                                style: IconButton.styleFrom(minimumSize: const Size(20, 20), padding: EdgeInsets.zero),
+                                icon: const Icon(Icons.close, size: 13),
                               ),
-                            ],
+                            ),
                           ],
                         ),
                       ),
