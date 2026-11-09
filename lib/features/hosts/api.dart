@@ -1,4 +1,5 @@
-export 'application/hosts.dart' show hostsProvider, hostLibraryProvider, HostsNotifier, HostDeleteCleanupFailure;
+export 'application/hosts.dart'
+    show hostsProvider, hostLibraryProvider, HostsNotifier, HostDeleteCleanupFailure, HostProxyCleanupFailure;
 export 'domain/host.dart';
 export 'domain/host_library.dart';
 export 'presentation/vault_page.dart';

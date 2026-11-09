@@ -464,6 +464,66 @@ abstract class AppLocalizations {
   /// **'Password'**
   String get password;
 
+  /// No description provided for @showPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get showPassword;
+
+  /// No description provided for @hidePassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get hidePassword;
+
+  /// No description provided for @hostPasswordLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading saved password…'**
+  String get hostPasswordLoading;
+
+  /// No description provided for @hostPasswordLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the saved password. Unlock secure storage and retry.'**
+  String get hostPasswordLoadFailed;
+
+  /// No description provided for @hostPasswordRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry password loading'**
+  String get hostPasswordRetry;
+
+  /// No description provided for @hostPasswordRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove saved password'**
+  String get hostPasswordRemove;
+
+  /// No description provided for @hostPasswordKeep.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep saved password'**
+  String get hostPasswordKeep;
+
+  /// No description provided for @hostPasswordRemovalPending.
+  ///
+  /// In en, this message translates to:
+  /// **'The saved password will be removed when you save.'**
+  String get hostPasswordRemovalPending;
+
+  /// No description provided for @hostPasswordSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Host settings were saved, but the password change could not be confirmed. Check secure storage and save again.'**
+  String get hostPasswordSaveFailed;
+
+  /// No description provided for @hostPasswordCleanupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Host settings were saved, but old proxy credentials could not be removed. The password change has not been saved. Check secure storage and save again.'**
+  String get hostPasswordCleanupFailed;
+
   /// No description provided for @privateKey.
   ///
   /// In en, this message translates to:

@@ -4,11 +4,13 @@ export 'application/credential_access.dart'
         ConnectionCredentials,
         HostCredentialCleanup,
         HostPasswordImport,
+        HostPasswordEditor,
         TranslationCredentials,
         CredentialImportFailure,
         connectionCredentialsProvider,
         hostCredentialCleanupProvider,
         hostPasswordImportProvider,
+        hostPasswordEditorProvider,
         translationCredentialsProvider;
 export 'application/keys.dart' show KeyInUse, KeysNotifier, keysProvider, keyReferencesProvider;
 export 'domain/ssh_key.dart';

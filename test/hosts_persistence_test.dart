@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/credentials/adapters/secure_store.dart';
+import 'package:sshairy/features/credentials/api.dart' show hostPasswordImportProvider;
 import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
@@ -27,6 +28,7 @@ class _Secrets extends SecretStore {
     deleted.add(ref);
     await gate?.future;
     if (fail) throw StateError('secure store unavailable');
+    values.remove(ref);
   }
 }
 
@@ -124,12 +126,147 @@ void main() {
   test('failed proxy cleanup retains the committed new route and queue recovers', () async {
     await hosts.save(original);
     secrets.fail = true;
-    await expectLater(hosts.save(changed({'proxy': null})), throwsStateError);
+    final expectedCommit = hosts.revision + 1;
+    await expectLater(
+      hosts.saveWithRevision(changed({'proxy': null}), expectedRevision: hosts.revision),
+      throwsA(isA<HostProxyCleanupFailure>().having((e) => e.committedRevision, 'committedRevision', expectedCommit)),
+    );
     expect(hosts.byId(original.id)!.proxy, isNull);
     expect((persisted().single as Map)['proxy'], isNull);
     secrets.fail = false;
-    await hosts.save(changed({'proxy': null}));
+    await hosts.saveWithRevision(changed({'proxy': null}), expectedRevision: hosts.revision);
     expect(hosts.byId(original.id)!.proxy, isNull);
+    expect(secrets.deleted, [original.proxyRef, original.proxyRef], reason: 'the failed reference is retried');
+  });
+
+  test('retry never removes a proxy reference that has become active again', () async {
+    await hosts.save(original);
+    secrets.fail = true;
+    await expectLater(hosts.save(changed({'proxy': null})), throwsA(isA<HostProxyCleanupFailure>()));
+    secrets.fail = false;
+    await hosts.save(original);
+    await hosts.saveWithRevision(hosts.byId(original.id)!, expectedRevision: hosts.revision);
+    expect(secrets.deleted, [original.proxyRef], reason: 'restoring the proxy makes its credential active again');
+  });
+
+  test('a save returns its own committed revision despite a queued later edit', () async {
+    await hosts.save(original);
+    final revision = hosts.revision;
+    secrets.gate = Completer<void>();
+    final saving = hosts.saveWithRevision(changed({'proxy': null}), expectedRevision: revision);
+    for (var i = 0; i < 100 && secrets.deleted.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(secrets.deleted, [original.proxyRef]);
+    final later = hosts.save(changed({'proxy': null, 'label': 'later'}));
+    secrets.gate!.complete();
+    final committed = await saving;
+    await later;
+    expect(committed, revision + 1);
+    expect(hosts.revision, revision + 2);
+    await expectLater(
+      hosts.saveWithRevision(changed({'proxy': null}), expectedRevision: committed),
+      throwsA(isA<JsonFileError>().having((e) => e.kind, 'kind', JsonFileFailure.conflict)),
+    );
+    expect(hosts.byId(original.id)!.label, 'later');
+    // JsonFile.idle retains a rejected write until a successful write clears it.
+    await hosts.save(hosts.byId(original.id)!);
+  });
+
+  test('unrelated password import succeeds while pending proxy cleanup still fails', () async {
+    await hosts.save(original);
+    secrets.values[original.passwordRef] = const Secret('existing-password');
+    secrets.values[original.proxyRef] = const Secret('old-proxy-password');
+    secrets.fail = true;
+    await expectLater(hosts.save(changed({'proxy': null})), throwsA(isA<HostProxyCleanupFailure>()));
+    const imported = Host(id: HostId('imported'), label: 'imported', address: 'imported.example', username: 'u');
+    var importedPasswords = 0;
+    await hosts
+        .importDrafts(
+          [imported],
+          expectedRevision: hosts.revision,
+          aroundCommit: (commit) async {
+            importedPasswords = await container.read(hostPasswordImportProvider).importMissing({
+              imported.id: const Secret('imported-password'),
+              original.id: const Secret('must-not-replace'),
+            }, commit);
+          },
+        )
+        .timeout(const Duration(seconds: 5));
+    expect(importedPasswords, 1);
+    expect(hosts.byId(imported.id), isNotNull);
+    expect(secrets.values[imported.passwordRef]?.reveal(), 'imported-password');
+    expect(secrets.values[original.passwordRef]?.reveal(), 'existing-password');
+    expect(secrets.values[original.proxyRef]?.reveal(), 'old-proxy-password');
+    expect(secrets.deleted, [original.proxyRef], reason: 'an unrelated import never retries another host cleanup');
+    secrets.fail = false;
+    await hosts.saveWithRevision(hosts.byId(original.id)!, expectedRevision: hosts.revision);
+    expect(secrets.deleted, [original.proxyRef, original.proxyRef]);
+    expect(secrets.values[original.proxyRef], isNull);
+    expect(secrets.values[imported.passwordRef]?.reveal(), 'imported-password');
+  });
+
+  test('saving a different host does not retry another host pending proxy cleanup', () async {
+    await hosts.save(original);
+    secrets.values[original.passwordRef] = const Secret('existing-password');
+    secrets.values[original.proxyRef] = const Secret('old-proxy-password');
+    secrets.fail = true;
+    await expectLater(hosts.save(changed({'proxy': null})), throwsA(isA<HostProxyCleanupFailure>()));
+    const imported = Host(id: HostId('imported'), label: 'imported', address: 'imported.example', username: 'u');
+    await hosts
+        .importDrafts(
+          [imported],
+          expectedRevision: hosts.revision,
+          aroundCommit: (commit) async {
+            await container.read(hostPasswordImportProvider).importMissing({
+              imported.id: const Secret('imported-password'),
+            }, commit);
+          },
+        )
+        .timeout(const Duration(seconds: 5));
+    await hosts.save(imported.copyWith(label: 'unrelated edit'));
+    await hosts.saveWithRevision(hosts.byId(imported.id)!, expectedRevision: hosts.revision);
+    expect(hosts.byId(imported.id), isNotNull);
+    expect(secrets.values[imported.passwordRef]?.reveal(), 'imported-password');
+    expect(secrets.values[original.passwordRef]?.reveal(), 'existing-password');
+    expect(secrets.values[original.proxyRef]?.reveal(), 'old-proxy-password');
+    expect(secrets.deleted, [original.proxyRef]);
+    secrets.fail = false;
+    await hosts.save(hosts.byId(original.id)!);
+    expect(secrets.values[original.proxyRef], isNull);
+    expect(secrets.values[imported.passwordRef]?.reveal(), 'imported-password');
+  });
+
+  test('an import metadata conflict rolls back only its new password before pending cleanup resumes', () async {
+    await hosts.save(original);
+    secrets.values[original.passwordRef] = const Secret('existing-password');
+    secrets.values[original.proxyRef] = const Secret('old-proxy-password');
+    secrets.fail = true;
+    await expectLater(hosts.save(changed({'proxy': null})), throwsA(isA<HostProxyCleanupFailure>()));
+    final staleRevision = hosts.revision;
+    secrets.fail = false;
+    await hosts.save(hosts.byId(original.id)!.copyWith(label: 'later'));
+    const imported = Host(id: HostId('imported'), label: 'imported', address: 'imported.example', username: 'u');
+    await expectLater(
+      hosts
+          .importDrafts(
+            [imported],
+            expectedRevision: staleRevision,
+            aroundCommit: (commit) async {
+              await container.read(hostPasswordImportProvider).importMissing({
+                imported.id: const Secret('imported-password'),
+                original.id: const Secret('must-not-replace'),
+              }, commit);
+            },
+          )
+          .timeout(const Duration(seconds: 5)),
+      throwsA(isA<JsonFileError>().having((e) => e.kind, 'kind', JsonFileFailure.conflict)),
+    );
+    expect(hosts.byId(imported.id), isNull);
+    expect(secrets.values[imported.passwordRef], isNull);
+    expect(secrets.values[original.passwordRef]?.reveal(), 'existing-password');
+    expect(secrets.deleted, [original.proxyRef, original.proxyRef, imported.passwordRef]);
+    await hosts.save(hosts.byId(original.id)!);
   });
 
   test('unrelated updates do not clear proxy credentials', () async {

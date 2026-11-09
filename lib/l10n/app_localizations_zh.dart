@@ -212,6 +212,37 @@ class AppLocalizationsZh extends AppLocalizations {
   String get password => '密码';
 
   @override
+  String get showPassword => '显示密码';
+
+  @override
+  String get hidePassword => '隐藏密码';
+
+  @override
+  String get hostPasswordLoading => '正在读取已存密码…';
+
+  @override
+  String get hostPasswordLoadFailed => '无法读取已存密码，请解锁系统安全存储后重试。';
+
+  @override
+  String get hostPasswordRetry => '重试读取密码';
+
+  @override
+  String get hostPasswordRemove => '移除已存密码';
+
+  @override
+  String get hostPasswordKeep => '保留已存密码';
+
+  @override
+  String get hostPasswordRemovalPending => '保存后将移除已存密码。';
+
+  @override
+  String get hostPasswordSaveFailed => '主机配置已保存，但密码修改未能确认。请检查系统安全存储后再次保存。';
+
+  @override
+  String get hostPasswordCleanupFailed =>
+      '主机配置已保存，但旧代理凭据未能移除，密码修改尚未保存。请检查系统安全存储后再次保存。';
+
+  @override
   String get privateKey => '私钥';
 
   @override

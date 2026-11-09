@@ -13,6 +13,13 @@ class HostDeleteCleanupFailure implements Exception {
   const HostDeleteCleanupFailure();
 }
 
+/// The configuration is committed; retry only with this exact revision, never a later queued edit's revision.
+class HostProxyCleanupFailure implements Exception {
+  const HostProxyCleanupFailure(this.committedRevision);
+
+  final int committedRevision;
+}
+
 final hostsProvider = NotifierProvider<HostsNotifier, List<Host>>(HostsNotifier.new);
 
 /// Groups, identities and defaults beside the hosts; it changes whenever [hostsProvider] does.
@@ -69,15 +76,19 @@ class HostsNotifier extends Notifier<List<Host>> {
     return next;
   }
 
-  /// Validates the edited snapshot, writes it, then publishes it; a failure at any step publishes nothing. [edit]
-  /// returns null for "nothing to do". Unless [routes] is off, a change may not leave a host with a route that was
-  /// not already broken: a missing jump host, a loop, or more than eight hops.
+  final _pendingProxyCleanup = <(HostId, String)>{};
+
+  /// Validates and writes before publishing; post-commit credential cleanup can still fail after publication.
+  /// [edit] returns null for "nothing to do". Unless [routes] is off, a change may not leave a host with a route
+  /// that was not already broken: a missing jump host, a loop, or more than eight hops.
   Future<void> _apply(
     HostLibrary? Function(HostLibrary current) edit, {
     int? expectedRevision,
     bool routes = true,
     Future<void> Function(HostLibrary before)? after,
     Future<void> Function(Future<void> Function() commit)? aroundCommit,
+    void Function(int revision)? onCommitted,
+    HostId? retryProxyFor,
   }) => _change(() async {
     final current = library;
     final edited = edit(current);
@@ -88,18 +99,13 @@ class HostsNotifier extends Notifier<List<Host>> {
       throw ArgumentError('invalid route');
     }
 
+    late int committedRevision;
     Future<void> commit() async {
       await _file.write(next.toJson(), expectedRevision: expectedRevision);
+      committedRevision = _file.revision;
       _library = next;
       state = next.hosts;
-      // Proxy credentials name their endpoint, so an orphan cannot be sent to the new proxy.
-      for (final host in next.hosts) {
-        final before = current.hostById(host.id)?.proxy;
-        if (before != null && before.key != host.proxy?.key) {
-          await ref.read(hostCredentialCleanupProvider).clearProxy(host.id, before.key);
-        }
-      }
-      await after?.call(current);
+      onCommitted?.call(committedRevision);
     }
 
     // A key must still exist when something starts to use it, and cannot be deleted while it is used.
@@ -110,10 +116,51 @@ class HostsNotifier extends Notifier<List<Host>> {
     } else {
       await ref.read(keysProvider.notifier).withKeys(keys, persist);
     }
+
+    // An import holds the credential queue around commit; re-enter it only after aroundCommit releases it.
+    // Proxy credentials name their endpoint, so an orphan cannot be sent to the new proxy.
+    final cleanupHosts = {?retryProxyFor};
+    for (final host in next.hosts) {
+      final before = current.hostById(host.id)?.proxy;
+      if (before != null && before.key != host.proxy?.key) {
+        _pendingProxyCleanup.add((host.id, before.key));
+        cleanupHosts.add(host.id);
+      }
+    }
+    var cleanupFailed = false;
+    for (final entry in _pendingProxyCleanup.toList()) {
+      final (id, proxyKey) = entry;
+      if (!cleanupHosts.contains(id)) continue;
+      // A later edit may put the same proxy back. It now owns its credential again.
+      if (next.hostById(id)?.proxy?.key == proxyKey) {
+        _pendingProxyCleanup.remove(entry);
+        continue;
+      }
+      try {
+        await ref.read(hostCredentialCleanupProvider).clearProxy(id, proxyKey);
+        _pendingProxyCleanup.remove(entry);
+      } on Object {
+        cleanupFailed = true;
+      }
+    }
+    await after?.call(current);
+    if (cleanupFailed) throw HostProxyCleanupFailure(committedRevision);
   });
 
   Future<void> save(Host host, {int? expectedRevision}) =>
-      _apply((library) => library.withHost(host), expectedRevision: expectedRevision);
+      _apply((library) => library.withHost(host), expectedRevision: expectedRevision, retryProxyFor: host.id);
+
+  /// Form saves need the revision of their own commit, including when proxy cleanup later fails.
+  Future<int> saveWithRevision(Host host, {required int expectedRevision}) async {
+    late int committedRevision;
+    await _apply(
+      (library) => library.withHost(host),
+      expectedRevision: expectedRevision,
+      onCommitted: (revision) => committedRevision = revision,
+      retryProxyFor: host.id,
+    );
+    return committedRevision;
+  }
 
   Future<void> importDrafts(
     List<Host> additions, {

@@ -61,6 +61,7 @@ class ConnectionEditor extends ConsumerStatefulWidget {
     this.self,
     this.fresh = false,
     this.loginOptional = false,
+    this.passwordField,
   });
 
   final ConnectionOverrides initial;
@@ -76,6 +77,9 @@ class ConnectionEditor extends ConsumerStatefulWidget {
 
   /// A group or the defaults may leave the login unset; a host needs one from somewhere.
   final bool loginOptional;
+
+  /// Host-owned password editing stays independent of inherited/shared login metadata.
+  final Widget? passwordField;
 
   @override
   ConsumerState<ConnectionEditor> createState() => ConnectionEditorState();
@@ -318,6 +322,7 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
             ],
           ),
         ),
+        if (widget.passwordField != null) ...[formGap, widget.passwordField!],
         formGap,
         route,
       ],

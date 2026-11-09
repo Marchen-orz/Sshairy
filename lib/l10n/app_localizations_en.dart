@@ -224,6 +224,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String get password => 'Password';
 
   @override
+  String get showPassword => 'Show password';
+
+  @override
+  String get hidePassword => 'Hide password';
+
+  @override
+  String get hostPasswordLoading => 'Loading saved password…';
+
+  @override
+  String get hostPasswordLoadFailed =>
+      'Could not read the saved password. Unlock secure storage and retry.';
+
+  @override
+  String get hostPasswordRetry => 'Retry password loading';
+
+  @override
+  String get hostPasswordRemove => 'Remove saved password';
+
+  @override
+  String get hostPasswordKeep => 'Keep saved password';
+
+  @override
+  String get hostPasswordRemovalPending =>
+      'The saved password will be removed when you save.';
+
+  @override
+  String get hostPasswordSaveFailed =>
+      'Host settings were saved, but the password change could not be confirmed. Check secure storage and save again.';
+
+  @override
+  String get hostPasswordCleanupFailed =>
+      'Host settings were saved, but old proxy credentials could not be removed. The password change has not been saved. Check secure storage and save again.';
+
+  @override
   String get privateKey => 'Private key';
 
   @override

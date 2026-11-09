@@ -20,6 +20,14 @@ abstract interface class TranslationCredentials {
   Future<Secret?> read(String identity);
 }
 
+/// The user-owned host form can edit only its host's password, never private keys or other credential kinds.
+/// Values stay in the form's transient draft; this port is not exposed through capabilities or AI.
+abstract interface class HostPasswordEditor {
+  Future<Secret?> readPassword(HostId id);
+  Future<void> savePassword(HostId id, Secret value);
+  Future<void> clearPassword(HostId id);
+}
+
 /// Local migration fills missing passwords, then persists host metadata while the credential queue is held.
 /// The commit callback must not call these credential ports again.
 abstract interface class HostPasswordImport {
@@ -50,6 +58,7 @@ final _credentialsProvider = Provider<_StoredCredentials>(
 final connectionCredentialsProvider = Provider<ConnectionCredentials>((ref) => ref.read(_credentialsProvider));
 final hostCredentialCleanupProvider = Provider<HostCredentialCleanup>((ref) => ref.read(_credentialsProvider));
 final hostPasswordImportProvider = Provider<HostPasswordImport>((ref) => ref.read(_credentialsProvider));
+final hostPasswordEditorProvider = Provider<HostPasswordEditor>((ref) => ref.read(_credentialsProvider));
 final translationCredentialsProvider = Provider<TranslationCredentials>(
   (ref) => _TranslationCredentials(ref.read(_credentialsProvider)),
 );
@@ -76,7 +85,8 @@ class _TranslationCredentials implements TranslationCredentials {
   Future<Secret?> read(String identity) => _credentials.readTranslation(identity);
 }
 
-class _StoredCredentials implements ConnectionCredentials, HostCredentialCleanup, HostPasswordImport {
+class _StoredCredentials
+    implements ConnectionCredentials, HostCredentialCleanup, HostPasswordImport, HostPasswordEditor {
   _StoredCredentials(this._store, this._revision);
   final SecretStore _store;
   final CredentialRevision _revision;
@@ -93,6 +103,35 @@ class _StoredCredentials implements ConnectionCredentials, HostCredentialCleanup
 
   @override
   Future<Secret?> read(SecretRef ref) => _serial(() => _store.read(ref));
+
+  @override
+  Future<Secret?> readPassword(HostId id) => read(SecretRef.hostPassword(id));
+
+  @override
+  Future<void> savePassword(HostId id, Secret value) {
+    // An empty draft keeps the old secret; removal is a separate explicit action.
+    if (value.reveal().isEmpty) return Future.value();
+    return _serial(() async {
+      final ref = SecretRef.hostPassword(id);
+      final old = await _store.read(ref);
+      if (old?.reveal() == value.reveal()) return;
+      try {
+        await _store.write(ref, value);
+      } finally {
+        // A platform write may fail after writing. Do not reuse a pool snapshot with uncertain credentials.
+        _revision.changed();
+      }
+    });
+  }
+
+  @override
+  Future<void> clearPassword(HostId id) => _serial(() async {
+    try {
+      await _store.delete(SecretRef.hostPassword(id));
+    } finally {
+      _revision.changed();
+    }
+  });
 
   Future<bool> hasTranslation(String identity) =>
       _serial(() async => await _store.read(SecretRef.translation(identity)) != null);

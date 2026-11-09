@@ -14,8 +14,8 @@ import 'keys_panel.dart';
 
 enum _AuthMode { password, key, keyPassword }
 
-/// Username and the way to authenticate it: shared by hosts, groups, defaults and identities. Secrets are not edited
-/// here; passwords and passphrases are asked for when they are needed.
+/// Username and the way to authenticate it: shared by hosts, groups, defaults and identities. Host passwords are
+/// edited separately in the host form; passphrases are asked for when needed.
 class LoginEditor extends ConsumerStatefulWidget {
   const LoginEditor({super.key, this.initial, this.enabled = true});
 
