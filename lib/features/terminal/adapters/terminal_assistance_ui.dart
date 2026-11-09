@@ -1,21 +1,12 @@
 part of 'terminal_session.dart';
 
 extension _AssistancePane on _TerminalPaneState {
-  Future<void> _showHistory() async {
-    final request = _session.commandAssistance.value.request;
-    final selected = await showAppDialog<String>(
-      context: context,
-      builder: (_) => _CommandHistoryDialog(session: _session, request: request),
-    );
-    if (!mounted) return;
-    if (selected != null && request != null) await _session.acceptCommand(request, selected);
-    _focus.requestFocus();
-  }
-
   bool _popupAvailable(CommandAssistanceState state) =>
       widget.active &&
       widget.visible &&
       !_searching &&
+      !_composerOpen &&
+      !_historyOpen &&
       _focus.hasFocus &&
       _completionCursor.value != null &&
       state.request != null &&
@@ -373,7 +364,15 @@ extension _AssistancePane on _TerminalPaneState {
                   if (state.candidates.isEmpty && status != null)
                     Padding(
                       padding: const EdgeInsets.all(Space.sm),
-                      child: Text(status, style: Theme.of(context).textTheme.bodySmall),
+                      child: Tooltip(
+                        message: status,
+                        child: Text(
+                          status,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                     )
                   else
                     Flexible(
@@ -520,83 +519,4 @@ extension _AssistancePane on _TerminalPaneState {
       );
     },
   );
-}
-
-class _CommandHistoryDialog extends StatefulWidget {
-  const _CommandHistoryDialog({required this.session, required this.request});
-  final TerminalSession session;
-  final CommandCompletionRequest? request;
-
-  @override
-  State<_CommandHistoryDialog> createState() => _CommandHistoryDialogState();
-}
-
-class _CommandHistoryDialogState extends State<_CommandHistoryDialog> {
-  final _search = TextEditingController();
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return AppDialog(
-      title: Text(l.commandHistory),
-      width: 580,
-      content: SizedBox(
-        width: 520,
-        height: 340,
-        child: Column(
-          children: [
-            TextField(
-              autofocus: true,
-              controller: _search,
-              decoration: InputDecoration(hintText: l.find, prefixIcon: const Icon(Icons.search, size: 16)),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: Space.sm),
-            Expanded(
-              child: ValueListenableBuilder<List<String>>(
-                valueListenable: widget.session.commandHistory,
-                builder: (context, commands, _) {
-                  final query = _search.text.toLowerCase();
-                  final rows = commands.where((text) => text.toLowerCase().contains(query)).toList();
-                  if (rows.isEmpty) return Center(child: Text(l.commandHistoryEmpty));
-                  return ListView.builder(
-                    itemCount: rows.length,
-                    itemBuilder: (context, index) {
-                      final text = rows[index];
-                      final canInsert = widget.request != null && text.startsWith(widget.request!.text);
-                      return Row(
-                        children: [
-                          Expanded(child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis)),
-                          IconButton(
-                            tooltip: l.copy,
-                            icon: const Icon(Icons.copy_outlined, size: 16),
-                            onPressed: () => Clipboard.setData(ClipboardData(text: text)),
-                          ),
-                          IconButton(
-                            tooltip: l.commandHistoryInsert,
-                            icon: const Icon(Icons.keyboard_return, size: 16),
-                            onPressed: canInsert ? () => Navigator.pop(context, text) : null,
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: widget.session.clearCommandHistory, child: Text(l.commandHistoryClear)),
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(l.close)),
-      ],
-    );
-  }
 }

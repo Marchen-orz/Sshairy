@@ -3506,6 +3506,24 @@ abstract class AppLocalizations {
   /// **'Clear history'**
   String get commandHistoryClear;
 
+  /// No description provided for @terminalMultilineInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Multiline input'**
+  String get terminalMultilineInput;
+
+  /// No description provided for @terminalMultilineSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to terminal'**
+  String get terminalMultilineSend;
+
+  /// No description provided for @terminalMultilinePlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter commands…'**
+  String get terminalMultilinePlaceholder;
+
   /// No description provided for @cmdToolCompose.
   ///
   /// In en, this message translates to:

@@ -1743,11 +1743,239 @@ void main() {
       await tester.tap(find.text('Command history'));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('No commands'), findsNothing);
-      await tester.tap(find.text('Clear history'));
+      await tester.tap(find.byTooltip('Clear history'));
       await tester.pump();
       expect(session.commandHistory.value, isEmpty);
       expect(find.text('No commands'), findsOneWidget);
       await unmount(tester);
+    });
+
+    testWidgets('history searches, dismisses outside and keeps a pinned draggable list inside its pane', (
+      tester,
+    ) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ echo first');
+        session.commandSubmitted();
+        await _feed(tester, shell, '\r\nu@box:~\$ git status');
+        session.commandSubmitted();
+        await _feed(tester, shell, '\r\nu@box:~\$ ');
+        await chord(tester, [LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft], LogicalKeyboardKey.keyH);
+        final popup = find.byKey(const ValueKey('command-history-popup'));
+        expect(popup, findsOneWidget);
+        expect(find.byType(Dialog), findsNothing);
+        await tester.enterText(find.byKey(const ValueKey('command-history-search')), 'FIRST');
+        await tester.pump();
+        expect(find.text('echo first'), findsOneWidget);
+        expect(find.text('git status'), findsNothing);
+        final outside = tester.getBottomRight(find.byType(TerminalPane)) - const Offset(12, 12);
+        await tester.tapAt(outside);
+        await tester.pump();
+        expect(popup, findsNothing);
+
+        await chord(tester, [LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft], LogicalKeyboardKey.keyH);
+        await tester.tap(find.byTooltip('Pin'));
+        await tester.pump();
+        await tester.tapAt(outside);
+        await tester.pump();
+        expect(popup, findsOneWidget);
+        final before = tester.getRect(popup);
+        await tester.drag(find.byKey(const ValueKey('command-history-drag')), const Offset(40, 60));
+        await tester.pump();
+        final after = tester.getRect(popup);
+        final pane = tester.getRect(find.byType(TerminalPane));
+        expect(after.top, greaterThan(before.top));
+        expect(pane.contains(after.topLeft), isTrue);
+        expect(pane.contains(after.bottomRight), isTrue);
+        await mountView(tester, active: false);
+        await tester.pump();
+        expect(popup, findsOneWidget, reason: 'A pinned list stays visible in an unfocused split pane');
+        await mountView(tester, active: false, visible: false);
+        await tester.pump();
+        expect(popup, findsNothing);
+        await mountView(tester);
+        await tester.pump();
+        expect(popup, findsOneWidget);
+        await tester.tapAt(outside);
+        await tester.pump();
+        shell.writes.clear();
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyX, character: 'x');
+        expect(shell.writes.join(), 'x', reason: 'A pinned popup must not trap terminal input');
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump();
+        expect(popup, findsNothing);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('history keyboard acceptance appends suffix and incompatible commands cannot replace a draft', (
+      tester,
+    ) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ echo first');
+        session.commandSubmitted();
+        await _feed(tester, shell, '\r\nu@box:~\$ git status');
+        session.commandSubmitted();
+        await _feed(tester, shell, '\r\nu@box:~\$ git');
+        await chord(tester, [LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft], LogicalKeyboardKey.keyH);
+        shell.writes.clear();
+        await tester.enterText(find.byKey(const ValueKey('command-history-search')), 'echo');
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(shell.writes, isEmpty);
+        expect(find.byKey(const ValueKey('command-history-popup')), findsOneWidget);
+        await tester.enterText(find.byKey(const ValueKey('command-history-search')), 'status');
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump();
+        expect(shell.writes.join(), ' status');
+        expect(find.byKey(const ValueKey('command-history-popup')), findsNothing);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('multiline editor keeps its draft and sends only after the controlled paste approval', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await tester.tap(find.byKey(const ValueKey('terminal-multiline-toggle')));
+        await tester.pump();
+        final editor = find.byKey(const ValueKey('terminal-multiline-editor'));
+        await tester.enterText(editor, 'echo one\necho two');
+        shell.writes.clear();
+        await tester.testTextInput.receiveAction(TextInputAction.newline);
+        await tester.pump();
+        expect(shell.writes, isEmpty);
+        expect(session.multilineDraft, contains('echo one\necho two'));
+        await tester.tap(find.byTooltip('Close'));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('terminal-multiline-composer')), findsNothing);
+        expect(session.multilineDraft, contains('echo two'));
+        await tester.tap(find.byKey(const ValueKey('terminal-multiline-toggle')));
+        await tester.pump();
+        expect(tester.widget<TextField>(editor).controller!.text, session.multilineDraft);
+        final text = session.multilineDraft;
+        await tester.tap(find.byKey(const ValueKey('terminal-multiline-send')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(shell.writes, isEmpty);
+        await tester.tap(find.widgetWithText(FilledButton, 'Paste'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(shell.writes.join(), text.replaceAll('\n', '\r'));
+        expect(shell.writes.join().endsWith('echo two'), isTrue);
+        expect(session.multilineDraft, isEmpty);
+        expect(find.byKey(const ValueKey('terminal-multiline-composer')), findsNothing);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('multiline Ctrl Enter respects composing and old editor cannot send after reconnect', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await tester.tap(find.byKey(const ValueKey('terminal-multiline-toggle')));
+        await tester.pump();
+        final field = tester.widget<TextField>(find.byKey(const ValueKey('terminal-multiline-editor')));
+        field.focusNode!.requestFocus();
+        await tester.pump();
+        field.controller!.value = const TextEditingValue(
+          text: 'echo 中文',
+          selection: TextSelection.collapsed(offset: 7),
+          composing: TextRange(start: 5, end: 7),
+        );
+        await tester.pump();
+        shell.writes.clear();
+        await chord(tester, [LogicalKeyboardKey.controlLeft], LogicalKeyboardKey.enter);
+        expect(shell.writes, isEmpty);
+        expect(find.byType(Dialog), findsNothing);
+        field.controller!.value = const TextEditingValue(text: 'echo later');
+        shell.close();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        unawaited(session.connect(NoPrompts()));
+        await tester.pump();
+        await tester.pump();
+        final send = tester.widget<FilledButton>(find.byKey(const ValueKey('terminal-multiline-send')));
+        expect(send.onPressed, isNull);
+        expect(session.multilineDraft, 'echo later');
+        expect(transport.channels.last.writes, isEmpty);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('history and composer fit a narrow pane at 150 percent UI scale', (tester) async {
+      final shell = await mount(tester, scale: 1.5);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ echo small');
+        session.commandSubmitted();
+        await _feed(tester, shell, '\r\nu@box:~\$ ');
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
+              builder: (_, child) => InterfaceScale(scale: 1.5, child: child!),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(width: 180, height: 200, child: TerminalPane(session, active: true)),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        // Reparenting mounts a new view for an already connected shell; focus it before sending pane shortcuts.
+        final terminalFocus = tester.widget<TerminalView>(find.byType(TerminalView)).focusNode!;
+        terminalFocus.requestFocus();
+        await tester.pump();
+        expect(terminalFocus.hasFocus, isTrue);
+        await chord(tester, [LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft], LogicalKeyboardKey.keyH);
+        final popup = find.byKey(const ValueKey('command-history-popup'));
+        expect(popup, findsOneWidget);
+        final pane = tester.getRect(find.byType(TerminalPane));
+        expect(pane.contains(tester.getRect(popup).topLeft), isTrue);
+        expect(pane.contains(tester.getRect(popup).bottomRight), isTrue);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('terminal-multiline-toggle')));
+        await tester.pump();
+        final composer = tester.getRect(find.byKey(const ValueKey('terminal-multiline-composer')));
+        expect(pane.contains(composer.topLeft), isTrue);
+        expect(pane.contains(composer.bottomRight), isTrue);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('closing or hiding composer cancels a pending approval without losing its draft', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await tester.tap(find.byKey(const ValueKey('terminal-multiline-toggle')));
+        await tester.pump();
+        await tester.enterText(find.byKey(const ValueKey('terminal-multiline-editor')), 'echo a\necho b');
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('terminal-multiline-send')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.widgetWithText(FilledButton, 'Paste'), findsOneWidget);
+        await mountView(tester, active: false, visible: false);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.widgetWithText(FilledButton, 'Paste'), findsNothing);
+        expect(shell.writes, isEmpty);
+        expect(session.multilineDraft, 'echo a\necho b');
+      } finally {
+        await unmount(tester);
+      }
     });
   });
 }

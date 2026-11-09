@@ -1830,6 +1830,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commandHistoryClear => '清空历史';
 
   @override
+  String get terminalMultilineInput => '多行输入';
+
+  @override
+  String get terminalMultilineSend => '发送到终端';
+
+  @override
+  String get terminalMultilinePlaceholder => '输入命令…';
+
+  @override
   String get cmdToolCompose => '多容器应用';
 
   @override

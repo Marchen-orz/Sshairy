@@ -1895,6 +1895,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commandHistoryClear => 'Clear history';
 
   @override
+  String get terminalMultilineInput => 'Multiline input';
+
+  @override
+  String get terminalMultilineSend => 'Send to terminal';
+
+  @override
+  String get terminalMultilinePlaceholder => 'Enter commands…';
+
+  @override
   String get cmdToolCompose => 'Multi-container apps';
 
   @override

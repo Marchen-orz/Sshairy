@@ -58,6 +58,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   CancellationToken? _candidateTranslationCancel;
   Set<String> _candidateTranslationOriginals = const {};
   String? _candidateTranslationLocale;
+  var _historyOpen = false, _historyPinned = false, _composerOpen = false;
+  Offset? _historyOffset;
+  int? _composerGeneration;
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;
@@ -89,10 +92,14 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     super.didUpdateWidget(old);
     _scheduleImeRect();
     _scheduleCandidateTranslations();
+    if (!widget.active || !widget.visible) {
+      if (!_historyPinned) _historyOpen = false;
+      _composerOpen = false;
+    }
     if (widget.active != old.active) _markViewed();
     if (widget.active && !old.active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.active && !_searching) _focus.requestFocus();
+        if (mounted && widget.active && !_searching && !_composerOpen) _focus.requestFocus();
       });
     }
   }
@@ -105,7 +112,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   Future<void> _connect() => _session.connect(DialogPrompts(context));
 
   void _focusWhenConnected() {
-    if (widget.active && !_searching && _session.status == SessionStatus.connected) {
+    if (widget.active && !_searching && !_historyOpen && !_composerOpen && _session.status == SessionStatus.connected) {
       _focus.requestFocus();
     }
   }
@@ -176,6 +183,10 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape && _historyOpen) {
+      _closeHistory();
+      return KeyEventResult.handled;
+    }
     final assistance = _assistanceKey(event);
     if (assistance != null) return assistance;
     final keys = HardwareKeyboard.instance;
@@ -286,7 +297,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
         item(l.paste, Icons.content_paste_outlined, _paste),
         item(l.selectAll, Icons.select_all, _selectAll),
         item(l.find, Icons.search, () => setState(() => _searching = true)),
-        item(l.commandHistory, Icons.history, _showHistory),
+        item(l.commandHistory, Icons.history, () => _showHistory(details.globalPosition)),
+        item(l.terminalMultilineInput, Icons.edit_note_outlined, _showComposer, enabled: _session.canInsert),
         item(l.clearScreen, Icons.clear_all, _terminal.clear),
         if (widget.actions.isNotEmpty) const AppMenuDivider(),
         for (final a in widget.actions) item(a.label, a.icon, a.run),
@@ -416,6 +428,22 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
                   ),
                 ),
               ),
+            if (widget.visible) ...[
+              if (!_searching && !_composerOpen && !_historyOpen && _session.status == SessionStatus.connected)
+                Positioned(
+                  top: Space.xs,
+                  right: Space.sm,
+                  child: IconButton(
+                    key: const ValueKey('terminal-multiline-toggle'),
+                    tooltip: l.terminalMultilineInput,
+                    icon: const Icon(Icons.edit_note_outlined, size: 18),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _showComposer,
+                  ),
+                ),
+              if ((widget.active || _historyPinned) && _historyOpen) _historyOverlay(),
+              if (widget.active && _composerOpen) _composerOverlay(),
+            ],
           ],
         );
       },

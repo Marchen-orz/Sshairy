@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:xterm2/xterm.dart';
 
-import '../../../design/dialog.dart';
 import '../../../design/cursor_popup.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
@@ -41,6 +40,7 @@ part 'terminal_pane.dart';
 part 'terminal_search.dart';
 part 'terminal_assistance.dart';
 part 'terminal_assistance_ui.dart';
+part 'terminal_input_overlays.dart';
 
 /// [idle] has never connected; a restored tab waits there until the user connects.
 enum SessionStatus { idle, connecting, connected, failed, disconnected }
@@ -78,6 +78,9 @@ class TerminalSession extends ChangeNotifier {
 
   final SessionId id;
   final Host host;
+
+  /// UI draft only; it never enters the layout, history or application notifications.
+  String multilineDraft = '';
 
   /// False for restored tabs: the first view shows a connect button instead of dialling (docs/MODULES.md §3).
   final bool autoConnect;
@@ -492,6 +495,7 @@ class TerminalSession extends ChangeNotifier {
     _ownedPaths?.dispose();
     _ownedPaths = null;
     _commands.clear();
+    multilineDraft = '';
     _history.value = const [];
     _assistance.value = const CommandAssistanceState();
     _submittedLine = null;
