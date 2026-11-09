@@ -16,3 +16,6 @@ export 'presentation/translation_settings.dart' show TranslationSettings;
 export 'domain/insertion.dart' show InsertResult, InsertPreview, ConfirmInsert;
 export 'presentation/confirm_insert.dart' show confirmTerminalInsert;
 export 'application/insertion.dart';
+export 'domain/terminal_target.dart';
+export 'domain/local_pty.dart';
+export 'application/local_terminal.dart';

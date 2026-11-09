@@ -583,6 +583,7 @@
   "terminalMultilineInput": "多行输入",
   "terminalMultilineSend": "发送到终端",
   "terminalMultilinePlaceholder": "输入命令…",
+  "localShellsEmpty": "未发现本地终端",
   "cmdToolCompose": "多容器应用",
   "cmdToolTmux": "终端复用器",
   "cmdToolScreen": "终端复用器",

@@ -105,6 +105,26 @@ String? visibleShellCommand(String beforeCursor, String afterCursor) {
   return commandIsSingleLine(command) ? command : null;
 }
 
+/// Conservative defaults for local shells. Custom prompts still require semantic OSC boundaries.
+String? visibleLocalShellCommand(
+  String beforeCursor,
+  String afterCursor, {
+  required bool powershell,
+  required bool bash,
+}) {
+  if (afterCursor.trim().isNotEmpty) return null;
+  final prompt =
+      (bash
+              ? RegExp(r'^[#$] ')
+              : powershell
+              ? RegExp(r'^PS (?:[A-Za-z]:\\|\\\\)[^\r\n>]*> ')
+              : RegExp(r'^(?:[A-Za-z]:\\|\\\\)[^\r\n>]*>'))
+          .firstMatch(beforeCursor);
+  if (prompt == null) return null;
+  final command = beforeCursor.substring(prompt.end);
+  return commandIsSingleLine(command) ? command : null;
+}
+
 const commandCandidateLimit = 200, commandHistoryCandidateLimit = 50;
 
 bool commandCandidateValid(CommandCandidate candidate, String draft) {

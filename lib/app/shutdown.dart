@@ -83,6 +83,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             ref.read(snippetsProvider.notifier).saved,
             ref.read(workspaceProvider.notifier).saved,
           ]).timeout(const Duration(seconds: 5));
+          await ref.read(terminalSessionsProvider.notifier).shutdown().timeout(const Duration(seconds: 5));
           ref.read(connectionManagerProvider).closeAll();
           await _closeDiagnostics();
           return AppExitResponse.exit;
@@ -100,6 +101,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             case _ExitFailureChoice.quit:
               // Only an explicit choice can abandon pending saves or an unconfirmed remote listener.
               await _window.hide();
+              ref.read(terminalSessionsProvider.notifier).closeAll();
               ref.read(connectionManagerProvider).closeAll();
               return AppExitResponse.exit;
             case _ExitFailureChoice.back:

@@ -26,6 +26,8 @@ import '../domain/command_assistance.dart';
 import '../domain/completion_command_metadata.dart';
 import '../domain/directory.dart';
 import '../domain/insertion.dart';
+import '../domain/local_pty.dart';
+import '../domain/terminal_target.dart';
 import '../domain/terminal_paths.dart';
 import '../domain/spec_completion.dart';
 import 'terminal_paths.dart';
@@ -49,8 +51,8 @@ enum SessionStatus { idle, connecting, connected, failed, disconnected }
 class TerminalSession extends ChangeNotifier {
   TerminalSession(
     this.id,
-    this.host,
-    this._connections, {
+    Host host,
+    ConnectionManager connections, {
     this.autoConnect = true,
     int scrollback = 2000,
     bool Function()? autoReconnect,
@@ -59,11 +61,42 @@ class TerminalSession extends ChangeNotifier {
     CompletionTranslations? completionTranslations,
     this.remotePaths,
     List<CommandSnippet> Function()? snippets,
-  }) : _terminal = Terminal(maxLines: scrollback),
+  }) : _sshHost = host,
+       target = SshTerminalTarget(host.id),
+       _connections = connections,
+       _localPtyFactory = null,
+       _terminal = Terminal(maxLines: scrollback),
        _autoReconnect = autoReconnect ?? (() => false),
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
        _translations = completionTranslations,
        _snippets = snippets ?? (() => const []) {
+    _configureTerminal();
+  }
+
+  TerminalSession.local(
+    this.id,
+    LocalShell shell,
+    LocalPtyFactory factory, {
+    this.autoConnect = true,
+    int scrollback = 2000,
+    this.completionProvider,
+    CompletionSpecs? completionSpecs,
+    CompletionTranslations? completionTranslations,
+    List<CommandSnippet> Function()? snippets,
+  }) : _sshHost = null,
+       target = LocalTerminalTarget(shell),
+       _connections = null,
+       _localPtyFactory = factory,
+       _terminal = Terminal(maxLines: scrollback),
+       _autoReconnect = (() => false),
+       _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
+       _translations = completionTranslations,
+       _snippets = snippets ?? (() => const []),
+       remotePaths = null {
+    _configureTerminal();
+  }
+
+  void _configureTerminal() {
     _terminal.onSemanticPrompt = _semanticPrompt;
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
@@ -77,14 +110,28 @@ class TerminalSession extends ChangeNotifier {
   }
 
   final SessionId id;
-  final Host host;
+  final TerminalTarget target;
+  final Host? _sshHost;
+  Host? get sshHost => _sshHost;
+  Host get host => _sshHost ?? (throw StateError('Local terminal has no SSH host'));
+  LocalShell? get localShell => switch (target) {
+    LocalTerminalTarget(:final shell) => shell,
+    _ => null,
+  };
+  bool get isLocal => target is LocalTerminalTarget;
+  String get title => _sshHost?.title ?? localShell!.name;
+  String get targetLabel => _sshHost?.target ?? localShell!.name;
 
   /// UI draft only; it never enters the layout, history or application notifications.
   String multilineDraft = '';
 
   /// False for restored tabs: the first view shows a connect button instead of dialling (docs/MODULES.md §3).
   final bool autoConnect;
-  final ConnectionManager _connections;
+  final ConnectionManager? _connections;
+  final LocalPtyFactory? _localPtyFactory;
+  LocalPty? _localPty;
+  Future<void> _localStopped = Future.value();
+  Future<void> get stopped => _localStopped;
   final bool Function() _autoReconnect;
   final Terminal _terminal;
   SessionStatus status = SessionStatus.idle;
@@ -187,10 +234,14 @@ class TerminalSession extends ChangeNotifier {
   /// Received from the shell but not yet parsed into the model.
   int get pendingOutputBytes => _outputQueue?.pendingBytes ?? 0;
 
-  bool get canReconnect => _prompts != null && status != SessionStatus.connecting && status != SessionStatus.connected;
+  bool get canReconnect =>
+      (isLocal || _prompts != null) && status != SessionStatus.connecting && status != SessionStatus.connected;
 
   bool get canInsert =>
-      !_closed && status == SessionStatus.connected && _shell != null && !_shellEnded && !(_lease?.lost ?? true);
+      !_closed &&
+      status == SessionStatus.connected &&
+      !_shellEnded &&
+      (isLocal ? _localPty != null : _shell != null && !(_lease?.lost ?? true));
 
   Future<InsertResult> insert(
     String text, {
@@ -199,23 +250,23 @@ class TerminalSession extends ChangeNotifier {
     ConfirmInsert? confirm,
     CancellationToken? cancel,
   }) {
-    final shell = _shell, lease = _lease;
+    final shell = _shell, lease = _lease, local = _localPty;
     // Closes the confirmation dialog when the caller cancels or this shell ends; the result stays decided by `current`.
     final dismiss = CancellationToken();
     _insertions.add(dismiss);
     unawaited(cancel?.whenCancelled.then((_) => dismiss.cancel()));
     return approveInsertion(
-      preview: InsertPreview(host.target, text, run: run, cancellation: dismiss),
+      preview: InsertPreview(targetLabel, text, run: run, cancellation: dismiss),
       confirmMultiline: confirmMultiline,
       confirm: confirm,
       cancel: cancel,
-      current: () => canInsert && identical(_shell, shell) && identical(_lease, lease),
+      current: () => canInsert && identical(_shell, shell) && identical(_lease, lease) && identical(_localPty, local),
       send: () {
         _terminal.paste(text);
         if (run) {
           _rememberCommand(text);
           _markCommandSubmitted();
-          shell!.write(utf8.encode('\r'));
+          (local != null ? local.write : shell!.write)(utf8.encode('\r'));
           _entered();
         }
       },
@@ -232,6 +283,13 @@ class TerminalSession extends ChangeNotifier {
   Future<void> connect([ConnectPrompts? prompts]) {
     _stopTimer();
     _attempts = 0;
+    if (isLocal) {
+      if (_closed || status == SessionStatus.connecting || status == SessionStatus.connected) return _localStopped;
+      final previous = _localStopped;
+      final pending = _connectLocal();
+      _localStopped = Future.wait([previous, pending]).then((_) {});
+      return pending;
+    }
     return _connect(prompts);
   }
 
@@ -257,7 +315,7 @@ class TerminalSession extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final (lease, shell) = await _connections.open(
+      final (lease, shell) = await _connections!.open(
         host,
         prompts,
         (lease) => lease.openShell(
@@ -350,6 +408,84 @@ class TerminalSession extends ChangeNotifier {
       ownedShell?.close();
       ownedLease?.release();
       if (identical(_lease, ownedLease)) _lease = null;
+    }
+  }
+
+  Future<void> _connectLocal() async {
+    if (_closed || status == SessionStatus.connecting || status == SessionStatus.connected) return;
+    final cancel = CancellationToken();
+    _connecting = cancel;
+    LocalPty? owned;
+    TerminalOutput? output;
+    status = SessionStatus.connecting;
+    error = null;
+    notifyListeners();
+    try {
+      final pty = await _localPtyFactory!.start(
+        localShell!,
+        cols: max(1, _terminal.viewWidth),
+        rows: max(1, _terminal.viewHeight),
+        cancel: cancel,
+      );
+      owned = pty;
+      if (_closed || cancel.isCancelled) return;
+      _localPty = pty;
+      _shellEnded = false;
+      _cancelDirectoryLookup();
+      _resetCommandDraft();
+      void ended() {
+        if (!identical(_localPty, pty)) return;
+        _shellEnded = true;
+        if (!_closed) _resetCommandDraft();
+        _dismissInsertions();
+      }
+
+      _terminal.onOutput = (data) {
+        if (data.isEmpty || _shellEnded) return;
+        if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
+          _historyBrowsing = true;
+        } else if (!data.startsWith('\x1b') &&
+            (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b')) {
+          _historyBrowsing = false;
+        }
+        _inputPending = true;
+        _invalidateCommandDraft();
+        pty.write(utf8.encode(data));
+        if (data.contains('\r')) _entered();
+      };
+      _terminal.onResize = (cols, rows, _, _) => pty.resize(cols, rows);
+      pty.resize(_terminal.viewWidth, _terminal.viewHeight);
+      final consumer = TerminalOutput([pty.output], (data) {
+        if (!_closed && identical(_localPty, pty)) _output(data);
+      });
+      output = consumer;
+      _outputQueue = consumer;
+      _set(SessionStatus.connected);
+      final exit = pty.exitCode.then<void>((_) => ended(), onError: (Object _) => ended());
+      await Future.any([exit, consumer.failed]);
+      if (consumer.error != null) pty.close();
+      await exit;
+      await consumer.done;
+      if (consumer.error != null) throw StateError('Local terminal output failed');
+      _set(SessionStatus.disconnected);
+    } on Object {
+      if (!_closed) {
+        error = const ConnectError(ConnectFailure.network);
+        _set(SessionStatus.failed);
+      }
+    } finally {
+      output?.cancel();
+      if (identical(_outputQueue, output)) _outputQueue = null;
+      if (identical(_connecting, cancel)) _connecting = null;
+      if (identical(_localPty, owned)) {
+        _terminal.onOutput = null;
+        _terminal.onResize = null;
+        _dismissInsertions();
+        _localPty = null;
+        _shellEnded = true;
+      }
+      owned?.close();
+      if (owned != null) await owned.exitCode.catchError((Object _) => -1);
     }
   }
 
@@ -512,6 +648,8 @@ class TerminalSession extends ChangeNotifier {
     _terminal.onOutput = null;
     _terminal.onResize = null;
     _shell?.close();
+    _localPty?.close();
+    _localPty = null;
     _shell = null;
     _lease?.release();
     _lease = null;

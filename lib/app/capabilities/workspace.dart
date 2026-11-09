@@ -7,6 +7,7 @@ import '../../foundation/ids.dart';
 import '../../foundation/result.dart';
 import '../../features/capabilities/api.dart';
 import '../../features/hosts/api.dart';
+import '../../features/terminal/api.dart';
 import '../../features/workspace/api.dart';
 
 List<Capability> workspaceCapabilities(Ref ref) {
@@ -27,6 +28,23 @@ List<Capability> workspaceCapabilities(Ref ref) {
         final host = ref.read(hostsProvider.notifier).byId(HostId(a.require<String>('hostId')));
         if (host == null) return const Err(AppError('notFound', detail: 'host'));
         return Ok({'tabId': workspace().openHost(host).value});
+      },
+    ),
+    FunctionCapability(
+      'session.openLocal',
+      Effect.connect,
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'executable': {'type': 'string'},
+        },
+        'required': ['executable'],
+      },
+      (a, _) async {
+        final executable = a.require<String>('executable');
+        final shell = ref.read(localShellsProvider).where((s) => s.executable == executable).firstOrNull;
+        if (shell == null) return const Err(AppError('notFound', detail: 'localShell'));
+        return Ok({'tabId': workspace().openLocal(shell).value});
       },
     ),
     FunctionCapability(
@@ -182,8 +200,8 @@ List<PaletteEntry> workspacePaletteEntries(PaletteContext c) {
       if (workspace.session(t.layout.focusedLeaf.session) case final s?)
         PaletteEntry(
           section: PaletteSection.sessions,
-          title: t.title ?? s.host.title,
-          subtitle: s.host.target,
+          title: t.title ?? s.title,
+          subtitle: s.targetLabel,
           icon: Icons.terminal,
           run: () => c.dispatch('workspace.focus', {'tabId': t.id.value}),
         ),
@@ -193,6 +211,14 @@ List<PaletteEntry> workspacePaletteEntries(PaletteContext c) {
       icon: Icons.add,
       run: () => c.dispatch('workspace.focus'),
     ),
+    for (final shell in c.ref.read(localShellsProvider))
+      PaletteEntry(
+        section: PaletteSection.actions,
+        title: shell.name,
+        subtitle: shell.executable,
+        icon: Icons.terminal,
+        run: () => c.dispatch('session.openLocal', {'executable': shell.executable}),
+      ),
     if (state.activeTab != null) ...[
       PaletteEntry(
         section: PaletteSection.actions,

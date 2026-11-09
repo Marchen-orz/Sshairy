@@ -3524,6 +3524,12 @@ abstract class AppLocalizations {
   /// **'Enter commands…'**
   String get terminalMultilinePlaceholder;
 
+  /// No description provided for @localShellsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No local shells found'**
+  String get localShellsEmpty;
+
   /// No description provided for @cmdToolCompose.
   ///
   /// In en, this message translates to:

@@ -624,6 +624,7 @@
   "terminalMultilineInput": "Multiline input",
   "terminalMultilineSend": "Send to terminal",
   "terminalMultilinePlaceholder": "Enter commands…",
+  "localShellsEmpty": "No local shells found",
   "cmdToolCompose": "Multi-container apps",
   "cmdToolTmux": "Terminal multiplexer",
   "cmdToolScreen": "Terminal multiplexer",

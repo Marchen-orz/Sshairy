@@ -71,7 +71,11 @@ idle → resolving → connecting → handshaking → verifyingHostKey
 
 ## 3. terminal 与 workspace（M1；分屏 M3）
 
-TerminalSession 包含 sessionId、generation、channel、terminal model 与状态；Pane 仅引用 sessionId。关闭 view 不销毁 model，终端内核供应商类型不能泄漏给其他模块。
+TerminalSession 包含 sessionId、typed target（SSH 主机或本地 shell）、generation、channel、terminal model 与状态；Pane 仅引用 sessionId。关闭 view 不销毁 model，终端内核供应商类型不能泄漏给其他模块。
+
+本地终端使用真实 PTY，复用有界输出、输入策略、resize 与会话状态。当前实现范围是 Windows ConPTY，macOS/Linux 在适配完成前不提供本地 shell 入口。shell 发现只检查系统环境、PATH 与可信常见安装位置，不执行候选、不全盘扫描；Windows 包含可用的 cmd、Windows PowerShell、PowerShell 7 与 Git Bash（实际 bash.exe，不启动 mintty）。发现结果按规范化可执行路径去重。启动仅在适配层内存继承环境，不能将环境变量写入布局、日志或业务对象。本地目标不伪造 HostId、不经 SSH 拨号，不挂监控/SFTP；启动失败在 pane 原位显示。分屏/复制启动同 shell 的新进程，重启不重放输入；正常退出排空输出，关闭会话释放自有 PTY/订阅，迟到启动与退出回调按代次清理，不影响其他终端。
+
+Git Bash 的 MSYS 3.4.10 控制台路径在 resize/SIGWINCH 后可能丢弃首个新按键记录。Windows 适配器仅对 Git Bash 将 resize 与输入按 FIFO 串行，在 resize 后发送无字符的 key-up 兼容记录；不补发或改写用户字符。升级 Git 运行时时，先通过无兼容记录的并发 resize/输入回归再移除该措施。
 
 ### 数据管线
 
@@ -105,7 +109,7 @@ SSH bytes → 有界入口队列 → 增量解码/VT 解析 → terminal model �
 
 分屏树采用 Leaf(paneId, sessionId) / Split(axis, children, ratios)。不变量：ID 唯一、叶子非空、比例正且归一；移除叶子折叠单子分支，保持未受影响祖先比例；焦点只能指向现存叶子。初期最多 8 pane，受最小尺寸约束。
 
-恢复保存布局、host 引用和当前标签，默认恢复为 disconnected 标签；自动连接独立开关且默认关。无凭据、原始输出、临时主机秘密进入恢复文件。重连不重放输入、广播或旧命令。
+恢复保存布局、typed SSH/local target 引用和当前标签，默认恢复为 disconnected 标签；兼容旧版 host 快照。本地只保存 shell 标识与可执行路径，启动参数由代码按 shell 类型固定，不保存环境、输入或回滚，不因恢复自动运行 shell；SSH 自动连接独立开关且默认关。无凭据、原始输出、临时主机秘密进入恢复文件。重连不重放输入、广播或旧命令。
 
 验收：T-01 VT/TUI；T-02 IME/快捷键；T-03 背压与隐藏；W-01 树与焦点；W-02 恢复与生命周期。
 

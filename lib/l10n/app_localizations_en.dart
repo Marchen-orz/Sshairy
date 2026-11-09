@@ -1904,6 +1904,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalMultilinePlaceholder => 'Enter commands…';
 
   @override
+  String get localShellsEmpty => 'No local shells found';
+
+  @override
   String get cmdToolCompose => 'Multi-container apps';
 
   @override

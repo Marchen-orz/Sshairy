@@ -56,7 +56,7 @@
 | M2 文件工作流 | SFTP 浏览、可靠上传下载、队列、冲突处理、外部编辑 |
 | M3 桌面主力版 | 分屏、跳板/代理、L/R/D 转发、片段、SSH config 导入、布局恢复 |
 | M4 SSH 专用 AI | 侧栏完整 Agent、行内命令生成、AI 提示补全；共用两类模型协议与授权/资源底座，逐阶段开放软件和多机业务工具 |
-| M5 按反馈扩展 | 本地 PTY、ssh-agent、应用锁、广播、关键词高亮、加密备份（服务器监控已于 2026-11-07 按作者要求提前，见 MODULES §8） |
+| M5 按反馈扩展 | ssh-agent、应用锁、广播、关键词高亮、加密备份（监控与本地 PTY 已按作者要求提前纳入 M3，见 MODULES §3/8） |
 
 一期 = M0–M3；AI 在 M4。M5 不阻塞 AI。分屏领域模型可以先做，正式交付在 M3。
 
@@ -142,7 +142,7 @@ UI 可以通过 typed façade 调用同一用例；命令面板和 AI 经 Capabi
 | 密钥存储 | flutter_secure_storage 候选 | 在实际使用的平台上验证，禁止明文降级；见 SECURITY |
 | 窗口/文件 | window_manager、系统文件选择器候选 | 原生拖动、缩放、DPI、键盘可访问性先通过验证 |
 | 模型类 | Dart sealed/final，不可变值 | JSON 编解码按需生成；不强制所有类用 Freezed |
-| 本地 PTY | flutter_pty 或其他维护实现 | M5 再验证 ConPTY/Unix PTY；不阻塞 SSH |
+| 本地 PTY | Windows ConPTY，经既有 ffi 限适配层 | 作者于 2026-11-10 提前要求；真实交互、resize、背压与退出须验证，不用 stdout 管道冒充；Unix PTY 适配后续实现 |
 
 依赖批准需记录版本、许可、维护和未解决问题。xterm3 的 AGPL 许可与 MIT 目标存在发行约束，不能作为无成本替换；替换 SSH 库也不能解决终端渲染瓶颈。先定位瓶颈，再决定优化、维护 fork 或 FFI。
 

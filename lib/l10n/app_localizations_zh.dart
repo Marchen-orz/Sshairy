@@ -1839,6 +1839,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get terminalMultilinePlaceholder => '输入命令…';
 
   @override
+  String get localShellsEmpty => '未发现本地终端';
+
+  @override
   String get cmdToolCompose => '多容器应用';
 
   @override

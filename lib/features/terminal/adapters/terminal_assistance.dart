@@ -47,7 +47,17 @@ extension _CommandAssistance on TerminalSession {
       final text = _rowText(row, _promptColumn!, column);
       return commandIsSingleLine(text) ? text : null;
     }
-    return visibleShellCommand(_rowText(row, 0, column), tail);
+    final before = _rowText(row, 0, column);
+    final local = localShell;
+    if (local != null) {
+      return visibleLocalShellCommand(
+        before,
+        tail,
+        powershell: local.kind == LocalShellKind.powershell || local.kind == LocalShellKind.pwsh,
+        bash: local.kind == LocalShellKind.gitBash,
+      );
+    }
+    return visibleShellCommand(before, tail);
   }
 
   bool _requestCurrent(CommandCompletionRequest request) =>
@@ -109,6 +119,18 @@ extension _CommandAssistance on TerminalSession {
       );
     }
 
+    final posix = !isLocal || localShell!.kind == LocalShellKind.gitBash;
+    if (!posix) {
+      for (final snippet in _snippets()) {
+        if (snippet.text.startsWith(request.text) && commandIsSingleLine(snippet.text)) {
+          local.add(CommandCandidate(snippet.text, source: CommandCandidateSource.snippet, detail: snippet.label));
+        }
+      }
+      loading = false;
+      publish();
+      if (identical(_completionCancel, cancel)) _completionCancel = null;
+      return;
+    }
     publish();
     Future<void> optionalProvider() async {
       final provider = completionProvider;

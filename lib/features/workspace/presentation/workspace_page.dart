@@ -102,7 +102,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   /// Status of every session on [host], for the quick-connect list.
   Widget _hostStatus(Host host, Map<SessionId, TerminalSession> sessions) {
-    final matching = sessions.values.where((s) => s.host.id == host.id).toList();
+    final matching = sessions.values.where((s) => s.sshHost?.id == host.id).toList();
     return ListenableBuilder(
       listenable: Listenable.merge(matching),
       builder: (_, _) => SessionStatusIcon(
@@ -115,45 +115,66 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   Future<void> _quickConnect(BuildContext button) async {
     final l = AppLocalizations.of(context);
-    final picked = await showAnchoredPopup<Host>(
+    final shells = ref.read(localShellsProvider);
+    final picked = await showAnchoredPopup<Object>(
       context: button,
       anchor: anchorOf(button),
       width: 300,
-      maxHeight: 480,
+      maxHeight: 520,
       builder: (context) => PopupSurface(
         padding: const EdgeInsets.all(Space.xs),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              height: 380,
-              child: Consumer(
-                builder: (context, ref, _) => HostTree(
-                  onConnect: (host) => Navigator.pop(context, host),
-                  status: (host) => _hostStatus(host, ref.watch(terminalSessionsProvider)),
+            Flexible(
+              child: SizedBox(
+                height: 340,
+                child: Consumer(
+                  builder: (context, ref, _) => HostTree(
+                    onConnect: (host) => Navigator.pop(context, host),
+                    status: (host) => _hostStatus(host, ref.watch(terminalSessionsProvider)),
+                  ),
                 ),
               ),
             ),
             const Divider(height: Space.sm),
-            PopupRow(
-              onTap: () {
-                Navigator.pop(context);
-                _workspace.showVault();
-              },
-              child: Row(
-                children: [
-                  const Icon(Icons.dns_outlined, size: 16),
-                  const SizedBox(width: Space.sm),
-                  Text(l.hosts),
-                ],
+            Flexible(
+              child: SingleChildScrollView(
+                child: PopupKeys(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (shells.isEmpty)
+                        Padding(padding: const EdgeInsets.all(Space.sm), child: Text(l.localShellsEmpty)),
+                      for (final shell in shells)
+                        PopupRow(
+                          onTap: () => Navigator.pop(context, shell),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.terminal, size: 16),
+                              const SizedBox(width: Space.sm),
+                              Expanded(child: Text(shell.name, overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
         ),
       ),
     );
-    if (picked != null && mounted) _workspace.openHost(picked);
+    if (!mounted) return;
+    switch (picked) {
+      case Host():
+        _workspace.openHost(picked);
+      case LocalShell():
+        _workspace.openLocal(picked);
+    }
   }
 
   late final _bindings = <SingleActivator, VoidCallback>{
@@ -393,12 +414,13 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
     Widget tabBody(WorkspaceTab tab) {
       final session = sessions[tab.layout.focusedLeaf.session];
+      final host = session?.sshHost;
       return SidebarFrame(
         width: _monitorWidth,
         onResize: _setMonitorWidth,
         resizeLabel: l.resizeMonitor,
-        sidebar: session != null && showMonitor && wide
-            ? MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: session.host, active: state.active == tab.id)
+        sidebar: host != null && showMonitor && wide
+            ? MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: host, active: state.active == tab.id)
             : null,
         // Rebuilt as the session changes: the panel dials, so it waits for the terminal's connection and joins it.
         // A restored, refused or dropped session shows no panel instead of dialing again.
@@ -410,7 +432,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
           ),
           builder: (context, panes) => DockPanel(
-            open: showFiles && session != null && session.status == SessionStatus.connected,
+            open: showFiles && host != null && session?.status == SessionStatus.connected,
             side: switch (dock) {
               FilesDock.left => DockSide.left,
               FilesDock.right => DockSide.right,
@@ -420,9 +442,9 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             closeLabel: l.closePane,
             resizeLabel: l.resizeToolPanel,
             showHeader: false,
-            panel: session != null
+            panel: host != null && session != null
                 ? SideFilesPanel(
-                    host: session.host,
+                    host: host,
                     active: state.active == tab.id,
                     tree: dock == FilesDock.bottom,
                     directory: session.directory,
@@ -436,6 +458,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     }
 
     final activeTab = state.activeTab;
+    final activeHost = activeTab == null ? null : sessions[activeTab.layout.focusedLeaf.session]?.sshHost;
     final titleBar = Container(
       height: WorkspaceSize.titleBar,
       padding: const EdgeInsets.fromLTRB(Space.xs, Space.xs, 0, Space.xs),
@@ -469,19 +492,21 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             spacing: Space.xs / 2,
             children: [
               if (activeTab != null) ...[
-                if (wide)
+                if (activeHost != null) ...[
+                  if (wide)
+                    _BarToggle(
+                      tooltip: l.monitor,
+                      icon: Icons.monitor_heart_outlined,
+                      selected: showMonitor,
+                      onPressed: () => settingsNotifier.set(SettingKeys.showMonitor, !showMonitor),
+                    ),
                   _BarToggle(
-                    tooltip: l.monitor,
-                    icon: Icons.monitor_heart_outlined,
-                    selected: showMonitor,
-                    onPressed: () => settingsNotifier.set(SettingKeys.showMonitor, !showMonitor),
+                    tooltip: l.files,
+                    icon: Icons.folder_outlined,
+                    selected: showFiles,
+                    onPressed: () => _setSideFiles(!showFiles),
                   ),
-                _BarToggle(
-                  tooltip: l.files,
-                  icon: Icons.folder_outlined,
-                  selected: showFiles,
-                  onPressed: () => _setSideFiles(!showFiles),
-                ),
+                ],
                 AppMenuButton<SplitAxis>(
                   tooltip: l.split,
                   icon: const Icon(Icons.vertical_split_outlined, size: 18),
@@ -700,7 +725,7 @@ class _PaneHeader extends StatelessWidget {
                 // would leave the close button part-way along the header.
                 Expanded(
                   child: Text(
-                    session.host.target,
+                    session.targetLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -765,7 +790,7 @@ class _TabState extends ConsumerState<_Tab> {
   TerminalSession? get _focused =>
       _sessions.where((session) => session.id == widget.tab.layout.focusedLeaf.session).firstOrNull;
 
-  String get _name => widget.tab.title ?? _focused?.host.title ?? '';
+  String get _name => widget.tab.title ?? _focused?.title ?? '';
 
   void _tap() {
     widget.onTap();

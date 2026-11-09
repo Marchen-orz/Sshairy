@@ -415,7 +415,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
                       _ => Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_session.status == SessionStatus.idle ? _session.host.target : _message(l, _session)),
+                          Text(_session.status == SessionStatus.idle ? _session.targetLabel : _message(l, _session)),
                           const SizedBox(height: Space.md),
                           FilledButton(
                             autofocus: true,

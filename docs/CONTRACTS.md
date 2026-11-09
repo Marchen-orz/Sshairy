@@ -20,7 +20,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | CredentialAccess | 按 SecretRef 按需取凭据；UI 和 AI 不得拿全库映射 |
 | ConnectionManager | acquire(spec, purpose, cancellation) → TransportLease；release 幂等 |
 | TransportLease | openShell / exec / openFiles（SFTP，返回 foundation 的 FileSystem）/ connectTo（direct-tcpip，返回 Tunnel，用于本地与动态转发和跳板）/ listen（tcpip-forward，返回 RemoteListener）；不泄露 dartssh2 类型 |
-| TerminalSessionManager | open / reconnect / close / readSnapshot；保留模型独立于视图 |
+| TerminalSessionManager | open / openLocal / reconnect / close / readSnapshot；SSH/local typed target，模型独立于视图；本地不申请 SSH 租约 |
 | TerminalIo | 有序 bytes、writeInput、resize、close；数据路径不 JSON 化 |
 | Terminal AI 端口（M4，待实现） | 受限环境/草稿/历史投影 → 行内生成或补全，带 requestId/目标/代次/草稿/授权/目的地修订；不含 shell/目录列表；terminal 定义 DTO/端口、app 注入 AI 实现，无循环依赖 |
 | TerminalDraftAcceptor（M4，待实现） | 用户接受完整生成命令时须空提示符，接受补全只追加精确回显前缀的后缀；重验输入状态/代次，无换行/删行/自动执行参数；不是 Agent 工具 |
@@ -38,7 +38,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | 资源 | 所有者 | 释放规则 |
 |---|---|---|
 | Socket、SSH transport、跳板链 | ConnectionManager | 无租约且 TTL 到期；出错/主动断开；逆序销毁跳板 |
-| shell channel + terminal model | TerminalSessionManager | 用户关闭会话、失败清理或应用退出 |
+| SSH shell channel / 本地 PTY + terminal model | TerminalSessionManager | 用户关闭会话、失败清理或应用退出；本地 PTY 的进程、读写与退出资源由适配器收束 |
 | TerminalView / focus / selection UI | pane Widget | 卸载即可；不得关闭 shell |
 | SFTP 浏览 channel | 浏览会话控制器 | 关闭浏览器时释放自己的 lease |
 | 传输 channel / 文件句柄 / .part | TransferManager 中的 task | 完成/取消/失败后按 checkpoint 策略清理 |
@@ -72,7 +72,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 - 并行读按资源限流；同一路径写入、同终端受控命令串行。同主机不同只读通道可并行，不设阻塞全应用的总锁。
 - 普通 UI 查询不要求走 registry。hover、草稿、滚动、拖动中间帧、逐键终端输入不登记成远程工具。
 
-一期最小目录：host.list/create/update/move/delete/deleteMany、group.reorder、session.open/close/reconnect、workspace.split/focus/closeTabs、settings.get/patch；随 M2/M3 添加 files 与 forwarding。没有实现的 capability 不注册，不用空成功响应占位。
+一期最小目录：host.list/create/update/move/delete/deleteMany、group.reorder、session.open/openLocal/close/reconnect、workspace.split/focus/closeTabs、settings.get/patch；随 M2/M3 添加 files 与 forwarding。`session.openLocal` 只从本机发现的 shell 中按 executable 选取，不允许模型传任意程序/参数，当前不向 Agent 开放。没有实现的 capability 不注册，不用空成功响应占位。
 
 `workspace.closeTabs` 接收 tabId 和 scope（left/right/others），保留基准标签，按标签顺序关闭目标中的所有 shell，再单次更新和保存工作区；活动标签被关闭时切到基准，否则保留原活动页。缺失标签返回 notFound，空目标返回 closed: 0，不向 agent 开放。传输和隧道遵循原租约所有权，不因批量关闭 shell 而被主动取消。主机批量删除和同级组排序的原子边界见 HOST_INHERITANCE。
 

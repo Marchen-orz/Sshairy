@@ -56,7 +56,13 @@ final workspaceProvider = NotifierProvider<Workspace, WorkspaceState>(Workspace.
 /// Tabs and their split layouts. Sessions belong to [terminalSessionsProvider]; layouts only refer to them.
 /// Saved hosts in the layout are written to workspace.json and come back as unconnected tabs (docs/MODULES.md §3).
 class Workspace extends Notifier<WorkspaceState> {
-  late final JsonFile _file = JsonFile('${ref.read(dataDirProvider)}/workspace.json');
+  late final JsonFile _file = JsonFile(
+    '${ref.read(dataDirProvider)}/workspace.json',
+    schemaVersion: 2,
+    migrations: {
+      1: (json) => {...json, 'schemaVersion': 2},
+    },
+  );
 
   TerminalSessions get _sessions => ref.read(terminalSessionsProvider.notifier);
 
@@ -82,11 +88,27 @@ class Workspace extends Notifier<WorkspaceState> {
     return tab.id;
   }
 
-  /// A new tab with a fresh shell on the same host as [id]'s focused pane; the running process is not copied.
+  TabId openLocal(LocalShell shell) {
+    final s = _sessions.openLocal(shell);
+    final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
+    _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));
+    return tab.id;
+  }
+
+  TerminalSession _copySession(TerminalSession session) => switch (session.localShell) {
+    final shell? => _sessions.openLocal(shell),
+    null => _sessions.open(session.host),
+  };
+
+  /// A new tab with a fresh shell on the same target as [id]'s focused pane; the running process is not copied.
   TabId? duplicate(TabId id) {
     final tab = _tab(id);
     final s = tab == null ? null : session(tab.layout.focusedLeaf.session);
-    return s == null ? null : openHost(s.host);
+    if (s == null) return null;
+    return switch (s.localShell) {
+      final shell? => openLocal(shell),
+      null => openHost(s.host),
+    };
   }
 
   /// An empty or blank [title] goes back to the host's name.
@@ -167,7 +189,7 @@ class Workspace extends Notifier<WorkspaceState> {
     final tab = state.activeTab;
     final current = focusedSession;
     if (tab == null || current == null) return false;
-    final s = _sessions.open(current.host);
+    final s = _copySession(current);
     final next = tab.layout.split(tab.layout.focused, axis, PaneId(newId()), s.id);
     if (next == null) {
       _sessions.close(s.id);
@@ -216,16 +238,26 @@ class Workspace extends Notifier<WorkspaceState> {
     final sessions = ref.read(terminalSessionsProvider);
     final kept = [
       for (final t in state.tabs)
-        if (t.layout.leaves.every((l) => !(sessions[l.session]?.host.transient ?? true))) t,
+        if (t.layout.leaves.every((l) {
+          final s = sessions[l.session];
+          return s != null && (s.isLocal || !s.host.transient);
+        }))
+          t,
     ];
     final active = kept.indexWhere((t) => t.id == state.active);
     _file.write({
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'tabs': [
         for (final t in kept)
           {
             'layout': t.layout.toJson(),
-            'hosts': {for (final l in t.layout.leaves) l.session.value: sessions[l.session]!.host.id.value},
+            'targets': {
+              for (final l in t.layout.leaves)
+                l.session.value: switch (sessions[l.session]!.target) {
+                  SshTerminalTarget(:final hostId) => {'type': 'ssh', 'host': hostId.value},
+                  LocalTerminalTarget(:final shell) => {'type': 'local', 'shell': shell.toJson()},
+                },
+            },
             if (t.title != null) 'title': t.title,
           },
       ],
@@ -240,12 +272,25 @@ class Workspace extends Notifier<WorkspaceState> {
     final saved = json?['tabs'] as List<dynamic>? ?? const [];
     final tabs = <WorkspaceTab>[];
     TabId? active;
-    final pending = <SessionId, Host>{};
+    final pending = <SessionId, Object>{};
     for (final (i, t) in saved.indexed) {
       try {
         final layout = Layout.fromJson(((t as Map)['layout'] as Map).cast());
-        final hostIds = (t['hosts'] as Map).cast<String, String>();
-        final resolved = {for (final l in layout.leaves) l.session: hosts.byId(HostId(hostIds[l.session.value]!))};
+        final resolved = <SessionId, Object?>{};
+        final targets = t['targets'] as Map?;
+        for (final leaf in layout.leaves) {
+          if (targets == null) {
+            final hostIds = (t['hosts'] as Map).cast<String, String>();
+            resolved[leaf.session] = hosts.byId(HostId(hostIds[leaf.session.value]!));
+          } else {
+            final target = targets[leaf.session.value] as Map;
+            resolved[leaf.session] = switch (target['type']) {
+              'ssh' => hosts.byId(HostId(target['host'] as String)),
+              'local' => LocalShell.fromJson((target['shell'] as Map).cast()),
+              _ => null,
+            };
+          }
+        }
         if (resolved.values.contains(null)) continue;
         // Fresh session IDs: a restored shell is a new process, not the old one.
         var restored = layout;
@@ -262,8 +307,14 @@ class Workspace extends Notifier<WorkspaceState> {
     }
     // Providers may not change each other while building; panes show nothing for the moment in between.
     Future.microtask(() {
-      for (final MapEntry(key: id, value: host) in pending.entries) {
-        _sessions.open(host, id: id, autoConnect: false);
+      if (!ref.mounted) return;
+      for (final MapEntry(key: id, value: target) in pending.entries) {
+        switch (target) {
+          case Host():
+            _sessions.open(target, id: id, autoConnect: false);
+          case LocalShell():
+            _sessions.openLocal(target, id: id, autoConnect: false);
+        }
       }
     });
     return WorkspaceState(tabs: tabs, active: active);
