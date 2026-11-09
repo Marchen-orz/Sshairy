@@ -461,20 +461,25 @@ class _ProcessPreviewState extends State<_ProcessPreview> {
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: Space.xs),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Flexible(
                   child: Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
                     ),
                   ),
                 ),
-                if (selected)
-                  Icon(_descending ? Icons.arrow_downward : Icons.arrow_upward, size: 10, color: scheme.onSurface),
+                SizedBox(
+                  width: 10,
+                  child: selected
+                      ? Icon(_descending ? Icons.arrow_downward : Icons.arrow_upward, size: 10, color: scheme.onSurface)
+                      : null,
+                ),
               ],
             ),
           ),
@@ -510,16 +515,23 @@ class _ProcessPreviewState extends State<_ProcessPreview> {
                 children: [
                   SizedBox(
                     width: 48,
-                    child: Text(formatShortBytes(p.residentBytes), style: figures, textAlign: TextAlign.left),
+                    child: Text(formatShortBytes(p.residentBytes), style: figures, textAlign: TextAlign.center),
                   ),
                   SizedBox(
                     width: 40,
-                    child: Text(formatCpu(p.cpu), style: figures, textAlign: TextAlign.left),
+                    child: Text(formatCpu(p.cpu), style: figures, textAlign: TextAlign.center),
                   ),
                   const SizedBox(width: Space.sm),
                   Expanded(
-                    child: Text(p.name, style: theme.textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      p.name,
+                      style: theme.textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  const SizedBox(width: 20),
                 ],
               ),
             ),

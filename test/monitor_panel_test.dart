@@ -221,28 +221,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('process preview headers and values stay left aligned while sorting and hovering', (tester) async {
+  testWidgets('process preview headers and values stay centered while sorting and hovering', (tester) async {
     await pump(tester, sortable: true);
     final preview = find.ancestor(of: find.byTooltip('Show all processes'), matching: find.byType(MonitorCard));
     final allRows = find.descendant(of: preview, matching: find.byType(Row));
-    final header = tester.widgetList<Row>(allRows).firstWhere((row) => row.children.length == 5);
     final headerElements = [
       for (final label in ['Memory', 'CPU', 'Processes']) find.descendant(of: preview, matching: find.text(label)),
     ];
     void aligned() {
-      final origins = headerElements.map((finder) => tester.getTopLeft(finder).dx).toList();
-      for (final row in tester.widgetList<Row>(allRows).where((row) => row.children.length == 4)) {
+      final header = tester.widgetList<Row>(allRows).firstWhere((row) => row.children.last is IconButton);
+      final centers = [
+        for (final index in [0, 1, 3]) tester.getCenter(find.byWidget(header.children[index])).dx,
+      ];
+      for (var index = 0; index < headerElements.length; index++) {
+        final label = headerElements[index];
+        final group = tester.widget<Row>(find.ancestor(of: label, matching: find.byType(Row)).first);
+        final arrowSpace = tester.getRect(find.byWidget(group.children.last));
+        final groupCenter = (tester.getTopLeft(label).dx + arrowSpace.right) / 2;
+        expect(groupCenter, closeTo(centers[index], .1));
+        expect(tester.widget<Text>(label).textAlign, TextAlign.center);
+      }
+      final rows = tester
+          .widgetList<Row>(allRows)
+          .where((row) => row.children.length == 5 && row.children.last is SizedBox);
+      expect(rows, hasLength(5));
+      for (final row in rows) {
         final values = find.descendant(of: find.byWidget(row), matching: find.byType(Text));
         final texts = tester.widgetList<Text>(values).toList();
         expect(texts, hasLength(3));
         for (var index = 0; index < texts.length; index++) {
-          expect(tester.getTopLeft(values.at(index)).dx, closeTo(origins[index], .1));
-          if (index < 2) expect(texts[index].textAlign, TextAlign.left);
+          expect(tester.getCenter(values.at(index)).dx, closeTo(centers[index], .1));
+          expect(texts[index].textAlign, TextAlign.center);
         }
       }
     }
 
-    expect(header.children, hasLength(5));
     aligned();
     final origins = headerElements.map((finder) => tester.getTopLeft(finder).dx).toList();
     final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
