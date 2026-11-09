@@ -80,6 +80,7 @@ void main() {
     expect(ws.split(SplitAxis.vertical), isTrue);
     ws.showVault();
     await ws.saved;
+    await first.read(hostsProvider.notifier).saved;
     first.dispose();
 
     final second = container();
@@ -111,6 +112,7 @@ void main() {
     final sessions = first.read(terminalSessionsProvider);
     expect(sessions[tabs[1].layout.focusedLeaf.session]!.host.id, host.id);
     await ws.saved;
+    await first.read(hostsProvider.notifier).saved;
     first.dispose();
 
     final second = container();
