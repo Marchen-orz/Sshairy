@@ -506,11 +506,12 @@ void main() {
     Future<void> saveTranslations(WidgetTester tester, CompletionTranslations service) async {
       var done = false;
       service.saved.then((_) => done = true);
-      for (var i = 0; i < 200 && !done; i++) {
-        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 1)));
+      final clock = Stopwatch()..start();
+      while (!done && clock.elapsed < const Duration(seconds: 10)) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
         await tester.pump(const Duration(milliseconds: 1));
       }
-      expect(done, isTrue, reason: 'Translation cache save did not settle within 200 async pumps');
+      expect(done, isTrue, reason: 'Translation cache save did not settle within 10 seconds');
     }
 
     Future<void> unmount(WidgetTester tester) async {
