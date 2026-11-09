@@ -167,6 +167,92 @@ void main() {
 
   Finder groupChip(String path) => find.byKey(ValueKey('group-chip-$path'));
 
+  void expectGroupCount(WidgetTester tester, String path, int count) {
+    final number = find.descendant(of: groupChip(path), matching: find.text('$count'));
+    final label = find.descendant(of: groupChip(path), matching: find.text(path.isEmpty ? 'All' : path));
+    expect(number, findsOneWidget);
+    expect(tester.getRect(number).left, greaterThan(tester.getRect(label).right));
+  }
+
+  testWidgets('group counts include all hosts, descendants and empty groups regardless of search', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await mount(tester);
+    await tester.runAsync(() async {
+      await hosts.addGroup('Personal/Remote');
+      await hosts.save(
+        const Host(
+          id: HostId('h4'),
+          label: 'remote',
+          address: 'remote.example',
+          username: 'u',
+          group: 'Personal/Remote',
+        ),
+      );
+      await hosts.save(const Host(id: HostId('h5'), label: 'ungrouped', address: 'ungrouped.example', username: 'u'));
+    });
+    await tester.pumpAndSettle();
+    expectGroupCount(tester, '', 6);
+    expectGroupCount(tester, 'Personal', 5);
+    expectGroupCount(tester, 'Personal/Remote', 1);
+    expectGroupCount(tester, 'Team', 0);
+    expect(tester.getSemantics(groupChip('Personal')).getSemanticsData().label, contains('5'));
+    await tester.tap(groupChip('Personal'));
+    await tester.pumpAndSettle();
+    expect(tile(4), findsOneWidget);
+    expect(tile(5), findsNothing);
+    await tester.enterText(find.byType(TextField).first, 'host-0');
+    await tester.pumpAndSettle();
+    expect(tile(0), findsOneWidget);
+    expect(tile(4), findsNothing);
+    expectGroupCount(tester, '', 6);
+    expectGroupCount(tester, 'Personal', 5);
+    expectGroupCount(tester, 'Personal/Remote', 1);
+    expectGroupCount(tester, 'Team', 0);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('group counts update after host creation, movement and deletion', (tester) async {
+    await mount(tester, count: 0);
+    await tester.runAsync(() async {
+      await hosts.addGroup('Personal/Remote');
+      await hosts.addGroup('Team');
+    });
+    await tester.pumpAndSettle();
+    expectGroupCount(tester, '', 0);
+    expectGroupCount(tester, 'Personal', 0);
+    expectGroupCount(tester, 'Personal/Remote', 0);
+    expectGroupCount(tester, 'Team', 0);
+    await tester.runAsync(
+      () => hosts.save(
+        const Host(
+          id: HostId('h0'),
+          label: 'remote',
+          address: 'remote.example',
+          username: 'u',
+          group: 'Personal/Remote',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expectGroupCount(tester, '', 1);
+    expectGroupCount(tester, 'Personal', 1);
+    expectGroupCount(tester, 'Personal/Remote', 1);
+    await tester.runAsync(() => hosts.moveToGroup([const HostId('h0')], hosts.library.groupIdFor('Team')));
+    await tester.pumpAndSettle();
+    expectGroupCount(tester, '', 1);
+    expectGroupCount(tester, 'Personal', 0);
+    expectGroupCount(tester, 'Personal/Remote', 0);
+    expectGroupCount(tester, 'Team', 1);
+    await tester.runAsync(() => hosts.deleteMany([const HostId('h0')]));
+    await tester.pumpAndSettle();
+    expectGroupCount(tester, '', 0);
+    expectGroupCount(tester, 'Personal', 0);
+    expectGroupCount(tester, 'Personal/Remote', 0);
+    expectGroupCount(tester, 'Team', 0);
+    expect(tester.takeException(), isNull);
+  });
+
   Future<void> waitForOrder(WidgetTester tester, List<String> paths) async {
     for (var i = 0; i < 100 && hosts.library.groupPaths.join('|') != paths.join('|'); i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));

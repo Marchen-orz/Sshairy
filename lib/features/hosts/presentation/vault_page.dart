@@ -516,6 +516,8 @@ class _GroupOrderBar extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(width: Space.sm),
+            Text(library.hosts.where((host) => inGroup(host, path)).length.toString()),
           ],
         ),
         selected: selected == path,
