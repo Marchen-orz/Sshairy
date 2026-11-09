@@ -20,4 +20,6 @@
 | 布局与焦点 | `components/TopTabs.tsx:1052,1116`、`VaultHostListSection.tsx:605`、`components/ui/button.tsx:15,21` | 参考浏览器式标签/主机库，自定 tokens 与可见焦点；不复制素材或堆工具栏 |
 | 补全 | `components/terminal/autocomplete/terminalAutocompleteLayout.ts:283–351,430–565`、`completionEngine.ts:284–714`、`AutocompletePopup.tsx:268–355,416–528`、`useTerminalAutocomplete.ts:964–1215` | 借鉴光标锚定/边界、分支与异步过期保护；AI 顶置是本项目约定，不写成参考项目已有能力 |
 
+AI 产品范围另核对同一固定版本：[README](https://github.com/binaricat/Netcatty/blob/0e3f282657df29a5dc6939c86dbf4ea3ad2be8ea/README.md) 已展示多主机编排；[工具目录](https://github.com/binaricat/Netcatty/blob/0e3f282657df29a5dc6939c86dbf4ea3ad2be8ea/infrastructure/ai/harness/generated/cattyToolSpecs.json) 包含长任务、SFTP 写入和自动化脚本；[系统提示](https://github.com/binaricat/Netcatty/blob/0e3f282657df29a5dc6939c86dbf4ea3ad2be8ea/infrastructure/ai/cattyAgent/systemPrompt.ts) 与 runtime 支持计划；[终端 artifact](https://github.com/binaricat/Netcatty/blob/0e3f282657df29a5dc6939c86dbf4ea3ad2be8ea/components/ai/toolArtifacts/terminalToolArtifact.ts) 已有来源/行范围。因此多机、计划、可复用脚本、结构化终端卡片不能单独声称为 sshairy 独有。所查路径未见完整的跨结果结论—证据关系、确定性跨机字段比较、绑定前置/后置检查的变更闭环；这是所查固定版本的证据边界，未核对最新分支，也不证明上游无法实现。
+
 `electron/main/registerBridges.cjs:633–678` 加载 Fig 规格不证明动态生成器可用，静态序列化会剔除函数。本项目 Fig 数据直接上游来源、许可、固定版本和可重复导入独立见 [COMPLETION_SPECS](COMPLETION_SPECS.md)，不从 Netcatty 提取；不能把锁文件的包许可代替实际数据许可。范围排除项统一见 DESIGN §3。

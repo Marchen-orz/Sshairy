@@ -25,7 +25,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | TransferManager | enqueue / cancel / retry / watch；任务不由 SftpPane 持有 |
 | SettingsService | get / patch(expectedRevision)；类型、范围、策略统一验证 |
 | WorkspaceService | openTab / split / move / focus / close；布局只引用 sessionId |
-| CommandExecutor（M4） | start(command, target, cwd, deadline) → executionId + 事件 |
+| CommandExecutor（M4，待实现） | start(command, target, cwd, deadline, cancellation) → executionId + 有界 stdout/stderr/终态事件；先 acquire，再启动单次执行，不把已发请求包进自动重拨重试回调 |
 
 `TransportLease.exec(command, limit, timeout, cancel)` 保留一次性有界结果；timeout 覆盖打开与运行，取消/超时返回稳定的 typed 执行错误，不能返回部分输出冒充成功。开始前取消不打开 channel；已返回的执行 session 在正常终态、错误、取消或超时时统一销毁本次 channel、取消订阅和计时器，不关闭共享 transport。监控停止/切换与目录查询失效要取消各自在途执行。关闭 channel 只证明客户端收束，不承诺远端全部子进程已终止，也不自动重跑结果未知的命令。
 

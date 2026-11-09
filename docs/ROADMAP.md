@@ -1,6 +1,6 @@
 # 路线图
 
-更新：2026-11-09。阶段定义见 [DESIGN §3](DESIGN.md)，验收标准与最近有效结果见 [TESTING](TESTING.md)。勾选仅表示该条列明的验证已完成，不代表整阶段或所有平台验收。
+更新：2026-11-10。阶段定义见 [DESIGN §3](DESIGN.md)，验收标准与最近有效结果见 [TESTING](TESTING.md)。勾选仅表示该条列明的验证已完成，不代表整阶段或所有平台验收。
 
 ## 当前状态
 
@@ -48,15 +48,15 @@
 
 模块化单体、typed 用例、API 边界、租约/信任、窄凭据端口和配置 revision 可继续复用；当前 Capability 默认不向 agent 开放。接模型前必须完成确定性授权与安全投影，不能仅开启 `agentExposed`。
 
-- [ ] 复核供应商文档，实现 Anthropic Messages / OpenAI 兼容适配、SSE 边界与取消（A-01）。
-- [ ] AgentRuntime 状态机、唯一 Stop、在途数量与输出上限（A-02）。
-- [ ] dispatcher 的 scope/revision、deadline、目标绑定审批、执行前重验、统一 schema 校验及工具 allowlist（A-03）。
-- [ ] 可取消的流式 CommandExecutor、受限终端快照、安全 DTO/结果投影、可见执行记录与有界上下文。
-- [ ] operationId 幂等结果、结果未知处理、重试与审计（A-04）。
-- [ ] 普通设置/布局能力及冲突安全的撤销、对话持久化与脱敏、面板与引用输出（A-05）。
-- [ ] AI 开关关闭后 SSH 独立运行，以及加入 AI 后的性能测量。
+- [x] AI 功能、差异定位、交互、实现方法与分期详细设计（AI v0.3）；核对 Netcatty 固定版本与两类模型协议资料，仅完成设计，未实现/实网验证。
+- [ ] M4a：模型配置档/窄凭据端口、Anthropic Messages / OpenAI-compatible Chat Completions、SSE/取消、附件预览与解释面板（A-01）。
+- [ ] M4b：AgentRuntime 单 turn/唯一 Stop；dispatcher scope/revision/deadline、绑定审批、执行前重验、schema/工具 allowlist、安全 DTO、访问与发送权分离（A-02/03）。
+- [ ] M4b：流式 CommandExecutor、受限终端快照、独立固定诊断、Evidence 引用与 OutputStore；先 acquire 再 exec，不经自动重拨回调重放。
+- [ ] M4b：operationId/持久 intent、未知结果/重试与审计；重启不自动恢复副作用（A-04）。
+- [ ] M4c：普通设置/纯布局的冲突安全撤销、会话真实终态、同模板跨机差异、变更前后验证、脱敏历史与用户导出（A-05/06/07）。
+- [ ] M4c：AI 禁用后的 SSH 独立性、预算/长输出回收与同条件 Release 性能（A-08）；现有内存高峰仍独立保留。
 
-具体协议与权限见 [AI](AI.md)、[SECURITY §6](SECURITY.md)。M5 候选仅按反馈开展：本地 PTY、ssh-agent、证书、公钥分发、应用锁、广播、高亮、远程到远程复制、加密可移植备份、AI 远程文件写入与自动模式；不预建空壳。
+具体协议、分期与实现方法见 [AI](AI.md)，不可委派权限见 [SECURITY §6](SECURITY.md)。M4d 的受约束诊断流程重跑（A-09）、远程文件写入与自动模板模式按反馈推进；首版不开放任意 shell Auto。M5 其他候选：本地 PTY、ssh-agent、证书、公钥分发、应用锁、广播、高亮、远程到远程复制、加密可移植备份；不预建空壳。
 
 ## 交付约定
 
@@ -64,4 +64,4 @@
 
 ## 最近交接
 
-2026-11-09：按作者要求将 docs 从 29 份缩至 23 份，合并重复专题，删除过时审查/纠偏和逐轮交接、打包流水。历史通过 Git 查询；后续替换本段，不再追加流水。保留未完成事项，修正监控窄窗停止采样及文件单击延迟的遗漏；Release 内存高峰仍未定位，调查保留在 MEMORY_USAGE。本次只改文档及注释链接，40 处本地链接/锚点、旧引用、入口一致性、注释范围与补丁格式核对通过；未改变运行行为、运行功能回归或重建 Release，沿用当前包。
+2026-11-10：扩充 AI v0.3 详细设计，覆盖功能、交互、模块/协议、授权与数据发送、执行/停止、预算、恢复和 M4a–M4d 分期；重点为可追溯证据、确定性跨机比较、变更验证与受约束诊断流程。核对 Netcatty 固定版本已有多机/计划/artifact/scripts，不将这些泛称独有。同步必要的安全/契约/UI/验收与参考入口；补自动重拨回调可能重放 exec、本机文件默认值、split 非通用可逆、accepted 不等于 connected 等实现约束。文档链接/编号/修改边界核对见 TESTING §6。当前只完成设计，AI 未实现，Release 内存高峰仍待定位；未运行功能/模型/服务器测试或重建包，沿用当前包。
