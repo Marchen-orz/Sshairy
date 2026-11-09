@@ -156,7 +156,6 @@ class _MenuList<T> extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: Space.md),
                               ],
                             ),
                           ),

@@ -164,18 +164,23 @@ class _SpecBundle extends CachingAssetBundle {
 CompletionSpecs _specs() => CompletionSpecs(bundle: _SpecBundle());
 
 class _Paths implements RemotePathSource {
+  _Paths({this.entries});
+
+  final List<RemotePathEntry>? entries;
   final queries = <RemotePathQuery>[];
   @override
   Future<RemotePathResult> browse(RemotePathQuery query, {CancellationToken? cancel}) async {
     queries.add(query);
-    final entries = switch (query.directory) {
-      '/work' => [
-        const RemotePathEntry('My Notes', RemotePathKind.directory, '/work/My Notes'),
-        const RemotePathEntry('read me.txt', RemotePathKind.file, '/work/read me.txt'),
-      ],
-      '/work/My Notes' => [const RemotePathEntry('中文.txt', RemotePathKind.file, '/work/My Notes/中文.txt')],
-      _ => <RemotePathEntry>[],
-    };
+    final entries =
+        this.entries ??
+        switch (query.directory) {
+          '/work' => [
+            const RemotePathEntry('My Notes', RemotePathKind.directory, '/work/My Notes'),
+            const RemotePathEntry('read me.txt', RemotePathKind.file, '/work/read me.txt'),
+          ],
+          '/work/My Notes' => [const RemotePathEntry('中文.txt', RemotePathKind.file, '/work/My Notes/中文.txt')],
+          _ => <RemotePathEntry>[],
+        };
     return RemotePathResult(
       directory: query.directory,
       prefix: query.prefix,
@@ -1549,7 +1554,10 @@ void main() {
           expect(list.controller!.position.maxScrollExtent, greaterThan(0));
           expect(scrollbar, findsOneWidget);
           expect(viewport, findsOneWidget);
-          expect(tester.getRect(scrollbar).right - tester.getRect(viewport).right, closeTo(Space.lg * scale, .1));
+          expect(
+            tester.getRect(scrollbar).right - tester.getRect(viewport).right,
+            closeTo(ScrollSize.gutter * scale, .1),
+          );
           expect(tester.getRect(row).right, closeTo(tester.getRect(viewport).right, .1));
           expect(tester.getRect(detailRow).right, closeTo(tester.getRect(row).right, .1));
 
@@ -1565,6 +1573,38 @@ void main() {
           final shortDetail = find.ancestor(of: find.text('tmux action 30'), matching: find.byType(Tooltip)).first;
           expect(tester.getRect(shortScrollbar).right, closeTo(tester.getRect(shortViewport).right, .1));
           expect(tester.getRect(shortRow).right - tester.getRect(shortDetail).right, closeTo(Space.sm * scale, .1));
+          expect(tester.takeException(), isNull);
+        } finally {
+          await unmount(tester);
+        }
+      });
+
+      testWidgets('directory completion keeps its arrow beside one compact scrollbar at $scale scale', (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final paths = _Paths(
+          entries: [
+            for (var i = 0; i < 24; i++) RemotePathEntry('folder-$i', RemotePathKind.directory, '/work/folder-$i'),
+          ],
+        );
+        final shell = await mount(tester, scale: scale, paths: paths);
+        try {
+          await _feed(tester, shell, '\x1b]7;file://box/work\x07u@box:~\$ cat ');
+          await tester.pump();
+          await tester.pump();
+          final popup = find.byKey(const ValueKey('command-completion-popup'));
+          final scrollbar = find.descendant(of: popup, matching: find.byType(Scrollbar));
+          final viewport = find.descendant(of: popup, matching: find.byType(ShrinkWrappingViewport));
+          final row = find.ancestor(of: find.text('folder-0/'), matching: find.byType(InkWell)).first;
+          final arrow = find.descendant(of: row, matching: find.byIcon(Icons.chevron_right));
+          expect(candidateList(tester).controller!.position.maxScrollExtent, greaterThan(0));
+          final barRight = tester.getRect(scrollbar).right;
+          final rowRight = tester.getRect(row).right;
+          expect(barRight - tester.getRect(viewport).right, closeTo(ScrollSize.gutter * scale, .1));
+          expect(rowRight, closeTo(tester.getRect(viewport).right, .1));
+          expect(tester.getRect(arrow).right, closeTo(rowRight, .1));
+          expect(barRight - ScrollSize.thumb * scale - rowRight, closeTo(Space.xs * scale, .1));
+          expect(shell.writes, isEmpty);
           expect(tester.takeException(), isNull);
         } finally {
           await unmount(tester);

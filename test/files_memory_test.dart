@@ -247,7 +247,7 @@ void main() {
     expect(header, findsOneWidget);
     final headerContent = tester.getRect(find.descendant(of: header, matching: find.byType(Row)).first);
     final list = tester.getRect(find.byType(ListView).first);
-    expect(list.right - headerContent.right, Space.lg + Space.md);
+    expect(list.right - headerContent.right, ScrollSize.gutter + Space.md);
     expect(tester.takeException(), isNull);
   });
 

@@ -63,13 +63,13 @@ void main() {
 
       await show(30);
       expect(scroll.position.maxScrollExtent, greaterThan(0));
-      expectAligned(300 - Space.lg);
+      expectAligned(300 - ScrollSize.gutter);
       expect(find.byType(Scrollbar), findsOneWidget);
       final bounds = tester.getRect(find.byType(Scrollbar));
       final row = tester.getRect(find.byKey(rowKey));
       final barX = direction == TextDirection.ltr ? bounds.right - 3 : bounds.left + 3;
       final gutter = direction == TextDirection.ltr ? bounds.right - row.right : row.left - bounds.left;
-      expect(gutter, Space.lg);
+      expect(gutter, ScrollSize.gutter);
       scroll.jumpTo(1);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -115,7 +115,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(seen, Space.lg);
+    expect(seen, ScrollSize.gutter);
     rebuild(() => rows = 0);
     await tester.pumpAndSettle();
     expect(seen, 0, reason: 'the list left the tree with its gap');
@@ -133,7 +133,10 @@ void main() {
           body: Center(
             child: AppMenuButton<int>(
               onSelected: (_) {},
-              items: () => [for (var i = 0; i < count; i++) AppMenuItem(value: i, label: 'item $i')],
+              items: () => [
+                for (var i = 0; i < count; i++)
+                  AppMenuItem(value: i, label: 'A wide menu entry without an empty column'),
+              ],
             ),
           ),
         ),
@@ -144,6 +147,13 @@ void main() {
       await tester.tap(find.byType(IconButton));
       await tester.pumpAndSettle();
       final box = tester.getSize(find.byType(Scrollbar)).width;
+      final label = find.text('A wide menu entry without an empty column').first;
+      final row = find.ancestor(of: label, matching: find.byType(Row)).first;
+      expect(
+        tester.getRect(row).right,
+        closeTo(tester.getRect(label).right, .1),
+        reason: 'the label has no extra empty trailing column',
+      );
       final width = box - tester.getSize(find.byType(IntrinsicWidth).last).width;
       await tester.tapAt(const Offset(1, 1));
       await tester.pumpAndSettle();
@@ -152,7 +162,7 @@ void main() {
 
     expect(await gutter(), 0, reason: 'a short menu has nothing to scroll');
     count = 40;
-    expect(await gutter(), Space.lg, reason: 'a long menu scrolls beside its thumb');
+    expect(await gutter(), ScrollSize.gutter, reason: 'a long menu scrolls beside its thumb');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -177,7 +187,7 @@ void main() {
     final field = tester.getRect(find.byType(Scrollbar));
     final render = tester.state<EditableTextState>(editable).renderEditable;
     double contentRight() => render.localToGlobal(Offset(render.size.width, 0)).dx;
-    expect(field.right - contentRight(), Space.lg);
+    expect(field.right - contentRight(), ScrollSize.gutter);
     expect(find.byType(Scrollbar), findsOneWidget);
     await tester.enterText(find.byType(TextField), controller.text);
     await tester.pump();
@@ -185,7 +195,7 @@ void main() {
     await tester.pumpAndSettle();
     final caret = render.getLocalRectForCaret(controller.selection.extent);
     final caretBottom = render.localToGlobal(caret.bottomRight);
-    expect(caretBottom.dx, lessThan(field.right - Space.lg));
+    expect(caretBottom.dx, lessThan(field.right - ScrollSize.gutter));
     expect(caretBottom.dy, lessThanOrEqualTo(field.bottom + 1));
 
     controller.text = 'one\ntwo';
@@ -255,7 +265,7 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(tester.getSize(find.byKey(gridKey)).width, (300 - Space.lg) / 2);
+    expect(tester.getSize(find.byKey(gridKey)).width, (300 - ScrollSize.gutter) / 2);
     expect(tester.getCenter(find.byIcon(Icons.home_outlined).first).dx, WorkspaceSize.rail / 2);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());

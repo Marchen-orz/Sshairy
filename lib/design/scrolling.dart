@@ -10,7 +10,7 @@ import 'theme.dart';
 /// Keeps desktop scrollbars outside the content without changing horizontal scrolling. The gap at the end of a
 /// vertical view exists only while its content overflows; a view that fits keeps its full width.
 class AppScrollBehavior extends MaterialScrollBehavior {
-  const AppScrollBehavior({this.gutter = Space.lg});
+  const AppScrollBehavior({this.gutter = ScrollSize.gutter});
 
   final double gutter;
 

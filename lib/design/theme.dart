@@ -28,6 +28,10 @@ abstract final class WorkspaceSize {
   static const divider = 1.0, dividerGrab = 8.0, treeRow = 26.0, listRow = 34.0, control = 32.0;
 }
 
+abstract final class ScrollSize {
+  static const thumb = 6.0, gutter = thumb + Space.xs;
+}
+
 abstract final class CompletionSize {
   static const minWidth = 200.0, width = 380.0, labelWidth = 160.0, detailWidth = 200.0;
   static const maxHeight = 272.0, row = 32.0;
@@ -280,7 +284,7 @@ ThemeData buildTheme(
     ),
     scrollbarTheme: ScrollbarThemeData(
       crossAxisMargin: 0,
-      thickness: const WidgetStatePropertyAll(6),
+      thickness: const WidgetStatePropertyAll(ScrollSize.thumb),
       radius: const Radius.circular(3),
       thumbColor: WidgetStateProperty.resolveWith(
         (s) => scheme.onSurface.withValues(alpha: s.contains(WidgetState.hovered) ? .35 : .2),

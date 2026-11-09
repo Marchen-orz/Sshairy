@@ -56,7 +56,7 @@ class IconRail extends StatelessWidget {
                 child: ScrollbarTheme(
                   data: ScrollbarTheme.of(context).copyWith(thickness: const WidgetStatePropertyAll(4)),
                   child: ScrollConfiguration(
-                    behavior: AppScrollBehavior(gutter: expanded ? Space.lg : 0),
+                    behavior: AppScrollBehavior(gutter: expanded ? ScrollSize.gutter : 0),
                     child: SingleChildScrollView(
                       child: Column(
                         children: [
