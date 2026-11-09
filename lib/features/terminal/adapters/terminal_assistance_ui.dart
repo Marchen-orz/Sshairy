@@ -14,6 +14,7 @@ extension _AssistancePane on _TerminalPaneState {
 
   bool _popupAvailable(CommandAssistanceState state) =>
       widget.active &&
+      widget.visible &&
       !_searching &&
       _focus.hasFocus &&
       _completionCursor.value != null &&
@@ -150,11 +151,86 @@ extension _AssistancePane on _TerminalPaneState {
     });
   }
 
-  Widget _completionOverlay() => ListenableBuilder(
-    listenable: Listenable.merge([_session.commandAssistance, _completionCursor]),
+  void _cancelCandidateTranslations() {
+    _candidateTranslationCancel?.cancel();
+    _candidateTranslationCancel = null;
+    _candidateTranslationOriginals = const {};
+    _candidateTranslationLocale = null;
+    _candidateTranslations = null;
+  }
+
+  void _scheduleCandidateTranslations() {
+    if (_candidateTranslationsScheduled) return;
+    _candidateTranslationsScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _candidateTranslationsScheduled = false;
+      if (!mounted) return;
+      final state = _session.commandAssistance.value;
+      final locale = AppLocalizations.of(context).localeName.toLowerCase().replaceAll('_', '-').split('-').first;
+      if (!_popupAvailable(state) ||
+          locale != 'zh' ||
+          !ref.read(settingsProvider).get(SettingKeys.completionTranslation) ||
+          !_candidateScroll.hasClients) {
+        _cancelCandidateTranslations();
+        return;
+      }
+      final translations = _session._translations ?? ref.read<CompletionTranslations>(completionTranslationsProvider);
+      final position = _candidateScroll.position;
+      if (!position.hasContentDimensions || position.viewportDimension <= 0) {
+        _cancelCandidateTranslations();
+        return;
+      }
+      final rowHeight = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
+      final first = (max(0, position.pixels) / rowHeight).floor().clamp(0, state.candidates.length);
+      final end = ((position.pixels + position.viewportDimension) / rowHeight).ceil().clamp(
+        first,
+        state.candidates.length,
+      );
+      final originals = <String>{};
+      for (var i = first; i < end; i++) {
+        final candidate = state.candidates[i];
+        final original = _session._translationSources[candidate];
+        if (original != null &&
+            candidate.description == null &&
+            translatedCompletionDescription(locale, candidate) == null) {
+          originals.add(original);
+        }
+      }
+      // Retain fulfilled rows in demand so cache notifications do not cancel their neighbors.
+      if (identical(translations, _candidateTranslations) &&
+          locale == _candidateTranslationLocale &&
+          originals.length == _candidateTranslationOriginals.length &&
+          originals.containsAll(_candidateTranslationOriginals)) {
+        return;
+      }
+      _cancelCandidateTranslations();
+      if (originals.isEmpty) return;
+      _candidateTranslations = translations;
+      _candidateTranslationOriginals = originals;
+      _candidateTranslationLocale = locale;
+      final cancel = _candidateTranslationCancel = CancellationToken();
+      for (final original in originals) {
+        if (translations.lookup(original, locale) == null) {
+          unawaited(translations.translate(original, locale, cancel: cancel));
+        }
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  Widget _completionOverlay() {
+    final enabled = ref.watch(settingsProvider.select((settings) => settings.get(SettingKeys.completionTranslation)));
+    if (!enabled) _cancelCandidateTranslations();
+    final translations = _session._translations ?? ref.watch<CompletionTranslations>(completionTranslationsProvider);
+    return _completionList(translations);
+  }
+
+  Widget _completionList(CompletionTranslations translations) => ListenableBuilder(
+    listenable: Listenable.merge([_session.commandAssistance, _completionCursor, translations]),
     builder: (context, _) {
       final state = _session.commandAssistance.value;
       _syncCandidateSelection(state);
+      _scheduleCandidateTranslations();
       if (!_popupAvailable(state)) return const SizedBox.shrink();
       final scheme = Theme.of(context).colorScheme;
       final l = AppLocalizations.of(context);
@@ -165,6 +241,9 @@ extension _AssistancePane on _TerminalPaneState {
         if (own != null) return own;
         final translated = translatedCompletionDescription(l.localeName, candidate);
         if (translated != null) return translated;
+        final original = _session._translationSources[candidate];
+        final cached = original == null ? null : translations.lookup(original, l.localeName);
+        if (cached != null) return cached;
         if (!l.localeName.startsWith('zh') || candidate.source != CommandCandidateSource.builtin) return null;
         return switch (candidate.kind) {
           CommandKind.command => l.completionCommand,

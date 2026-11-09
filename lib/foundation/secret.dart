@@ -22,6 +22,12 @@ final class SecretRef {
       SecretRef._('host/${id.value}/proxy/${Uri.encodeComponent(identity)}');
   factory SecretRef.privateKey(String id) => SecretRef._('key/$id/private', canRemember: false);
   factory SecretRef.keyPassphrase(String id) => SecretRef._('key/$id/passphrase');
+  factory SecretRef.translation(String identity) {
+    if (identity.trim().isEmpty || identity.length > 2048 || RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(identity)) {
+      throw ArgumentError('invalid translation credential identity');
+    }
+    return SecretRef._('translation/${Uri.encodeComponent(identity)}/apiKey');
+  }
 
   final String storageKey;
   final bool canRemember;

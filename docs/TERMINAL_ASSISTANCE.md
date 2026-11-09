@@ -4,11 +4,18 @@
 
 ## 数据与边界
 
-- 补全不执行命令、不调用模型。按需读取随应用发布的 Fig 静态规格投影，包含命令/子命令/别名、选项、参数、静态取值、路径模板和说明。导入流程仅解释白名单 AST（含有界纯 helper），不执行规格 JS 或生成器；固定上游版本、保留来源和许可、统计未能静态提取的部分，见 COMPLETION_SPECS。Netcatty 的 GPL 代码与品牌素材不复制。
+- 候选生成不执行命令、不调用模型；说明文字可按用户设置交给翻译服务（见下）。按需读取随应用发布的 Fig 静态规格投影，包含命令/子命令/别名、选项、参数、静态取值、路径模板和说明。导入流程仅解释白名单 AST（含有界纯 helper），不执行规格 JS 或生成器；固定上游版本、保留来源和许可、统计未能静态提取的部分，见 COMPLETION_SPECS。Netcatty 的 GPL 代码与品牌素材不复制。
 - 默认匹配当前命令上下文；支持嵌套子命令、选项参数、长选项等号、常见短选项组合、位置参数、引号和反斜杠。不猜测 shell 替换、重定向、管道或多命令的执行语义；不支持的上下文不提供规格/路径插入。
 - 候选排序为当前会话历史、其余来源（未来独立授权的 AI、规格、路径、片段和其他提供器）。按完整插入文本去重，总上限 200，历史最多 50，给其余候选保留空间；可视行数只限制浮层高度，不截断到 8 项。历史来源以图标区分，避免额外标题。片段仅本地匹配单行文本，不自动运行。
 - 历史只在会话内存保存，最多 100 条、每条 2048 字符。前导空格、控制字符和多行不记录；可清空，关闭会话销毁；不读取远端 history 文件，不进入日志、配置或 AI。右键菜单和 Ctrl+Shift+H（macOS Cmd）仍可打开可搜索历史。
-- 静态规格说明按软件语言显示：英文保留原文，中文优先使用离线译文，未覆盖时以本地化的候选类型/参数说明回退并在悬浮提示保留原文。翻译不调用网络、不发送命令/历史/路径；不把不完整词典称为全库翻译。自有按钮、状态、路径导航和交互文案走 zh/en i18n。不能把静态规格当作服务器已安装命令或支持全部选项的证明。
+- 静态规格说明按软件语言显示：英文保留原文，中文先用离线译文，再用当前服务的已缓存译文；未覆盖的可见词条异步翻译，完成前使用本地化候选类型提示，tooltip 始终保留原文。设置可关闭在线翻译，已有译文仍可显示。不能把静态规格当作服务器已安装命令或支持全部选项的证明。
+- 在线翻译只接受由补全适配器创建并登记的随包规格原始说明，不以可伪造的候选 source/标签/identity 判断授权。只发公开说明与固定语言对，不发命令草稿、历史、主机、路径、远程文件名、用户片段或外部提供器的任何文字。可见列表之外不预翻全库，后台/失焦/关闭的浮层取消自己的需求，共用请求保留其他窗口的等待者。
+- 翻译设置提供 MyMemory（默认、免密钥）、DeepL、Google Cloud Translation Basic、Microsoft Translator，以及自定义 OpenAI 兼容 Chat Completions。每次只调用选中的服务，失败不自动切换或向其他厂商广播。配置和在线开关是用户专属设置，AI 不可读写；密钥只经 credentials 的窄端口进系统安全存储，表单不回填旧密钥，留空保留、明确移除才删除。内置服务地址固定；DeepL 区分 api-free/api，Microsoft 可填资源区域，不代替用户开通/付费账户。
+- 自定义接口填 API 基础地址（如 `https://api.example.com/v1`）和模型，应用追加 `/chat/completions`。一般要求 HTTPS，仅 exact loopback 的 localhost、127.0.0.1、[::1] 允许 HTTP；禁止 userinfo、query、fragment。凭据绑定规范化完整基础地址，改地址不复用旧目的地的密钥，改模型可保留。请求仅包含固定翻译指令和公开说明，无 tools/远程上下文；只接受有界单行 assistant 文本，不执行模型输出。
+- MyMemory 使用固定 HTTPS `get` 接口，不使用网页抓取、不填虚构邮件、不绕限额；官方匿名额度 5000 字符/天、单次 500 UTF-8 字节（2026-11-09 核对官方 spec.php/usagelimits.php）。服务请求限速、有界排队、禁重定向、超时真正中止；限额/网络/响应失败回退本地提示并冷却，错误内容不能写入译文缓存。其他服务的免费额度和计费以用户账户为准，不承诺全部免费。
+- 译文缓存按服务身份、完整原文与目标语言精确匹配，原文任意变化即未命中、首次可见时重译；OpenAI 身份包含基础地址、模型和翻译协议版本，密钥不入缓存身份。应用缓存目录最多五个固定厂商槽，每槽最多 4096 条/2 MiB 序列化数据；同厂商改地址/模型只保留最近配置，避免随自定义地址无限增长。结果跨重启保存，设置与业务配置不包含译文；损坏/缺失/写失败可再生成，不阻塞启动或补全。自有按钮、状态和交互文案仍走 zh/en i18n。
+
+接口依据（2026-11-09）：MyMemory `mymemory.translated.net/doc/spec.php`、`doc/usagelimits.php`；DeepL `developers.deepl.com/api-reference/translate/request-translation` 与官方 OpenAPI；Google `docs.cloud.google.com/docs/authentication/api-keys-use`、Translation v2 REST；Microsoft `learn.microsoft.com/azure/ai-services/translator/text-translation/reference/v3/translate` 与 authentication；OpenAI `developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create`。真实账号调用的验收状态单独记录，不以文档核对代替实际测试。
 
 ## 文件层级浏览
 

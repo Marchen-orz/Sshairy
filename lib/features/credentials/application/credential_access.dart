@@ -12,6 +12,14 @@ abstract interface class ConnectionCredentials {
   Future<void> remember(SecretRef ref, Secret value);
 }
 
+/// Settings use [has] for presence; only the translation engine reads values, never capabilities or AI.
+abstract interface class TranslationCredentials {
+  Future<bool> has(String identity);
+  Future<void> save(String identity, Secret value);
+  Future<void> clear(String identity);
+  Future<Secret?> read(String identity);
+}
+
 /// Local migration fills missing passwords, then persists host metadata while the credential queue is held.
 /// The commit callback must not call these credential ports again.
 abstract interface class HostPasswordImport {
@@ -42,10 +50,30 @@ final _credentialsProvider = Provider<_StoredCredentials>(
 final connectionCredentialsProvider = Provider<ConnectionCredentials>((ref) => ref.read(_credentialsProvider));
 final hostCredentialCleanupProvider = Provider<HostCredentialCleanup>((ref) => ref.read(_credentialsProvider));
 final hostPasswordImportProvider = Provider<HostPasswordImport>((ref) => ref.read(_credentialsProvider));
+final translationCredentialsProvider = Provider<TranslationCredentials>(
+  (ref) => _TranslationCredentials(ref.read(_credentialsProvider)),
+);
 
 class CredentialRevision {
   int value = 0;
   void changed() => value++;
+}
+
+class _TranslationCredentials implements TranslationCredentials {
+  _TranslationCredentials(this._credentials);
+  final _StoredCredentials _credentials;
+
+  @override
+  Future<bool> has(String identity) => _credentials.hasTranslation(identity);
+
+  @override
+  Future<void> save(String identity, Secret value) => _credentials.saveTranslation(identity, value);
+
+  @override
+  Future<void> clear(String identity) => _credentials.clearTranslation(identity);
+
+  @override
+  Future<Secret?> read(String identity) => _credentials.readTranslation(identity);
 }
 
 class _StoredCredentials implements ConnectionCredentials, HostCredentialCleanup, HostPasswordImport {
@@ -65,6 +93,30 @@ class _StoredCredentials implements ConnectionCredentials, HostCredentialCleanup
 
   @override
   Future<Secret?> read(SecretRef ref) => _serial(() => _store.read(ref));
+
+  Future<bool> hasTranslation(String identity) =>
+      _serial(() async => await _store.read(SecretRef.translation(identity)) != null);
+
+  Future<void> saveTranslation(String identity, Secret value) => _serial(() async {
+    final ref = SecretRef.translation(identity);
+    _validateTranslationKey(value);
+    await _store.write(ref, value);
+  });
+
+  Future<void> clearTranslation(String identity) => _serial(() => _store.delete(SecretRef.translation(identity)));
+
+  Future<Secret?> readTranslation(String identity) => _serial(() async {
+    final value = await _store.read(SecretRef.translation(identity));
+    if (value != null) _validateTranslationKey(value);
+    return value;
+  });
+
+  static void _validateTranslationKey(Secret value) {
+    final key = value.reveal();
+    if (key.trim().isEmpty || key.length > 8192 || RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(key)) {
+      throw ArgumentError('invalid translation API key');
+    }
+  }
 
   @override
   Future<void> remember(SecretRef ref, Secret value) => _serial(() async {

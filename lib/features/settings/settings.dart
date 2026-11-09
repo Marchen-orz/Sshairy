@@ -6,6 +6,7 @@ import '../../foundation/data_dir.dart';
 import '../../foundation/json_file.dart';
 import '../../foundation/result.dart';
 import 'domain/background.dart';
+import 'domain/translation_config.dart';
 
 /// Chosen by the Windows runner before the engine starts (ADR-11), so a change applies after a restart.
 enum Renderer { skia, impeller }
@@ -173,6 +174,41 @@ class BackgroundGallerySetting extends SettingDef<List<String>> {
   };
 }
 
+class TranslationConfigSetting extends SettingDef<TranslationConfig> {
+  const TranslationConfigSetting(String key) : super(key, const TranslationConfig(), agentExposed: false);
+
+  @override
+  bool accepts(Object? raw) {
+    try {
+      TranslationConfig.fromJson(raw);
+      return true;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  @override
+  TranslationConfig decode(Object? raw) => TranslationConfig.fromJson(raw);
+  @override
+  Object? encode(TranslationConfig value) => value.toJson();
+  @override
+  Map<String, Object?> get schema => {
+    'type': 'object',
+    'additionalProperties': false,
+    'required': ['provider', 'endpoint', 'model', 'region', 'deepLFree'],
+    'properties': {
+      'provider': {
+        'type': 'string',
+        'enum': [for (final provider in TranslationProvider.values) provider.name],
+      },
+      'endpoint': {'type': 'string', 'maxLength': 2048},
+      'model': {'type': 'string', 'maxLength': 128},
+      'region': {'type': 'string', 'maxLength': 64},
+      'deepLFree': {'type': 'boolean'},
+    },
+  };
+}
+
 abstract final class SettingKeys {
   static const themeMode = EnumSetting('themeMode', ThemeMode.system, ThemeMode.values);
   static const accent = EnumSetting('accent', Accent.blue, Accent.values);
@@ -211,6 +247,8 @@ abstract final class SettingKeys {
 
   /// Guards against pasting commands that run at once; not the agent's to turn off.
   static const confirmPaste = BoolSetting('confirmPaste', true, agentExposed: false);
+  static const completionTranslation = BoolSetting('completionTranslation', true, agentExposed: false);
+  static const completionTranslationConfig = TranslationConfigSetting('completionTranslationConfig');
 
   static const connectTimeout = IntSetting('connectTimeout', 20, 5, 120, apply: ApplyMode.nextConnection);
   static const keepAlive = IntSetting('keepAlive', 30, 0, 300, apply: ApplyMode.nextConnection);
@@ -273,6 +311,8 @@ abstract final class SettingKeys {
     copyOnSelect,
     rightClick,
     confirmPaste,
+    completionTranslation,
+    completionTranslationConfig,
     connectTimeout,
     keepAlive,
     idleTtl,

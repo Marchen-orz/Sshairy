@@ -854,6 +854,168 @@ abstract class AppLocalizations {
   /// **'Confirm multi-line paste'**
   String get confirmPaste;
 
+  /// No description provided for @completionTranslation.
+  ///
+  /// In en, this message translates to:
+  /// **'Translate completion descriptions automatically'**
+  String get completionTranslation;
+
+  /// No description provided for @completionTranslationHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Sends only public command descriptions to the selected service. Cached translations remain when off.'**
+  String get completionTranslationHint;
+
+  /// No description provided for @translationService.
+  ///
+  /// In en, this message translates to:
+  /// **'Translation service'**
+  String get translationService;
+
+  /// No description provided for @translationProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider'**
+  String get translationProvider;
+
+  /// No description provided for @translationMyMemory.
+  ///
+  /// In en, this message translates to:
+  /// **'MyMemory'**
+  String get translationMyMemory;
+
+  /// No description provided for @translationDeepL.
+  ///
+  /// In en, this message translates to:
+  /// **'DeepL'**
+  String get translationDeepL;
+
+  /// No description provided for @translationGoogle.
+  ///
+  /// In en, this message translates to:
+  /// **'Google Cloud Translation'**
+  String get translationGoogle;
+
+  /// No description provided for @translationMicrosoft.
+  ///
+  /// In en, this message translates to:
+  /// **'Microsoft Translator'**
+  String get translationMicrosoft;
+
+  /// No description provided for @translationOpenAi.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenAI compatible'**
+  String get translationOpenAi;
+
+  /// No description provided for @translationMyMemoryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'No key required · 5,000 free characters/day'**
+  String get translationMyMemoryHint;
+
+  /// No description provided for @translationDeepLFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Use DeepL API Free'**
+  String get translationDeepLFree;
+
+  /// No description provided for @translationRegion.
+  ///
+  /// In en, this message translates to:
+  /// **'Region (optional)'**
+  String get translationRegion;
+
+  /// No description provided for @translationEndpoint.
+  ///
+  /// In en, this message translates to:
+  /// **'API base URL'**
+  String get translationEndpoint;
+
+  /// No description provided for @translationEndpointHint.
+  ///
+  /// In en, this message translates to:
+  /// **'For example, https://api.example.com/v1 · omit /chat/completions'**
+  String get translationEndpointHint;
+
+  /// No description provided for @translationModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get translationModel;
+
+  /// No description provided for @translationApiKey.
+  ///
+  /// In en, this message translates to:
+  /// **'API key'**
+  String get translationApiKey;
+
+  /// No description provided for @translationKeySaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Key saved · leave blank to keep'**
+  String get translationKeySaved;
+
+  /// No description provided for @translationKeyMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'No saved key'**
+  String get translationKeyMissing;
+
+  /// No description provided for @translationKeyRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Key will be removed on Save'**
+  String get translationKeyRemoved;
+
+  /// No description provided for @translationRemoveKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove saved key'**
+  String get translationRemoveKey;
+
+  /// No description provided for @translationKeyLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking secure storage…'**
+  String get translationKeyLoading;
+
+  /// No description provided for @translationKeyLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check secure storage. Reopen to try again.'**
+  String get translationKeyLoadFailed;
+
+  /// No description provided for @translationEndpointInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Use HTTPS, or HTTP on localhost, without credentials, query or fragment.'**
+  String get translationEndpointInvalid;
+
+  /// No description provided for @translationModelInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a model name of up to 128 letters, digits, ., _, :, / or -.'**
+  String get translationModelInvalid;
+
+  /// No description provided for @translationRegionInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Use up to 64 lowercase letters, digits or hyphens.'**
+  String get translationRegionInvalid;
+
+  /// No description provided for @translationConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings changed. Reopen this dialog before saving.'**
+  String get translationConflict;
+
+  /// No description provided for @translationSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save. A key change may already have been saved to secure storage.'**
+  String get translationSaveFailed;
+
   /// No description provided for @connectTimeout.
   ///
   /// In en, this message translates to:

@@ -12,8 +12,11 @@ import 'package:sshairy/design/interface_scale.dart';
 import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
+import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/terminal/adapters/completion_specs.dart';
+import 'package:sshairy/features/terminal/adapters/completion_translations.dart';
+import 'package:sshairy/features/terminal/domain/completion_translation.dart';
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
@@ -77,6 +80,31 @@ class _Provider implements CommandCompletionProvider {
     pending.add(gate);
     return gate.future;
   }
+}
+
+class _TranslationCall {
+  _TranslationCall(this.original, this.target, this.cancel);
+  final String original, target;
+  final CancellationToken cancel;
+  final result = Completer<String?>();
+}
+
+class _TranslationEngine implements CompletionTranslationEngine {
+  _TranslationEngine({this.hold = false});
+  final bool hold;
+  final calls = <_TranslationCall>[];
+  var disposed = false;
+
+  @override
+  Future<String?> translate(String original, String target, CancellationToken cancel) {
+    final call = _TranslationCall(original, target, cancel);
+    calls.add(call);
+    if (!hold) call.result.complete('译文 $original');
+    return call.result.future;
+  }
+
+  @override
+  void dispose() => disposed = true;
 }
 
 class _SpecBundle extends CachingAssetBundle {
@@ -368,16 +396,72 @@ void main() {
     late _Transport transport;
     late ConnectionManager manager;
     late TerminalSession session;
+    CompletionTranslations? paneTranslations;
+    Directory? translationsDir;
+
+    Future<CompletionTranslations> translations(WidgetTester tester, _TranslationEngine engine) async {
+      late CompletionTranslations value;
+      await tester.runAsync(() async {
+        translationsDir = Directory.systemTemp.createTempSync('sshairy-pane-translations-');
+        value = CompletionTranslations(cacheDirectory: translationsDir!.path, engine: engine, interval: Duration.zero);
+        await value.ready;
+      });
+      return value;
+    }
+
+    Future<void> mountView(
+      WidgetTester tester, {
+      double scale = 1,
+      Locale locale = const Locale('en'),
+      bool active = true,
+      bool visible = true,
+    }) => tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          locale: locale,
+          theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
+          scrollBehavior: const AppScrollBehavior(),
+          builder: (_, child) => InterfaceScale(scale: scale, child: child!),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: SizedBox.expand(
+              child: TerminalPane(session, active: active, visible: visible),
+            ),
+          ),
+        ),
+      ),
+    );
 
     Future<_Shell> mount(
       WidgetTester tester, {
       double scale = 1,
       CommandCompletionProvider? provider,
       RemotePathSource? paths,
+      CompletionTranslations? completionTranslations,
+      bool viaProvider = false,
+      List<CommandSnippet> Function()? snippets,
       Locale locale = const Locale('en'),
     }) async {
       dir = Directory.systemTemp.createTempSync('sshairy-pane-');
-      container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+      paneTranslations = completionTranslations;
+      if (paneTranslations == null) {
+        await tester.runAsync(() async {
+          paneTranslations = CompletionTranslations(
+            cacheDirectory: dir.path,
+            engine: _TranslationEngine(hold: true),
+            interval: Duration.zero,
+          );
+          await paneTranslations!.ready;
+        });
+      }
+      container = ProviderContainer(
+        overrides: [
+          dataDirProvider.overrideWithValue(dir.path),
+          if (viaProvider) completionTranslationsProvider.overrideWithValue(paneTranslations!),
+        ],
+      );
       transport = _Transport();
       manager = ConnectionManager((_, _, _) async => transport, park: Duration.zero);
       session = TerminalSession(
@@ -388,25 +472,24 @@ void main() {
         autoConnect: false,
         completionProvider: provider,
         remotePaths: paths,
+        completionTranslations: viaProvider ? null : paneTranslations,
+        snippets: snippets,
       );
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: MaterialApp(
-            locale: locale,
-            theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
-            scrollBehavior: const AppScrollBehavior(),
-            builder: (_, child) => InterfaceScale(scale: scale, child: child!),
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(body: SizedBox.expand(child: TerminalPane(session, active: true))),
-          ),
-        ),
-      );
+      await mountView(tester, scale: scale, locale: locale);
       unawaited(session.connect(NoPrompts()));
       await tester.pump();
       await tester.pump();
       return transport.channels.single;
+    }
+
+    Future<void> saveTranslations(WidgetTester tester, CompletionTranslations service) async {
+      var done = false;
+      service.saved.then((_) => done = true);
+      for (var i = 0; i < 200 && !done; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 1)));
+        await tester.pump(const Duration(milliseconds: 1));
+      }
+      expect(done, isTrue, reason: 'Translation cache save did not settle within 200 async pumps');
     }
 
     Future<void> unmount(WidgetTester tester) async {
@@ -415,10 +498,15 @@ void main() {
       manager.closeAll();
       await tester.pump();
       container.dispose();
+      paneTranslations?.dispose();
+      if (paneTranslations != null) await saveTranslations(tester, paneTranslations!);
       await tester.runAsync(() async {
         await Future<void>.delayed(const Duration(milliseconds: 50));
         dir.deleteSync(recursive: true);
+        translationsDir?.deleteSync(recursive: true);
       });
+      paneTranslations = null;
+      translationsDir = null;
     }
 
     Future<void> chord(WidgetTester tester, List<LogicalKeyboardKey> modifiers, LogicalKeyboardKey key) async {
@@ -430,6 +518,28 @@ void main() {
         await tester.sendKeyUpEvent(modifier);
       }
       await tester.pump();
+    }
+
+    ListView candidateList(WidgetTester tester) => tester.widget<ListView>(
+      find.descendant(of: find.byKey(const ValueKey('command-completion-popup')), matching: find.byType(ListView)),
+    );
+
+    Set<String> visibleTmuxDescriptions(WidgetTester tester) {
+      final list = candidateList(tester);
+      final position = list.controller!.position;
+      final first = (position.pixels / list.itemExtent!).floor();
+      final end = ((position.pixels + position.viewportDimension) / list.itemExtent!).ceil().clamp(
+        first,
+        session.commandAssistance.value.candidates.length,
+      );
+      return {for (var i = first; i < end; i++) session.commandAssistance.value.candidates[i].detail!};
+    }
+
+    Future<void> drainTranslations(WidgetTester tester) async {
+      for (var i = 0; i < 40; i++) {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump(const Duration(milliseconds: 1));
+      }
     }
 
     testWidgets('popup accepts Tab immediately while Enter submits the actual draft', (tester) async {
@@ -828,6 +938,386 @@ void main() {
         expect(pane.contains(popup.topLeft), isTrue);
         expect(pane.contains(popup.bottomRight), isTrue);
         expect(tester.takeException(), isNull);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('online descriptions request only intersecting rows and preserve the selected candidate', (
+      tester,
+    ) async {
+      final engine = _TranslationEngine();
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        final candidates = session.commandAssistance.value.candidates;
+        expect(candidates, hasLength(32));
+        final visible = visibleTmuxDescriptions(tester);
+        expect(visible.length, allOf(greaterThan(0), lessThan(32)));
+        await drainTranslations(tester);
+        expect(engine.calls.map((call) => call.original).toSet(), visible);
+        expect(engine.calls.every((call) => call.target == 'zh-CN'), isTrue);
+        expect(find.byTooltip('译文 tmux action 0\ntmux action 0'), findsOneWidget);
+        expect(session.commandAssistance.value.candidates, same(candidates));
+        expect(shell.writes, isEmpty);
+
+        final list = candidateList(tester);
+        list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+        await tester.pump();
+        final next = visibleTmuxDescriptions(tester);
+        await drainTranslations(tester);
+        expect(engine.calls.map((call) => call.original).toSet(), visible.union(next));
+        expect(engine.calls, hasLength(visible.union(next).length));
+        expect(session.commandAssistance.value.candidates, same(candidates));
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        expect(shell.writes.join(), candidates.first.text.substring('tmux '.length));
+        expect(engine.disposed, isFalse);
+      } finally {
+        await unmount(tester);
+      }
+      expect(engine.disposed, isTrue);
+    });
+
+    testWidgets('online descriptions keep stable demand while individual translations finish', (tester) async {
+      final engine = _TranslationEngine(hold: true);
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        await drainTranslations(tester);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pump();
+        final first = engine.calls.single;
+        expect(first.original, 'tmux action 0');
+        first.result.complete('在线说明');
+        await drainTranslations(tester);
+        await tester.pump();
+        await tester.pump();
+        await tester.pump();
+        expect(find.byTooltip('在线说明\ntmux action 0'), findsOneWidget);
+        expect(engine.calls.length, greaterThan(1));
+        expect(engine.calls[1].cancel.isCancelled, isFalse);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        expect(shell.writes.join(), 'command-1 ');
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    for (final change in ['locale', 'setting', 'hidden', 'inactive', 'focus', 'search', 'dismiss', 'dispose']) {
+      testWidgets('$change cancels obsolete visible translation demand without disposing the service', (tester) async {
+        final engine = _TranslationEngine(hold: true);
+        final service = await translations(tester, engine);
+        final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+        try {
+          await _feed(tester, shell, 'u@box:~\$ tmux ');
+          await drainTranslations(tester);
+          final first = engine.calls.single;
+          switch (change) {
+            case 'locale':
+              await mountView(tester, locale: const Locale('en'));
+            case 'setting':
+              await tester.runAsync(
+                () => container.read(settingsProvider.notifier).set(SettingKeys.completionTranslation, false),
+              );
+            case 'hidden':
+              await mountView(tester, locale: const Locale('zh'), visible: false);
+            case 'inactive':
+              await mountView(tester, locale: const Locale('zh'), active: false);
+            case 'focus':
+              tester.widget<TerminalView>(find.byType(TerminalView)).focusNode!.unfocus();
+            case 'search':
+              await chord(tester, [
+                LogicalKeyboardKey.controlLeft,
+                LogicalKeyboardKey.shiftLeft,
+              ], LogicalKeyboardKey.keyF);
+            case 'dismiss':
+              await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+            case 'dispose':
+              await tester.pumpWidget(const SizedBox.shrink());
+          }
+          await tester.pump();
+          await tester.pump();
+          expect(first.cancel.isCancelled, isTrue);
+          expect(engine.disposed, isFalse);
+          first.result.complete('迟到的说明');
+          await drainTranslations(tester);
+          expect(engine.calls, hasLength(1));
+          expect(find.text('迟到的说明'), findsNothing);
+          expect(service.lookup(first.original, 'zh'), isNull);
+          expect(shell.writes.where((text) => text != '\x1b'), isEmpty);
+          if (change == 'hidden' || change == 'inactive') {
+            await _feed(tester, shell, '\r\nu@box:~\$ tmux command-');
+            await drainTranslations(tester);
+            expect(engine.calls, hasLength(1));
+          }
+        } finally {
+          await unmount(tester);
+        }
+      });
+    }
+
+    testWidgets('scrolling cancels obsolete rows and requests only the next visible demand', (tester) async {
+      final engine = _TranslationEngine(hold: true);
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        await drainTranslations(tester);
+        final first = engine.calls.single;
+        final list = candidateList(tester);
+        list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+        await tester.pump();
+        final visible = visibleTmuxDescriptions(tester);
+        await drainTranslations(tester);
+        expect(first.cancel.isCancelled, isTrue);
+        expect(engine.calls, hasLength(2));
+        expect(visible, contains(engine.calls.last.original));
+        for (var i = 1; i < 32 && !engine.calls.last.result.isCompleted; i++) {
+          final call = engine.calls.last;
+          expect(visible, contains(call.original));
+          expect(call.cancel.isCancelled, isFalse);
+          call.result.complete('译文 ${call.original}');
+          await drainTranslations(tester);
+        }
+        expect(engine.calls.skip(1).map((call) => call.original).toSet(), visible);
+        expect(engine.calls, hasLength(visible.length + 1));
+        expect(engine.disposed, isFalse);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('switching the shared translation provider cancels its old pending demand', (tester) async {
+      final engine = _TranslationEngine(hold: true);
+      final original = await translations(tester, engine);
+      final shell = await mount(
+        tester,
+        locale: const Locale('zh'),
+        completionTranslations: original,
+        viaProvider: true,
+      );
+      final replacementEngine = _TranslationEngine(hold: true);
+      late CompletionTranslations replacement;
+      await tester.runAsync(() async {
+        replacement = CompletionTranslations(
+          cacheDirectory: translationsDir!.path,
+          engine: replacementEngine,
+          interval: Duration.zero,
+        );
+        await replacement.ready;
+      });
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        await drainTranslations(tester);
+        final first = engine.calls.single;
+        final candidates = session.commandAssistance.value.candidates;
+        container.updateOverrides([
+          dataDirProvider.overrideWithValue(dir.path),
+          completionTranslationsProvider.overrideWithValue(replacement),
+        ]);
+        await drainTranslations(tester);
+        expect(first.cancel.isCancelled, isTrue);
+        expect(engine.disposed, isFalse);
+        expect(replacementEngine.calls.single.cancel.isCancelled, isFalse);
+        first.result.complete('旧服务说明');
+        replacementEngine.calls.single.result.complete('新服务说明');
+        await drainTranslations(tester);
+        expect(find.byTooltip('新服务说明\ntmux action 0'), findsOneWidget);
+        expect(find.text('旧服务说明'), findsNothing);
+        expect(session.commandAssistance.value.candidates, same(candidates));
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        expect(shell.writes.join(), candidates.first.text.substring('tmux '.length));
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        replacement.dispose();
+        await saveTranslations(tester, replacement);
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('turning online translation off preserves cached explanations', (tester) async {
+      final engine = _TranslationEngine();
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        await drainTranslations(tester);
+        final count = engine.calls.length;
+        await tester.runAsync(
+          () => container.read(settingsProvider.notifier).set(SettingKeys.completionTranslation, false),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.byTooltip('译文 tmux action 0\ntmux action 0'), findsOneWidget);
+        final list = candidateList(tester);
+        list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+        await drainTranslations(tester);
+        expect(engine.calls, hasLength(count));
+        expect(find.text('子命令'), findsWidgets);
+        expect(shell.writes, isEmpty);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('an asynchronously loaded cache updates explanations without requesting translation', (tester) async {
+      final seedEngine = _TranslationEngine();
+      final seed = await translations(tester, seedEngine);
+      unawaited(seed.translate('tmux action 30', 'zh'));
+      unawaited(seed.translate('tmux action 31', 'zh'));
+      await drainTranslations(tester);
+      await saveTranslations(tester, seed);
+      seed.dispose();
+      await saveTranslations(tester, seed);
+      final engine = _TranslationEngine(hold: true);
+      late CompletionTranslations service;
+      await tester.runAsync(() async {
+        service = CompletionTranslations(
+          cacheDirectory: translationsDir!.path,
+          engine: engine,
+          interval: Duration.zero,
+        );
+        await service.ready;
+      });
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux command-3');
+        await tester.runAsync(() => service.ready);
+        await tester.pump();
+        expect(find.byTooltip('译文 tmux action 30\ntmux action 30'), findsOneWidget);
+        expect(engine.calls, isEmpty);
+        expect(shell.writes, isEmpty);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('provider source flags and colliding identities cannot authorize private descriptions', (tester) async {
+      final engine = _TranslationEngine();
+      final service = await translations(tester, engine);
+      final provider = _Provider();
+      final shell = await mount(
+        tester,
+        locale: const Locale('zh'),
+        completionTranslations: service,
+        provider: provider,
+      );
+      try {
+        await _feed(tester, shell, 'u@box:~\$ tmux ');
+        final bundled = session.commandAssistance.value.candidates.first;
+        final collision = CommandCandidate(
+          bundled.text,
+          source: CommandCandidateSource.builtin,
+          kind: bundled.kind,
+          detail: 'private collision text',
+        );
+        expect(collision.identity, bundled.identity);
+        provider.pending.single.complete([
+          collision,
+          const CommandCandidate(
+            'tmux private-forged',
+            source: CommandCandidateSource.builtin,
+            kind: CommandKind.subcommand,
+            detail: 'private forged builtin text',
+          ),
+          const CommandCandidate('tmux private-provider', detail: 'private provider text'),
+          const CommandCandidate('tmux private-ai', source: CommandCandidateSource.ai, detail: 'private AI text'),
+        ]);
+        await tester.pump();
+        await tester.pump();
+        expect(session.commandAssistance.value.candidates, contains(bundled));
+        expect(session.commandAssistance.value.candidates, isNot(contains(collision)));
+        await drainTranslations(tester);
+        // The merged collision cannot exercise provenance; the distinct forged object must remain visible too.
+        final list = candidateList(tester);
+        list.controller!.jumpTo(list.controller!.position.maxScrollExtent);
+        await tester.pump();
+        await drainTranslations(tester);
+        expect(find.text('tmux private-forged').hitTestable(), findsOneWidget);
+        expect(find.text('tmux private-provider').hitTestable(), findsOneWidget);
+        expect(
+          session.commandAssistance.value.candidates.map((candidate) => candidate.text),
+          contains('tmux private-ai'),
+        );
+        expect(engine.calls, isNotEmpty);
+        expect(engine.calls.every((call) => call.original.startsWith('tmux action ')), isTrue);
+        expect(engine.calls.any((call) => call.original.contains('private')), isFalse);
+        expect(shell.writes, isEmpty);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('history snippets paths and external providers send no translation text', (tester) async {
+      final engine = _TranslationEngine();
+      final service = await translations(tester, engine);
+      final provider = _Provider();
+      final paths = _Paths();
+      final shell = await mount(
+        tester,
+        locale: const Locale('zh'),
+        completionTranslations: service,
+        provider: provider,
+        paths: paths,
+        snippets: () => const [CommandSnippet('private snippet command', 'private snippet label')],
+      );
+      try {
+        await _feed(tester, shell, 'u@box:~\$ private history command');
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await _feed(tester, shell, '\r\nu@box:~\$ private');
+        provider.pending.last.complete(const [
+          CommandCandidate('private provider', detail: 'provider secret'),
+          CommandCandidate('private AI', source: CommandCandidateSource.ai, detail: 'AI secret'),
+          CommandCandidate(
+            'private forged builtin',
+            source: CommandCandidateSource.builtin,
+            detail: 'forged builtin secret',
+          ),
+        ]);
+        await tester.pump();
+        await tester.pump();
+        final candidates = session.commandAssistance.value.candidates;
+        expect(
+          candidates.map((candidate) => candidate.source),
+          containsAll([
+            CommandCandidateSource.history,
+            CommandCandidateSource.snippet,
+            CommandCandidateSource.provider,
+            CommandCandidateSource.ai,
+            CommandCandidateSource.builtin,
+          ]),
+        );
+        await drainTranslations(tester);
+        expect(engine.calls, isEmpty);
+        await _feed(tester, shell, '\r\nu@box:~\$ cat /work/');
+        expect(paths.queries, isNotEmpty);
+        expect(
+          session.commandAssistance.value.candidates.map((candidate) => candidate.source),
+          contains(CommandCandidateSource.path),
+        );
+        await drainTranslations(tester);
+        expect(engine.calls, isEmpty);
+        expect(shell.writes.join(), '\r');
+      } finally {
+        for (final pending in provider.pending) {
+          if (!pending.isCompleted) pending.complete(const []);
+        }
+        await tester.pump();
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('reviewed offline descriptions never request online translation', (tester) async {
+      final engine = _TranslationEngine();
+      final service = await translations(tester, engine);
+      final shell = await mount(tester, locale: const Locale('zh'), completionTranslations: service);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ git st');
+        await drainTranslations(tester);
+        expect(find.text('显示工作区和暂存区状态'), findsOneWidget);
+        expect(engine.calls, isEmpty);
       } finally {
         await unmount(tester);
       }

@@ -411,6 +411,88 @@ class AppLocalizationsZh extends AppLocalizations {
   String get confirmPaste => '多行粘贴前确认';
 
   @override
+  String get completionTranslation => '自动翻译补全说明';
+
+  @override
+  String get completionTranslationHint => '仅向所选服务发送公开命令说明，关闭后仍可使用缓存译文。';
+
+  @override
+  String get translationService => '翻译服务';
+
+  @override
+  String get translationProvider => '服务商';
+
+  @override
+  String get translationMyMemory => 'MyMemory';
+
+  @override
+  String get translationDeepL => 'DeepL';
+
+  @override
+  String get translationGoogle => 'Google Cloud Translation';
+
+  @override
+  String get translationMicrosoft => 'Microsoft Translator';
+
+  @override
+  String get translationOpenAi => 'OpenAI 兼容服务';
+
+  @override
+  String get translationMyMemoryHint => '无需密钥 · 每天免费 5000 字符';
+
+  @override
+  String get translationDeepLFree => '使用 DeepL API Free';
+
+  @override
+  String get translationRegion => '区域（可选）';
+
+  @override
+  String get translationEndpoint => 'API 基础地址';
+
+  @override
+  String get translationEndpointHint =>
+      '例如 https://api.example.com/v1，不含 /chat/completions';
+
+  @override
+  String get translationModel => '模型';
+
+  @override
+  String get translationApiKey => 'API 密钥';
+
+  @override
+  String get translationKeySaved => '密钥已保存，留空保留';
+
+  @override
+  String get translationKeyMissing => '尚未保存密钥';
+
+  @override
+  String get translationKeyRemoved => '保存时移除密钥';
+
+  @override
+  String get translationRemoveKey => '移除已存密钥';
+
+  @override
+  String get translationKeyLoading => '正在检查安全存储…';
+
+  @override
+  String get translationKeyLoadFailed => '无法检查安全存储，请重新打开后重试。';
+
+  @override
+  String get translationEndpointInvalid => '请使用 HTTPS 或本机 HTTP，不含凭据、查询参数或片段。';
+
+  @override
+  String get translationModelInvalid => '请输入最多 128 位字母、数字或 . _ : / - 组成的模型名。';
+
+  @override
+  String get translationRegionInvalid => '请使用最多 64 位小写字母、数字或连字符。';
+
+  @override
+  String get translationConflict => '设置已变化，请重新打开此窗口后保存。';
+
+  @override
+  String get translationSaveFailed => '未能完成保存，密钥变更可能已写入安全存储。';
+
+  @override
   String get connectTimeout => '连接超时';
 
   @override

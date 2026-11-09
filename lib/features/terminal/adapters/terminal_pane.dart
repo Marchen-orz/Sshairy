@@ -53,6 +53,11 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   CommandCompletionRequest? _dismissedCandidateRequest;
   int _candidateBrowseDepth = 0;
   Offset? _candidatePointer;
+  var _candidateTranslationsScheduled = false;
+  CompletionTranslations? _candidateTranslations;
+  CancellationToken? _candidateTranslationCancel;
+  Set<String> _candidateTranslationOriginals = const {};
+  String? _candidateTranslationLocale;
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;
@@ -67,6 +72,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     _terminal.addListener(_scheduleImeRect);
     _terminal.addListener(_backgroundChanged);
     _scroll.addListener(_scheduleImeRect);
+    _candidateScroll.addListener(_scheduleCandidateTranslations);
     _focus.addListener(_scheduleImeRect);
     _focus.addListener(_assistanceFocusChanged);
     _markViewed();
@@ -82,6 +88,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   void didUpdateWidget(TerminalPane old) {
     super.didUpdateWidget(old);
     _scheduleImeRect();
+    _scheduleCandidateTranslations();
     if (widget.active != old.active) _markViewed();
     if (widget.active && !old.active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -108,6 +115,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   }
 
   void _assistanceFocusChanged() {
+    _scheduleCandidateTranslations();
     if (mounted) {
       setState(() {
         _candidateMode = false;
@@ -158,6 +166,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     _focus.removeListener(_assistanceFocusChanged);
     _session.removeListener(_focusWhenConnected);
     _session.viewed = false;
+    _cancelCandidateTranslations();
+    _candidateScroll.removeListener(_scheduleCandidateTranslations);
     _candidateScroll.dispose();
     _controller.dispose();
     _scroll.dispose();

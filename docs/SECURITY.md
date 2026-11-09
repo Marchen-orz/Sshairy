@@ -26,6 +26,8 @@ M1 默认每项凭据存系统保护存储，vault 只保存引用。平台插�
 - 解密失败是 locked/unreadable，不是空密码，不把密文发给服务器，不覆盖原密文。
 - OTP 默认不记忆；私钥 passphrase 与密码的“记住”分别由用户选择。
 - 普通日志不打印 SecretRef 对应内容；敏感字段递归过滤，错误诊断 URL 去掉 userinfo/query secrets。
+- 补全说明的翻译凭据使用独立 `translation/<encoded identity>/apiKey` 引用，经 `TranslationCredentials` 与 SSH 凭据共用串行安全存储队列；不进入设置、缓存、诊断或 AI。表单只查询是否存在，不读取旧值；空输入保留，明确移除才删除。内置厂商绑定固定身份与套餐/区域，自定义 OpenAI 绑定规范化完整 API 基础地址，改地址不得复用旧目的地密钥。密钥保存与设置提交不是跨存储事务，部分成功必须提示并刷新活动翻译器；不会修改 SSH credential revision。
+- 在线翻译只发送补全适配器以对象身份登记的随包公开说明与固定目标语言；外部提供器即使伪造 builtin/source/identity 也无发送权。自定义模型只接收固定翻译指令与该公开说明，不获得 shell、工具、历史、主机、片段或文件名。内置地址固定、禁重定向；自定义只允许 HTTPS 或 exact loopback HTTP，无 userinfo/query/fragment。用户专属配置不经 AI 可用设置投影；响应按有界纯文本处理，不能执行输出。失败退回本地提示，不自动更换厂商。
 
 ## 3. 主机信任
 

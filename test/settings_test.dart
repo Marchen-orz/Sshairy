@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/theme.dart';
-import 'package:sshairy/features/settings/settings.dart';
+import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/result.dart';
 import 'package:sshairy/foundation/secret.dart';
@@ -65,6 +65,59 @@ void main() {
     expect(await n.patch({'confirmPaste': false}, exposedOnly: true), isA<Err<void>>());
     expect(await n.patch({'fontSize': 18, 'scrollback': 10000}), isA<Ok<void>>());
     expect(c.read(settingsProvider).get(SettingKeys.scrollback), 10000);
+  });
+
+  test('completion translation defaults on, stays user-only and persists when disabled', () async {
+    final setting = SettingKeys.completionTranslation;
+    expect(SettingKeys.all, contains(setting));
+    expect(setting.defaultValue, isTrue);
+    expect(const Settings().get(setting), isTrue);
+    expect(setting.agentExposed, isFalse);
+    expect([true, false].every(setting.accepts), isTrue);
+    expect(setting.accepts('false'), isFalse);
+
+    final dir = Directory.systemTemp.createTempSync('sshairy-completion-translation');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final c = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(c.dispose);
+    final n = c.read(settingsProvider.notifier);
+    expect(await n.patch({'completionTranslation': false}, exposedOnly: true), isA<Err<void>>());
+    expect(c.read(settingsProvider).get(setting), isTrue);
+    expect(await n.patch({'completionTranslation': false}), isA<Ok<void>>());
+    expect(c.read(settingsProvider).get(setting), isFalse);
+
+    final restarted = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(restarted.dispose);
+    expect(restarted.read(settingsProvider).get(setting), isFalse);
+  });
+
+  test('translation provider config is validated, user-only and persists without secrets', () async {
+    final setting = SettingKeys.completionTranslationConfig;
+    expect(SettingKeys.all, contains(setting));
+    expect(setting.agentExposed, isFalse);
+    expect(setting.defaultValue.provider, TranslationProvider.myMemory);
+    const config = TranslationConfig(
+      provider: TranslationProvider.openAi,
+      endpoint: 'https://translate.example/v1',
+      model: 'translate-model',
+    );
+    expect(setting.accepts(config.toJson()), isTrue);
+    expect(setting.accepts({...config.toJson(), 'key': 'must-not-be-stored'}), isFalse);
+    expect(setting.accepts({...config.toJson(), 'provider': 'custom'}), isFalse);
+    expect(setting.accepts({...config.toJson(), 'deepLFree': 'true'}), isFalse);
+    expect(setting.accepts({...config.toJson(), 'endpoint': 'http://remote.example/v1'}), isFalse);
+
+    final dir = Directory.systemTemp.createTempSync('sshairy-translation-config');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final c = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(c.dispose);
+    final notifier = c.read(settingsProvider.notifier);
+    expect(await notifier.patch({setting.key: config.toJson()}, exposedOnly: true), isA<Err<void>>());
+    expect(await notifier.patch({setting.key: config.toJson()}), isA<Ok<void>>());
+    final restarted = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(restarted.dispose);
+    expect(restarted.read(settingsProvider).get(setting).toJson(), config.toJson());
+    expect(File('${dir.path}/settings.json').readAsStringSync(), isNot(contains('must-not-be-stored')));
   });
 
   test('showFiles is a boolean off by default; settings.patch changes it and a restart keeps it', () async {

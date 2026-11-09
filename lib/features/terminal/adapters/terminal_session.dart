@@ -22,6 +22,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
+import '../application/completion_translations.dart';
 import '../domain/command_assistance.dart';
 import '../domain/completion_command_metadata.dart';
 import '../presentation/completion_descriptions.dart';
@@ -31,6 +32,7 @@ import '../domain/terminal_paths.dart';
 import '../domain/spec_completion.dart';
 import 'terminal_paths.dart';
 import 'completion_specs.dart';
+import 'completion_translations.dart';
 import '../presentation/confirm_insert.dart';
 import 'ime_caret.dart';
 import 'command_descriptions.dart';
@@ -55,11 +57,13 @@ class TerminalSession extends ChangeNotifier {
     bool Function()? autoReconnect,
     this.completionProvider,
     CompletionSpecs? completionSpecs,
+    CompletionTranslations? completionTranslations,
     this.remotePaths,
     List<CommandSnippet> Function()? snippets,
   }) : _terminal = Terminal(maxLines: scrollback),
        _autoReconnect = autoReconnect ?? (() => false),
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
+       _translations = completionTranslations,
        _snippets = snippets ?? (() => const []) {
     _terminal.onSemanticPrompt = _semanticPrompt;
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
@@ -92,6 +96,9 @@ class TerminalSession extends ChangeNotifier {
   final _insertions = <CancellationToken>{};
   final CommandCompletionProvider? completionProvider;
   final CompletionSpecs _completionSpecs;
+  final CompletionTranslations? _translations;
+  // Source flags are caller-settable; only internally built specification objects may leave the app.
+  final _translationSources = Expando<String>();
   final List<CommandSnippet> Function() _snippets;
   final RemotePathSource? remotePaths;
   RemotePathSource? _ownedPaths;

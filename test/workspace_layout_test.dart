@@ -336,7 +336,11 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(find.byType(PopupSurface)).dx, WorkspaceSize.navigationExpanded + Space.xs);
-    expect(container.read(settingsSectionsProvider), isEmpty);
+    final sections = container.read(settingsSectionsProvider);
+    expect(sections, hasLength(1));
+    final settingsContext = tester.element(find.byType(SettingsPanel));
+    expect(sections.single.title(AppLocalizations.of(settingsContext)), 'Translation service');
+    expect(sections.single.build(settingsContext), isA<TranslationSettings>());
     expect(find.text('Trusted host keys'), findsNothing);
     expect(find.byTooltip('Import known_hosts'), findsNothing);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);

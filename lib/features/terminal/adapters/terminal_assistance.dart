@@ -138,16 +138,16 @@ extension _CommandAssistance on TerminalSession {
           final text =
               '$draft${encodeShellSuffix(name.substring(prefix.length), context.quote, atWordStart: prefix.isEmpty, close: true)} ';
           final metadata = completionCommandMetadata(name);
-          local.add(
-            CommandCandidate(
-              text,
-              source: CommandCandidateSource.builtin,
-              kind: CommandKind.command,
-              displayText: name,
-              detail: metadata?.description,
-              preview: metadata?.canBrowse == true ? text : null,
-            ),
+          final candidate = CommandCandidate(
+            text,
+            source: CommandCandidateSource.builtin,
+            kind: CommandKind.command,
+            displayText: name,
+            detail: metadata?.description,
+            preview: metadata?.canBrowse == true ? text : null,
           );
+          if (metadata?.description case final original?) _translationSources[candidate] = original;
+          local.add(candidate);
         }
         if (names.isEmpty) {
           local.addAll(localCommandCandidates(draft, CommandHistory()));
@@ -240,7 +240,7 @@ extension _CommandAssistance on TerminalSession {
     final text = item.appendSpace ? '$replacement ' : replacement;
     final directory = item.kind == SpecSuggestionKind.folder;
     final branch = !directory && item.canBrowse;
-    return CommandCandidate(
+    final candidate = CommandCandidate(
       text,
       source: path ? CommandCandidateSource.path : CommandCandidateSource.builtin,
       kind: switch (item.kind) {
@@ -254,6 +254,8 @@ extension _CommandAssistance on TerminalSession {
       directory: directory ? item.value : null,
       preview: directory || branch ? (branch && !text.endsWith(' ') ? '$text ' : text) : null,
     );
+    if (!path && item.description != null) _translationSources[candidate] = item.description!;
+    return candidate;
   }
 
   bool _browseCommand(CommandCompletionRequest request, CommandCandidate candidate) {

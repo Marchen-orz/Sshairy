@@ -424,6 +424,97 @@ class AppLocalizationsEn extends AppLocalizations {
   String get confirmPaste => 'Confirm multi-line paste';
 
   @override
+  String get completionTranslation =>
+      'Translate completion descriptions automatically';
+
+  @override
+  String get completionTranslationHint =>
+      'Sends only public command descriptions to the selected service. Cached translations remain when off.';
+
+  @override
+  String get translationService => 'Translation service';
+
+  @override
+  String get translationProvider => 'Provider';
+
+  @override
+  String get translationMyMemory => 'MyMemory';
+
+  @override
+  String get translationDeepL => 'DeepL';
+
+  @override
+  String get translationGoogle => 'Google Cloud Translation';
+
+  @override
+  String get translationMicrosoft => 'Microsoft Translator';
+
+  @override
+  String get translationOpenAi => 'OpenAI compatible';
+
+  @override
+  String get translationMyMemoryHint =>
+      'No key required · 5,000 free characters/day';
+
+  @override
+  String get translationDeepLFree => 'Use DeepL API Free';
+
+  @override
+  String get translationRegion => 'Region (optional)';
+
+  @override
+  String get translationEndpoint => 'API base URL';
+
+  @override
+  String get translationEndpointHint =>
+      'For example, https://api.example.com/v1 · omit /chat/completions';
+
+  @override
+  String get translationModel => 'Model';
+
+  @override
+  String get translationApiKey => 'API key';
+
+  @override
+  String get translationKeySaved => 'Key saved · leave blank to keep';
+
+  @override
+  String get translationKeyMissing => 'No saved key';
+
+  @override
+  String get translationKeyRemoved => 'Key will be removed on Save';
+
+  @override
+  String get translationRemoveKey => 'Remove saved key';
+
+  @override
+  String get translationKeyLoading => 'Checking secure storage…';
+
+  @override
+  String get translationKeyLoadFailed =>
+      'Could not check secure storage. Reopen to try again.';
+
+  @override
+  String get translationEndpointInvalid =>
+      'Use HTTPS, or HTTP on localhost, without credentials, query or fragment.';
+
+  @override
+  String get translationModelInvalid =>
+      'Enter a model name of up to 128 letters, digits, ., _, :, / or -.';
+
+  @override
+  String get translationRegionInvalid =>
+      'Use up to 64 lowercase letters, digits or hyphens.';
+
+  @override
+  String get translationConflict =>
+      'Settings changed. Reopen this dialog before saving.';
+
+  @override
+  String get translationSaveFailed =>
+      'Could not save. A key change may already have been saved to secure storage.';
+
+  @override
   String get connectTimeout => 'Connect timeout';
 
   @override

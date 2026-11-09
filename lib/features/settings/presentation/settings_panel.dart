@@ -173,6 +173,7 @@ class SettingsPanel extends ConsumerWidget {
           ),
           _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
           _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
+          _Field(l.completionTranslation, toggle(SettingKeys.completionTranslation), hint: l.completionTranslationHint),
         ]),
         _Section(l.workspaceSection, [
           _Field(l.monitor, toggle(SettingKeys.showMonitor)),
