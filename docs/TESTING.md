@@ -151,6 +151,6 @@ ADR-11 的历史同机基线（2026-11-06，2880×1800 核显屏，默认窗口/
 
 ### 当前分发与未测范围
 
-2026-11-10 最新 Windows 包为 ROADMAP 所列 ZIP，含截至 `aea1938` 的代码。原目录 `flutter build windows --release` 171.4 秒、退出码 0；ZIP 25.81 MiB，SHA256 `92feed96608d15721b80fb0a09af2228d2326e57615c1985b543de5b03a965ef`。ZIP CRC、SHA256 侧文件、1597 个 Release 文件与 staging/ZIP 逐文件一致（ZIP 共 1599 文件），1451 规格及 manifest/LICENSE、120 PNG、8 SVG、106 依赖与 Fig 数据许可、无预设翻译缓存检查通过。旧包保留，本轮无服务器凭据输入。未签名，未将新包启动/原生 UI/长期内存视为已验收；上方原生 PTY 探针只覆盖所列后端场景。
+2026-11-10 最新 Windows 包为 ROADMAP 所列 ZIP，含截至 `236f60e` 的代码。原目录 `flutter build windows --release` 202.9 秒、退出码 0；ZIP 25.83 MiB，SHA256 `2dd815eb11931524032ab2e7e8148311fbdd7c1890fd0f6655d90a0719f776e3`。ZIP CRC、SHA256 侧文件、1597 个 Release 文件与 staging/ZIP 逐文件一致（ZIP 共 1599 文件），1451 规格及 manifest/LICENSE、120 PNG、8 SVG、106 依赖与 Fig 数据许可、无预设翻译缓存检查通过。旧包保留，本轮无服务器凭据输入。未签名，未将新包启动/原生拖动/多屏 DPI/长期内存视为已验收；上方原生 PTY 探针只覆盖所列后端场景。
 
 目前仍未收齐：真实断网与保活、keyboard-interactive、代理/legacy、作者编辑器与原生应用/文件选择器、OS 拖入、各客户端真实配置导入、GPU、原生 IME/快捷键/多屏与完整键盘流程、高输出帧率/最小化/实际高水位、满背景图库内存、Release 长期资源及 Netcatty 对照、完整 10 GB。MyMemory 一次公开说明实网探测 TLS 握手失败；没有放宽证书验证，其他厂商/自定义模型无真实密钥调用。构造样本和组件测试不替代这些实测。
