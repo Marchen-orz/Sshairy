@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show listEquals;
@@ -9,6 +10,7 @@ import '../../../design/brand.dart';
 import '../../../design/dialog.dart';
 import '../../../design/dock_panel.dart';
 import '../../../design/double_click.dart';
+import '../../../design/drop_preview.dart';
 import '../../../design/icon_rail.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
@@ -32,6 +34,8 @@ import '../application/workspace.dart';
 import '../domain/layout.dart';
 import 'split_view.dart';
 
+part 'workspace_drag.dart';
+
 /// The window (docs/UI.md): icon rail, title bar with tabs, and the page or terminal tab below.
 class WorkspacePage extends ConsumerStatefulWidget {
   const WorkspacePage({super.key, required this.openPalette});
@@ -45,8 +49,16 @@ class WorkspacePage extends ConsumerStatefulWidget {
 class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   /// Keeps each pane's state (focus, selection) when a split moves it to another place in the tree.
   final _paneKeys = <PaneId, GlobalKey>{};
+  final _layoutKeys = <TabId, GlobalKey>{};
   final _paneFocus = <PaneId, FocusNode>{};
   var _overlayOpen = false;
+  final _tabScroll = ScrollController();
+  _TerminalDrag? _drag;
+  WorkspaceState? _dragOrigin;
+  var _dragCommitted = false;
+  Timer? _tabHover;
+  TabId? _hoverTab;
+  late final OnKeyEventCallback _dragKeyHandler = _dragKey;
 
   /// The SFTP page connects nothing until first shown, then stays alive like a tab.
   var _filesBuilt = false;
@@ -77,6 +89,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   Future<bool> _showInsertConfirmation(InsertPreview preview) => confirmTerminalInsert(context, preview);
 
   Workspace get _workspace => ref.read(workspaceProvider.notifier);
+
+  void _updateDrag(VoidCallback update) => setState(update);
 
   Future<void> _overlay(Future<void> Function() open) async {
     if (_overlayOpen) return;
@@ -238,29 +252,32 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     run?.call();
   }
 
-  // Semantics can retain old drag widgets; their children and callbacks must not capture live sessions.
-  Widget _tabs(WorkspaceState state) => ReorderableListView.builder(
+  // Drag feedback holds labels and IDs only; it must not retain live terminal models.
+  Widget _tabs(WorkspaceState state) => SingleChildScrollView(
+    controller: _tabScroll,
     scrollDirection: Axis.horizontal,
-    shrinkWrap: true,
-    buildDefaultDragHandles: false,
-    itemCount: state.tabs.length,
-    onReorderItem: _workspace.moveTab,
-    proxyDecorator: (child, _, _) => Material(color: Colors.transparent, child: child),
-    itemBuilder: (context, i) {
-      final tab = state.tabs[i];
-      return ReorderableDragStartListener(
-        key: ValueKey(tab.id),
-        index: i,
-        child: _Tab(
-          tab: tab,
-          selected: state.active == tab.id,
-          onTap: () => _workspace.activate(tab.id),
-          onRename: (name) => _rename(tab, name),
-          onSecondaryTap: (name, p) => _tabMenu(tab, name, p),
-          onClose: () => _workspace.closeTab(tab.id),
-        ),
-      );
-    },
+    child: Row(
+      children: [
+        for (final tab in state.tabs)
+          _tabDropTarget(
+            tab,
+            _draggable(
+              tab,
+              null,
+              tab.title ?? _workspace.session(tab.layout.focusedLeaf.session)?.title ?? '',
+              _Tab(
+                key: ValueKey(tab.id),
+                tab: tab,
+                selected: state.active == tab.id,
+                onTap: () => _workspace.activate(tab.id),
+                onRename: (name) => _rename(tab, name),
+                onSecondaryTap: (name, p) => _tabMenu(tab, name, p),
+                onClose: () => _workspace.closeTab(tab.id),
+              ),
+            ),
+          ),
+      ],
+    ),
   );
 
   void _setNavigation({bool? expanded, double? width}) {
@@ -310,6 +327,9 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   @override
   void dispose() {
+    FocusManager.instance.removeEarlyKeyEventHandler(_dragKeyHandler);
+    _tabHover?.cancel();
+    _tabScroll.dispose();
     if (identical(_insertUi.confirm, _confirmInsert)) _insertUi.confirm = null;
     for (final node in _paneFocus.values) {
       node.dispose();
@@ -326,6 +346,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     final scheme = Theme.of(context).colorScheme;
     final live = {for (final t in state.tabs) ...t.layout.leaves.map((l) => l.pane)};
     _paneKeys.removeWhere((pane, _) => !live.contains(pane));
+    _layoutKeys.removeWhere((id, _) => !state.tabs.any((tab) => tab.id == id));
     _paneFocus.removeWhere((pane, node) {
       if (live.contains(pane)) return false;
       node.dispose();
@@ -373,35 +394,48 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (split)
-                  _PaneHeader(
-                    session: session,
-                    focused: focused,
-                    onTap: () => _workspace.focusPane(tab.id, leaf.pane),
-                    onClose: () => _workspace.closePane(tab.id, leaf.pane),
+                  _draggable(
+                    tab,
+                    leaf.pane,
+                    session.title,
+                    _PaneHeader(
+                      key: ValueKey('pane-drag-${leaf.pane.value}'),
+                      session: session,
+                      focused: focused,
+                      onTap: () => _workspace.focusPane(tab.id, leaf.pane),
+                      onClose: () => _workspace.closePane(tab.id, leaf.pane),
+                    ),
                   ),
                 Expanded(
                   child: ColoredBox(
                     color: scheme.surfaceContainerLowest,
-                    child: TerminalPane(
-                      session,
-                      active: state.active == tab.id && focused,
-                      visible: state.active == tab.id,
-                      onKeyEvent: _onKey,
-                      focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),
-                      actions: [
-                        PaneAction(
-                          l.splitRight,
-                          Icons.vertical_split_outlined,
-                          () => _splitAt(tab, leaf, SplitAxis.horizontal),
-                        ),
-                        PaneAction(
-                          l.splitDown,
-                          Icons.horizontal_split_outlined,
-                          () => _splitAt(tab, leaf, SplitAxis.vertical),
-                        ),
-                        PaneAction(l.duplicate, Icons.copy_all_outlined, () => _workspace.duplicate(tab.id)),
-                        PaneAction(l.closePane, Icons.close, () => _workspace.closePane(tab.id, leaf.pane)),
-                      ],
+                    child: _PaneDropTarget(
+                      key: ValueKey('pane-drop-${leaf.pane.value}'),
+                      drag: _drag,
+                      enabled: (drag, side) => state.active == tab.id && _canDropPane(drag, tab, leaf, side),
+                      fits: (drag, side) => _dropFits(drag, tab, leaf, side),
+                      onDrop: (drag, side) => _dropPane(drag, tab, leaf, side),
+                      child: TerminalPane(
+                        session,
+                        active: state.active == tab.id && focused,
+                        visible: state.active == tab.id,
+                        onKeyEvent: _onKey,
+                        focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),
+                        actions: [
+                          PaneAction(
+                            l.splitRight,
+                            Icons.vertical_split_outlined,
+                            () => _splitAt(tab, leaf, SplitAxis.horizontal),
+                          ),
+                          PaneAction(
+                            l.splitDown,
+                            Icons.horizontal_split_outlined,
+                            () => _splitAt(tab, leaf, SplitAxis.vertical),
+                          ),
+                          PaneAction(l.duplicate, Icons.copy_all_outlined, () => _workspace.duplicate(tab.id)),
+                          PaneAction(l.closePane, Icons.close, () => _workspace.closePane(tab.id, leaf.pane)),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -427,6 +461,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
         child: ListenableBuilder(
           listenable: Listenable.merge([?session]),
           child: LayoutView(
+            key: _layoutKeys.putIfAbsent(tab.id, GlobalKey.new),
             root: tab.layout.root,
             leaf: (l) => leaf(tab, l),
             onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
@@ -472,17 +507,22 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
               fit: StackFit.expand,
               children: [
                 const Positioned.fill(child: DesktopDragRegion(child: SizedBox.expand())),
-                Row(
-                  children: [
-                    Flexible(child: _tabs(state)),
-                    Builder(
-                      builder: (button) => IconButton(
-                        tooltip: l.newConnection,
-                        onPressed: () => _quickConnect(button),
-                        icon: const Icon(Icons.add, size: 18),
+                _TabDropTarget(
+                  key: const ValueKey('workspace-tab-strip'),
+                  enabled: _dragCurrent,
+                  onDrop: (drag, _) => _dropOnTabStrip(drag, null, false),
+                  child: Row(
+                    children: [
+                      Flexible(child: _tabs(state)),
+                      Builder(
+                        builder: (button) => IconButton(
+                          tooltip: l.newConnection,
+                          onPressed: () => _quickConnect(button),
+                          icon: const Icon(Icons.add, size: 18),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -693,7 +733,13 @@ class SessionStatusIcon extends StatelessWidget {
 
 /// Only shown in split tabs, where it tells panes apart; the focused one carries the accent.
 class _PaneHeader extends StatelessWidget {
-  const _PaneHeader({required this.session, required this.focused, required this.onTap, required this.onClose});
+  const _PaneHeader({
+    super.key,
+    required this.session,
+    required this.focused,
+    required this.onTap,
+    required this.onClose,
+  });
 
   final TerminalSession session;
   final bool focused;
@@ -708,7 +754,7 @@ class _PaneHeader extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          height: 24,
+          height: WorkspaceSize.paneHeader,
           padding: const EdgeInsets.only(left: Space.sm, right: Space.xs),
           decoration: BoxDecoration(
             border: Border(
@@ -751,6 +797,7 @@ class _PaneHeader extends StatelessWidget {
 
 class _Tab extends ConsumerStatefulWidget {
   const _Tab({
+    super.key,
     required this.tab,
     required this.selected,
     required this.onTap,

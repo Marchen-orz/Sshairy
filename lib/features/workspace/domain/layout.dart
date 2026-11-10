@@ -2,6 +2,16 @@ import '../../../foundation/ids.dart';
 
 enum SplitAxis { horizontal, vertical }
 
+enum PaneSide {
+  left,
+  right,
+  top,
+  bottom;
+
+  SplitAxis get axis => this == left || this == right ? SplitAxis.horizontal : SplitAxis.vertical;
+  bool get before => this == left || this == top;
+}
+
 /// Split tree from docs/MODULES.md §3: leaves show sessions, splits divide space by ratios that sum to 1.
 sealed class PaneNode {
   const PaneNode();
@@ -74,32 +84,45 @@ class Layout {
 
   Layout focus(PaneId pane) => leaves.any((l) => l.pane == pane) ? Layout._(root, pane) : this;
 
-  /// Puts [session] next to [target]; null when the layout is full or [target] is gone.
-  Layout? split(PaneId target, SplitAxis axis, PaneId pane, SessionId session) {
-    if (leaves.length >= maxPanes || !leaves.any((l) => l.pane == target)) return null;
-    final added = Leaf(pane, session);
+  /// Puts [session] after [target]; null when the layout is full or an identity is already present.
+  Layout? split(PaneId target, SplitAxis axis, PaneId pane, SessionId session) =>
+      insert(target, axis == SplitAxis.horizontal ? PaneSide.right : PaneSide.bottom, Layout.single(pane, session));
+
+  /// Moves an existing tree beside one leaf without changing its internal ratios or identities.
+  Layout? insert(PaneId target, PaneSide side, Layout incoming) {
+    final existing = leaves.toList(), added = incoming.leaves.toList();
+    final panes = {...existing.map((l) => l.pane)}, sessions = {...existing.map((l) => l.session)};
+    if (panes.length != existing.length ||
+        sessions.length != existing.length ||
+        !panes.contains(target) ||
+        existing.length + added.length > maxPanes) {
+      return null;
+    }
+    for (final leaf in added) {
+      if (!panes.add(leaf.pane) || !sessions.add(leaf.session)) return null;
+    }
     PaneNode visit(PaneNode n) {
       switch (n) {
         case Leaf():
-          return n.pane == target ? PaneSplit(axis, [n, added], const [0.5, 0.5]) : n;
-        case PaneSplit(axis: final a, :final children, :final ratios):
+          if (n.pane != target) return n;
+          return PaneSplit(side.axis, side.before ? [incoming.root, n] : [n, incoming.root], const [0.5, 0.5]);
+        case PaneSplit(:final axis, :final children, :final ratios):
           final i = children.indexWhere((c) => c is Leaf && c.pane == target);
-          if (i >= 0 && a == axis) {
-            // Same direction: the new pane takes half of the target's share instead of nesting.
+          if (i >= 0 && axis == side.axis) {
             final half = ratios[i] / 2;
             return PaneSplit(
-              a,
-              [...children]..insert(i + 1, added),
+              axis,
+              [...children]..insert(side.before ? i : i + 1, incoming.root),
               [...ratios]
                 ..[i] = half
-                ..insert(i + 1, half),
+                ..insert(side.before ? i : i + 1, half),
             );
           }
-          return PaneSplit(a, [for (final c in children) visit(c)], ratios);
+          return PaneSplit(axis, [for (final c in children) visit(c)], ratios);
       }
     }
 
-    return Layout._(visit(root), pane);
+    return Layout._(visit(root), incoming.focused);
   }
 
   /// Null when [pane] was the last one. Siblings share its space in proportion; other splits keep their ratios.

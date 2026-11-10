@@ -109,6 +109,8 @@ SSH bytes → 有界入口队列 → 增量解码/VT 解析 → terminal model �
 
 分屏树采用 Leaf(paneId, sessionId) / Split(axis, children, ratios)。不变量：ID 唯一、叶子非空、比例正且归一；移除叶子折叠单子分支，保持未受影响祖先比例；焦点只能指向现存叶子。初期最多 8 pane，受最小尺寸约束。
 
+拖放布局使用源/目标 TabId、可选源 PaneId、目标 PaneId 与四向边枚举，源/目标布局身份用于拒绝过期拖放。顶部标签整体搬移源树，pane 小标题仅搬移该叶；同页叶移动先计算删除后再插入，不接受移动到自身。目标按指定边在命中叶旁插入，保留移入子树内部比例和无关祖先比例，整次最多 8 pane。只转移布局引用，不调用 session open/close，不重连或重放输入；源空标签移除，其余源树折叠并保留有效焦点，单次发布/保存两端结果，目标激活并聚焦移入源的原焦点。拖回顶栏时叶成为独立标签，单叶源仅排序。`workspace.moveTerminal` / `workspace.detachPane` 是本地布局 Capability，默认不向 Agent 开放；指针移动、hover 与落点预览留在 UI。
+
 恢复保存布局、typed SSH/local target 引用和当前标签，默认恢复为 disconnected 标签；兼容旧版 host 快照。本地只保存 shell 标识与可执行路径，启动参数由代码按 shell 类型固定，不保存环境、输入或回滚，不因恢复自动运行 shell；SSH 自动连接独立开关且默认关。无凭据、原始输出、临时主机秘密进入恢复文件。重连不重放输入、广播或旧命令。
 
 验收：T-01 VT/TUI；T-02 IME/快捷键；T-03 背压与隐藏；W-01 树与焦点；W-02 恢复与生命周期。

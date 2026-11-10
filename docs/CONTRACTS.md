@@ -74,6 +74,8 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 
 一期最小目录：host.list/create/update/move/delete/deleteMany、group.reorder、session.open/openLocal/close/reconnect、workspace.split/focus/closeTabs、settings.get/patch；随 M2/M3 添加 files 与 forwarding。`session.openLocal` 只从本机发现的 shell 中按 executable 选取，不允许模型传任意程序/参数，当前不向 Agent 开放。没有实现的 capability 不注册，不用空成功响应占位。
 
+`workspace.moveTerminal` 接收 sourceTabId、可选 sourcePaneId、targetTabId、targetPaneId 与 side（left/right/top/bottom），搬移整个标签树或一个 pane，typed UI 可另带源/目标布局身份以拒绝过期拖放。`workspace.detachPane` 接收 tabId、paneId 与插入标签索引，将 pane 移到独立标签；均为 localChange，复用同一确定性布局校验，缺失/自包含/超限整次拒绝，不打开或关闭会话，不向 Agent 开放。几何可用性在 UI 检查，松开时重验；移动后资源所有者仍为 TerminalSessionManager。
+
 `workspace.closeTabs` 接收 tabId 和 scope（left/right/others），保留基准标签，按标签顺序关闭目标中的所有 shell，再单次更新和保存工作区；活动标签被关闭时切到基准，否则保留原活动页。缺失标签返回 notFound，空目标返回 closed: 0，不向 agent 开放。传输和隧道遵循原租约所有权，不因批量关闭 shell 而被主动取消。主机批量删除和同级组排序的原子边界见 HOST_INHERITANCE。
 
 ## 4. 重试、撤销与审计

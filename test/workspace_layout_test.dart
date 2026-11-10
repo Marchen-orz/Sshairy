@@ -717,7 +717,7 @@ void main() {
         workspace.session(t.layout.focusedLeaf.session)!.host.label,
     ];
     Future<void> menu(String tab) async {
-      final title = find.descendant(of: find.byType(ReorderableListView), matching: find.text(tab));
+      final title = find.descendant(of: find.byKey(const ValueKey('workspace-tab-strip')), matching: find.text(tab));
       await tester.tap(title, buttons: kSecondaryButton);
       await _frames(tester);
     }

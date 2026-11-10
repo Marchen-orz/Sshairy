@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/workspace/domain/layout.dart';
+import 'package:sshairy/features/workspace/presentation/split_view.dart';
 import 'package:sshairy/foundation/ids.dart';
 
 void main() {
@@ -50,6 +52,68 @@ void main() {
     final copy = Layout.fromJson(l.toJson());
     expect(copy.leaves.map((x) => x.session), [sa, sb]);
     expect(copy.focused, b);
+  });
+
+  for (final side in PaneSide.values) {
+    test('inserting a tree on ${side.name} preserves its identities and orientation', () {
+      final incoming = Layout.single(b, sb).split(b, SplitAxis.vertical, c, sc)!.resize(const [], [1, 3]);
+      final moved = Layout.single(a, sa).insert(a, side, incoming)!;
+      final root = moved.root as PaneSplit;
+      expect(root.axis, side.axis);
+      expect(root.ratios, [0.5, 0.5]);
+      expect(identical(root.children[side.before ? 0 : 1], incoming.root), isTrue);
+      expect(moved.focused, c);
+      expect(moved.leaves.map((l) => l.session), side.before ? [sb, sc, sa] : [sa, sb, sc]);
+      expect((incoming.root as PaneSplit).ratios, [0.25, 0.75]);
+    });
+  }
+
+  test('same direction insertion splits only its target share and keeps the incoming subtree intact', () {
+    final target = Layout.single(a, sa).split(a, SplitAxis.horizontal, b, sb)!.resize(const [], [1, 3]);
+    final incoming = Layout.single(c, sc).split(c, SplitAxis.horizontal, const PaneId('d'), const SessionId('sd'))!;
+    final moved = target.insert(b, PaneSide.left, incoming)!;
+    final root = moved.root as PaneSplit;
+    expect(root.children, hasLength(3));
+    expect(root.ratios, [0.25, 0.375, 0.375]);
+    expect(identical(root.children[1], incoming.root), isTrue);
+    expect(Layout.fromJson(moved.toJson()).leaves.map((l) => l.pane), [a, c, const PaneId('d'), b]);
+  });
+
+  test('inserting rejects missing targets, duplicate pane/session identities and overfull trees', () {
+    final target = Layout.single(a, sa);
+    expect(target.insert(b, PaneSide.left, Layout.single(c, sc)), isNull);
+    expect(target.insert(a, PaneSide.left, Layout.single(a, sc)), isNull);
+    expect(target.insert(a, PaneSide.left, Layout.single(c, sa)), isNull);
+    var full = target;
+    for (var i = 1; i < Layout.maxPanes; i++) {
+      full = full.split(a, SplitAxis.horizontal, PaneId('p$i'), SessionId('s$i'))!;
+    }
+    expect(full.insert(a, PaneSide.bottom, Layout.single(c, sc)), isNull);
+  });
+
+  testWidgets('resizing a split narrower than the pane minimum keeps positive ratios', (tester) async {
+    final layout = Layout.single(a, sa).split(a, SplitAxis.horizontal, b, sb)!;
+    List<double>? resized;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 201,
+            height: 300,
+            child: LayoutView(
+              root: layout.root,
+              leaf: (_) => const SizedBox.expand(),
+              onResize: (_, ratios) => resized = ratios,
+            ),
+          ),
+        ),
+      ),
+    );
+    final split = tester.getRect(find.byType(LayoutView));
+    await tester.dragFrom(split.center, const Offset(30, 0));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(resized, [0.5, 0.5]);
+    expect(tester.takeException(), isNull);
   });
 
   test('rejects broken layouts', () {

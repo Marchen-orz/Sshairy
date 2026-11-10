@@ -109,6 +109,58 @@ List<Capability> workspaceCapabilities(Ref ref) {
       },
     ),
     FunctionCapability(
+      'workspace.moveTerminal',
+      Effect.localChange,
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'sourceTabId': {'type': 'string'},
+          'sourcePaneId': {'type': 'string'},
+          'targetTabId': {'type': 'string'},
+          'targetPaneId': {'type': 'string'},
+          'side': {
+            'type': 'string',
+            'enum': ['left', 'right', 'top', 'bottom'],
+          },
+        },
+        'required': ['sourceTabId', 'targetTabId', 'targetPaneId', 'side'],
+      },
+      (a, _) async {
+        final side = PaneSide.values.asNameMap()[a.require<String>('side')];
+        if (side == null) return const Err(AppError('invalidArgument', detail: 'side'));
+        final source = a.optional<String>('sourcePaneId');
+        final moved = workspace().moveTerminal(
+          sourceTabId: TabId(a.require<String>('sourceTabId')),
+          sourcePaneId: source == null ? null : PaneId(source),
+          targetTabId: TabId(a.require<String>('targetTabId')),
+          targetPaneId: PaneId(a.require<String>('targetPaneId')),
+          side: side,
+        );
+        return moved ? const Ok(null) : const Err(AppError('cannotMoveTerminal'));
+      },
+    ),
+    FunctionCapability(
+      'workspace.detachPane',
+      Effect.localChange,
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'tabId': {'type': 'string'},
+          'paneId': {'type': 'string'},
+          'index': {'type': 'integer', 'minimum': 0},
+        },
+        'required': ['tabId', 'paneId', 'index'],
+      },
+      (a, _) async {
+        final tab = workspace().detachPane(
+          TabId(a.require<String>('tabId')),
+          PaneId(a.require<String>('paneId')),
+          a.require<int>('index'),
+        );
+        return tab == null ? const Err(AppError('cannotMoveTerminal')) : Ok({'tabId': tab.value});
+      },
+    ),
+    FunctionCapability(
       'session.reconnect',
       Effect.connect,
       inputSchema: const {

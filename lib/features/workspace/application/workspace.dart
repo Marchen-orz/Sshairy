@@ -199,6 +199,116 @@ class Workspace extends Notifier<WorkspaceState> {
     return true;
   }
 
+  bool canMoveTerminal({
+    required TabId sourceTabId,
+    PaneId? sourcePaneId,
+    required TabId targetTabId,
+    required PaneId targetPaneId,
+    required PaneSide side,
+    Layout? expectedSource,
+    Layout? expectedTarget,
+  }) =>
+      _terminalMove(
+        sourceTabId: sourceTabId,
+        sourcePaneId: sourcePaneId,
+        targetTabId: targetTabId,
+        targetPaneId: targetPaneId,
+        side: side,
+        expectedSource: expectedSource,
+        expectedTarget: expectedTarget,
+      ) !=
+      null;
+
+  /// Reparents layout references only: running sessions remain owned by the terminal manager.
+  bool moveTerminal({
+    required TabId sourceTabId,
+    PaneId? sourcePaneId,
+    required TabId targetTabId,
+    required PaneId targetPaneId,
+    required PaneSide side,
+    Layout? expectedSource,
+    Layout? expectedTarget,
+  }) {
+    final next = _terminalMove(
+      sourceTabId: sourceTabId,
+      sourcePaneId: sourcePaneId,
+      targetTabId: targetTabId,
+      targetPaneId: targetPaneId,
+      side: side,
+      expectedSource: expectedSource,
+      expectedTarget: expectedTarget,
+    );
+    if (next == null) return false;
+    _set(next);
+    return true;
+  }
+
+  WorkspaceState? _terminalMove({
+    required TabId sourceTabId,
+    PaneId? sourcePaneId,
+    required TabId targetTabId,
+    required PaneId targetPaneId,
+    required PaneSide side,
+    Layout? expectedSource,
+    Layout? expectedTarget,
+  }) {
+    final source = _tab(sourceTabId), target = _tab(targetTabId);
+    if (source == null ||
+        target == null ||
+        (expectedSource != null && !identical(source.layout, expectedSource)) ||
+        (expectedTarget != null && !identical(target.layout, expectedTarget))) {
+      return null;
+    }
+    final same = sourceTabId == targetTabId;
+    if (same && (sourcePaneId == null || sourcePaneId == targetPaneId)) return null;
+    final leaf = sourcePaneId == null ? null : source.layout.leaves.where((l) => l.pane == sourcePaneId).firstOrNull;
+    if (sourcePaneId != null && leaf == null) return null;
+    if ([...source.layout.leaves, ...target.layout.leaves].any((l) => session(l.session) == null)) return null;
+    final incoming = leaf == null ? source.layout : Layout.single(leaf.pane, leaf.session);
+    final remaining = sourcePaneId == null ? null : source.layout.remove(sourcePaneId);
+    final destination = same ? remaining : target.layout;
+    final moved = destination?.insert(targetPaneId, side, incoming);
+    if (moved == null) return null;
+    return WorkspaceState(
+      tabs: [
+        for (final tab in state.tabs)
+          if (tab.id == targetTabId)
+            tab.withLayout(moved)
+          else if (tab.id == sourceTabId) ...[
+            if (remaining != null) tab.withLayout(remaining),
+          ] else
+            tab,
+      ],
+      active: targetTabId,
+    );
+  }
+
+  bool canDetachPane(TabId tabId, PaneId pane, int index, {Layout? expectedSource}) {
+    final source = _tab(tabId);
+    return source != null &&
+        index >= 0 &&
+        index <= state.tabs.length &&
+        (expectedSource == null || identical(source.layout, expectedSource)) &&
+        source.layout.leaves.any((l) => l.pane == pane && session(l.session) != null);
+  }
+
+  /// A single-pane tab just changes position; splitting a pane out never starts a new shell.
+  TabId? detachPane(TabId tabId, PaneId pane, int index, {Layout? expectedSource}) {
+    if (!canDetachPane(tabId, pane, index, expectedSource: expectedSource)) return null;
+    final source = _tab(tabId)!;
+    final leaf = source.layout.leaves.firstWhere((l) => l.pane == pane);
+    final remaining = source.layout.remove(pane);
+    final id = remaining == null ? tabId : TabId(newId());
+    final detached = remaining == null ? source : WorkspaceTab(id, Layout.single(pane, leaf.session));
+    final tabs = [
+      for (final tab in state.tabs)
+        if (tab.id != tabId) tab else if (remaining != null) tab.withLayout(remaining),
+    ];
+    tabs.insert(index.clamp(0, tabs.length), detached);
+    _set(WorkspaceState(tabs: tabs, active: id));
+    return id;
+  }
+
   void focusPane(TabId tabId, PaneId pane) {
     final tab = _tab(tabId);
     if (tab != null && tab.layout.focused != pane) _replace(tabId, tab.layout.focus(pane));

@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
+import '../../../design/theme.dart';
 import '../domain/layout.dart';
 
 /// Draws a split tree. Dividers are 1 px lines with an 8 px grab area (docs/UI.md §4). Dragging shows a guide
@@ -36,7 +39,7 @@ class _SplitView extends StatefulWidget {
 }
 
 class _SplitViewState extends State<_SplitView> {
-  static const _line = 1.0, _grab = 8.0, _minPane = 120.0;
+  static const _line = WorkspaceSize.divider, _grab = WorkspaceSize.dividerGrab, _minPane = WorkspaceSize.paneMin;
 
   /// Divider being dragged and where its guide is, in pixels from the start.
   int? _dragging;
@@ -74,7 +77,8 @@ class _SplitViewState extends State<_SplitView> {
           setState(() => _dragging = null);
           final start = i == 0 ? 0.0 : offsets[i - 1] + _line;
           final pair = sizes[i] + sizes[i + 1];
-          final first = (_guide - start).clamp(_minPane, pair - _minPane);
+          final minimum = min(_minPane, pair / 2);
+          final first = (_guide - start).clamp(minimum, pair - minimum);
           final ratios = [...split.ratios];
           ratios[i] = first / available;
           ratios[i + 1] = (pair - first) / available;
