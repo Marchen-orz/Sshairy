@@ -29,6 +29,13 @@ final class SecretRef {
     return SecretRef._('translation/${Uri.encodeComponent(identity)}/apiKey');
   }
 
+  factory SecretRef.ai(String identity) {
+    if (identity.trim().isEmpty || identity.length > 4096 || RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(identity)) {
+      throw ArgumentError('invalid AI credential identity');
+    }
+    return SecretRef._('ai/${Uri.encodeComponent(identity)}/apiKey');
+  }
+
   final String storageKey;
   final bool canRemember;
 

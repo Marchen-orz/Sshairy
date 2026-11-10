@@ -98,6 +98,138 @@ abstract class AppLocalizations {
     Locale('zh'),
   ];
 
+  /// No description provided for @aiConfigTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI'**
+  String get aiConfigTitle;
+
+  /// No description provided for @aiConfigEnabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable AI'**
+  String get aiConfigEnabled;
+
+  /// No description provided for @aiConfigAnthropic.
+  ///
+  /// In en, this message translates to:
+  /// **'Anthropic Messages'**
+  String get aiConfigAnthropic;
+
+  /// No description provided for @aiConfigOpenAi.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenAI Chat Completions'**
+  String get aiConfigOpenAi;
+
+  /// No description provided for @aiConfigEndpoint.
+  ///
+  /// In en, this message translates to:
+  /// **'API base URL'**
+  String get aiConfigEndpoint;
+
+  /// No description provided for @aiConfigEndpointHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Include the API base path, such as /v1. HTTPS or exact local loopback HTTP only.'**
+  String get aiConfigEndpointHint;
+
+  /// No description provided for @aiConfigModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get aiConfigModel;
+
+  /// No description provided for @aiConfigTools.
+  ///
+  /// In en, this message translates to:
+  /// **'Model supports tool calls'**
+  String get aiConfigTools;
+
+  /// No description provided for @aiConfigContextWindow.
+  ///
+  /// In en, this message translates to:
+  /// **'Context window (tokens)'**
+  String get aiConfigContextWindow;
+
+  /// No description provided for @aiConfigMaxOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Maximum output (tokens)'**
+  String get aiConfigMaxOutput;
+
+  /// No description provided for @aiConfigApiKey.
+  ///
+  /// In en, this message translates to:
+  /// **'API key'**
+  String get aiConfigApiKey;
+
+  /// No description provided for @aiConfigKeyLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking secure storage…'**
+  String get aiConfigKeyLoading;
+
+  /// No description provided for @aiConfigKeyLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check the API key in secure storage.'**
+  String get aiConfigKeyLoadFailed;
+
+  /// No description provided for @aiConfigKeySaved.
+  ///
+  /// In en, this message translates to:
+  /// **'A key is saved for this destination. Leave the field empty to keep it.'**
+  String get aiConfigKeySaved;
+
+  /// No description provided for @aiConfigKeyMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'No API key saved for this destination.'**
+  String get aiConfigKeyMissing;
+
+  /// No description provided for @aiConfigKeyRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'The saved key will be removed when you save.'**
+  String get aiConfigKeyRemoved;
+
+  /// No description provided for @aiConfigRemoveKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove saved key'**
+  String get aiConfigRemoveKey;
+
+  /// No description provided for @aiConfigInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the API address, model and token limits.'**
+  String get aiConfigInvalid;
+
+  /// No description provided for @aiConfigSaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'AI settings were not saved. A key change may already have reached OS secure storage.'**
+  String get aiConfigSaveFailed;
+
+  /// No description provided for @aiConfigPartialSave.
+  ///
+  /// In en, this message translates to:
+  /// **'The API key was updated, but AI settings could not be saved. Retry saving the settings.'**
+  String get aiConfigPartialSave;
+
+  /// No description provided for @aiConfigLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'AI configuration could not be read. AI is disabled and the existing file is protected.'**
+  String get aiConfigLoadFailed;
+
+  /// No description provided for @aiConfigConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'AI settings changed elsewhere. Cancel to reload before saving.'**
+  String get aiConfigConflict;
+
   /// No description provided for @deleteHostsConfirm.
   ///
   /// In en, this message translates to:
@@ -4207,6 +4339,216 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Bind a key'**
   String get cmdTmuxBind;
+
+  /// No description provided for @aiAgentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get aiAgentTitle;
+
+  /// No description provided for @aiAgentClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear conversation'**
+  String get aiAgentClear;
+
+  /// No description provided for @aiAgentConfigure.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure a model and enable AI in Settings to begin.'**
+  String get aiAgentConfigure;
+
+  /// No description provided for @aiAgentConfigurationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'AI configuration could not be read. Review it in Settings.'**
+  String get aiAgentConfigurationFailed;
+
+  /// No description provided for @aiAgentExplain.
+  ///
+  /// In en, this message translates to:
+  /// **'Explain'**
+  String get aiAgentExplain;
+
+  /// No description provided for @aiAgentDiagnose.
+  ///
+  /// In en, this message translates to:
+  /// **'Fixed diagnostics'**
+  String get aiAgentDiagnose;
+
+  /// No description provided for @aiAgentExecute.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve each command'**
+  String get aiAgentExecute;
+
+  /// No description provided for @aiAgentChooseHost.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a server'**
+  String get aiAgentChooseHost;
+
+  /// No description provided for @aiAgentGoal.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe what you want to check or do…'**
+  String get aiAgentGoal;
+
+  /// No description provided for @aiAgentSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get aiAgentSend;
+
+  /// No description provided for @aiAgentEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the text you send and explicitly authorized data are shared with the selected model.'**
+  String get aiAgentEmpty;
+
+  /// No description provided for @aiAgentIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get aiAgentIdle;
+
+  /// No description provided for @aiAgentPreparing.
+  ///
+  /// In en, this message translates to:
+  /// **'Preparing'**
+  String get aiAgentPreparing;
+
+  /// No description provided for @aiAgentStreaming.
+  ///
+  /// In en, this message translates to:
+  /// **'Receiving response'**
+  String get aiAgentStreaming;
+
+  /// No description provided for @aiAgentAwaitingApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for command approval'**
+  String get aiAgentAwaitingApproval;
+
+  /// No description provided for @aiAgentExecuting.
+  ///
+  /// In en, this message translates to:
+  /// **'Running'**
+  String get aiAgentExecuting;
+
+  /// No description provided for @aiAgentAwaitingData.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what output to share'**
+  String get aiAgentAwaitingData;
+
+  /// No description provided for @aiAgentCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get aiAgentCompleted;
+
+  /// No description provided for @aiAgentStopping.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopping'**
+  String get aiAgentStopping;
+
+  /// No description provided for @aiAgentCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get aiAgentCancelled;
+
+  /// No description provided for @aiAgentFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The request could not be completed.'**
+  String get aiAgentFailed;
+
+  /// No description provided for @aiAgentOutcomeUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote outcome is unknown'**
+  String get aiAgentOutcomeUnknown;
+
+  /// No description provided for @aiAgentDiagnostics.
+  ///
+  /// In en, this message translates to:
+  /// **'Fixed diagnostics'**
+  String get aiAgentDiagnostics;
+
+  /// No description provided for @aiAgentDiagnosticScope.
+  ///
+  /// In en, this message translates to:
+  /// **'Fixed Linux diagnostics may send OS, kernel, load, memory, disk mounts and capacity to the selected model. Process arguments and environment variables are excluded.'**
+  String get aiAgentDiagnosticScope;
+
+  /// No description provided for @aiAgentExitCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Exit code: {code}'**
+  String aiAgentExitCode(int code);
+
+  /// No description provided for @aiAgentTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'Output was truncated.'**
+  String get aiAgentTruncated;
+
+  /// No description provided for @aiAgentShowOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Show local output'**
+  String get aiAgentShowOutput;
+
+  /// No description provided for @aiAgentHideOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide output'**
+  String get aiAgentHideOutput;
+
+  /// No description provided for @aiAgentShellPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'This command runs with the SSH account\'s permissions and may change files or access the network. Stopping closes this client\'s channel; remote processes may continue.'**
+  String get aiAgentShellPermission;
+
+  /// No description provided for @aiAgentReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get aiAgentReject;
+
+  /// No description provided for @aiAgentApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve once'**
+  String get aiAgentApprove;
+
+  /// No description provided for @aiAgentSharePreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the text below will be sent to the selected model. Edit it to remove private data.'**
+  String get aiAgentSharePreview;
+
+  /// No description provided for @aiAgentProjectionTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'This text exceeds the request limit. Shorten it before sharing.'**
+  String get aiAgentProjectionTooLarge;
+
+  /// No description provided for @aiAgentKeepLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep local'**
+  String get aiAgentKeepLocal;
+
+  /// No description provided for @aiAgentShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this text'**
+  String get aiAgentShare;
 
   /// No description provided for @cmdTmuxBreak.
   ///

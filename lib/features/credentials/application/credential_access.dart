@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/ids.dart';
@@ -14,6 +16,15 @@ abstract interface class ConnectionCredentials {
 
 /// Settings use [has] for presence; only the translation engine reads values, never capabilities or AI.
 abstract interface class TranslationCredentials {
+  Future<bool> has(String identity);
+  Future<void> save(String identity, Secret value);
+  Future<void> clear(String identity);
+  Future<Secret?> read(String identity);
+}
+
+/// AI settings query presence; only the selected model adapter reads a destination's API key.
+abstract interface class AiCredentials {
+  Stream<void> get changes;
   Future<bool> has(String identity);
   Future<void> save(String identity, Secret value);
   Future<void> clear(String identity);
@@ -62,6 +73,39 @@ final hostPasswordEditorProvider = Provider<HostPasswordEditor>((ref) => ref.rea
 final translationCredentialsProvider = Provider<TranslationCredentials>(
   (ref) => _TranslationCredentials(ref.read(_credentialsProvider)),
 );
+
+final aiCredentialsProvider = Provider<AiCredentials>((ref) {
+  final credentials = _AiCredentials(ref.read(_credentialsProvider));
+  ref.onDispose(credentials.close);
+  return credentials;
+});
+
+class _AiCredentials implements AiCredentials {
+  _AiCredentials(this._credentials);
+  final _StoredCredentials _credentials;
+  final _changes = StreamController<void>.broadcast(sync: true);
+
+  @override
+  Stream<void> get changes => _changes.stream;
+
+  void _changed() {
+    if (!_changes.isClosed) _changes.add(null);
+  }
+
+  void close() => unawaited(_changes.close());
+
+  @override
+  Future<bool> has(String identity) => _credentials.hasAi(identity);
+
+  @override
+  Future<void> save(String identity, Secret value) => _credentials.saveAi(identity, value, changed: _changed);
+
+  @override
+  Future<void> clear(String identity) => _credentials.clearAi(identity, changed: _changed);
+
+  @override
+  Future<Secret?> read(String identity) => _credentials.readAi(identity);
+}
 
 class CredentialRevision {
   int value = 0;
@@ -154,6 +198,41 @@ class _StoredCredentials
     final key = value.reveal();
     if (key.trim().isEmpty || key.length > 8192 || RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(key)) {
       throw ArgumentError('invalid translation API key');
+    }
+  }
+
+  Future<bool> hasAi(String identity) => _serial(() async => await _store.read(SecretRef.ai(identity)) != null);
+
+  Future<void> saveAi(String identity, Secret value, {required void Function() changed}) => _serial(() async {
+    final ref = SecretRef.ai(identity);
+    _validateAiKey(value);
+    try {
+      await _store.write(ref, value);
+    } finally {
+      // A failed platform write may already have changed the key. Revoke active requests either way.
+      changed();
+    }
+  });
+
+  Future<void> clearAi(String identity, {required void Function() changed}) => _serial(() async {
+    final ref = SecretRef.ai(identity);
+    try {
+      await _store.delete(ref);
+    } finally {
+      changed();
+    }
+  });
+
+  Future<Secret?> readAi(String identity) => _serial(() async {
+    final value = await _store.read(SecretRef.ai(identity));
+    if (value != null) _validateAiKey(value);
+    return value;
+  });
+
+  static void _validateAiKey(Secret value) {
+    final key = value.reveal();
+    if (key.trim().isEmpty || key.length > 8192 || RegExp(r'[\x00-\x1f\x7f-\x9f]').hasMatch(key)) {
+      throw ArgumentError('invalid AI API key');
     }
   }
 

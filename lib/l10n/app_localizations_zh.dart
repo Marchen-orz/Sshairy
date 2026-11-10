@@ -10,6 +10,73 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get aiConfigTitle => 'AI';
+
+  @override
+  String get aiConfigEnabled => '启用 AI';
+
+  @override
+  String get aiConfigAnthropic => 'Anthropic Messages';
+
+  @override
+  String get aiConfigOpenAi => 'OpenAI Chat Completions';
+
+  @override
+  String get aiConfigEndpoint => 'API 基础地址';
+
+  @override
+  String get aiConfigEndpointHint =>
+      '包含 /v1 等 API 基础路径；仅允许 HTTPS 或精确本机回环 HTTP。';
+
+  @override
+  String get aiConfigModel => '模型';
+
+  @override
+  String get aiConfigTools => '模型支持工具调用';
+
+  @override
+  String get aiConfigContextWindow => '上下文容量（tokens）';
+
+  @override
+  String get aiConfigMaxOutput => '最大输出（tokens）';
+
+  @override
+  String get aiConfigApiKey => 'API Key';
+
+  @override
+  String get aiConfigKeyLoading => '正在检查安全存储…';
+
+  @override
+  String get aiConfigKeyLoadFailed => '无法检查系统安全存储中的 API Key。';
+
+  @override
+  String get aiConfigKeySaved => '此目的地已保存密钥；留空保留原值。';
+
+  @override
+  String get aiConfigKeyMissing => '此目的地尚未保存 API Key。';
+
+  @override
+  String get aiConfigKeyRemoved => '保存后将移除此密钥。';
+
+  @override
+  String get aiConfigRemoveKey => '移除已存密钥';
+
+  @override
+  String get aiConfigInvalid => '请检查 API 地址、模型和 token 上限。';
+
+  @override
+  String get aiConfigSaveFailed => 'AI 设置未能保存；密钥修改可能已写入系统安全存储，请检查后重试。';
+
+  @override
+  String get aiConfigPartialSave => 'API Key 已更新，但 AI 设置未能保存，请重试保存设置。';
+
+  @override
+  String get aiConfigLoadFailed => '无法读取 AI 配置；AI 已禁用，原文件受到保护。';
+
+  @override
+  String get aiConfigConflict => 'AI 设置已在其他位置更改，请取消以重新载入后再保存。';
+
+  @override
   String deleteHostsConfirm(int count) {
     return '删除选中的 $count 台主机？';
   }
@@ -2179,6 +2246,115 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cmdTmuxBind => '绑定按键';
+
+  @override
+  String get aiAgentTitle => 'Agent';
+
+  @override
+  String get aiAgentClear => '清空对话';
+
+  @override
+  String get aiAgentConfigure => '在设置中配置模型并开启 AI 后即可开始。';
+
+  @override
+  String get aiAgentConfigurationFailed => 'AI 配置读取失败，请在设置中检查。';
+
+  @override
+  String get aiAgentExplain => '解释';
+
+  @override
+  String get aiAgentDiagnose => '固定诊断';
+
+  @override
+  String get aiAgentExecute => '逐次批准命令';
+
+  @override
+  String get aiAgentChooseHost => '选择服务器';
+
+  @override
+  String get aiAgentGoal => '描述你想检查或处理的问题…';
+
+  @override
+  String get aiAgentSend => '发送';
+
+  @override
+  String get aiAgentEmpty => '仅向所选模型发送你输入的文字和明确授权的数据。';
+
+  @override
+  String get aiAgentIdle => '就绪';
+
+  @override
+  String get aiAgentPreparing => '准备中';
+
+  @override
+  String get aiAgentStreaming => '接收回复中';
+
+  @override
+  String get aiAgentAwaitingApproval => '等待命令批准';
+
+  @override
+  String get aiAgentExecuting => '执行中';
+
+  @override
+  String get aiAgentAwaitingData => '选择要发送的输出';
+
+  @override
+  String get aiAgentCompleted => '已完成';
+
+  @override
+  String get aiAgentStopping => '正在停止';
+
+  @override
+  String get aiAgentCancelled => '已停止';
+
+  @override
+  String get aiAgentFailed => '请求未能完成。';
+
+  @override
+  String get aiAgentOutcomeUnknown => '远端结果未知';
+
+  @override
+  String get aiAgentDiagnostics => '固定诊断';
+
+  @override
+  String get aiAgentDiagnosticScope =>
+      '固定 Linux 诊断可向所选模型发送系统、内核、负载、内存、磁盘挂载点及容量，不含进程参数和环境变量。';
+
+  @override
+  String aiAgentExitCode(int code) {
+    return '退出码：$code';
+  }
+
+  @override
+  String get aiAgentTruncated => '输出已截断。';
+
+  @override
+  String get aiAgentShowOutput => '查看本地输出';
+
+  @override
+  String get aiAgentHideOutput => '收起输出';
+
+  @override
+  String get aiAgentShellPermission =>
+      '命令以 SSH 账号权限执行，可能修改文件或访问网络。停止会关闭本客户端的通道，远端进程仍可能继续。';
+
+  @override
+  String get aiAgentReject => '拒绝';
+
+  @override
+  String get aiAgentApprove => '仅批准此次';
+
+  @override
+  String get aiAgentSharePreview => '只会向所选模型发送下方文字。可先编辑并移除私密信息。';
+
+  @override
+  String get aiAgentProjectionTooLarge => '文字超出请求容量，请缩短后再发送。';
+
+  @override
+  String get aiAgentKeepLocal => '仅保留本地';
+
+  @override
+  String get aiAgentShare => '发送这些文字';
 
   @override
   String get cmdTmuxBreak => '将窗格移入独立窗口';

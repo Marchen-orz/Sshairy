@@ -10,6 +10,81 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get aiConfigTitle => 'AI';
+
+  @override
+  String get aiConfigEnabled => 'Enable AI';
+
+  @override
+  String get aiConfigAnthropic => 'Anthropic Messages';
+
+  @override
+  String get aiConfigOpenAi => 'OpenAI Chat Completions';
+
+  @override
+  String get aiConfigEndpoint => 'API base URL';
+
+  @override
+  String get aiConfigEndpointHint =>
+      'Include the API base path, such as /v1. HTTPS or exact local loopback HTTP only.';
+
+  @override
+  String get aiConfigModel => 'Model';
+
+  @override
+  String get aiConfigTools => 'Model supports tool calls';
+
+  @override
+  String get aiConfigContextWindow => 'Context window (tokens)';
+
+  @override
+  String get aiConfigMaxOutput => 'Maximum output (tokens)';
+
+  @override
+  String get aiConfigApiKey => 'API key';
+
+  @override
+  String get aiConfigKeyLoading => 'Checking secure storage…';
+
+  @override
+  String get aiConfigKeyLoadFailed =>
+      'Could not check the API key in secure storage.';
+
+  @override
+  String get aiConfigKeySaved =>
+      'A key is saved for this destination. Leave the field empty to keep it.';
+
+  @override
+  String get aiConfigKeyMissing => 'No API key saved for this destination.';
+
+  @override
+  String get aiConfigKeyRemoved =>
+      'The saved key will be removed when you save.';
+
+  @override
+  String get aiConfigRemoveKey => 'Remove saved key';
+
+  @override
+  String get aiConfigInvalid =>
+      'Check the API address, model and token limits.';
+
+  @override
+  String get aiConfigSaveFailed =>
+      'AI settings were not saved. A key change may already have reached OS secure storage.';
+
+  @override
+  String get aiConfigPartialSave =>
+      'The API key was updated, but AI settings could not be saved. Retry saving the settings.';
+
+  @override
+  String get aiConfigLoadFailed =>
+      'AI configuration could not be read. AI is disabled and the existing file is protected.';
+
+  @override
+  String get aiConfigConflict =>
+      'AI settings changed elsewhere. Cancel to reload before saving.';
+
+  @override
   String deleteHostsConfirm(int count) {
     return 'Delete the selected $count hosts?';
   }
@@ -2244,6 +2319,120 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cmdTmuxBind => 'Bind a key';
+
+  @override
+  String get aiAgentTitle => 'Agent';
+
+  @override
+  String get aiAgentClear => 'Clear conversation';
+
+  @override
+  String get aiAgentConfigure =>
+      'Configure a model and enable AI in Settings to begin.';
+
+  @override
+  String get aiAgentConfigurationFailed =>
+      'AI configuration could not be read. Review it in Settings.';
+
+  @override
+  String get aiAgentExplain => 'Explain';
+
+  @override
+  String get aiAgentDiagnose => 'Fixed diagnostics';
+
+  @override
+  String get aiAgentExecute => 'Approve each command';
+
+  @override
+  String get aiAgentChooseHost => 'Choose a server';
+
+  @override
+  String get aiAgentGoal => 'Describe what you want to check or do…';
+
+  @override
+  String get aiAgentSend => 'Send';
+
+  @override
+  String get aiAgentEmpty =>
+      'Only the text you send and explicitly authorized data are shared with the selected model.';
+
+  @override
+  String get aiAgentIdle => 'Ready';
+
+  @override
+  String get aiAgentPreparing => 'Preparing';
+
+  @override
+  String get aiAgentStreaming => 'Receiving response';
+
+  @override
+  String get aiAgentAwaitingApproval => 'Waiting for command approval';
+
+  @override
+  String get aiAgentExecuting => 'Running';
+
+  @override
+  String get aiAgentAwaitingData => 'Choose what output to share';
+
+  @override
+  String get aiAgentCompleted => 'Completed';
+
+  @override
+  String get aiAgentStopping => 'Stopping';
+
+  @override
+  String get aiAgentCancelled => 'Stopped';
+
+  @override
+  String get aiAgentFailed => 'The request could not be completed.';
+
+  @override
+  String get aiAgentOutcomeUnknown => 'Remote outcome is unknown';
+
+  @override
+  String get aiAgentDiagnostics => 'Fixed diagnostics';
+
+  @override
+  String get aiAgentDiagnosticScope =>
+      'Fixed Linux diagnostics may send OS, kernel, load, memory, disk mounts and capacity to the selected model. Process arguments and environment variables are excluded.';
+
+  @override
+  String aiAgentExitCode(int code) {
+    return 'Exit code: $code';
+  }
+
+  @override
+  String get aiAgentTruncated => 'Output was truncated.';
+
+  @override
+  String get aiAgentShowOutput => 'Show local output';
+
+  @override
+  String get aiAgentHideOutput => 'Hide output';
+
+  @override
+  String get aiAgentShellPermission =>
+      'This command runs with the SSH account\'s permissions and may change files or access the network. Stopping closes this client\'s channel; remote processes may continue.';
+
+  @override
+  String get aiAgentReject => 'Reject';
+
+  @override
+  String get aiAgentApprove => 'Approve once';
+
+  @override
+  String get aiAgentSharePreview =>
+      'Only the text below will be sent to the selected model. Edit it to remove private data.';
+
+  @override
+  String get aiAgentProjectionTooLarge =>
+      'This text exceeds the request limit. Shorten it before sharing.';
+
+  @override
+  String get aiAgentKeepLocal => 'Keep local';
+
+  @override
+  String get aiAgentShare => 'Share this text';
 
   @override
   String get cmdTmuxBreak => 'Move a pane to a window';
