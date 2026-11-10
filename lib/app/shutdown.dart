@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../design/dialog.dart';
+import '../features/ai/api.dart';
 import '../features/connections/api.dart';
 import '../features/credentials/api.dart';
 import '../features/files/api.dart';
@@ -55,6 +56,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
     final edits = ref.read(editsProvider.notifier);
     final forwards = ref.read(forwardsProvider.notifier);
     try {
+      final agent = ref.exists(agentRuntimeProvider) ? ref.read(agentRuntimeProvider) : null;
       final running = transfers.activeCount;
       final unsaved = edits.unsavedCount;
       final tunnels = ref.read(forwardsProvider).where((f) => f.active).length;
@@ -64,8 +66,13 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
           .where((s) => s.status == SessionStatus.connected || s.status == SessionStatus.connecting)
           .length;
       // Work that would be lost always asks; otherwise the confirmQuit setting decides.
-      final ask = running > 0 || unsaved > 0 || tunnels > 0 || ref.read(settingsProvider).get(SettingKeys.confirmQuit);
-      if (ask && !await _confirm(running, unsaved, tunnels, sessions)) {
+      final ask =
+          running > 0 ||
+          unsaved > 0 ||
+          tunnels > 0 ||
+          (agent?.busy ?? false) ||
+          ref.read(settingsProvider).get(SettingKeys.confirmQuit);
+      if (ask && !await _confirm(running, unsaved, tunnels, sessions, agent?.busy ?? false)) {
         return AppExitResponse.cancel;
       }
       while (mounted) {
@@ -73,8 +80,12 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
         // Cleanup and engine teardown happen after the window is gone, never on a frozen frame.
         await _window.hide();
         try {
-          await Future.wait([transfers.shutdown(), edits.shutdown(), forwards.shutdown()])
-              .timeout(const Duration(seconds: 8));
+          await Future.wait([
+            transfers.shutdown(),
+            edits.shutdown(),
+            forwards.shutdown(),
+            if (agent != null) agent.shutdown(),
+          ]).timeout(const Duration(seconds: 8));
           await Future.wait([
             ref.read(hostsProvider.notifier).saved,
             ref.read(keysProvider.notifier).saved,
@@ -82,6 +93,8 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             ref.read(settingsProvider.notifier).saved,
             ref.read(snippetsProvider.notifier).saved,
             ref.read(workspaceProvider.notifier).saved,
+            if (ref.exists(aiConfigurationProvider)) ref.read(aiConfigurationProvider.notifier).saved,
+            if (ref.exists(aiJournalProvider)) ref.read(aiJournalProvider).saved,
           ]).timeout(const Duration(seconds: 5));
           await ref.read(terminalSessionsProvider.notifier).shutdown().timeout(const Duration(seconds: 5));
           ref.read(connectionManagerProvider).closeAll();
@@ -130,11 +143,12 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
     }
   }
 
-  Future<bool> _confirm(int running, int unsaved, int tunnels, int sessions) async {
+  Future<bool> _confirm(int running, int unsaved, int tunnels, int sessions, bool agentBusy) async {
     if (!mounted) return false;
     final l = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final lines = [
+      if (agentBusy) l.aiAgentTitle,
       if (sessions > 0) l.sessionsOpen(sessions),
       if (running > 0) l.transfersRunning(running),
       if (unsaved > 0) l.editsUnsaved(unsaved),

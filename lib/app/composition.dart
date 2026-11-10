@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/misc.dart';
 
+import '../features/ai/api.dart';
+import '../features/connections/api.dart';
 import '../features/capabilities/api.dart';
 import '../features/credentials/api.dart';
 import '../features/hosts/api.dart';
@@ -7,6 +9,8 @@ import '../features/settings/api.dart';
 import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
+import 'ai_backend.dart';
+import 'capabilities/ai.dart';
 import 'capabilities/hosts.dart';
 import 'capabilities/host_library.dart';
 import 'capabilities/credentials.dart';
@@ -18,8 +22,12 @@ import 'capabilities/forwarding.dart';
 
 /// The composition root: the one place that knows every feature and registers what each one offers.
 List<Override> appOverrides() => [
+  agentBackendProvider.overrideWith(
+    (ref) => SshAgentBackend(ref.read(connectionManagerProvider), () => ref.read(hostsProvider)),
+  ),
   settingsSectionsProvider.overrideWith(
     (ref) => [
+      SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings()),
       SettingsSection(
         (l) => l.translationService,
         (_) => TranslationSettings(
@@ -52,6 +60,7 @@ List<Override> appOverrides() => [
   ),
   capabilityDispatcherProvider.overrideWith(
     (ref) => CapabilityDispatcher([
+      ...aiCapabilities(ref),
       ...hostCapabilities(ref),
       ...hostLibraryCapabilities(ref),
       ...keyCapabilities(ref),

@@ -21,6 +21,7 @@ import '../../../design/theme.dart';
 import '../../../design/window_chrome.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../ai/api.dart';
 import '../../connections/api.dart';
 import '../../files/api.dart';
 import '../../forwarding/api.dart';
@@ -62,6 +63,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   /// The SFTP page connects nothing until first shown, then stays alive like a tab.
   var _filesBuilt = false;
+  var _agentOpen = false;
 
   /// Shown at once and saved behind, like the files dock; a change through settings.patch is followed.
   late var _navigationExpanded = ref.read(settingsProvider).get(SettingKeys.navigationExpanded);
@@ -298,7 +300,10 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   }
 
   /// Open or closed for every tab, and for the next start, like the monitor.
-  void _setSideFiles(bool open) => ref.read(settingsProvider.notifier).set(SettingKeys.showFiles, open);
+  void _setSideFiles(bool open) {
+    if (open && _agentOpen) setState(() => _agentOpen = false);
+    ref.read(settingsProvider.notifier).set(SettingKeys.showFiles, open);
+  }
 
   List<Widget> _fileToolbar(FilesDock dock) {
     final l = AppLocalizations.of(context);
@@ -358,7 +363,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     _filesBuilt |= state.files;
     final wide = MediaQuery.sizeOf(context).width >= WorkspaceSize.wideBreakpoint;
     final showMonitor = settings.get(SettingKeys.showMonitor);
-    final showFiles = settings.get(SettingKeys.showFiles);
+    final showFiles = settings.get(SettingKeys.showFiles) && !_agentOpen;
     final dock = settings.get(SettingKeys.filesDock);
     final settingsNotifier = ref.read(settingsProvider.notifier);
     ref.listen(settingsProvider, (before, now) {
@@ -604,6 +609,12 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   ),
                 ],
                 [
+                  RailItem(
+                    icon: Icons.auto_awesome_outlined,
+                    label: l.aiAgentTitle,
+                    selected: _agentOpen,
+                    onTap: () => setState(() => _agentOpen = !_agentOpen),
+                  ),
                   RailItem(icon: Icons.key_outlined, label: l.keys, onTap: _openKeys),
                   RailItem(icon: Icons.lan_outlined, label: l.proxy, onTap: _openProxies),
                   RailItem(icon: Icons.route_outlined, label: l.portForwarding, onTap: _openForwarding),
@@ -626,40 +637,47 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   key: const ValueKey('workspace-content'),
                   // Not IndexedStack: its wrappers are unkeyed, so closing a middle tab would rebuild the panes
                   // after it.
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      const BackgroundImageView(slot: BackgroundSlot.app),
-                      Visibility.maintain(
-                        key: const ValueKey('vault'),
-                        visible: vault,
-                        child: ExcludeFocus(
-                          excluding: !vault,
-                          child: VaultPage(active: vault, onConnect: _workspace.openHost),
-                        ),
-                      ),
-                      if (_filesBuilt)
+                  child: DockPanel(
+                    open: _agentOpen,
+                    onClose: () => setState(() => _agentOpen = false),
+                    closeLabel: l.close,
+                    resizeLabel: l.aiAgentTitle,
+                    panel: _agentOpen ? const AgentPanel() : const SizedBox.shrink(),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        const BackgroundImageView(slot: BackgroundSlot.app),
                         Visibility.maintain(
-                          key: const ValueKey('files'),
-                          visible: state.files,
-                          child: IgnorePointer(
-                            ignoring: !state.files,
-                            child: ExcludeFocus(
-                              excluding: !state.files,
-                              child: FilesPage(active: state.files),
+                          key: const ValueKey('vault'),
+                          visible: vault,
+                          child: ExcludeFocus(
+                            excluding: !vault,
+                            child: VaultPage(active: vault, onConnect: _workspace.openHost),
+                          ),
+                        ),
+                        if (_filesBuilt)
+                          Visibility.maintain(
+                            key: const ValueKey('files'),
+                            visible: state.files,
+                            child: IgnorePointer(
+                              ignoring: !state.files,
+                              child: ExcludeFocus(
+                                excluding: !state.files,
+                                child: FilesPage(active: state.files),
+                              ),
                             ),
                           ),
-                        ),
-                      for (final tab in state.tabs)
-                        Visibility.maintain(
-                          key: ValueKey(tab.id),
-                          visible: state.active == tab.id,
-                          child: IgnorePointer(
-                            ignoring: state.active != tab.id,
-                            child: ExcludeFocus(excluding: state.active != tab.id, child: tabBody(tab)),
+                        for (final tab in state.tabs)
+                          Visibility.maintain(
+                            key: ValueKey(tab.id),
+                            visible: state.active == tab.id,
+                            child: IgnorePointer(
+                              ignoring: state.active != tab.id,
+                              child: ExcludeFocus(excluding: state.active != tab.id, child: tabBody(tab)),
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],

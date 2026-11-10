@@ -340,10 +340,12 @@ void main() {
     expect(find.byType(AppDialog), findsOneWidget);
     expect(tester.getCenter(find.byType(PopupSurface)).dx, 400);
     final sections = container.read(settingsSectionsProvider);
-    expect(sections, hasLength(1));
+    expect(sections, hasLength(2));
     final settingsContext = tester.element(find.byType(SettingsPanel));
-    expect(sections.single.title(AppLocalizations.of(settingsContext)), 'Translation service');
-    expect(sections.single.build(settingsContext), isA<TranslationSettings>());
+    final translation = sections.singleWhere(
+      (s) => s.title(AppLocalizations.of(settingsContext)) == 'Translation service',
+    );
+    expect(translation.build(settingsContext), isA<TranslationSettings>());
     expect(find.text('Trusted host keys'), findsNothing);
     expect(find.byTooltip('Import known_hosts'), findsNothing);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -465,10 +467,11 @@ void main() {
     expect(find.byType(TerminalPane), findsOneWidget);
     expect(monitor(), WorkspaceSize.monitor);
     final panel = tester.state(find.byType(MonitorPanel));
-    final dock = tester.state(find.byType(DockPanel));
+    final filesDock = find.ancestor(of: find.byType(TerminalPane), matching: find.byType(DockPanel)).first;
+    final dock = tester.state(filesDock);
     final terminal = tester.element(find.byType(TerminalPane));
     void expectKept(String reason) {
-      expect(identical(tester.state(find.byType(DockPanel)), dock), isTrue, reason: reason);
+      expect(identical(tester.state(filesDock), dock), isTrue, reason: reason);
       expect(identical(tester.element(find.byType(TerminalPane)), terminal), isTrue, reason: reason);
     }
 
