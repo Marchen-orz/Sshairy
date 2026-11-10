@@ -48,7 +48,7 @@ class _RouteLease {
   }
 }
 
-class _SshTransport implements Transport {
+class _SshTransport implements Transport, StreamingTransport {
   _SshTransport(this._client, this._releaseRoute) {
     _client.done.whenComplete(_releaseRoute).ignore();
   }
@@ -102,6 +102,19 @@ class _SshTransport implements Transport {
   @override
   Future<ExecResult> exec(String command, {int limit = 1 << 20, Duration? timeout, CancellationToken? cancel}) =>
       runSshExec(() => _channel(_client.execute(command)), limit: limit, timeout: timeout, cancel: cancel);
+
+  @override
+  Future<int?> execStreaming(
+    String command, {
+    required void Function(ExecChunk) onOutput,
+    Duration? timeout,
+    CancellationToken? cancel,
+  }) => runSshExecStreaming(
+    () => _channel(_client.execute(command)),
+    onOutput: onOutput,
+    timeout: timeout,
+    cancel: cancel,
+  );
 
   @override
   Future<Tunnel> connectTo(String host, int port) async {

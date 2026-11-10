@@ -27,17 +27,52 @@ Future<ExecResult> runSshExec(
   Duration? timeout,
   CancellationToken? cancel,
 }) async {
-  if (limit < 0 || (timeout?.isNegative ?? false)) throw ArgumentError('Invalid execution limits');
+  if (limit < 0) throw ArgumentError('Invalid execution limits');
+  final out = BytesBuilder(copy: false), err = BytesBuilder(copy: false);
+  var truncated = false;
+  final code = await _runSshExec(
+    open,
+    onOutput: (stream, data) {
+      final into = stream == ExecStream.stdout ? out : err;
+      final room = limit - into.length;
+      if (data.length > room) truncated = true;
+      if (room > 0) into.add(Uint8List.fromList(data.length > room ? data.sublist(0, room) : data));
+    },
+    timeout: timeout,
+    cancel: cancel,
+  );
+  return ExecResult(out.takeBytes(), err.takeBytes(), code, truncated: truncated);
+}
+
+/// Delivers each stream as it arrives; the caller consumes it synchronously into its own bounded storage.
+Future<int?> runSshExecStreaming(
+  Future<SSHSession> Function() open, {
+  required void Function(ExecChunk) onOutput,
+  Duration? timeout,
+  CancellationToken? cancel,
+}) => _runSshExec(
+  open,
+  onOutput: (stream, data) => onOutput(ExecChunk(stream, Uint8List.fromList(data))),
+  timeout: timeout,
+  cancel: cancel,
+);
+
+Future<int?> _runSshExec(
+  Future<SSHSession> Function() open, {
+  required void Function(ExecStream, Uint8List) onOutput,
+  Duration? timeout,
+  CancellationToken? cancel,
+}) async {
+  if (timeout?.isNegative ?? false) throw ArgumentError('Invalid execution limits');
   if (cancel?.isCancelled ?? false) throw const ExecError(ExecFailure.cancelled);
   if (timeout == Duration.zero) throw const ExecError(ExecFailure.timedOut);
 
-  final result = Completer<ExecResult>();
+  final result = Completer<int?>();
   final cancellation = _ExecCancellation();
-  final out = BytesBuilder(copy: false), err = BytesBuilder(copy: false);
   final subscriptions = <StreamSubscription<Uint8List>>[];
   SSHSession? session;
   Timer? timer;
-  var finished = false, truncated = false, channelDone = false;
+  var finished = false, channelDone = false;
   var streamsDone = 0;
 
   void finish([Object? error, StackTrace? stack]) {
@@ -60,7 +95,7 @@ Future<ExecResult> runSshExec(
     if (error != null) {
       result.completeError(error, stack);
     } else {
-      result.complete(ExecResult(out.takeBytes(), err.takeBytes(), current?.exitCode, truncated: truncated));
+      result.complete(current?.exitCode);
     }
   }
 
@@ -68,17 +103,17 @@ Future<ExecResult> runSshExec(
     if (streamsDone == 2 && channelDone) finish();
   }
 
-  void collect(BytesBuilder into, Uint8List data) {
-    if (finished) return;
-    final room = limit - into.length;
-    if (data.length > room) truncated = true;
-    if (room > 0) into.add(data.length > room ? Uint8List.sublistView(data, 0, room) : data);
-  }
-
-  void listen(Stream<Uint8List> stream, BytesBuilder into) {
+  void listen(Stream<Uint8List> stream, ExecStream source) {
     subscriptions.add(
       stream.listen(
-        (data) => collect(into, data),
+        (data) {
+          if (finished) return;
+          try {
+            onOutput(source, data);
+          } catch (error, stack) {
+            finish(error, stack);
+          }
+        },
         onError: (Object error, StackTrace stack) => finish(error, stack),
         onDone: () {
           streamsDone++;
@@ -106,8 +141,8 @@ Future<ExecResult> runSshExec(
               return;
             }
             session = opened;
-            listen(opened.stdout, out);
-            listen(opened.stderr, err);
+            listen(opened.stdout, ExecStream.stdout);
+            listen(opened.stderr, ExecStream.stderr);
             unawaited(
               opened.done.then((_) {
                 channelDone = true;

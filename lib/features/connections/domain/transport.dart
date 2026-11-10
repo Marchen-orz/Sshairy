@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
+import '../../../foundation/ids.dart';
 
 /// One authenticated SSH connection. Callers reach it only through a lease (docs/CONTRACTS.md §2).
 abstract interface class Transport {
@@ -27,6 +28,52 @@ abstract interface class Transport {
   Future<RemoteListener> listen(String host, int port);
 
   void close();
+}
+
+/// Optional transport support: delivers real channel bytes synchronously without retaining an output queue.
+abstract interface class StreamingTransport {
+  Future<int?> execStreaming(
+    String command, {
+    required void Function(ExecChunk) onOutput,
+    Duration? timeout,
+    CancellationToken? cancel,
+  });
+}
+
+enum ExecStream { stdout, stderr }
+
+final class ExecChunk {
+  const ExecChunk(this.stream, this.bytes);
+
+  final ExecStream stream;
+  final Uint8List bytes;
+}
+
+/// An approval binds the authenticated transport and the complete route/security snapshot it was dialled with.
+final class ConnectionIdentity {
+  const ConnectionIdentity({
+    required this.transportId,
+    required this.hostId,
+    required this.configKey,
+    required this.username,
+    required this.address,
+    required this.port,
+  });
+
+  final TransportId transportId;
+  final HostId hostId;
+  final String configKey, username, address;
+  final int port;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ConnectionIdentity && transportId == other.transportId && configKey == other.configKey;
+
+  @override
+  int get hashCode => Object.hash(transportId, configKey);
+
+  @override
+  String toString() => 'ConnectionIdentity(${transportId.value})';
 }
 
 abstract interface class ShellChannel {

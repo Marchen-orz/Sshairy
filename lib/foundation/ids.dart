@@ -5,6 +5,8 @@ extension type const HostId(String value) {}
 
 extension type const SessionId(String value) {}
 
+extension type const TransportId(String value) {}
+
 extension type const PaneId(String value) {}
 
 extension type const TabId(String value) {}

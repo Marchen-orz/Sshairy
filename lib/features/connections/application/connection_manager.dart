@@ -84,7 +84,7 @@ class ConnectionManager {
     CancellationToken? cancel,
   }) async {
     if (_closed || (cancel?.isCancelled ?? false)) throw const ConnectError(ConnectFailure.cancelled);
-    final key = jsonEncode([route.map(keyOf).toList(), securityRevision?.call() ?? const <int>[]]);
+    final key = _routeKey(route);
     var entry = _pool[key];
     if (entry != null && (entry.transport?.isClosed ?? false)) {
       _forget(entry);
@@ -154,12 +154,28 @@ class ConnectionManager {
     }
   }
 
+  String _routeKey(List<Host> route) =>
+      jsonEncode([route.map(keyOf).toList(), securityRevision?.call() ?? const <int>[]]);
+
+  bool _isCurrent(_Entry entry) {
+    if (_closed) return false;
+    try {
+      final byId = _hostById;
+      if (byId == null) return _routeKey(entry.route) == entry.key;
+      final host = entry.host.transient ? entry.host : byId(entry.host.id);
+      if (host == null) return false;
+      return _routeKey(resolveRoute(host, byId)) == entry.key;
+    } on Object {
+      return false;
+    }
+  }
+
   _Entry _start(String key, List<Host> route, ConnectPrompts prompts) {
-    final entry = _Entry(key, route.first);
+    final entry = _Entry(key, List.unmodifiable(route));
     final elapsed = Stopwatch()..start();
     diagnostics?.record(DiagnosticArea.connection, DiagnosticAction.dial, DiagnosticOutcome.started);
     _pool[key] = entry;
-    entry.ready = _dial(route, prompts, entry.dialCancel).then((t) {
+    entry.ready = _dial(entry.route, prompts, entry.dialCancel).then((t) {
       if (entry.dialCancel.isCancelled || _closed) {
         t.close();
         throw const ConnectError(ConnectFailure.cancelled);
@@ -236,10 +252,20 @@ class ConnectionManager {
 }
 
 class _Entry {
-  _Entry(this.key, this.host);
+  _Entry(this.key, this.route)
+    : identity = ConnectionIdentity(
+        transportId: TransportId(newId()),
+        hostId: route.first.id,
+        configKey: key,
+        username: route.first.username,
+        address: route.first.address,
+        port: route.first.port,
+      );
 
   final String key;
-  final Host host;
+  final List<Host> route;
+  final ConnectionIdentity identity;
+  Host get host => route.first;
   final dialCancel = CancellationToken();
   late final Future<Transport> ready;
   Transport? transport;
@@ -264,6 +290,10 @@ class TransportLease {
   final _lost = Completer<void>();
 
   Host get host => _entry.host;
+  ConnectionIdentity get identity => _entry.identity;
+
+  /// Existing channels may keep their old transport; a new approved action must match today's route and policy.
+  bool get isCurrent => !_released && !lost && _owner._isCurrent(_entry);
 
   /// Completes when the transport is lost. Listeners live and die with this lease, not with the shared transport,
   /// so what they capture (a closed terminal and its scrollback) is not kept alive by a long-lived connection.
@@ -279,6 +309,22 @@ class TransportLease {
 
   Future<ExecResult> exec(String command, {int limit = 1 << 20, Duration? timeout, CancellationToken? cancel}) =>
       _use().exec(command, limit: limit, timeout: timeout, cancel: cancel);
+
+  Future<int?> execStreaming(
+    String command, {
+    required void Function(ExecChunk) onOutput,
+    Duration? timeout,
+    CancellationToken? cancel,
+  }) {
+    final transport = _use();
+    if (transport is! StreamingTransport) throw UnsupportedError('streaming execution unsupported');
+    return (transport as StreamingTransport).execStreaming(
+      command,
+      onOutput: onOutput,
+      timeout: timeout,
+      cancel: cancel,
+    );
+  }
 
   /// The caller closes the file system before releasing the lease.
   Future<FileSystem> openFiles() => _use().openFiles();

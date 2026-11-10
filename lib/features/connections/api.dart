@@ -14,7 +14,18 @@ export 'domain/prompts.dart'
         SecretRequest,
         TrustChoice,
         SecretKind;
-export 'domain/transport.dart' show ExecError, ExecFailure, ExecResult, ShellChannel, Tunnel, RemoteListener;
+export 'domain/transport.dart'
+    show
+        ConnectionIdentity,
+        ExecChunk,
+        ExecStream,
+        StreamingTransport,
+        ExecError,
+        ExecFailure,
+        ExecResult,
+        ShellChannel,
+        Tunnel,
+        RemoteListener;
 export 'presentation/dialog_prompts.dart';
 export 'presentation/error_text.dart';
 export 'presentation/trust_section.dart';
