@@ -62,6 +62,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   String? _candidateTranslationLocale;
   var _historyOpen = false, _historyPinned = false, _composerOpen = false;
   Offset? _historyOffset;
+  Size? _historySize;
   int? _composerGeneration;
   TerminalAiService? _aiService;
   StreamSubscription<void>? _aiChanges;

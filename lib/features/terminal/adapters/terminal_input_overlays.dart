@@ -39,8 +39,13 @@ extension _InputOverlays on _TerminalPaneState {
   Widget _historyOverlay() => Positioned.fill(
     child: LayoutBuilder(
       builder: (context, constraints) {
-        final width = min(WorkspaceSize.flyoutWide, max(0.0, constraints.maxWidth - Space.sm * 2));
-        final height = min(WorkspaceSize.toolPanel, max(0.0, constraints.maxHeight - Space.sm * 2));
+        final maxWidth = min(HistoryPopupSize.maxWidth, max(0.0, constraints.maxWidth - Space.sm * 2));
+        final maxHeight = min(HistoryPopupSize.maxHeight, max(0.0, constraints.maxHeight - Space.sm * 2));
+        final minWidth = min(HistoryPopupSize.minWidth, maxWidth);
+        final minHeight = min(HistoryPopupSize.minHeight, maxHeight);
+        final preferred = _historySize ?? const Size(HistoryPopupSize.width, HistoryPopupSize.height);
+        final width = preferred.width.clamp(minWidth, maxWidth);
+        final height = preferred.height.clamp(minHeight, maxHeight);
         Offset constrain(Offset offset) => Offset(
           offset.dx.clamp(Space.sm, max(Space.sm, constraints.maxWidth - width - Space.sm)),
           offset.dy.clamp(Space.sm, max(Space.sm, constraints.maxHeight - height - Space.sm)),
@@ -62,9 +67,22 @@ extension _InputOverlays on _TerminalPaneState {
                   if (!_historyPinned) _closeHistory(restoreFocus: false);
                 },
                 onPin: () => _update(() => _historyPinned = !_historyPinned),
-                onDrag: _historyPinned
-                    ? (delta) => _update(() => _historyOffset = constrain((_historyOffset ?? offset) + delta))
-                    : null,
+                onDragStart: () => _update(() => _historyOffset = offset),
+                onDrag: (delta) => _update(() => _historyOffset = constrain((_historyOffset ?? offset) + delta)),
+                onResizeStart: () => _update(() {
+                  _historyOffset = offset;
+                  _historySize = Size(width, height);
+                }),
+                onResize: (delta) => _update(() {
+                  final size = _historySize ?? Size(width, height);
+                  _historySize = Size(
+                    (size.width + delta.dx).clamp(minWidth, min(maxWidth, constraints.maxWidth - offset.dx - Space.sm)),
+                    (size.height + delta.dy).clamp(
+                      minHeight,
+                      min(maxHeight, constraints.maxHeight - offset.dy - Space.sm),
+                    ),
+                  );
+                }),
                 onInserted: () {
                   if (!_historyPinned) _closeHistory();
                   _focus.requestFocus();
@@ -105,14 +123,17 @@ class _CommandHistoryPopup extends StatefulWidget {
     required this.onClose,
     required this.onOutside,
     required this.onPin,
+    required this.onDragStart,
     required this.onDrag,
+    required this.onResizeStart,
+    required this.onResize,
     required this.onInserted,
   });
 
   final TerminalSession session;
   final bool active, pinned;
-  final VoidCallback onClose, onOutside, onPin, onInserted;
-  final ValueChanged<Offset>? onDrag;
+  final VoidCallback onClose, onOutside, onPin, onDragStart, onResizeStart, onInserted;
+  final ValueChanged<Offset> onDrag, onResize;
 
   @override
   State<_CommandHistoryPopup> createState() => _CommandHistoryPopupState();
@@ -121,6 +142,7 @@ class _CommandHistoryPopup extends StatefulWidget {
 class _CommandHistoryPopupState extends State<_CommandHistoryPopup> {
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
+  final _resizeFocus = FocusNode();
   final _scroll = ScrollController();
   var _index = 0;
 
@@ -188,10 +210,16 @@ class _CommandHistoryPopupState extends State<_CommandHistoryPopup> {
     return KeyEventResult.ignored;
   }
 
+  void _resizeBy(Offset delta) {
+    widget.onResizeStart();
+    widget.onResize(delta);
+  }
+
   @override
   void dispose() {
     _search.dispose();
     _searchFocus.dispose();
+    _resizeFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -206,118 +234,177 @@ class _CommandHistoryPopupState extends State<_CommandHistoryPopup> {
         child: PopupSurface(
           key: const ValueKey('command-history-popup'),
           radius: Radii.panel,
-          child: Column(
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Row(
+              Column(
                 children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.move,
+                          child: GestureDetector(
+                            key: const ValueKey('command-history-drag'),
+                            behavior: HitTestBehavior.opaque,
+                            onPanStart: (_) => widget.onDragStart(),
+                            onPanUpdate: (details) => widget.onDrag(details.delta),
+                            child: Padding(
+                              padding: const EdgeInsets.all(Space.sm),
+                              child: Text(l.commandHistory, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: l.commandHistoryClear,
+                        icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                        constraints: const BoxConstraints.tightFor(
+                          width: WorkspaceSize.control,
+                          height: WorkspaceSize.control,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: widget.session.clearCommandHistory,
+                      ),
+                      IconButton(
+                        tooltip: widget.pinned ? l.unpin : l.pin,
+                        isSelected: widget.pinned,
+                        icon: const Icon(Icons.push_pin_outlined, size: 16),
+                        selectedIcon: const Icon(Icons.push_pin, size: 16),
+                        constraints: const BoxConstraints.tightFor(
+                          width: WorkspaceSize.control,
+                          height: WorkspaceSize.control,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: widget.onPin,
+                      ),
+                      IconButton(
+                        tooltip: l.close,
+                        icon: const Icon(Icons.close, size: 16),
+                        constraints: const BoxConstraints.tightFor(
+                          width: WorkspaceSize.control,
+                          height: WorkspaceSize.control,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: widget.onClose,
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(Space.sm, 0, Space.sm, Space.sm),
+                    child: TextField(
+                      key: const ValueKey('command-history-search'),
+                      autofocus: widget.active,
+                      focusNode: _searchFocus,
+                      controller: _search,
+                      decoration: InputDecoration(hintText: l.find, prefixIcon: const Icon(Icons.search, size: 16)),
+                      onChanged: (_) {
+                        setState(() => _index = 0);
+                        if (_scroll.hasClients) _scroll.jumpTo(0);
+                      },
+                    ),
+                  ),
                   Expanded(
+                    child: ListenableBuilder(
+                      listenable: Listenable.merge([widget.session.commandHistory, widget.session.commandAssistance]),
+                      builder: (context, _) {
+                        final rows = _rows;
+                        if (rows.isEmpty) return Center(child: Text(l.commandHistoryEmpty));
+                        final row = max(WorkspaceSize.listRow, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
+                        return ListView.builder(
+                          controller: _scroll,
+                          itemExtent: row,
+                          itemCount: rows.length,
+                          padding: const EdgeInsets.only(bottom: HistoryPopupSize.resizeGrip),
+                          itemBuilder: (context, index) {
+                            final text = rows[index];
+                            final canInsert = _canInsert(text);
+                            final selected = index == _index.clamp(0, rows.length - 1);
+                            return PopupRow(
+                              selected: selected,
+                              height: row,
+                              onTap: canInsert ? () => _insert(text) : null,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Tooltip(
+                                      message: text,
+                                      child: Text(
+                                        text,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: mono(context),
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: l.copy,
+                                    icon: const Icon(Icons.copy_outlined, size: 14),
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () => Clipboard.setData(ClipboardData(text: text)),
+                                  ),
+                                  IconButton(
+                                    tooltip: l.commandHistoryInsert,
+                                    icon: const Icon(Icons.keyboard_return, size: 14),
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: canInsert ? () => _insert(text) : null,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Semantics(
+                  label: l.resizeToolPanel,
+                  onIncrease: () => _resizeBy(const Offset(Space.lg, Space.lg)),
+                  onDecrease: () => _resizeBy(const Offset(-Space.lg, -Space.lg)),
+                  child: Tooltip(
+                    message: l.resizeToolPanel,
                     child: MouseRegion(
-                      cursor: widget.pinned ? SystemMouseCursors.move : MouseCursor.defer,
-                      child: GestureDetector(
-                        key: const ValueKey('command-history-drag'),
-                        behavior: HitTestBehavior.opaque,
-                        onPanUpdate: widget.onDrag == null ? null : (details) => widget.onDrag!(details.delta),
-                        child: Padding(
-                          padding: const EdgeInsets.all(Space.sm),
-                          child: Text(l.commandHistory, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      cursor: SystemMouseCursors.resizeDownRight,
+                      child: Focus(
+                        focusNode: _resizeFocus,
+                        onFocusChange: (_) => setState(() {}),
+                        onKeyEvent: (_, event) {
+                          if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+                          final delta = switch (event.logicalKey) {
+                            LogicalKeyboardKey.arrowLeft => const Offset(-Space.lg, 0),
+                            LogicalKeyboardKey.arrowRight => const Offset(Space.lg, 0),
+                            LogicalKeyboardKey.arrowUp => const Offset(0, -Space.lg),
+                            LogicalKeyboardKey.arrowDown => const Offset(0, Space.lg),
+                            _ => null,
+                          };
+                          if (delta == null) return KeyEventResult.ignored;
+                          _resizeBy(delta);
+                          return KeyEventResult.handled;
+                        },
+                        child: GestureDetector(
+                          key: const ValueKey('command-history-resize'),
+                          behavior: HitTestBehavior.opaque,
+                          onPanStart: (_) => widget.onResizeStart(),
+                          onPanUpdate: (details) => widget.onResize(details.delta),
+                          child: SizedBox.square(
+                            dimension: HistoryPopupSize.resizeGrip,
+                            child: Icon(
+                              Icons.south_east,
+                              size: Space.md,
+                              color: _resizeFocus.hasFocus
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  IconButton(
-                    tooltip: l.commandHistoryClear,
-                    icon: const Icon(Icons.delete_sweep_outlined, size: 16),
-                    constraints: const BoxConstraints.tightFor(
-                      width: WorkspaceSize.control,
-                      height: WorkspaceSize.control,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: widget.session.clearCommandHistory,
-                  ),
-                  IconButton(
-                    tooltip: widget.pinned ? l.unpin : l.pin,
-                    isSelected: widget.pinned,
-                    icon: const Icon(Icons.push_pin_outlined, size: 16),
-                    selectedIcon: const Icon(Icons.push_pin, size: 16),
-                    constraints: const BoxConstraints.tightFor(
-                      width: WorkspaceSize.control,
-                      height: WorkspaceSize.control,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: widget.onPin,
-                  ),
-                  IconButton(
-                    tooltip: l.close,
-                    icon: const Icon(Icons.close, size: 16),
-                    constraints: const BoxConstraints.tightFor(
-                      width: WorkspaceSize.control,
-                      height: WorkspaceSize.control,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: widget.onClose,
-                  ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Space.sm, 0, Space.sm, Space.sm),
-                child: TextField(
-                  key: const ValueKey('command-history-search'),
-                  autofocus: widget.active,
-                  focusNode: _searchFocus,
-                  controller: _search,
-                  decoration: InputDecoration(hintText: l.find, prefixIcon: const Icon(Icons.search, size: 16)),
-                  onChanged: (_) {
-                    setState(() => _index = 0);
-                    if (_scroll.hasClients) _scroll.jumpTo(0);
-                  },
-                ),
-              ),
-              Expanded(
-                child: ListenableBuilder(
-                  listenable: Listenable.merge([widget.session.commandHistory, widget.session.commandAssistance]),
-                  builder: (context, _) {
-                    final rows = _rows;
-                    if (rows.isEmpty) return Center(child: Text(l.commandHistoryEmpty));
-                    final row = max(WorkspaceSize.listRow, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
-                    return ListView.builder(
-                      controller: _scroll,
-                      itemExtent: row,
-                      itemCount: rows.length,
-                      padding: const EdgeInsets.only(bottom: Space.xs),
-                      itemBuilder: (context, index) {
-                        final text = rows[index];
-                        final canInsert = _canInsert(text);
-                        final selected = index == _index.clamp(0, rows.length - 1);
-                        return PopupRow(
-                          selected: selected,
-                          height: row,
-                          onTap: canInsert ? () => _insert(text) : null,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Tooltip(
-                                  message: text,
-                                  child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: mono(context)),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: l.copy,
-                                icon: const Icon(Icons.copy_outlined, size: 14),
-                                visualDensity: VisualDensity.compact,
-                                onPressed: () => Clipboard.setData(ClipboardData(text: text)),
-                              ),
-                              IconButton(
-                                tooltip: l.commandHistoryInsert,
-                                icon: const Icon(Icons.keyboard_return, size: 14),
-                                visualDensity: VisualDensity.compact,
-                                onPressed: canInsert ? () => _insert(text) : null,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  },
                 ),
               ),
             ],

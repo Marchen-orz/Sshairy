@@ -1809,6 +1809,81 @@ void main() {
       }
     });
 
+    for (final scale in [1.0, 1.5]) {
+      testWidgets('unpinned history drags and resizes within its limits at $scale scale', (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1500, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final shell = await mount(tester, scale: scale);
+        try {
+          await _feed(tester, shell, 'u@box:~\$ ');
+          await chord(tester, [LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft], LogicalKeyboardKey.keyH);
+          final popup = find.byKey(const ValueKey('command-history-popup'));
+          final title = find.byKey(const ValueKey('command-history-drag'));
+          final grip = find.byKey(const ValueKey('command-history-resize'));
+          final before = tester.getRect(popup);
+          shell.writes.clear();
+          await tester.drag(title, Offset(100 * scale, 60 * scale));
+          await tester.pump();
+          final moved = tester.getRect(popup);
+          expect(moved.left, greaterThan(before.left));
+          expect(moved.top, greaterThan(before.top));
+          expect(find.byTooltip('Pin'), findsOneWidget, reason: 'Dragging does not pin the history');
+          await tester.drag(title, const Offset(-3000, -3000));
+          await tester.pump();
+          final pane = tester.getRect(find.byType(TerminalPane));
+          final topLeft = tester.getRect(popup).topLeft;
+          expect(topLeft.dx, closeTo(pane.left + Space.sm * scale, .1));
+          expect(topLeft.dy, closeTo(pane.top + Space.sm * scale, .1));
+
+          await tester.drag(grip, const Offset(3000, 3000));
+          await tester.pump();
+          final large = tester.getRect(popup);
+          expect(large.topLeft, topLeft, reason: 'Resizing keeps the top left fixed');
+          expect(large.width, closeTo(HistoryPopupSize.maxWidth * scale, .1));
+          expect(large.height, closeTo(HistoryPopupSize.maxHeight * scale, .1));
+          expect(pane.contains(large.bottomRight), isTrue);
+          await tester.drag(grip, const Offset(-3000, -3000));
+          await tester.pump();
+          final small = tester.getRect(popup);
+          expect(small.width, closeTo(HistoryPopupSize.minWidth * scale, .1));
+          expect(small.height, closeTo(HistoryPopupSize.minHeight * scale, .1));
+          await tester.tap(find.byTooltip('Pin'));
+          await tester.pump();
+          await tester.drag(grip, Offset(80 * scale, 40 * scale));
+          await tester.pump();
+          expect(tester.getRect(popup).width, greaterThan(small.width));
+          expect(tester.getRect(popup).height, greaterThan(small.height));
+          expect(shell.writes, isEmpty);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await unmount(tester);
+        }
+      });
+    }
+
+    testWidgets('resized history shrinks inside a pane smaller than its minimum', (tester) async {
+      final shell = await mount(tester);
+      try {
+        await _feed(tester, shell, 'u@box:~\$ ');
+        await chord(tester, [LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.shiftLeft], LogicalKeyboardKey.keyH);
+        final popup = find.byKey(const ValueKey('command-history-popup'));
+        await tester.drag(find.byKey(const ValueKey('command-history-resize')), const Offset(1000, 1000));
+        await tester.pump();
+        await tester.binding.setSurfaceSize(const Size(260, 180));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pump();
+        final pane = tester.getRect(find.byType(TerminalPane));
+        final rect = tester.getRect(popup);
+        expect(rect.width, closeTo(pane.width - Space.sm * 2, .1));
+        expect(rect.height, closeTo(pane.height - Space.sm * 2, .1));
+        expect(pane.contains(rect.topLeft), isTrue);
+        expect(pane.contains(rect.bottomRight), isTrue);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
     testWidgets('history keyboard acceptance appends suffix and incompatible commands cannot replace a draft', (
       tester,
     ) async {
