@@ -121,10 +121,21 @@ def main():
     parser.add_argument("repository", type=Path)
     parser.add_argument("--pack", type=Path)
     parser.add_argument("--only-speed", action="store_true", help="Re-export only the six speed pose PNGs")
+    parser.add_argument("--only-ai", action="store_true", help="Import only the six AI pose PNGs and their source mapping")
     args = parser.parse_args()
     root = args.repository.resolve()
     pack = (args.pack or root / "Sshairy-Brand-Asset-Pack").resolve()
     brand = root / "assets/brand"
+    if args.only_ai:
+        manifest_path = brand / "sources.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for key, folder in THEMES:
+            export_png(pack / folder / "poses/thinking-ai.png", brand / key / "pose-thinking-ai.png",
+                       (360, 360), crop=True)
+            manifest[key]["assets"]["pose-thinking-ai.png"] = "poses/thinking-ai.png"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print("Imported six AI poses and updated their source mapping.")
+        return
     if args.only_speed:
         for key, folder in THEMES:
             export_png(pack / folder / "poses/speed.png", brand / key / "pose-speed.png",
@@ -172,6 +183,7 @@ def main():
             "pose-success.png": ("poses/success.png", (360, 360), True),
             "pose-speed.png": ("poses/speed.png", (360, 360), True),
             "pose-sleeping.png": ("poses/sleeping.png", (360, 360), True),
+            "pose-thinking-ai.png": ("poses/thinking-ai.png", (360, 360), True),
             "pose-security.png": ("poses/security.png", (240, 240), True),
             "pose-coding-focus.png": ("poses/coding-focus.png", (240, 240), True),
             "pose-ssh-connected.png": ("poses/ssh-connected.png", (240, 240), True),

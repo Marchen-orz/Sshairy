@@ -23,6 +23,7 @@ enum BrandPose {
   success('success'),
   speed('speed'),
   sleeping('sleeping'),
+  thinkingAi('thinking-ai'),
   security('security'),
   codingFocus('coding-focus'),
   sshConnected('ssh-connected'),
@@ -262,6 +263,29 @@ class BrandEmptyState extends StatelessWidget {
             ),
             if (child != null) ...[const SizedBox(height: Space.md), child!],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A static, theme-matched illustration for a quiet empty area.
+class BrandIllustration extends StatelessWidget {
+  const BrandIllustration({super.key, required this.pose, this.size = 160});
+
+  final BrandPose pose;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = BrandPalette.of(context);
+    return IgnorePointer(
+      child: ExcludeSemantics(
+        child: _Art(
+          BrandAssets.pose(palette.theme, pose),
+          width: size,
+          height: size,
+          opacity: _decorOpacity(palette.brightness, light: .72, dark: .76),
         ),
       ),
     );

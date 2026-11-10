@@ -21,7 +21,8 @@
       "pose-security.png": "poses/security.png",
       "pose-coding-focus.png": "poses/coding-focus.png",
       "pose-ssh-connected.png": "poses/ssh-connected.png",
-      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png",
+      "pose-thinking-ai.png": "poses/thinking-ai.png"
     },
     "windowsIcons": {
       "light": "app-icons/app-icon-1024.png",
@@ -50,7 +51,8 @@
       "pose-security.png": "poses/security.png",
       "pose-coding-focus.png": "poses/coding-focus.png",
       "pose-ssh-connected.png": "poses/ssh-connected.png",
-      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png",
+      "pose-thinking-ai.png": "poses/thinking-ai.png"
     },
     "windowsIcons": {
       "light": "app-icons/app-icon-1024.png",
@@ -79,7 +81,8 @@
       "pose-security.png": "poses/security.png",
       "pose-coding-focus.png": "poses/coding-focus.png",
       "pose-ssh-connected.png": "poses/ssh-connected.png",
-      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png",
+      "pose-thinking-ai.png": "poses/thinking-ai.png"
     },
     "windowsIcons": {
       "light": "app-icons/app-icon-1024.png",
@@ -108,7 +111,8 @@
       "pose-security.png": "poses/security.png",
       "pose-coding-focus.png": "poses/coding-focus.png",
       "pose-ssh-connected.png": "poses/ssh-connected.png",
-      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png",
+      "pose-thinking-ai.png": "poses/thinking-ai.png"
     },
     "windowsIcons": {
       "light": "app-icons/app-icon-1024.png",
@@ -137,7 +141,8 @@
       "pose-security.png": "poses/security.png",
       "pose-coding-focus.png": "poses/coding-focus.png",
       "pose-ssh-connected.png": "poses/ssh-connected.png",
-      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png",
+      "pose-thinking-ai.png": "poses/thinking-ai.png"
     },
     "windowsIcons": {
       "light": "app-icons/app-icon-1024.png",
@@ -166,7 +171,8 @@
       "pose-security.png": "poses/security.png",
       "pose-coding-focus.png": "poses/coding-focus.png",
       "pose-ssh-connected.png": "poses/ssh-connected.png",
-      "pose-sftp-transfer.png": "poses/sftp-transfer.png"
+      "pose-sftp-transfer.png": "poses/sftp-transfer.png",
+      "pose-thinking-ai.png": "poses/thinking-ai.png"
     },
     "windowsIcons": {
       "light": "app-icons/app-icon-1024.png",
