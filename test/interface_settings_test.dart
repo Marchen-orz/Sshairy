@@ -71,9 +71,9 @@ void main() {
     expect(surface.top, greaterThanOrEqualTo(0));
     expect(surface.right, lessThanOrEqualTo(960));
     expect(surface.bottom, lessThanOrEqualTo(640));
-    await tester.ensureVisible(find.text('About'));
+    await tester.tap(find.byKey(const ValueKey('settings-tab-5')));
     await tester.pumpAndSettle();
-    expect(find.text('About').hitTestable(), findsOneWidget);
+    expect(find.text('About').hitTestable(), findsNWidgets(2));
     expect(find.byTooltip('Close').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

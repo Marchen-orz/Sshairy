@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:sshairy/design/dialog.dart';
 import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/features/ai/api.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/settings/api.dart';
@@ -16,6 +18,26 @@ import 'package:sshairy/features/terminal/presentation/translation_settings.dart
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/secret.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
+
+class _AiCredentials implements AiCredentials {
+  final _changes = Stream<void>.empty();
+  Completer<void>? holdSave;
+  var writes = 0;
+  @override
+  Stream<void> get changes => _changes;
+  @override
+  Future<bool> has(String identity) async => false;
+  @override
+  Future<Secret?> read(String identity) async => throw StateError('unexpected secret read');
+  @override
+  Future<void> save(String identity, Secret value) async {
+    writes++;
+    await holdSave?.future;
+  }
+
+  @override
+  Future<void> clear(String identity) async => throw StateError('unexpected credential deletion');
+}
 
 class _Credentials implements TranslationCredentials {
   @override
@@ -30,8 +52,10 @@ class _Credentials implements TranslationCredentials {
 
 void main() {
   Future<({ProviderContainer container, BuildContext context, FocusNode focus, PaletteEntry entry})> start(
-    WidgetTester tester,
-  ) async {
+    WidgetTester tester, {
+    bool withAi = false,
+    _AiCredentials? aiCredentials,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final dir = Directory.systemTemp.createTempSync('sshairy-settings-dialog-');
@@ -40,14 +64,25 @@ void main() {
       overrides: [
         dataDirProvider.overrideWithValue(dir.path),
         systemFontsProvider.overrideWith((_) async => []),
+        aiCredentialsProvider.overrideWithValue(aiCredentials ?? _AiCredentials()),
         settingsSectionsProvider.overrideWithValue([
+          if (withAi) SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings()),
           SettingsSection((l) => l.translationService, (_) => TranslationSettings(credentials: _Credentials())),
         ]),
       ],
     );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
-      await tester.runAsync(() => container.read(settingsProvider.notifier).saved);
+      var drained = false;
+      Future.wait([
+        container.read(settingsProvider.notifier).saved,
+        if (withAi) container.read(aiConfigurationProvider.notifier).saved,
+      ]).then((_) => drained = true);
+      for (var attempt = 0; attempt < 200 && !drained; attempt++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump();
+      }
+      expect(drained, isTrue, reason: 'pending configuration writes must finish before disposal');
       container.dispose();
       focus.dispose();
       dir.deleteSync(recursive: true);
@@ -129,7 +164,7 @@ void main() {
     final env = await start(tester);
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
-    final list = find.descendant(of: find.byType(SettingsPanel), matching: find.byType(SingleChildScrollView));
+    final list = find.byKey(const ValueKey('settings-content'));
     final email = find.widgetWithText(TextFormField, 'Email (optional)');
     final header = tester.getRect(find.byTooltip('Close'));
     await tester.ensureVisible(email);
@@ -141,7 +176,7 @@ void main() {
     );
     scrollable.position.jumpTo(0);
     await tester.pumpAndSettle();
-    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('Appearance'), findsNWidgets(2));
     expect(tester.getRect(find.byTooltip('Close')), header);
     expect(tester.state(find.byType(TranslationSettings)), same(draft));
     await tester.ensureVisible(email);
@@ -152,6 +187,156 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
+    expect(tester.widget<TextFormField>(email).controller!.text, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  Finder tab(int index) => find.byKey(ValueKey('settings-tab-$index'));
+  ScrollPosition contentPosition(WidgetTester tester) => tester
+      .state<ScrollableState>(
+        find.descendant(of: find.byKey(const ValueKey('settings-content')), matching: find.byType(Scrollable)).first,
+      )
+      .position;
+  bool selected(WidgetTester tester, int index) =>
+      tester
+          .widget<Semantics>(find.ancestor(of: tab(index), matching: find.byType(Semantics)).first)
+          .properties
+          .selected ==
+      true;
+
+  testWidgets('category clicks scroll the continuous list and manual scrolling selects the category', (tester) async {
+    await start(tester);
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(selected(tester, 0), isTrue);
+    await tester.tap(tab(3));
+    await tester.pumpAndSettle();
+    expect(selected(tester, 3), isTrue);
+    final position = contentPosition(tester);
+    expect(position.pixels, greaterThan(0));
+    position.jumpTo(0);
+    await tester.pumpAndSettle();
+    expect(selected(tester, 0), isTrue);
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(selected(tester, 6), isTrue);
+    expect(find.text('About').hitTestable(), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('one fixed footer saves AI and translation drafts while retaining immediate appearance changes', (
+    tester,
+  ) async {
+    final env = await start(tester, withAi: true);
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    final save = find.byKey(const ValueKey('settings-save'));
+    expect(save, findsNothing);
+    await tester.tap(tab(5));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://example.com/v1');
+    await tester.enterText(find.byKey(const ValueKey('ai-config-model')), 'example-model');
+    await tester.pumpAndSettle();
+    expect(save, findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-config-save')), findsNothing);
+    final footer = tester.getRect(save);
+    await tester.tap(tab(6));
+    await tester.pumpAndSettle();
+    final email = find.widgetWithText(TextFormField, 'Email (optional)');
+    await tester.enterText(email, 'pending@example.com');
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
+    await tester.runAsync(() => env.container.read(settingsProvider.notifier).set(SettingKeys.fontSize, 16.0));
+    await tester.pumpAndSettle();
+    expect(find.text('Settings changed. Cancel your edits before trying again.'), findsNothing);
+    contentPosition(tester).jumpTo(0);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(save), footer, reason: 'Save stays outside the scrolling content');
+    expect(env.container.read(aiConfigurationProvider).profile, isNull);
+    expect(env.container.read(settingsProvider).get(SettingKeys.completionTranslationConfig).myMemoryEmail, isEmpty);
+    await tester.tap(save);
+    for (var attempt = 0; attempt < 100 && save.evaluate().isNotEmpty; attempt++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(save, findsNothing);
+    expect(env.container.read(aiConfigurationProvider).profile!.model, 'example-model');
+    expect(
+      env.container.read(settingsProvider).get(SettingKeys.completionTranslationConfig).myMemoryEmail,
+      'pending@example.com',
+    );
+    expect(env.container.read(settingsProvider).fontSize, 16.0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('saving credentials blocks closing by Close Escape and barrier until the save completes', (tester) async {
+    final credentials = _AiCredentials()..holdSave = Completer<void>();
+    addTearDown(() {
+      if (!credentials.holdSave!.isCompleted) credentials.holdSave!.complete();
+    });
+    final env = await start(tester, withAi: true, aiCredentials: credentials);
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await tester.tap(tab(5));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://example.com/v1');
+    await tester.enterText(find.byKey(const ValueKey('ai-config-model')), 'example-model');
+    await tester.pumpAndSettle();
+    final key = find.byKey(const ValueKey('ai-config-key'));
+    await tester.ensureVisible(key);
+    await tester.pumpAndSettle();
+    await tester.enterText(key, 'synthetic-key');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-save')));
+    await tester.pump();
+    expect(credentials.writes, 1);
+    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.close)).onPressed, isNull);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pump();
+    expect(find.byType(AppDialog), findsOneWidget);
+    credentials.holdSave!.complete();
+    for (
+      var attempt = 0;
+      attempt < 200 && find.byKey(const ValueKey('settings-save')).evaluate().isNotEmpty;
+      attempt++
+    ) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(env.container.read(aiConfigurationProvider).profile!.model, 'example-model');
+    expect(find.byKey(const ValueKey('settings-save')), findsNothing);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed form validation keeps its draft and focuses its category, reset removes the footer', (
+    tester,
+  ) async {
+    final env = await start(tester);
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await tester.tap(tab(5));
+    await tester.pumpAndSettle();
+    final email = find.widgetWithText(TextFormField, 'Email (optional)');
+    await tester.enterText(email, 'invalid address');
+    await tester.pumpAndSettle();
+    await tester.tap(tab(0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('settings-save')));
+    await tester.pumpAndSettle();
+    expect(selected(tester, 5), isTrue);
+    expect(find.text('Enter a valid email address of up to 254 ASCII characters.'), findsOneWidget);
+    expect(tester.widget<TextFormField>(email).controller!.text, 'invalid address');
+    expect(env.container.read(settingsProvider).get(SettingKeys.completionTranslationConfig).myMemoryEmail, isEmpty);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settings-save')), findsNothing);
     expect(tester.widget<TextFormField>(email).controller!.text, isEmpty);
     expect(tester.takeException(), isNull);
   });

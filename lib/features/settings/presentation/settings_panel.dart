@@ -1,12 +1,15 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
 import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
+import '../../../design/form_save.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../design/theme_names.dart';
@@ -42,29 +45,7 @@ Future<void> showSettingsDialog(BuildContext context) {
 
   Future<void> open() async {
     try {
-      await showAppDialog<void>(
-        context: context,
-        builder: (context) => CallbackShortcuts(
-          bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context)},
-          child: Focus(
-            autofocus: true,
-            child: AppDialog(
-              width: WorkspaceSize.settingsDialog,
-              title: Row(
-                children: [
-                  Expanded(child: Text(AppLocalizations.of(context).settings)),
-                  IconButton(
-                    tooltip: AppLocalizations.of(context).close,
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              content: const SettingsPanel(),
-            ),
-          ),
-        ),
-      );
+      await showAppDialog<void>(context: context, builder: (_) => const _SettingsDialog());
     } finally {
       _settingsDialogs[navigator] = null;
     }
@@ -75,19 +56,188 @@ Future<void> showSettingsDialog(BuildContext context) {
   return future;
 }
 
-class SettingsPanel extends ConsumerWidget {
-  const SettingsPanel({super.key});
+class _SettingsDialog extends StatefulWidget {
+  const _SettingsDialog();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  State<_SettingsDialog> createState() => _SettingsDialogState();
+}
+
+class _SettingsDialogState extends State<_SettingsDialog> {
+  bool _saving = false;
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_saving,
+    child: CallbackShortcuts(
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context)},
+      child: Focus(
+        autofocus: true,
+        child: AppDialog(
+          width: WorkspaceSize.settingsDialog,
+          title: Row(
+            children: [
+              Expanded(child: Text(AppLocalizations.of(context).settings)),
+              IconButton(
+                tooltip: AppLocalizations.of(context).close,
+                onPressed: _saving ? null : () => Navigator.maybePop(context),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          content: SettingsPanel(
+            onSavingChanged: (saving) {
+              if (_saving != saving) setState(() => _saving = saving);
+            },
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class SettingsPanel extends ConsumerStatefulWidget {
+  const SettingsPanel({super.key, this.onSavingChanged});
+
+  final ValueChanged<bool>? onSavingChanged;
+
+  @override
+  ConsumerState<SettingsPanel> createState() => _SettingsPanelState();
+}
+
+class _SettingsPanelState extends ConsumerState<SettingsPanel> {
+  final _scroll = ScrollController();
+  final _navigationScroll = ScrollController();
+  final _saves = FormSaveController();
+  final _anchors = <GlobalKey>[];
+  final _navigationKeys = <GlobalKey>[];
+  int _selected = 0, _navigationGeneration = 0;
+  int? _navigating;
+  bool _syncScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_syncSelection);
+    _saves.addListener(_saveStateChanged);
+  }
+
+  void _saveStateChanged() {
+    if (!mounted) return;
+    widget.onSavingChanged?.call(_saves.busy);
+    setState(() {});
+  }
+
+  double? _offset(int index) {
+    final target = _anchors[index].currentContext?.findRenderObject();
+    if (target == null || !target.attached) return null;
+    return RenderAbstractViewport.of(target).getOffsetToReveal(target, 0).offset;
+  }
+
+  void _select(int index) {
+    if (_selected == index) return;
+    setState(() => _selected = index);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final context = _navigationKeys[index].currentContext;
+      if (context != null) {
+        Scrollable.ensureVisible(
+          context,
+          duration: Motion.quick,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        );
+      }
+    });
+  }
+
+  void _syncSelection() {
+    if (!mounted || !_scroll.hasClients || !_scroll.position.hasContentDimensions || _navigating != null) return;
+    final position = _scroll.position;
+    var selected = 0;
+    if (position.maxScrollExtent > 0 && position.pixels >= position.maxScrollExtent - Space.xs) {
+      selected = _anchors.length - 1;
+    } else {
+      for (var index = 0; index < _anchors.length; index++) {
+        final offset = _offset(index);
+        if (offset != null && offset <= position.pixels + Space.lg) selected = index;
+      }
+    }
+    _select(selected);
+  }
+
+  void _scheduleSync() {
+    if (_syncScheduled) return;
+    _syncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncScheduled = false;
+      _syncSelection();
+    });
+  }
+
+  Future<void> _goTo(int index) async {
+    if (!_scroll.hasClients) return;
+    final offset = _offset(index);
+    if (offset == null) return;
+    final generation = ++_navigationGeneration;
+    _navigating = index;
+    _select(index);
+    await _scroll.animateTo(
+      offset.clamp(0.0, _scroll.position.maxScrollExtent),
+      duration: Motion.panel,
+      curve: Curves.easeOutCubic,
+    );
+    if (!mounted || generation != _navigationGeneration) return;
+    _navigating = null;
+    _syncSelection();
+  }
+
+  Future<void> _save() async {
+    final failed = await _saves.save();
+    if (!mounted || failed == null || !failed.mounted) return;
+    for (var index = 0; index < _anchors.length; index++) {
+      final section = _anchors[index].currentContext;
+      if (section == null) continue;
+      var inside = false;
+      failed.visitAncestorElements((element) {
+        if (identical(element, section)) inside = true;
+        return !inside;
+      });
+      if (inside) {
+        await _goTo(index);
+        break;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _navigationScroll.dispose();
+    _saves.removeListener(_saveStateChanged);
+    _saves.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
     final running = ref.watch(runningRendererProvider);
 
+    Widget choices<T>(T value, Map<T, String> labels, ValueChanged<T> onChanged) => LayoutBuilder(
+      builder: (context, constraints) => constraints.maxWidth < WorkspaceSize.toolPanel
+          ? AppSelect<T>(
+              value: value,
+              options: [for (final entry in labels.entries) AppOption(entry.key, entry.value)],
+              onChanged: onChanged,
+            )
+          : AppSegmented<T>(segments: labels, selected: value, onChanged: onChanged),
+    );
+
     Widget segmented<T extends Enum>(EnumSetting<T> d, Map<T, String> labels) =>
-        AppSegmented<T>(segments: labels, selected: settings.get(d), onChanged: (v) => notifier.set(d, v));
+        choices<T>(settings.get(d), labels, (v) => notifier.set(d, v));
 
     Widget seconds(IntSetting d, List<int> choices, {bool zeroIsOff = false}) => _Choice<int>(
       value: settings.get(d),
@@ -144,135 +294,242 @@ class SettingsPanel extends ConsumerWidget {
     };
 
     final extra = ref.watch(settingsSectionsProvider);
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _Section(l.appearance, [
-            _Field.stacked(
-              l.theme,
-              segmented(SettingKeys.themeMode, {
-                ThemeMode.system: l.themeSystem,
-                ThemeMode.light: l.themeLight,
-                ThemeMode.dark: l.themeDark,
-              }),
-            ),
-            _Field.stacked(
-              l.accent,
-              _ThemeGrid(selected: settings.accent, onChanged: (a) => notifier.set(SettingKeys.accent, a)),
-            ),
-            _Field.stacked(
-              l.language,
-              AppSegmented<String>(
-                segments: {'': l.themeSystem, 'zh': l.langZh, 'en': l.langEn},
-                selected: settings.locale ?? '',
-                onChanged: (v) => notifier.set(SettingKeys.locale, v.isEmpty ? null : v),
+    final sections = [
+      _Section(l.appearance, [
+        _Field.stacked(
+          l.theme,
+          segmented(SettingKeys.themeMode, {
+            ThemeMode.system: l.themeSystem,
+            ThemeMode.light: l.themeLight,
+            ThemeMode.dark: l.themeDark,
+          }),
+        ),
+        _Field.stacked(
+          l.accent,
+          _ThemeGrid(selected: settings.accent, onChanged: (a) => notifier.set(SettingKeys.accent, a)),
+        ),
+        _Field.stacked(
+          l.language,
+          choices<String>(settings.locale ?? '', {
+            '': l.themeSystem,
+            'zh': l.langZh,
+            'en': l.langEn,
+          }, (v) => notifier.set(SettingKeys.locale, v.isEmpty ? null : v)),
+        ),
+        _Field.stacked(l.uiFont, font(SettingKeys.uiFontFamily, fallback: AppFonts.ui ?? AppFonts.cjk.first)),
+        _Field.stacked(l.uiFontSize, slider(SettingKeys.uiFontSize)),
+        _Field.stacked(
+          l.uiScale,
+          _Choice<double>(
+            value: settings.uiScale,
+            choices: {.8, .9, 1.0, 1.1, 1.25, 1.5, settings.uiScale}.toList()..sort(),
+            label: (value) => '${(value * 100).round()}%',
+            onChanged: (value) => notifier.set(SettingKeys.uiScale, value),
+          ),
+        ),
+        _Field.stacked(l.appBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.app)),
+        if (Platform.isWindows)
+          _Field.stacked(
+            l.renderer,
+            segmented(SettingKeys.renderer, const {Renderer.skia: 'Skia', Renderer.impeller: 'Impeller'}),
+            hint: hint(SettingKeys.renderer),
+          ),
+      ]),
+      _Section(l.terminal, [
+        _Field.stacked(l.terminalBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.terminal)),
+        _Field.stacked(l.terminalFont, font(SettingKeys.terminalFontFamily, fallback: AppFonts.mono, monoOnly: true)),
+        _Field.stacked(l.fontSize, slider(SettingKeys.fontSize)),
+        _Field.stacked(
+          l.cursorShape,
+          segmented(SettingKeys.cursorShape, {
+            CursorShape.block: l.cursorBlock,
+            CursorShape.underline: l.cursorUnderline,
+            CursorShape.bar: l.cursorBar,
+          }),
+        ),
+        _Field(
+          l.scrollback,
+          _Choice<int>(
+            value: settings.get(SettingKeys.scrollback),
+            choices: {1000, 2000, 5000, 10000, 20000, settings.get(SettingKeys.scrollback)}.toList()..sort(),
+            label: (n) => '$n',
+            onChanged: (v) => notifier.set(SettingKeys.scrollback, v),
+          ),
+          hint: hint(SettingKeys.scrollback),
+        ),
+        _Field(
+          l.rightClick,
+          segmented(SettingKeys.rightClick, {RightClick.menu: l.rightClickMenu, RightClick.paste: l.paste}),
+        ),
+        _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
+        _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
+      ]),
+      _Section(l.workspaceSection, [
+        _Field(l.monitor, toggle(SettingKeys.showMonitor)),
+        _Field(l.files, toggle(SettingKeys.showFiles)),
+        _Field(
+          l.filesDock,
+          segmented(SettingKeys.filesDock, {
+            FilesDock.left: l.dockLeft,
+            FilesDock.right: l.dockRight,
+            FilesDock.bottom: l.dockBottom,
+          }),
+        ),
+        _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
+      ]),
+      _Section(l.connection, [
+        _Field(
+          l.connectTimeout,
+          seconds(SettingKeys.connectTimeout, const [10, 20, 30, 60]),
+          hint: hint(SettingKeys.connectTimeout),
+        ),
+        _Field(
+          l.keepAlive,
+          seconds(SettingKeys.keepAlive, const [0, 15, 30, 60], zeroIsOff: true),
+          hint: hint(SettingKeys.keepAlive),
+        ),
+        _Field(l.idleTtl, seconds(SettingKeys.idleTtl, const [0, 30, 60, 120, 300], zeroIsOff: true)),
+        _Field(l.autoReconnect, toggle(SettingKeys.autoReconnect)),
+      ]),
+      _Section(l.files, [
+        _Field(l.hiddenFiles, toggle(SettingKeys.showHidden)),
+        _Field(
+          l.transferConcurrency,
+          _Choice<int>(
+            value: settings.get(SettingKeys.transferConcurrency),
+            choices: const [1, 2, 3, 4, 6, 8],
+            label: (n) => '$n',
+            onChanged: (v) => notifier.set(SettingKeys.transferConcurrency, v),
+          ),
+        ),
+      ]),
+      for (final s in extra) _Section(s.title(l), [s.build(context)]),
+      _Section(l.about, [
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: Space.md),
+          child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
+        ),
+        _Field(l.version, Text(appVersion, style: theme.textTheme.bodyMedium)),
+        _Field(
+          l.dataDir,
+          TextButton(onPressed: () => openExternal(ref.read(dataDirProvider)), child: Text(l.open)),
+          hint: ref.read(dataDirProvider),
+        ),
+      ]),
+    ];
+    while (_anchors.length < sections.length) {
+      _anchors.add(GlobalKey());
+      _navigationKeys.add(GlobalKey());
+    }
+    if (_anchors.length > sections.length) {
+      _anchors.removeRange(sections.length, _anchors.length);
+      _navigationKeys.removeRange(sections.length, _navigationKeys.length);
+    }
+    _selected = _selected.clamp(0, sections.length - 1);
+    _scheduleSync();
+    return FormSaveScope(
+      controller: _saves,
+      child: LayoutBuilder(
+        builder: (context, constraints) => SizedBox(
+          height: math.min(WorkspaceSize.settingsHeight, constraints.maxHeight),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: constraints.maxWidth < WorkspaceSize.settingsDialog * .7
+                          ? WorkspaceSize.settingsNavigationCompact
+                          : WorkspaceSize.settingsNavigation,
+                      child: SingleChildScrollView(
+                        key: const ValueKey('settings-navigation'),
+                        controller: _navigationScroll,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: Space.sm),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var index = 0; index < sections.length; index++)
+                                Padding(
+                                  key: _navigationKeys[index],
+                                  padding: const EdgeInsets.only(bottom: Space.xs),
+                                  child: Semantics(
+                                    selected: index == _selected,
+                                    inMutuallyExclusiveGroup: true,
+                                    child: TextButton(
+                                      key: ValueKey('settings-tab-$index'),
+                                      style: TextButton.styleFrom(
+                                        alignment: Alignment.centerLeft,
+                                        padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.md),
+                                        backgroundColor: index == _selected ? theme.colorScheme.primaryContainer : null,
+                                        foregroundColor: index == _selected
+                                            ? theme.colorScheme.onPrimaryContainer
+                                            : theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                      onPressed: () => _goTo(index),
+                                      child: Text(sections[index].title),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const VerticalDivider(width: Space.lg),
+                    Expanded(
+                      child: AbsorbPointer(
+                        absorbing: _saves.busy,
+                        child: ExcludeFocus(
+                          excluding: _saves.busy,
+                          child: NotificationListener<ScrollMetricsNotification>(
+                            onNotification: (_) {
+                              _scheduleSync();
+                              return false;
+                            },
+                            child: SingleChildScrollView(
+                              key: const ValueKey('settings-content'),
+                              controller: _scroll,
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: Space.sm),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    for (var index = 0; index < sections.length; index++)
+                                      KeyedSubtree(key: _anchors[index], child: sections[index]),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            _Field.stacked(l.uiFont, font(SettingKeys.uiFontFamily, fallback: AppFonts.ui ?? AppFonts.cjk.first)),
-            _Field.stacked(l.uiFontSize, slider(SettingKeys.uiFontSize)),
-            _Field.stacked(
-              l.uiScale,
-              _Choice<double>(
-                value: settings.uiScale,
-                choices: {.8, .9, 1.0, 1.1, 1.25, 1.5, settings.uiScale}.toList()..sort(),
-                label: (value) => '${(value * 100).round()}%',
-                onChanged: (value) => notifier.set(SettingKeys.uiScale, value),
-              ),
-            ),
-            _Field.stacked(l.appBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.app)),
-            if (Platform.isWindows)
-              _Field.stacked(
-                l.renderer,
-                segmented(SettingKeys.renderer, const {Renderer.skia: 'Skia', Renderer.impeller: 'Impeller'}),
-                hint: hint(SettingKeys.renderer),
-              ),
-          ]),
-          _Section(l.terminal, [
-            _Field.stacked(l.terminalBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.terminal)),
-            _Field.stacked(
-              l.terminalFont,
-              font(SettingKeys.terminalFontFamily, fallback: AppFonts.mono, monoOnly: true),
-            ),
-            _Field.stacked(l.fontSize, slider(SettingKeys.fontSize)),
-            _Field.stacked(
-              l.cursorShape,
-              segmented(SettingKeys.cursorShape, {
-                CursorShape.block: l.cursorBlock,
-                CursorShape.underline: l.cursorUnderline,
-                CursorShape.bar: l.cursorBar,
-              }),
-            ),
-            _Field(
-              l.scrollback,
-              _Choice<int>(
-                value: settings.get(SettingKeys.scrollback),
-                choices: {1000, 2000, 5000, 10000, 20000, settings.get(SettingKeys.scrollback)}.toList()..sort(),
-                label: (n) => '$n',
-                onChanged: (v) => notifier.set(SettingKeys.scrollback, v),
-              ),
-              hint: hint(SettingKeys.scrollback),
-            ),
-            _Field(
-              l.rightClick,
-              segmented(SettingKeys.rightClick, {RightClick.menu: l.rightClickMenu, RightClick.paste: l.paste}),
-            ),
-            _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
-            _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
-          ]),
-          _Section(l.workspaceSection, [
-            _Field(l.monitor, toggle(SettingKeys.showMonitor)),
-            _Field(l.files, toggle(SettingKeys.showFiles)),
-            _Field(
-              l.filesDock,
-              segmented(SettingKeys.filesDock, {
-                FilesDock.left: l.dockLeft,
-                FilesDock.right: l.dockRight,
-                FilesDock.bottom: l.dockBottom,
-              }),
-            ),
-            _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
-          ]),
-          _Section(l.connection, [
-            _Field(
-              l.connectTimeout,
-              seconds(SettingKeys.connectTimeout, const [10, 20, 30, 60]),
-              hint: hint(SettingKeys.connectTimeout),
-            ),
-            _Field(
-              l.keepAlive,
-              seconds(SettingKeys.keepAlive, const [0, 15, 30, 60], zeroIsOff: true),
-              hint: hint(SettingKeys.keepAlive),
-            ),
-            _Field(l.idleTtl, seconds(SettingKeys.idleTtl, const [0, 30, 60, 120, 300], zeroIsOff: true)),
-            _Field(l.autoReconnect, toggle(SettingKeys.autoReconnect)),
-          ]),
-          _Section(l.files, [
-            _Field(l.hiddenFiles, toggle(SettingKeys.showHidden)),
-            _Field(
-              l.transferConcurrency,
-              _Choice<int>(
-                value: settings.get(SettingKeys.transferConcurrency),
-                choices: const [1, 2, 3, 4, 6, 8],
-                label: (n) => '$n',
-                onChanged: (v) => notifier.set(SettingKeys.transferConcurrency, v),
-              ),
-            ),
-          ]),
-          for (final s in extra) _Section(s.title(l), [s.build(context)]),
-          _Section(l.about, [
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: Space.md),
-              child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
-            ),
-            _Field(l.version, Text(appVersion, style: theme.textTheme.bodyMedium)),
-            _Field(
-              l.dataDir,
-              TextButton(onPressed: () => openExternal(ref.read(dataDirProvider)), child: Text(l.open)),
-              hint: ref.read(dataDirProvider),
-            ),
-          ]),
-        ],
+              if (_saves.dirty || _saves.busy) ...[
+                const Divider(height: Space.xl),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(onPressed: _saves.busy ? null : _saves.reset, child: Text(l.cancel)),
+                    const SizedBox(width: Space.sm),
+                    FilledButton(
+                      key: const ValueKey('settings-save'),
+                      onPressed: _saves.canSave ? _save : null,
+                      child: _saves.busy
+                          ? const SizedBox.square(dimension: Space.lg, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Text(l.save),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -323,24 +580,26 @@ class _Field extends StatelessWidget {
           Text(hint!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
       ],
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Space.md),
-      child: stacked
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                text,
-                const SizedBox(height: Space.sm),
-                child,
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(child: text),
-                const SizedBox(width: Space.md),
-                child,
-              ],
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) => Padding(
+        padding: const EdgeInsets.only(bottom: Space.md),
+        child: stacked || constraints.maxWidth < WorkspaceSize.toolPanel
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  text,
+                  const SizedBox(height: Space.sm),
+                  child,
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: text),
+                  const SizedBox(width: Space.md),
+                  child,
+                ],
+              ),
+      ),
     );
   }
 }
@@ -369,33 +628,34 @@ class _ThemeGrid extends StatelessWidget {
   final Accent selected;
   final ValueChanged<Accent> onChanged;
 
-  static const columns = 3;
-
   @override
-  Widget build(BuildContext context) {
-    final cards = [
-      for (final a in Accent.values) _ThemeCard(accent: a, selected: a == selected, onTap: () => onChanged(a)),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var i = 0; i < cards.length; i += columns) ...[
-          if (i > 0) const SizedBox(height: Space.sm),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var j = i; j < i + columns; j++) ...[
-                  if (j > i) const SizedBox(width: Space.sm),
-                  Expanded(child: j < cards.length ? cards[j] : const SizedBox.shrink()),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final columns = constraints.maxWidth < WorkspaceSize.toolPanel ? 2 : 3;
+      final cards = [
+        for (final a in Accent.values) _ThemeCard(accent: a, selected: a == selected, onTap: () => onChanged(a)),
+      ];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < cards.length; i += columns) ...[
+            if (i > 0) const SizedBox(height: Space.sm),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var j = i; j < i + columns; j++) ...[
+                    if (j > i) const SizedBox(width: Space.sm),
+                    Expanded(child: j < cards.length ? cards[j] : const SizedBox.shrink()),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
+          ],
         ],
-      ],
-    );
-  }
+      );
+    },
+  );
 }
 
 class _ThemeCard extends StatefulWidget {

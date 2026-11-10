@@ -179,9 +179,8 @@ void main() {
     final toggle = find.descendant(of: section, matching: find.byType(AppSwitch));
     expect(tester.getTopLeft(provider).dy, greaterThan(tester.getBottomLeft(toggle).dy));
     expect(tester.getTopLeft(provider).dy, lessThan(tester.getTopLeft(field('Email (optional)')).dy));
-    expect(tester.getTopLeft(getSave()).dy, lessThan(tester.getTopLeft(concurrency).dy));
     expect(find.byType(AppDialog), findsNothing);
-    expect(tester.widget<FilledButton>(getSave()).onPressed, isNull);
+    expect(getSave(), findsNothing, reason: 'the shared footer is hidden without pending edits');
     final select = tester.widget<AppSelect<int>>(concurrency);
     expect(select.value, 0);
     expect(select.options.map((option) => option.value), List.generate(33, (value) => value));
@@ -455,7 +454,7 @@ void main() {
     expect(container.read(settingsProvider).get(SettingKeys.completionTranslationConcurrency), 2);
   });
 
-  testWidgets('an external setting change is not hidden by a later own switch write', (tester) async {
+  testWidgets('unrelated setting changes rebase the translation draft without losing edits', (tester) async {
     final container = await showSettings(tester, _Credentials(), const TranslationConfig());
     await tester.enterText(field('Email (optional)'), 'draft@example.com');
     await tester.runAsync(() => container.read(settingsProvider.notifier).set(SettingKeys.fontSize, 16.0));
@@ -466,10 +465,16 @@ void main() {
       await container.read(settingsProvider.notifier).saved;
     });
     await drain(tester);
-    expect(find.text(conflict), findsOneWidget);
-    expect(tester.widget<FilledButton>(getSave()).onPressed, isNull);
+    expect(find.text(conflict), findsNothing);
+    expect(tester.widget<FilledButton>(getSave()).onPressed, isNotNull);
     expect(container.read(settingsProvider).get(SettingKeys.completionTranslationConfig).myMemoryEmail, isEmpty);
     expect(tester.widget<TextFormField>(field('Email (optional)')).controller!.text, 'draft@example.com');
+    await save(tester, container);
+    expect(container.read(settingsProvider).fontSize, 16.0);
+    expect(
+      container.read(settingsProvider).get(SettingKeys.completionTranslationConfig).myMemoryEmail,
+      'draft@example.com',
+    );
   });
 
   testWidgets('credential changes still notify when a later settings revision conflicts', (tester) async {

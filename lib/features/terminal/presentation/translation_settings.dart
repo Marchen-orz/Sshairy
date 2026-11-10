@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/controls.dart';
+import '../../../design/form_save.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
@@ -48,6 +49,27 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
   var _checking = false, _hasKey = false, _keyError = false, _removeKey = false;
   String? _checkedIdentity, _error;
   (int, String)? _ownWrite;
+  FormSaveController? _saveController;
+  late final _saveEntry = FormSaveEntry(
+    dirty: () => _dirty,
+    canSave: () => !_busy && !_saving && !_checking && !_keyError && !_conflict,
+    save: () async {
+      await _save();
+      return mounted && !_dirty && _error == null && !_conflict;
+    },
+    reset: _reset,
+    context: () => mounted ? context : null,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = FormSaveScope.maybeOf(context);
+    if (identical(controller, _saveController)) return;
+    _saveController?.unregister(_saveEntry);
+    _saveController = controller;
+    controller?.register(_saveEntry);
+  }
 
   bool get _working => _busy || _saving;
   bool get _dirty => _key.text.isNotEmpty || _removeKey || jsonEncode(_draft.toJson()) != jsonEncode(_initial.toJson());
@@ -80,6 +102,7 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
 
   @override
   void dispose() {
+    _saveController?.unregister(_saveEntry);
     _checkTimer?.cancel();
     for (final controller in [_endpoint, _model, _region, _email, _key]) {
       controller.dispose();
@@ -113,6 +136,12 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
       return;
     }
     if (revision == _revision) return;
+    if (!_busy &&
+        !_conflict &&
+        jsonEncode(next.get(SettingKeys.completionTranslationConfig).toJson()) == jsonEncode(_initial.toJson())) {
+      _revision = revision;
+      return;
+    }
     if (!_dirty && !_busy) {
       final config = next.get(SettingKeys.completionTranslationConfig);
       if (jsonEncode(config.toJson()) == jsonEncode(_initial.toJson())) {
@@ -267,6 +296,7 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
     const gap = SizedBox(height: Space.lg);
     final hasCredentials = _provider != TranslationProvider.myMemory;
     final error = _error ?? (_conflict ? l.translationConflict : null);
+    _saveController?.changed();
     return Form(
       key: _form,
       child: Column(
@@ -417,18 +447,20 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
             const SizedBox(height: Space.sm),
             Text(error, style: TextStyle(color: theme.colorScheme.error)),
           ],
-          const SizedBox(height: Space.sm),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
-              const SizedBox(width: Space.sm),
-              FilledButton(
-                onPressed: _working || _checking || _keyError || _conflict || !_dirty ? null : _save,
-                child: Text(l.save),
-              ),
-            ],
-          ),
+          if (_saveController == null) ...[
+            const SizedBox(height: Space.sm),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
+                const SizedBox(width: Space.sm),
+                FilledButton(
+                  onPressed: _working || _checking || _keyError || _conflict || !_dirty ? null : _save,
+                  child: Text(l.save),
+                ),
+              ],
+            ),
+          ],
           gap,
           Row(
             children: [

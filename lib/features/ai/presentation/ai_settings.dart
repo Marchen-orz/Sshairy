@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/controls.dart';
+import '../../../design/form_save.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
@@ -34,6 +35,27 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   var _generation = 0;
   var _working = false, _checking = false, _hasKey = false, _keyError = false, _removeKey = false, _conflict = false;
   String? _identity, _error;
+  FormSaveController? _saveController;
+  late final _saveEntry = FormSaveEntry(
+    dirty: () => _dirty,
+    canSave: () => !_working && !_initial.loadFailed && !_credentialBlocked && !_conflict,
+    save: () async {
+      await _save();
+      return mounted && !_dirty && _error == null && !_conflict;
+    },
+    reset: _reset,
+    context: () => mounted ? context : null,
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = FormSaveScope.maybeOf(context);
+    if (identical(controller, _saveController)) return;
+    _saveController?.unregister(_saveEntry);
+    _saveController = controller;
+    controller?.register(_saveEntry);
+  }
 
   AiCredentials get _credentials => ref.read(aiCredentialsProvider);
 
@@ -113,6 +135,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
 
   @override
   void dispose() {
+    _saveController?.unregister(_saveEntry);
     _checkTimer?.cancel();
     _generation++;
     for (final controller in [_endpoint, _model, _key, _contextWindow, _maxOutput]) {
@@ -246,7 +269,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     final config = ref.watch(aiConfigurationProvider);
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final blocked = _working || config.loadFailed;
+    _saveController?.changed();
+    final blocked = _working || config.loadFailed || (_saveController?.busy ?? false);
     const gap = SizedBox(height: Space.md);
     return Form(
       key: _form,
@@ -478,19 +502,21 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             const SizedBox(height: Space.sm),
             Text(_error ?? l.aiConfigConflict, style: TextStyle(color: theme.colorScheme.error)),
           ],
-          const SizedBox(height: Space.sm),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
-              const SizedBox(width: Space.sm),
-              FilledButton(
-                key: const ValueKey('ai-config-save'),
-                onPressed: blocked || _credentialBlocked || _conflict || !_dirty ? null : _save,
-                child: Text(l.save),
-              ),
-            ],
-          ),
+          if (_saveController == null) ...[
+            const SizedBox(height: Space.sm),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
+                const SizedBox(width: Space.sm),
+                FilledButton(
+                  key: const ValueKey('ai-config-save'),
+                  onPressed: blocked || _credentialBlocked || _conflict || !_dirty ? null : _save,
+                  child: Text(l.save),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
