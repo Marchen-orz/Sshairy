@@ -22,12 +22,14 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | TransportLease | openShell / exec / openFiles（SFTP，返回 foundation 的 FileSystem）/ connectTo（direct-tcpip，返回 Tunnel，用于本地与动态转发和跳板）/ listen（tcpip-forward，返回 RemoteListener）；不泄露 dartssh2 类型 |
 | TerminalSessionManager | open / openLocal / reconnect / close / readSnapshot；SSH/local typed target，模型独立于视图；本地不申请 SSH 租约 |
 | TerminalIo | 有序 bytes、writeInput、resize、close；数据路径不 JSON 化 |
-| Terminal AI 端口（M4，待实现） | 受限环境/草稿/历史投影 → 行内生成或补全，带 requestId/目标/代次/草稿/授权/目的地修订；不含 shell/目录列表；terminal 定义 DTO/端口、app 注入 AI 实现，无循环依赖 |
-| TerminalDraftAcceptor（M4，待实现） | 用户接受完整生成命令时须空提示符，接受补全只追加精确回显前缀的后缀；重验输入状态/代次，无换行/删行/自动执行参数；不是 Agent 工具 |
+| TerminalContextReader | SSH/local typed 身份、session/generation/草稿 revision、已知 cwd、当前回显提示符投影；显式 readAiSnapshot 另限 200 行/32 KiB，不隐式读历史/输出，不包含本地 executable 或 shell 对象；发送授权仍在调用者 |
+| TerminalDraftAcceptor | acceptAiDraft(expected,text,suffix) 完整命令须空的已识别提示符，后缀只追加精确回显前缀；重验实际 target/generation/revision/cwd/回显，统一字符/UTF-8 限额，无 Enter/删行/执行参数；调用方另管焦点/IME/发送授权，不登记 Agent 工具 |
 | TransferManager | enqueue / cancel / retry / watch；任务不由 SftpPane 持有 |
 | SettingsService | get / patch(expectedRevision)；类型、范围、策略统一验证 |
 | WorkspaceService | openTab / split / move / focus / close；布局只引用 sessionId |
-| CommandExecutor（M4，待实现） | start(command, target, cwd, deadline, cancellation) → executionId + 有界 stdout/stderr/终态事件；先 acquire，再启动单次执行，不把已发请求包进自动重拨重试回调 |
+| AgentTarget.execute / TransportLease.execStreaming | 固定已取得租约身份、command/cwd/期限与 cancellation，同步消费独立双流事件至有界输出，终态保留 nullable exitCode；先 acquire，再单次执行，不把已发请求包进自动重拨重试回调；由 runtime 持 operationId/批准/intent |
+
+`TransportLease` 的执行身份绑定实际 transportId 与完整路由/安全修订快照；`isCurrent` 比对当前解析快照，旧租约即使仍可服务原终端，也不能沿用旧 AI 批准发新命令。流式 exec 使用可选 `StreamingTransport` 窄接口，不通过一次性结果伪造流；不支持时明确拒绝。事件同步消费后进入有界 OutputStore，超额继续排空；取消只关闭自有 channel。
 
 `TransportLease.exec(command, limit, timeout, cancel)` 保留一次性有界结果；timeout 覆盖打开与运行，取消/超时返回稳定的 typed 执行错误，不能返回部分输出冒充成功。开始前取消不打开 channel；已返回的执行 session 在正常终态、错误、取消或超时时统一销毁本次 channel、取消订阅和计时器，不关闭共享 transport。监控停止/切换与目录查询失效要取消各自在途执行。关闭 channel 只证明客户端收束，不承诺远端全部子进程已终止，也不自动重跑结果未知的命令。
 
@@ -66,8 +68,8 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 - effect 分为查询、本地可逆变更、连接/执行、远程写入、秘密/安全管理；不能只用一项静态 low/high 判断全部参数。
 - 默认不向 AI 暴露。M4 经人工审阅选入工具目录；只导出安全 DTO，绝不通用序列化所有对象。
 - Typed UI façade 与 dispatcher 最终调用同一 application handler。校验和必要授权不能只写在 Widget 或 prompt 中。
-- RequestContext 来自应用装配：origin、actor、scope、operationId、deadline、cancellation。AI 参数不能伪造 origin=ui、grant 或 approval。
-- 流程：解析与校验 → 解析实际目标/版本 → 策略 → 预览/审批（若需要）→ 执行前再次校验范围与修订 → handler → 安全结果/审计。
+- RequestContext 来自应用装配：origin、operationId、deadline、cancellation 与 AgentAuthority；scope/目的地/精确批准由运行时绑定，模型参数不能伪造 origin=ui、authority、grant 或 approval。
+- Agent 调度先按受限 schema 校验并深拷贝为不可变参数，拒绝未知字段/超预算；缺失 authority、未开放能力与安全管理能力直接拒绝。流程：解析与校验 → 解析实际目标/版本 → 策略 → 预览/审批（若需要）→ 执行前再次校验范围与修订 → handler → 安全结果/审计。
 - 审批绑定 capability/version、规范参数摘要、目标 ID、scope revision、有效期；参数或目标变化需要新批准，不能用 host label 替代 ID。
 - 并行读按资源限流；同一路径写入、同终端受控命令串行。同主机不同只读通道可并行，不设阻塞全应用的总锁。
 - 普通 UI 查询不要求走 registry。hover、草稿、滚动、拖动中间帧、逐键终端输入不登记成远程工具。

@@ -83,7 +83,7 @@ lib/
     snippets/          命令片段
     settings/          定义、校验、变更和持久化
     capabilities/      可编排能力描述、调度、策略接口
-    ai/                M4 才建立
+    ai/                模型协议、Agent 运行时、上下文/输出与审批
 ```
 
 模块按需要拥有 `domain/`、`application/`、`adapters/`、`presentation/`、`api.dart`。没有对应职责就不建空目录。小模块不用凑齐四层。
