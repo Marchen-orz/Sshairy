@@ -111,6 +111,8 @@
 
 ### 自动与真实 SSH/SFTP
 
+2026-11-11 Agent 学习导读仅修改文档：按当前代码只读核对运行时/工具权限/模型协议和轻量入口，README、DESIGN、AI_AGENT_GUIDE、ROADMAP、TESTING 共 5 份文档的 101 个本地链接、17 节连续编号、代码围栏配对与 git diff --check 通过；未重跑应用测试、构建或实网，沿用既有代码/包验证范围。
+
 2026-11-11 设置分类图标与分隔：5 份明确文件（settings_dialog、interface_settings、brand_theme、workspace_layout、translation_settings）共 39 项、22 秒、退出码 0。覆盖图标导航下的分类点击/滚动同步、草稿保留、统一保存和保存期间关闭保护，以及 960×640 的 150% 界面缩放、440 宽预览与最大字号中文。紧凑导航可滚动；最初测试未将“关于”滚入导航可见区域便点击，失败不计通过，修正操作后上述运行无命中警告。静态分析覆盖 lib、tool、integration_test、test_driver 和这 5 份测试，无问题；imports、6 份手写 Dart 格式、49 处文档本地链接、git diff --check 通过。本轮只跑上述定向回归，未重跑下方完整基线；不读取/修改/分析/运行原 zz_probe，不访问作者真实数据/安全存储、不连接服务器、不调用模型。原生观感与跨屏 DPI 待验。
 
 2026-11-10 历史浮层与设置保存基线：7 份明确文件（settings_dialog、translation_settings、interface_settings、ai_config、brand_theme、workspace_layout、terminal_assistance）共 116 项、45 秒、退出码 0。覆盖非固定/固定历史拖动与缩放、最小/最大及小 pane 边界、100%/150% 缩放、原历史搜索/受控后缀接受，以及分类定位/联动、统一保存、冲突与关闭保护。静态分析、imports、11 份手写 Dart 格式与文档链接检查通过。此结果按该版本范围保留，原生鼠标拖动/缩放与跨屏 DPI 未验。

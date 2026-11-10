@@ -27,6 +27,7 @@
 | [SECURITY.md](SECURITY.md) | 凭据、主机信任、存储与安全边界 |
 | [UI.md](UI.md) | 视觉、布局、交互、键盘与无障碍 |
 | [AI.md](AI.md) | 侧栏 Agent、行内命令生成、AI 补全与共用运行底座 |
+| [AI_AGENT_GUIDE.md](AI_AGENT_GUIDE.md) | 以当前实现学习 Agent 循环、工具、权限、协议与源码；非规范 |
 | [TESTING.md](TESTING.md) | 真实环境测试规则、技术实验、功能检查 |
 | [ROADMAP.md](ROADMAP.md) | 当前进度、待办、最近一次交接 |
 | [HOST_INHERITANCE.md](HOST_INHERITANCE.md) | 分组、身份、全局默认值与三态继承 |

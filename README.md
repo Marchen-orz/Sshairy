@@ -49,6 +49,8 @@ flutter test
 
 首批 Agent 经同一调度器调用审核过的能力，绑定实际连接身份并在执行前重验。行内生成和补全共用无工具的模型端口，各自限制发送范围和请求寿命。后续按工具扩展 Capability 和窄端口，无需重写 SSH/SFTP 核心；凭据与信任授权始终由确定性代码控制，完整应用/多机工具继续按阶段推进。设计入口：[DESIGN](docs/DESIGN.md)、[CONTRACTS](docs/CONTRACTS.md)、[SECURITY](docs/SECURITY.md)、[AI](docs/AI.md)。
 
+学习 AI Agent 可从 [项目导读](docs/AI_AGENT_GUIDE.md) 开始：当前功能、任务循环、工具调用、权限与数据发送边界，以及源码阅读路线和练习。
+
 ## 许可证
 
 计划开源，项目许可证尚未确定，当前不声明 MIT 授权。发行前还需完成许可证选择与完整依赖审计。第三方组件保留各自许可，说明见 [DEPENDENCIES](docs/DEPENDENCIES.md)。
