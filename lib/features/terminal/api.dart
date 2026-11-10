@@ -1,3 +1,4 @@
+export 'domain/ai_terminal.dart';
 export 'domain/command_assistance.dart';
 export 'domain/terminal_paths.dart'
     show

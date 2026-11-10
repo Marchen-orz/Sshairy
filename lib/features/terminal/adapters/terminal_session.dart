@@ -22,6 +22,7 @@ import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../application/completion_translations.dart';
+import '../domain/ai_terminal.dart';
 import '../domain/command_assistance.dart';
 import '../domain/completion_command_metadata.dart';
 import '../domain/directory.dart';
@@ -48,7 +49,7 @@ part 'terminal_input_overlays.dart';
 enum SessionStatus { idle, connecting, connected, failed, disconnected }
 
 /// Owns the shell and terminal model; panes only display it, so hiding a tab never closes the shell.
-class TerminalSession extends ChangeNotifier {
+class TerminalSession extends ChangeNotifier implements TerminalContextReader, TerminalDraftAcceptor {
   TerminalSession(
     this.id,
     Host host,
@@ -179,6 +180,119 @@ class TerminalSession extends ChangeNotifier {
   }
 
   Future<InsertResult> acceptCommand(CommandCompletionRequest request, String text) => _acceptCommand(request, text);
+
+  @override
+  TerminalAiContext readAiContext() {
+    final echoed = pendingOutputBytes == 0 ? _echoedCommand() : null;
+    final draft = echoed != null && (echoed.isEmpty || validTerminalAiCommand(echoed)) ? echoed : null;
+    return TerminalAiContext(
+      sessionId: id,
+      target: switch (target) {
+        SshTerminalTarget(:final hostId) => SshTerminalAiTarget(hostId),
+        LocalTerminalTarget(:final shell) => LocalTerminalAiTarget(shell.kind),
+      },
+      generation: _shellGeneration,
+      revision: _draftRevision,
+      prompt: !canInsert
+          ? TerminalAiPrompt.unavailable
+          : draft == null
+          ? TerminalAiPrompt.unknown
+          : _semanticSeen
+          ? TerminalAiPrompt.semantic
+          : TerminalAiPrompt.recognized,
+      draft: draft,
+      directory: _directory.value,
+    );
+  }
+
+  bool _aiContextCurrent(TerminalAiContext expected) {
+    final current = readAiContext();
+    final sameTarget = switch ((current.target, expected.target)) {
+      (SshTerminalAiTarget(hostId: final a), SshTerminalAiTarget(hostId: final b)) => a == b,
+      (LocalTerminalAiTarget(kind: final a), LocalTerminalAiTarget(kind: final b)) => a == b,
+      _ => false,
+    };
+    return sameTarget &&
+        current.ready &&
+        expected.ready &&
+        current.sessionId == expected.sessionId &&
+        current.generation == expected.generation &&
+        current.revision == expected.revision &&
+        current.prompt == expected.prompt &&
+        current.draft == expected.draft &&
+        current.directory == expected.directory;
+  }
+
+  @override
+  Future<InsertResult> acceptAiDraft(TerminalAiContext expected, String text, {bool suffix = false}) {
+    if (!canInsert) return Future.value(InsertResult.unavailable);
+    if (!validTerminalAiCommand(text) || (suffix && utf8.encode(text).length > 2048)) {
+      return Future.value(InsertResult.rejected);
+    }
+    if (!_aiContextCurrent(expected)) return Future.value(InsertResult.stale);
+    if (!suffix && expected.draft!.isNotEmpty) return Future.value(InsertResult.rejected);
+    final command = suffix ? '${expected.draft}$text' : text;
+    if (!validTerminalAiCommand(command)) return Future.value(InsertResult.rejected);
+    return _acceptCommand(
+      CommandCompletionRequest(
+        text: expected.draft!,
+        generation: expected.generation,
+        revision: expected.revision,
+        directory: expected.directory,
+      ),
+      command,
+    );
+  }
+
+  @override
+  TerminalAiSnapshot? readAiSnapshot(TerminalAiContext expected, {int maxLines = 200, int maxBytes = 32768}) {
+    if (maxLines < 1 || maxLines > 200 || maxBytes < 1 || maxBytes > 32768) {
+      throw ArgumentError('Invalid terminal snapshot limits');
+    }
+    if (!_aiContextCurrent(expected)) return null;
+    final buffer = _terminal.buffer;
+    final last = buffer.absoluteCursorY;
+    if (last < 0 || last >= buffer.lines.length) return null;
+    final first = max(0, last - maxLines + 1);
+    final text = StringBuffer();
+    var bytes = 0, includedLast = first;
+    var truncated = first > 0;
+    bool append(String value) {
+      final size = utf8.encode(value).length;
+      if (bytes + size > maxBytes) {
+        truncated = true;
+        return false;
+      }
+      text.write(value);
+      bytes += size;
+      return true;
+    }
+
+    rows:
+    for (var row = first; row <= last; row++) {
+      if (row > first && !append('\n')) break;
+      final line = buffer.lines[row];
+      var end = line.length;
+      while (end > 0 && (line.getCodePoint(end - 1) == 0 || line.getCodePoint(end - 1) == 32)) {
+        end--;
+      }
+      includedLast = row;
+      for (var column = 0; column < end; column++) {
+        if (line.getWidth(column) == 0) continue;
+        final code = line.getCodePoint(column);
+        if (!append('${String.fromCharCode(code == 0 ? 32 : code)}${line.getCombiningCharacters(column) ?? ''}')) {
+          break rows;
+        }
+      }
+    }
+    return TerminalAiSnapshot(
+      context: expected,
+      text: text.toString(),
+      firstLine: first,
+      lastLine: includedLast,
+      truncated: truncated,
+    );
+  }
 
   bool browseCommand(CommandCompletionRequest request, CommandCandidate candidate) =>
       _browseCommand(request, candidate);
