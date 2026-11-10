@@ -187,6 +187,65 @@ void main() {
     });
   }
 
+  for (final side in PaneSide.values) {
+    testWidgets('the visible tab creates a fresh split on ${side.name} without replacing its session', (tester) async {
+      await mount(tester);
+      final id = ws.openLocal(_shell);
+      await frames(tester);
+      final original = tab(id).layout.focusedLeaf;
+      final session = ws.session(original.session)!;
+      session.multilineDraft = 'keep this draft';
+      final view = tester.state(find.byType(TerminalPane));
+      final gesture = await startDrag(tester, topTab(id));
+      await gesture.moveTo(edge(tester.getRect(pane(original.pane)), side));
+      await frames(tester);
+      expect(find.byKey(const ValueKey('pane-drop-preview')), findsOneWidget);
+      expect(factory.opened, hasLength(1), reason: 'preview must not start a process');
+      await gesture.up();
+      await frames(tester);
+      final layout = tab(id).layout;
+      expect(container.read(workspaceProvider).tabs, hasLength(1));
+      expect((layout.root as PaneSplit).axis, side.axis);
+      final leaves = layout.leaves.toList();
+      expect(leaves[side.before ? 1 : 0].pane, original.pane);
+      final added = leaves[side.before ? 0 : 1];
+      expect(added.session, isNot(original.session));
+      expect(layout.focused, added.pane);
+      expect(ws.session(added.session)!.localShell, _shell);
+      expect(identical(ws.session(original.session), session), isTrue);
+      expect(
+        identical(tester.state(find.descendant(of: pane(original.pane), matching: find.byType(TerminalPane))), view),
+        isTrue,
+      );
+      expect(session.multilineDraft, 'keep this draft');
+      expect(factory.opened, hasLength(2));
+      expect(factory.opened.every((p) => p.closes == 0), isTrue);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('the visible split tab adds only one session at the targeted pane', (tester) async {
+    await mount(tester);
+    final id = ws.openLocal(_shell);
+    ws.split(SplitAxis.horizontal);
+    await frames(tester);
+    final leaves = tab(id).layout.leaves.toList();
+    final gesture = await startDrag(tester, topTab(id));
+    await gesture.moveTo(edge(tester.getRect(pane(leaves.first.pane)), PaneSide.bottom));
+    await frames(tester);
+    await gesture.up();
+    await frames(tester);
+    expect(tab(id).layout.leaves, hasLength(3));
+    final root = tab(id).layout.root as PaneSplit;
+    expect(root.ratios, [0.5, 0.5]);
+    expect(root.children.last, isA<Leaf>());
+    expect((root.children.last as Leaf).pane, leaves.last.pane);
+    expect((root.children.first as PaneSplit).axis, SplitAxis.vertical);
+    expect(factory.opened, hasLength(3));
+    expect(factory.opened.every((p) => p.closes == 0), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a split tab moves as a group into one target pane', (tester) async {
     await mount(tester);
     final source = ws.openLocal(_shell);

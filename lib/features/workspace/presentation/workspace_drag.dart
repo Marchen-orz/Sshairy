@@ -97,11 +97,13 @@ extension _WorkspaceDrag on _WorkspacePageState {
   }
 
   bool _dropFits(_TerminalDrag drag, WorkspaceTab target, Leaf leaf, PaneSide side) {
-    final layout = drag.tab == target.id ? target.layout.remove(drag.pane!) : target.layout;
-    final moved = layout?.insert(leaf.pane, side, drag.incoming);
+    final split = drag.tab == target.id && drag.pane == null;
+    final layout = drag.tab == target.id && !split ? target.layout.remove(drag.pane!) : target.layout;
+    final incoming = split ? Layout.single(const PaneId(''), const SessionId('')) : drag.incoming;
+    final moved = layout?.insert(leaf.pane, side, incoming);
     final box = _layoutKeys[target.id]?.currentContext?.findRenderObject() as RenderBox?;
     if (moved == null || box == null || !box.hasSize) return false;
-    final affected = {leaf.pane, ...drag.incoming.leaves.map((leaf) => leaf.pane)};
+    final affected = {leaf.pane, ...incoming.leaves.map((leaf) => leaf.pane)};
     bool fits(PaneNode node, Size size) {
       if (node is Leaf) {
         return !affected.contains(node.pane) ||
@@ -138,7 +140,26 @@ extension _WorkspaceDrag on _WorkspacePageState {
 
   bool _canDropPane(_TerminalDrag drag, WorkspaceTab target, Leaf leaf, PaneSide side) =>
       _dragCurrent(drag) &&
-      _workspace.canMoveTerminal(
+      (drag.tab == target.id && drag.pane == null
+          ? _workspace.canSplitPane(target.id, leaf.pane, expectedLayout: drag.layout)
+          : _workspace.canMoveTerminal(
+              sourceTabId: drag.tab,
+              sourcePaneId: drag.pane,
+              targetTabId: target.id,
+              targetPaneId: leaf.pane,
+              side: side,
+              expectedSource: drag.layout,
+              expectedTarget: target.layout,
+            ));
+
+  void _dropPane(_TerminalDrag drag, WorkspaceTab target, Leaf leaf, PaneSide side) {
+    if (!_canDropPane(drag, target, leaf, side)) return;
+    PaneId? focused;
+    if (drag.tab == target.id && drag.pane == null) {
+      focused = _workspace.splitPane(target.id, leaf.pane, side, expectedLayout: drag.layout);
+      _dragCommitted = focused != null;
+    } else {
+      _dragCommitted = _workspace.moveTerminal(
         sourceTabId: drag.tab,
         sourcePaneId: drag.pane,
         targetTabId: target.id,
@@ -147,21 +168,11 @@ extension _WorkspaceDrag on _WorkspacePageState {
         expectedSource: drag.layout,
         expectedTarget: target.layout,
       );
-
-  void _dropPane(_TerminalDrag drag, WorkspaceTab target, Leaf leaf, PaneSide side) {
-    if (!_canDropPane(drag, target, leaf, side)) return;
-    _dragCommitted = _workspace.moveTerminal(
-      sourceTabId: drag.tab,
-      sourcePaneId: drag.pane,
-      targetTabId: target.id,
-      targetPaneId: leaf.pane,
-      side: side,
-      expectedSource: drag.layout,
-      expectedTarget: target.layout,
-    );
-    if (_dragCommitted) {
+      if (_dragCommitted) focused = drag.incoming.focused;
+    }
+    if (focused != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _paneFocus[drag.incoming.focused]?.requestFocus();
+        if (mounted) _paneFocus[focused]?.requestFocus();
       });
     }
   }

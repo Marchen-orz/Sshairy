@@ -226,6 +226,7 @@ void main() {
     expect(panes, findsNWidgets(2));
     final close = find.byTooltip('Close pane');
     expect(close, findsNWidgets(2));
+    expect(find.text('web-1  u@web.example', findRichText: true), findsNWidgets(2));
     for (var i = 0; i < 2; i++) {
       expect(tester.getRect(close.at(i)).right, closeTo(tester.getRect(panes.at(i)).right, 5));
     }

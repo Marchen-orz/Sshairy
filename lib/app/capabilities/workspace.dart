@@ -99,13 +99,31 @@ List<Capability> workspaceCapabilities(Ref ref) {
             'type': 'string',
             'enum': ['horizontal', 'vertical'],
           },
+          'tabId': {'type': 'string'},
+          'paneId': {'type': 'string'},
+          'side': {
+            'type': 'string',
+            'enum': ['left', 'right', 'top', 'bottom'],
+          },
         },
-        'required': ['axis'],
       },
       (a, _) async {
-        final axis = SplitAxis.values.asNameMap()[a.require<String>('axis')];
-        if (axis == null) return const Err(AppError('invalidArgument', detail: 'axis'));
-        return workspace().split(axis) ? const Ok(null) : const Err(AppError('cannotSplit'));
+        final rawAxis = a.optional<String>('axis'), rawSide = a.optional<String>('side');
+        final axis = SplitAxis.values.asNameMap()[rawAxis], side = PaneSide.values.asNameMap()[rawSide];
+        if ((rawAxis != null && axis == null) || (rawSide == null && axis == null)) {
+          return const Err(AppError('invalidArgument', detail: 'axis'));
+        }
+        if (rawSide != null && side == null) return const Err(AppError('invalidArgument', detail: 'side'));
+        final id = a.optional<String>('tabId');
+        final tab = id == null ? ref.read(workspaceProvider).activeTab : _tab(ref, TabId(id));
+        if (tab == null) return const Err(AppError('cannotSplit'));
+        final pane = a.optional<String>('paneId');
+        final added = workspace().splitPane(
+          tab.id,
+          pane == null ? tab.layout.focused : PaneId(pane),
+          side ?? (axis == SplitAxis.horizontal ? PaneSide.right : PaneSide.bottom),
+        );
+        return added == null ? const Err(AppError('cannotSplit')) : const Ok(null);
       },
     ),
     FunctionCapability(

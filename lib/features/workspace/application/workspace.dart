@@ -184,19 +184,34 @@ class Workspace extends Notifier<WorkspaceState> {
     if (tab != null) closePane(tab.id, tab.layout.focused);
   }
 
-  /// Opens another shell on the focused pane's host beside it. False when there is nothing to split or no room.
+  /// Opens another shell beside the focused pane, sharing the same target rather than its process.
   bool split(SplitAxis axis) {
     final tab = state.activeTab;
-    final current = focusedSession;
-    if (tab == null || current == null) return false;
+    return tab != null &&
+        splitPane(tab.id, tab.layout.focused, axis == SplitAxis.horizontal ? PaneSide.right : PaneSide.bottom) != null;
+  }
+
+  bool canSplitPane(TabId tabId, PaneId pane, {Layout? expectedLayout}) {
+    final tab = _tab(tabId);
+    return tab != null &&
+        (expectedLayout == null || identical(tab.layout, expectedLayout)) &&
+        tab.layout.leaves.length < Layout.maxPanes &&
+        tab.layout.leaves.any((leaf) => leaf.pane == pane && session(leaf.session) != null);
+  }
+
+  PaneId? splitPane(TabId tabId, PaneId pane, PaneSide side, {Layout? expectedLayout}) {
+    if (!canSplitPane(tabId, pane, expectedLayout: expectedLayout)) return null;
+    final tab = _tab(tabId)!;
+    final current = session(tab.layout.leaves.firstWhere((leaf) => leaf.pane == pane).session)!;
+    final added = PaneId(newId());
     final s = _copySession(current);
-    final next = tab.layout.split(tab.layout.focused, axis, PaneId(newId()), s.id);
+    final next = tab.layout.insert(pane, side, Layout.single(added, s.id));
     if (next == null) {
       _sessions.close(s.id);
-      return false;
+      return null;
     }
-    _replace(tab.id, next);
-    return true;
+    _set(WorkspaceState(tabs: [for (final t in state.tabs) t.id == tabId ? t.withLayout(next) : t], active: tabId));
+    return added;
   }
 
   bool canMoveTerminal({

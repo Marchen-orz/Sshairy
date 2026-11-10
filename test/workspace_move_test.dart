@@ -321,6 +321,62 @@ void main() {
     expect(tab(target).layout.focusedLeaf.session, sourceLayout.focusedLeaf.session);
   });
 
+  test('four-way split targets a pane and rejects stale or full layouts before creating sessions', () async {
+    final id = workspace.openLocal(_shell);
+    var layout = tab(id).layout;
+    for (final side in PaneSide.values) {
+      final before = layout;
+      final added = workspace.splitPane(id, layout.focused, side, expectedLayout: layout);
+      expect(added, isNotNull);
+      layout = tab(id).layout;
+      expect(layout.focused, added);
+      expect(layout.leaves.length, before.leaves.length + 1);
+      expect(workspace.splitPane(id, before.focused, side, expectedLayout: before), isNull);
+    }
+    while (tab(id).layout.leaves.length < Layout.maxPanes) {
+      expect(workspace.split(SplitAxis.horizontal), isTrue);
+    }
+    final full = tab(id).layout;
+    final sessions = container.read(terminalSessionsProvider);
+    expect(workspace.canSplitPane(id, full.focused), isFalse);
+    expect(workspace.splitPane(id, full.focused, PaneSide.left), isNull);
+    expect(workspace.split(SplitAxis.horizontal), isFalse);
+    expect(identical(container.read(terminalSessionsProvider), sessions), isTrue);
+    expect(identical(tab(id).layout, full), isTrue);
+    await pumpEventQueue();
+    expect(factory.started, isEmpty);
+  });
+
+  test('split capability accepts an explicit four-way target and keeps the axis contract', () async {
+    final target = workspace.openLocal(_shell);
+    final leaf = tab(target).layout.focusedLeaf;
+    workspace.openLocal(_shell);
+    final dispatcher = container.read(capabilityDispatcherProvider);
+    expect(
+      await dispatcher.dispatch('workspace.split', {
+        'tabId': target.value,
+        'paneId': leaf.pane.value,
+        'side': 'left',
+      }, RequestContext(Origin.palette)),
+      isA<Ok<Object?>>(),
+    );
+    expect(tab(target).layout.leaves.last.pane, leaf.pane);
+    expect(container.read(workspaceProvider).active, target);
+    expect(
+      await dispatcher.dispatch('workspace.split', {'axis': 'vertical'}, RequestContext(Origin.palette)),
+      isA<Ok<Object?>>(),
+    );
+    expect(tab(target).layout.leaves, hasLength(3));
+    expect(
+      await dispatcher.dispatch('workspace.split', {'side': 'center'}, RequestContext(Origin.palette)),
+      isA<Err<Object?>>(),
+    );
+    expect(
+      await dispatcher.dispatch('workspace.split', {'side': 'left'}, RequestContext(Origin.agent)),
+      isA<Err<Object?>>(),
+    );
+  });
+
   test('detach preserves source title, moves its existing pane, and single-pane detach only reorders', () {
     final source = workspace.openLocal(_shell);
     workspace.rename(source, 'group');

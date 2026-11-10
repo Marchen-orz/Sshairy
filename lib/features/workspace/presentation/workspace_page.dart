@@ -214,10 +214,12 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     return KeyEventResult.ignored;
   }
 
-  void _splitAt(WorkspaceTab tab, Leaf leaf, SplitAxis axis) {
-    _workspace.focusPane(tab.id, leaf.pane);
-    _workspace.split(axis);
-  }
+  void _splitAt(WorkspaceTab tab, Leaf leaf, SplitAxis axis) => _workspace.splitPane(
+    tab.id,
+    leaf.pane,
+    axis == SplitAxis.horizontal ? PaneSide.right : PaneSide.bottom,
+    expectedLayout: tab.layout,
+  );
 
   Future<void> _rename(WorkspaceTab tab, String current) async {
     final title = await showAppDialog<String>(
@@ -767,15 +769,28 @@ class _PaneHeader extends StatelessWidget {
               children: [
                 SizedBox.square(dimension: 14, child: Center(child: SessionStatusIcon(session.status))),
                 const SizedBox(width: Space.sm),
-                // Expanded, not Flexible beside a Spacer: the two would split the free width, and a short label
-                // would leave the close button part-way along the header.
+                // Expanded keeps the close button at the pane edge even when the title is short.
                 Expanded(
-                  child: Text(
-                    session.targetLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: focused ? scheme.onSurface : scheme.onSurfaceVariant,
+                  child: Tooltip(
+                    message: session.sshHost?.label.isNotEmpty == true
+                        ? '${session.sshHost!.label}  ${session.targetLabel}'
+                        : session.targetLabel,
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          if (session.sshHost case final host? when host.label.isNotEmpty)
+                            TextSpan(text: '${host.label}  '),
+                          TextSpan(
+                            text: session.targetLabel,
+                            style: session.isLocal ? null : TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: focused ? scheme.onSurface : scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
