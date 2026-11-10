@@ -1,30 +1,34 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../settings/api.dart';
+import '../application/composer.dart';
 import '../application/configuration.dart';
 import '../application/providers.dart';
 import '../application/runtime.dart';
 import '../domain/agent.dart';
 
 class AgentPanel extends ConsumerStatefulWidget {
-  const AgentPanel({super.key});
+  const AgentPanel({super.key, this.onClose});
+  final VoidCallback? onClose;
 
   @override
   ConsumerState<AgentPanel> createState() => _AgentPanelState();
 }
 
 class _AgentPanelState extends ConsumerState<AgentPanel> {
-  final _goal = TextEditingController();
-  AgentMode _mode = AgentMode.explain;
-  HostId? _host;
+  late final _goal = TextEditingController(text: ref.read(agentComposerProvider).goal);
+  bool _scopeDetails = false;
   bool _startFailed = false;
 
   @override
@@ -33,16 +37,27 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     super.dispose();
   }
 
-  Future<void> _send(AgentRuntime runtime, AgentMode mode, HostId? host) async {
+  void _goalChanged() => ref.read(agentComposerProvider.notifier).setGoal(_goal.text);
+
+  void _replaceGoal(String value) {
+    _goal.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+    _goalChanged();
+  }
+
+  Future<void> _send(AgentRuntime runtime, HostId? host) async {
     final goal = _goal.text.trim();
-    if (runtime.busy || goal.isEmpty || (mode != AgentMode.explain && host == null)) return;
+    if (runtime.busy || goal.isEmpty || !_goal.value.composing.isCollapsed) return;
     setState(() => _startFailed = false);
-    _goal.clear();
+    _replaceGoal('');
     try {
-      await runtime.start(goal, AgentScope(mode: mode, hosts: mode == AgentMode.explain ? const [] : [host!]));
+      await runtime.start(goal, AgentScope(hosts: [?host]));
+      if (mounted && runtime.error == 'notConfigured' && _goal.text.isEmpty) _replaceGoal(goal);
     } on Object {
       if (!mounted) return;
-      if (_goal.text.isEmpty) _goal.text = goal;
+      if (_goal.text.isEmpty) _replaceGoal(goal);
       setState(() => _startFailed = true);
     }
   }
@@ -52,131 +67,306 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     final l = AppLocalizations.of(context);
     final configuration = ref.watch(aiConfigurationProvider);
     final runtime = ref.watch(agentRuntimeProvider);
+    final draft = ref.watch(agentComposerProvider);
+    if (_goal.text != draft.goal) {
+      _goal.value = TextEditingValue(
+        text: draft.goal,
+        selection: TextSelection.collapsed(offset: draft.goal.length),
+      );
+    }
     final hosts = ref.watch(agentBackendProvider).hosts;
     final enabled = configuration.enabled && configuration.profile != null && !configuration.loadFailed;
     final tools = configuration.profile?.tools ?? false;
-    final selectedMode = tools ? _mode : AgentMode.explain;
-    final selectedHost = hosts.any((host) => host.id == _host) ? _host : null;
+    final selectedHost = tools && hosts.any((host) => host.id == draft.host) ? draft.host : null;
     final theme = Theme.of(context);
 
     return ListenableBuilder(
       listenable: runtime,
-      builder: (context, _) => Padding(
-        padding: const EdgeInsets.all(Space.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text(l.aiAgentTitle, style: theme.textTheme.titleSmall)),
-                IconButton(
-                  tooltip: l.aiAgentClear,
-                  onPressed: runtime.busy ? null : runtime.clear,
-                  icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                ),
-                IconButton(
-                  tooltip: l.settings,
-                  onPressed: () => showSettingsDialog(context),
-                  icon: const Icon(Icons.settings_outlined, size: 18),
-                ),
-              ],
-            ),
-            if (!enabled) ...[
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxHeight < 440;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: Space.sm),
-                child: Text(
-                  configuration.loadFailed ? l.aiAgentConfigurationFailed : l.aiAgentConfigure,
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(onPressed: () => showSettingsDialog(context), child: Text(l.settings)),
-              ),
-            ],
-            AppSelect<AgentMode>(
-              key: const ValueKey('ai-agent-mode'),
-              value: selectedMode,
-              options: [
-                AppOption(AgentMode.explain, l.aiAgentExplain),
-                if (tools) ...[
-                  AppOption(AgentMode.diagnose, l.aiAgentDiagnose),
-                  AppOption(AgentMode.execute, l.aiAgentExecute),
-                ],
-              ],
-              onChanged: !enabled || runtime.busy ? null : (value) => setState(() => _mode = value),
-            ),
-            if (selectedMode != AgentMode.explain) ...[
-              const SizedBox(height: Space.sm),
-              AppSelect<HostId?>(
-                key: const ValueKey('ai-agent-host'),
-                value: selectedHost,
-                options: [
-                  AppOption(null, l.aiAgentChooseHost),
-                  for (final host in hosts) AppOption(host.id, host.label),
-                ],
-                searchable: hosts.length > 8,
-                searchHint: l.aiAgentChooseHost,
-                onChanged: !enabled || runtime.busy ? null : (value) => setState(() => _host = value),
-              ),
-            ],
-            if (selectedMode != AgentMode.explain) ...[
-              const SizedBox(height: Space.sm),
-              Text(l.aiAgentDiagnosticScope, style: theme.textTheme.bodySmall),
-            ],
-            const SizedBox(height: Space.sm),
-            Row(
-              children: [
-                if (runtime.busy) ...[
-                  const SizedBox(width: Space.md, height: Space.md, child: CircularProgressIndicator(strokeWidth: 2)),
-                  const SizedBox(width: Space.sm),
-                ],
-                Expanded(child: Text(_phase(l, runtime.phase), style: theme.textTheme.bodySmall)),
-              ],
-            ),
-            if (runtime.error != null || _startFailed)
-              Padding(
-                padding: const EdgeInsets.only(top: Space.sm),
-                child: Text(
-                  l.aiAgentFailed,
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
-                ),
-              ),
-            const SizedBox(height: Space.sm),
-            Expanded(child: _Conversation(runtime: runtime)),
-            const SizedBox(height: Space.sm),
-            TextField(
-              key: const ValueKey('ai-agent-goal'),
-              controller: _goal,
-              enabled: enabled && !runtime.busy,
-              minLines: 2,
-              maxLines: 5,
-              maxLength: 4096,
-              decoration: InputDecoration(hintText: l.aiAgentGoal, counterText: ''),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: Space.sm),
-            Align(
-              alignment: Alignment.centerRight,
-              child: runtime.busy
-                  ? OutlinedButton.icon(
-                      key: const ValueKey('ai-agent-stop'),
-                      onPressed: runtime.stop,
-                      icon: const Icon(Icons.stop, size: 16),
-                      label: Text(l.stop),
-                    )
-                  : FilledButton.icon(
-                      key: const ValueKey('ai-agent-send'),
-                      onPressed:
-                          !enabled ||
-                              _goal.text.trim().isEmpty ||
-                              (selectedMode != AgentMode.explain && selectedHost == null)
-                          ? null
-                          : () => _send(runtime, selectedMode, selectedHost),
-                      icon: const Icon(Icons.arrow_upward, size: 16),
-                      label: Text(l.aiAgentSend),
+                padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.xs, Space.sm),
+                child: Row(
+                  children: [
+                    Icon(Icons.auto_awesome_outlined, size: 18, color: theme.colorScheme.primary),
+                    const SizedBox(width: Space.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(l.aiAgentTitle, style: theme.textTheme.titleSmall),
+                          if (runtime.phase != AgentPhase.idle)
+                            Text(
+                              _phase(l, runtime.phase),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                            ),
+                        ],
+                      ),
                     ),
+                    IconButton(
+                      key: const ValueKey('ai-agent-new-task'),
+                      tooltip: l.aiAgentNewTask,
+                      onPressed: runtime.busy
+                          ? null
+                          : () {
+                              runtime.clear();
+                              ref.read(agentComposerProvider.notifier).newTask();
+                              _goal.clear();
+                              setState(() => _startFailed = false);
+                            },
+                      icon: const Icon(Icons.add_comment_outlined, size: 17),
+                    ),
+                    IconButton(
+                      tooltip: l.settings,
+                      onPressed: () => showSettingsDialog(context),
+                      icon: const Icon(Icons.tune_outlined, size: 17),
+                    ),
+                    if (widget.onClose != null)
+                      IconButton(tooltip: l.close, onPressed: widget.onClose, icon: const Icon(Icons.close, size: 17)),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: runtime.timeline.isEmpty && !runtime.busy
+                    ? _Welcome(
+                        enabled: enabled,
+                        failed: configuration.loadFailed,
+                        compact: compact,
+                        onExample: _replaceGoal,
+                      )
+                    : _Conversation(runtime: runtime),
+              ),
+              if (runtime.error != null || _startFailed)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.md, 0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.error),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Text(
+                          _error(l, runtime.error),
+                          maxLines: compact ? 2 : 4,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(Space.sm),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: max(112, constraints.maxHeight * (compact ? .58 : .46))),
+                  child: SingleChildScrollView(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLow,
+                        border: Border.all(color: theme.colorScheme.outlineVariant),
+                        borderRadius: BorderRadius.circular(Radii.card),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(Space.sm),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Focus(
+                              onKeyEvent: (_, event) {
+                                if (event is! KeyDownEvent ||
+                                    event.logicalKey != LogicalKeyboardKey.enter ||
+                                    !(HardwareKeyboard.instance.isControlPressed ||
+                                        HardwareKeyboard.instance.isMetaPressed) ||
+                                    !_goal.value.composing.isCollapsed) {
+                                  return KeyEventResult.ignored;
+                                }
+                                if (enabled && !runtime.busy && _goal.text.trim().isNotEmpty) {
+                                  unawaited(_send(runtime, selectedHost));
+                                }
+                                return KeyEventResult.handled;
+                              },
+                              child: TextField(
+                                key: const ValueKey('ai-agent-goal'),
+                                controller: _goal,
+                                enabled: enabled,
+                                minLines: compact ? 1 : 2,
+                                maxLines: compact ? 2 : 4,
+                                maxLength: 4096,
+                                decoration: InputDecoration(
+                                  hintText: l.aiAgentGoal,
+                                  counterText: '',
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  filled: false,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.xs),
+                                ),
+                                onChanged: (_) => _goalChanged(),
+                              ),
+                            ),
+                            const SizedBox(height: Space.xs),
+                            Row(
+                              children: [
+                                Icon(Icons.auto_awesome_outlined, size: 12, color: theme.colorScheme.onSurfaceVariant),
+                                const SizedBox(width: Space.xs),
+                                Expanded(
+                                  child: Tooltip(
+                                    message: configuration.profile?.model ?? l.aiAgentConfigureAction,
+                                    child: Text(
+                                      configuration.profile?.model ?? l.aiAgentConfigureAction,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (!tools)
+                                  Text(
+                                    l.aiAgentTextOnly,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: Space.sm),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: tools
+                                      ? AppSelect<HostId?>(
+                                          key: const ValueKey('ai-agent-host'),
+                                          value: selectedHost,
+                                          options: [
+                                            AppOption(null, l.aiAgentNoHost, icon: Icons.chat_bubble_outline_rounded),
+                                            for (final host in hosts)
+                                              AppOption(host.id, host.label, icon: Icons.dns_outlined),
+                                          ],
+                                          searchable: hosts.length > 8,
+                                          searchHint: l.aiAgentChooseHost,
+                                          onChanged: !enabled || runtime.busy
+                                              ? null
+                                              : ref.read(agentComposerProvider.notifier).selectHost,
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                                if (tools && selectedHost != null)
+                                  IconButton(
+                                    key: const ValueKey('ai-agent-scope-details'),
+                                    tooltip: l.aiAgentScopeDetails,
+                                    isSelected: _scopeDetails,
+                                    onPressed: () => setState(() => _scopeDetails = !_scopeDetails),
+                                    icon: const Icon(Icons.shield_outlined, size: 17),
+                                  ),
+                                const SizedBox(width: Space.sm),
+                                runtime.busy
+                                    ? IconButton.filledTonal(
+                                        key: const ValueKey('ai-agent-stop'),
+                                        tooltip: l.stop,
+                                        onPressed: runtime.stop,
+                                        icon: const Icon(Icons.stop_rounded, size: 18),
+                                      )
+                                    : IconButton.filled(
+                                        key: const ValueKey('ai-agent-send'),
+                                        tooltip: l.aiAgentSendShortcut,
+                                        onPressed: !enabled || draft.goal.trim().isEmpty
+                                            ? null
+                                            : () => _send(runtime, selectedHost),
+                                        icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+                                      ),
+                              ],
+                            ),
+                            if (tools && selectedHost != null) ...[
+                              const SizedBox(height: Space.sm),
+                              Text(
+                                l.aiAgentScopeSummary,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                              ),
+                              if (_scopeDetails) ...[
+                                const SizedBox(height: Space.sm),
+                                Text(l.aiAgentDiagnosticScope, style: theme.textTheme.bodySmall),
+                              ],
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Welcome extends StatelessWidget {
+  const _Welcome({required this.enabled, required this.failed, required this.compact, required this.onExample});
+  final bool enabled, failed, compact;
+  final ValueChanged<String> onExample;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(Space.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BrandIllustration(pose: BrandPose.thinkingAi, size: compact ? 96 : 144),
+            const SizedBox(height: Space.md),
+            Text(
+              enabled ? l.aiAgentWelcome : l.aiAgentSetupTitle,
+              style: theme.textTheme.titleSmall,
+              textAlign: TextAlign.center,
             ),
+            const SizedBox(height: Space.sm),
+            Text(
+              failed
+                  ? l.aiAgentConfigurationFailed
+                  : enabled
+                  ? l.aiAgentWelcomeHint
+                  : l.aiAgentConfigure,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: Space.lg),
+            if (!enabled)
+              FilledButton.tonal(onPressed: () => showSettingsDialog(context), child: Text(l.aiAgentConfigureAction))
+            else
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: Space.sm,
+                runSpacing: Space.sm,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => onExample(l.aiAgentExampleExplainGoal),
+                    child: Text(l.aiAgentExampleExplain),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => onExample(l.aiAgentExampleDiagnoseGoal),
+                    child: Text(l.aiAgentExampleDiagnose),
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -190,48 +380,43 @@ class _Conversation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final messages = runtime.messages;
-    final executions = runtime.executions;
-    final messageStart = max(0, messages.length - 200);
-    final executionStart = max(0, executions.length - 64);
-    final messageCount = messages.length - messageStart;
-    final executionCount = executions.length - executionStart;
+    final entries = runtime.timeline.where((entry) => entry is! AgentChatEntry || entry.text.isNotEmpty).toList();
     final approval = runtime.approval;
     final data = runtime.dataRequest;
-    final count = messageCount + executionCount + (approval == null ? 0 : 1) + (data == null ? 0 : 1);
-    if (count == 0) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(Space.lg),
-          child: Text(l.aiAgentEmpty, style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
-        ),
-      );
-    }
+    final count = entries.length + (approval == null ? 0 : 1) + (data == null ? 0 : 1);
     return SelectionArea(
       child: ListView.builder(
         key: const PageStorageKey('ai-agent-conversation'),
+        padding: const EdgeInsets.all(Space.md),
         reverse: true,
         itemCount: count,
         itemBuilder: (context, index) {
           index = count - index - 1;
-          if (index < messageCount) {
-            final message = messages[messageStart + index];
+          if (index < entries.length) {
+            final entry = entries[index];
+            if (entry is AgentExecution) return _ExecutionCard(key: ValueKey(entry.id), execution: entry);
+            final message = entry as AgentChatEntry;
             final user = message.role == 'user';
+            final theme = Theme.of(context);
             return Padding(
-              padding: const EdgeInsets.only(bottom: Space.md),
-              child: _AgentCard(
-                emphasized: user,
-                child: Text(message.text, style: Theme.of(context).textTheme.bodyMedium),
+              key: ObjectKey(message),
+              padding: const EdgeInsets.only(bottom: Space.lg),
+              child: Align(
+                alignment: user ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  padding: user ? const EdgeInsets.all(Space.md) : const EdgeInsets.symmetric(vertical: Space.xs),
+                  decoration: user
+                      ? BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(Radii.card),
+                        )
+                      : null,
+                  child: Text(message.text, style: theme.textTheme.bodyMedium),
+                ),
               ),
             );
           }
-          index -= messageCount;
-          if (index < executionCount) {
-            final execution = executions[executionStart + index];
-            return _ExecutionCard(key: ValueKey(execution.id), execution: execution);
-          }
-          index -= executionCount;
+          index -= entries.length;
           if (approval != null) {
             if (index == 0) {
               return _ApprovalCard(
@@ -242,11 +427,7 @@ class _Conversation extends StatelessWidget {
             }
             index--;
           }
-          return _OutputApproval(
-            key: ObjectKey(data),
-            request: data!,
-            onShare: (text) => runtime.shareOutput(text, expected: data),
-          );
+          return _OutputApproval(key: ObjectKey(data), request: data!, runtime: runtime);
         },
       ),
     );
@@ -270,34 +451,75 @@ class _ExecutionCardState extends State<_ExecutionCard> {
     final theme = Theme.of(context);
     final execution = widget.execution;
     final output = execution.output;
+    final failed = execution.state == 'failed' || (execution.exitCode != null && execution.exitCode != 0);
+    final unknown = execution.state == 'outcomeUnknown';
+    final running = execution.state == 'running';
     return Padding(
-      padding: const EdgeInsets.only(bottom: Space.sm),
+      padding: const EdgeInsets.only(bottom: Space.md),
       child: _AgentCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(execution.target, style: theme.textTheme.labelLarge),
-            const SizedBox(height: Space.xs),
-            Text(
-              execution.command.isEmpty ? l.aiAgentDiagnostics : execution.command,
-              style: mono(context, theme.textTheme.bodySmall),
-              maxLines: 5,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (execution.cwd.isNotEmpty) Text(execution.cwd, style: mono(context, theme.textTheme.bodySmall)),
-            const SizedBox(height: Space.xs),
-            Text(_executionState(l, execution.state), style: theme.textTheme.bodySmall),
-            if (execution.exitCode case final code?) Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
-            if (output?.truncated ?? false) Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
-            if (output != null) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed: () => setState(() => _expanded = !_expanded),
-                  child: Text(_expanded ? l.aiAgentHideOutput : l.aiAgentShowOutput),
+            Row(
+              children: [
+                Icon(
+                  unknown
+                      ? Icons.help_outline_rounded
+                      : failed
+                      ? Icons.error_outline_rounded
+                      : running
+                      ? Icons.more_horiz_rounded
+                      : Icons.check_circle_outline_rounded,
+                  size: 16,
+                  color: failed || unknown ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
                 ),
-              ),
-              if (_expanded) Text(output.excerpt, style: mono(context, theme.textTheme.bodySmall)),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: Text(
+                    execution.target,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: _expanded ? l.aiAgentHideOutput : l.aiAgentShowOutput,
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 18),
+                ),
+              ],
+            ),
+            Text(
+              execution.capability == 'agent.diagnose' ? l.aiAgentDiagnostics : execution.command,
+              style: mono(context, theme.textTheme.bodySmall),
+              maxLines: _expanded ? null : 2,
+              overflow: _expanded ? null : TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: Space.sm),
+            Wrap(
+              spacing: Space.md,
+              runSpacing: Space.xs,
+              children: [
+                Text(
+                  failed ? l.aiAgentExecutionFailed : _executionState(l, execution.state),
+                  style: theme.textTheme.bodySmall,
+                ),
+                if (execution.exitCode case final code?)
+                  Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
+                if (output?.truncated ?? false) Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
+              ],
+            ),
+            if (_expanded) ...[
+              if (execution.cwd.isNotEmpty) ...[
+                const SizedBox(height: Space.sm),
+                Text(execution.cwd, style: mono(context, theme.textTheme.bodySmall)),
+              ],
+              if (output != null && output.length > 0) ...[
+                const SizedBox(height: Space.sm),
+                const Divider(height: 1),
+                const SizedBox(height: Space.sm),
+                Text(output.excerpt, style: mono(context, theme.textTheme.bodySmall)),
+              ],
             ],
           ],
         ),
@@ -316,19 +538,22 @@ class _ApprovalCard extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: Space.sm),
+      padding: const EdgeInsets.only(bottom: Space.md),
       child: _AgentCard(
+        emphasized: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _CardTitle(icon: Icons.terminal_rounded, label: l.aiAgentApproveTitle),
+            const SizedBox(height: Space.md),
             Text(approval.target, style: theme.textTheme.labelLarge),
-            const SizedBox(height: Space.sm),
+            const SizedBox(height: Space.xs),
             Text(approval.cwd, style: mono(context, theme.textTheme.bodySmall)),
-            const SizedBox(height: Space.sm),
+            const SizedBox(height: Space.md),
             Text(approval.command, style: mono(context, theme.textTheme.bodyMedium)),
-            const SizedBox(height: Space.sm),
+            const SizedBox(height: Space.md),
             Text(l.aiAgentShellPermission, style: theme.textTheme.bodySmall),
-            const SizedBox(height: Space.sm),
+            const SizedBox(height: Space.md),
             Wrap(
               alignment: WrapAlignment.end,
               spacing: Space.sm,
@@ -345,17 +570,17 @@ class _ApprovalCard extends StatelessWidget {
   }
 }
 
-class _OutputApproval extends StatefulWidget {
-  const _OutputApproval({super.key, required this.request, required this.onShare});
+class _OutputApproval extends ConsumerStatefulWidget {
+  const _OutputApproval({super.key, required this.request, required this.runtime});
   final AgentDataRequest request;
-  final ValueChanged<String?> onShare;
+  final AgentRuntime runtime;
 
   @override
-  State<_OutputApproval> createState() => _OutputApprovalState();
+  ConsumerState<_OutputApproval> createState() => _OutputApprovalState();
 }
 
-class _OutputApprovalState extends State<_OutputApproval> {
-  late final _text = TextEditingController(text: widget.request.suggested);
+class _OutputApprovalState extends ConsumerState<_OutputApproval> {
+  late final _text = TextEditingController(text: ref.read(agentComposerProvider).outputText(widget.request));
 
   @override
   void dispose() {
@@ -363,16 +588,24 @@ class _OutputApprovalState extends State<_OutputApproval> {
     super.dispose();
   }
 
+  void _share(String? text) {
+    widget.runtime.shareOutput(text, expected: widget.request);
+    ref.read(agentComposerProvider.notifier).clearOutput(widget.request);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final valid = utf8.encode(jsonEncode(_text.text)).length <= 7000;
     return Padding(
-      padding: const EdgeInsets.only(bottom: Space.sm),
+      padding: const EdgeInsets.only(bottom: Space.md),
       child: _AgentCard(
+        emphasized: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _CardTitle(icon: Icons.outbox_outlined, label: l.aiAgentShareTitle),
+            const SizedBox(height: Space.md),
             Text(l.aiAgentSharePreview, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: Space.sm),
             TextField(
@@ -383,23 +616,25 @@ class _OutputApprovalState extends State<_OutputApproval> {
               maxLength: 8192,
               style: mono(context, Theme.of(context).textTheme.bodySmall),
               decoration: InputDecoration(errorText: valid ? null : l.aiAgentProjectionTooLarge, counterText: ''),
-              onChanged: (_) => setState(() {}),
+              onChanged: (value) {
+                ref.read(agentComposerProvider.notifier).editOutput(widget.request, value);
+                setState(() {});
+              },
             ),
-            if (widget.request.output.truncated)
-              Padding(
-                padding: const EdgeInsets.only(top: Space.sm),
-                child: Text(l.aiAgentTruncated, style: Theme.of(context).textTheme.bodySmall),
-              ),
-            const SizedBox(height: Space.sm),
+            if (widget.request.output.truncated) ...[
+              const SizedBox(height: Space.sm),
+              Text(l.aiAgentTruncated, style: Theme.of(context).textTheme.bodySmall),
+            ],
+            const SizedBox(height: Space.md),
             Wrap(
               alignment: WrapAlignment.end,
               spacing: Space.sm,
               runSpacing: Space.sm,
               children: [
-                TextButton(onPressed: () => widget.onShare(null), child: Text(l.aiAgentKeepLocal)),
+                TextButton(onPressed: () => _share(null), child: Text(l.aiAgentKeepLocal)),
                 FilledButton.tonal(
                   key: const ValueKey('ai-agent-share-output'),
-                  onPressed: valid ? () => widget.onShare(_text.text) : null,
+                  onPressed: valid ? () => _share(_text.text) : null,
                   child: Text(l.aiAgentShare),
                 ),
               ],
@@ -409,6 +644,21 @@ class _OutputApprovalState extends State<_OutputApproval> {
       ),
     );
   }
+}
+
+class _CardTitle extends StatelessWidget {
+  const _CardTitle({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(width: Space.sm),
+      Expanded(child: Text(label, style: Theme.of(context).textTheme.labelLarge)),
+    ],
+  );
 }
 
 class _AgentCard extends StatelessWidget {
@@ -422,9 +672,9 @@ class _AgentCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(Space.md),
       decoration: BoxDecoration(
-        color: emphasized ? scheme.surfaceContainerHigh : scheme.surfaceContainerLow,
+        color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(Radii.card),
-        border: Border.all(color: scheme.outlineVariant),
+        border: Border.all(color: emphasized ? scheme.primary.withValues(alpha: .45) : scheme.outlineVariant),
       ),
       child: child,
     );
@@ -453,4 +703,44 @@ String _executionState(AppLocalizations l, String state) => switch (state) {
   'cancelled' => l.aiAgentCancelled,
   'outcomeUnknown' || 'unknown' => l.aiAgentOutcomeUnknown,
   _ => l.aiAgentPreparing,
+};
+
+String _error(AppLocalizations l, String? code) => switch (code) {
+  'notConfigured' || 'invalidModelKey' || 'invalidModelRequest' => l.aiAgentErrorConfiguration,
+  'modelNetworkError' => l.aiAgentErrorNetwork,
+  'modelHttpError' || 'modelStreamError' || 'modelRefused' => l.aiAgentErrorHttp,
+  'deadline' || 'modelTimedOut' => l.aiAgentErrorTimeout,
+  'contextLimit' ||
+  'messageLimit' ||
+  'toolLimit' ||
+  'stepLimit' ||
+  'outputLimit' ||
+  'inputLimit' ||
+  'modelContextTooLarge' ||
+  'modelMessageTooLarge' ||
+  'modelEventTooLarge' ||
+  'modelArgumentsTooLarge' => l.aiAgentErrorLimit,
+  'scopeChanged' => l.aiAgentErrorScope,
+  'hostTrustRequired' => l.aiAgentErrorHostTrust,
+  'authenticationRequired' => l.aiAgentErrorAuthentication,
+  'hostUnavailable' => l.aiAgentErrorHostUnavailable,
+  'connectionFailed' => l.aiAgentErrorConnection,
+  'executionFailed' => l.aiAgentErrorExecution,
+  'journalFailed' || 'operationConflict' || 'operationMissingIntent' || 'operationCapacity' => l.aiAgentErrorJournal,
+  'outcomeUnknown' => l.aiAgentOutcomeUnknown,
+  'cancelled' => l.aiAgentCancelled,
+  'unsupported' => l.aiAgentErrorUnsupported,
+  'protocol' ||
+  'incomplete' ||
+  'unexpectedTool' ||
+  'incompleteModelStream' ||
+  'invalidModelStream' ||
+  'invalidModelContentType' ||
+  'unrequestedModelTool' ||
+  'unsupportedModelContent' ||
+  'invalidModelContinuation' ||
+  'invalidToolPairing' ||
+  'unsupportedModelEvent' ||
+  'invalidModelArguments' => l.aiAgentErrorProtocol,
+  _ => l.aiAgentFailed,
 };

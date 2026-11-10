@@ -22,6 +22,8 @@ import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../application/completion_translations.dart';
+import '../application/ai.dart';
+import '../domain/ai_intent.dart';
 import '../domain/ai_terminal.dart';
 import '../domain/command_assistance.dart';
 import '../domain/completion_command_metadata.dart';
@@ -44,6 +46,7 @@ part 'terminal_search.dart';
 part 'terminal_assistance.dart';
 part 'terminal_assistance_ui.dart';
 part 'terminal_input_overlays.dart';
+part 'terminal_ai.dart';
 
 /// [idle] has never connected; a restored tab waits there until the user connects.
 enum SessionStatus { idle, connecting, connected, failed, disconnected }
@@ -154,6 +157,10 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   RemotePathSource? _ownedPaths;
   final _browseStack = <_BrowseFrame>[];
   final _commands = CommandHistory();
+  final _aiHistory = <TerminalAiHistoryEntry>[];
+  String inlineAiDraft = '', inlineAiCommand = '';
+  TerminalAiContext? inlineAiContext;
+  TerminalAiGeneration? inlineAiResult;
   final _history = ValueNotifier<List<String>>(const []);
   final _assistance = ValueNotifier<CommandAssistanceState>(const CommandAssistanceState());
   Timer? _completionTimer;
@@ -174,6 +181,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   void clearCommandHistory() {
     if (_closed) return;
     _commands.clear();
+    _aiHistory.clear();
     _history.value = const [];
     _invalidateCommandDraft();
     _syncCommandDraft();
@@ -207,20 +215,21 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
   bool _aiContextCurrent(TerminalAiContext expected) {
     final current = readAiContext();
-    final sameTarget = switch ((current.target, expected.target)) {
-      (SshTerminalAiTarget(hostId: final a), SshTerminalAiTarget(hostId: final b)) => a == b,
-      (LocalTerminalAiTarget(kind: final a), LocalTerminalAiTarget(kind: final b)) => a == b,
-      _ => false,
-    };
-    return sameTarget &&
-        current.ready &&
-        expected.ready &&
-        current.sessionId == expected.sessionId &&
-        current.generation == expected.generation &&
-        current.revision == expected.revision &&
-        current.prompt == expected.prompt &&
-        current.draft == expected.draft &&
-        current.directory == expected.directory;
+    return current.ready && expected.ready && sameTerminalAiContext(current, expected);
+  }
+
+  List<TerminalAiHistoryEntry> readAiHistory(TerminalAiContext expected) {
+    if (!_aiContextCurrent(expected)) return const [];
+    final entries = <TerminalAiHistoryEntry>[];
+    var bytes = 0;
+    for (final entry in _aiHistory.reversed) {
+      if (entry.generation != expected.generation) continue;
+      final size = utf8.encode(entry.text).length;
+      if (entries.length >= 8 || bytes + size > 4096) break;
+      entries.add(entry);
+      bytes += size;
+    }
+    return List.unmodifiable(entries.reversed);
   }
 
   @override
@@ -745,6 +754,10 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _ownedPaths?.dispose();
     _ownedPaths = null;
     _commands.clear();
+    _aiHistory.clear();
+    inlineAiDraft = inlineAiCommand = '';
+    inlineAiContext = null;
+    inlineAiResult = null;
     multilineDraft = '';
     _history.value = const [];
     _assistance.value = const CommandAssistanceState();
@@ -776,8 +789,21 @@ class _DirectoryNotifier extends ValueNotifier<String?> {
   _DirectoryNotifier(this._following) : super(null);
 
   final void Function(bool on) _following;
+  final changes = ChangeNotifier();
 
   bool get followed => hasListeners;
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    changes.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    changes.dispose();
+    super.dispose();
+  }
 
   @override
   void addListener(VoidCallback listener) {

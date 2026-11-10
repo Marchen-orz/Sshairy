@@ -85,6 +85,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             edits.shutdown(),
             forwards.shutdown(),
             if (agent != null) agent.shutdown(),
+            if (ref.exists(aiTerminalServiceProvider)) ref.read(aiTerminalServiceProvider).shutdown(),
           ]).timeout(const Duration(seconds: 8));
           await Future.wait([
             ref.read(hostsProvider.notifier).saved,

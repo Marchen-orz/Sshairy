@@ -296,7 +296,7 @@ void main() {
       expect(commandCandidateValid(const CommandCandidate('git s\nrm -rf /'), draft), isFalse);
     });
 
-    test('merge keeps history before ai and other providers without duplicates', () {
+    test('merge accepts one valid AI first and keeps history and other providers without duplicates', () {
       const draft = 'git s';
       final local = [
         candidate('git status', CommandCandidateSource.history),
@@ -312,8 +312,9 @@ void main() {
         candidate('git sync', CommandCandidateSource.ai, shown: 'rm -rf /'),
         candidate('git status', CommandCandidateSource.provider),
       ]);
-      expect(merged.map((c) => c.text), ['git status', 'git show', 'git stash', 'git switch main']);
-      expect(merged.first.source, CommandCandidateSource.history);
+      expect(merged.map((c) => c.text), ['git show', 'git status', 'git stash', 'git switch main']);
+      expect(merged.first.source, CommandCandidateSource.ai);
+      expect(merged.where((c) => c.source == CommandCandidateSource.ai), hasLength(1));
     });
 
     test('total cap is separate from visible rows and history keeps its own budget', () {
@@ -322,10 +323,10 @@ void main() {
       final ai = [for (var i = 0; i < 20; i++) candidate('git show $i', CommandCandidateSource.ai)];
       final merged = mergeCommandCandidates('git s', [...history, ...local], ai);
       expect(merged, hasLength(commandCandidateLimit));
-      expect(merged.take(50).every((c) => c.source == CommandCandidateSource.history), isTrue);
-      expect(merged.skip(50).take(20).every((c) => c.source == CommandCandidateSource.ai), isTrue);
-      expect(merged.skip(70).every((c) => c.source == CommandCandidateSource.builtin), isTrue);
-      expect(mergeCommandCandidates('git s', local.take(8).toList(), ai.take(3)), hasLength(11));
+      expect(merged.first.source, CommandCandidateSource.ai);
+      expect(merged.skip(1).take(50).every((c) => c.source == CommandCandidateSource.history), isTrue);
+      expect(merged.skip(51).every((c) => c.source == CommandCandidateSource.builtin), isTrue);
+      expect(mergeCommandCandidates('git s', local.take(8).toList(), ai.take(3)), hasLength(9));
     });
   });
 }

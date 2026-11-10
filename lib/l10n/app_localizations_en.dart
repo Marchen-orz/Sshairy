@@ -2335,15 +2335,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'AI configuration could not be read. Review it in Settings.';
 
   @override
-  String get aiAgentExplain => 'Explain';
-
-  @override
-  String get aiAgentDiagnose => 'Fixed diagnostics';
-
-  @override
-  String get aiAgentExecute => 'Approve each command';
-
-  @override
   String get aiAgentChooseHost => 'Choose a server';
 
   @override
@@ -2436,4 +2427,178 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cmdTmuxBreak => 'Move a pane to a window';
+
+  @override
+  String get aiAgentNewTask => 'New task';
+
+  @override
+  String get aiAgentWelcome => 'What would you like to work on?';
+
+  @override
+  String get aiAgentWelcomeHint =>
+      'Describe a task. Choose a server when you need remote tools.';
+
+  @override
+  String get aiAgentSetupTitle => 'Your SSH assistant';
+
+  @override
+  String get aiAgentConfigureAction => 'Configure AI';
+
+  @override
+  String get aiAgentExampleExplain => 'Explain a command';
+
+  @override
+  String get aiAgentExampleExplainGoal =>
+      'Explain how to read a shell command and spot its side effects.';
+
+  @override
+  String get aiAgentExampleDiagnose => 'Check server health';
+
+  @override
+  String get aiAgentExampleDiagnoseGoal =>
+      'Check this server\'s load, memory and disk space. Explain any missing evidence before suggesting a change.';
+
+  @override
+  String get aiAgentNoHost => 'No server';
+
+  @override
+  String get aiAgentScopeDetails => 'Data and command permissions';
+
+  @override
+  String get aiAgentScopeSummary =>
+      'Fixed diagnostics allowed · commands ask first';
+
+  @override
+  String get aiAgentTextOnly => 'Text only';
+
+  @override
+  String get aiAgentSendShortcut => 'Send · Ctrl/Cmd+Enter';
+
+  @override
+  String get aiAgentApproveTitle => 'Approve command';
+
+  @override
+  String get aiAgentShareTitle => 'Share output';
+
+  @override
+  String get aiAgentExecutionFailed => 'Finished with errors';
+
+  @override
+  String get aiAgentErrorConfiguration =>
+      'Review the model configuration and API key in Settings.';
+
+  @override
+  String get aiAgentErrorNetwork =>
+      'Could not reach the model. Check the connection and try a new task.';
+
+  @override
+  String get aiAgentErrorHttp =>
+      'The model service rejected this request. Check its credentials, quota and settings.';
+
+  @override
+  String get aiAgentErrorTimeout =>
+      'The request reached its time limit. Review the task before trying again.';
+
+  @override
+  String get aiAgentErrorLimit =>
+      'This task reached its context, output or step limit. Start a smaller task.';
+
+  @override
+  String get aiAgentErrorScope =>
+      'The model configuration or server connection changed. Start a new task to authorize the current target.';
+
+  @override
+  String get aiAgentErrorJournal =>
+      'The operation record could not be saved. Review the execution status before trying another command.';
+
+  @override
+  String get aiAgentErrorProtocol =>
+      'The model returned an incomplete or unsupported response. No partial tool request was executed.';
+
+  @override
+  String get aiAgentErrorUnsupported =>
+      'This server does not support the current command adapter.';
+
+  @override
+  String get aiConfigAdvanced => 'Model capabilities and limits';
+
+  @override
+  String get aiConfigInline => 'Inline command generation';
+
+  @override
+  String get aiConfigInlineHint =>
+      'Send only when you click the terminal AI button or press its shortcut. Review the command before filling it in.';
+
+  @override
+  String get aiConfigCompletion => 'AI suggestions';
+
+  @override
+  String get aiConfigTerminalScope =>
+      'Allow terminal input and known directory to be sent for these SSH hosts';
+
+  @override
+  String get aiConfigTerminalNoHosts =>
+      'Add a host to allow SSH suggestions. Local shells can use explicit inline generation.';
+
+  @override
+  String get aiConfigPosix => 'These SSH terminals use Linux / POSIX shells';
+
+  @override
+  String get aiConfigPosixHint =>
+      'Confirm the input environment yourself. Disable suggestions inside su, tmux or nested SSH; the client cannot verify the inner identity.';
+
+  @override
+  String get aiConfigCompletionHistory =>
+      'Use recent commands from the same session';
+
+  @override
+  String get aiConfigCompletionHint =>
+      'Automatically sends eligible drafts after a pause. History is separate: up to 8 relevant commands from this connection only.';
+
+  @override
+  String get aiAgentErrorHostTrust =>
+      'Open a normal SSH connection and review this server\'s host key before using remote tools.';
+
+  @override
+  String get aiAgentErrorAuthentication =>
+      'Open a normal SSH connection to provide or update this server\'s credentials.';
+
+  @override
+  String get aiAgentErrorHostUnavailable =>
+      'This server is no longer available. Select a saved server for the next task.';
+
+  @override
+  String get aiAgentErrorConnection =>
+      'The SSH connection failed. Check the server with a normal connection before trying again.';
+
+  @override
+  String get aiAgentErrorExecution =>
+      'The command could not be completed. Review its local output and exit status before trying again.';
+
+  @override
+  String get terminalAiGenerate => 'Generate command';
+
+  @override
+  String get terminalAiInstruction => 'Describe what you want to do';
+
+  @override
+  String get terminalAiFailed => 'Could not generate a command. Try again.';
+
+  @override
+  String get terminalAiChanged =>
+      'The terminal context changed. Reopen to start a new request.';
+
+  @override
+  String get terminalAiClarify =>
+      'Add more detail, or use Agent for a task with several steps.';
+
+  @override
+  String get terminalAiClearPrompt =>
+      'Clear the terminal input before inserting this command.';
+
+  @override
+  String get terminalAiInsert => 'Insert command';
+
+  @override
+  String get terminalAiOpenAgent => 'Open Agent';
 }

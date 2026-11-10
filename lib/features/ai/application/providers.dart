@@ -9,6 +9,21 @@ import '../domain/agent.dart';
 import '../domain/model.dart';
 import 'configuration.dart';
 import 'runtime.dart';
+import 'terminal_service.dart';
+
+final aiTerminalServiceProvider = Provider<AiTerminalService>((ref) {
+  final service = AiTerminalService(
+    model: ref.read(aiModelProvider),
+    configuration: () => ref.read(aiConfigurationProvider),
+    hosts: () => ref.read(aiTerminalHostsProvider),
+  );
+  ref.listen(aiConfigurationProvider, (_, _) => service.invalidate());
+  ref.listen(aiTerminalHostsProvider, (_, _) => service.invalidate());
+  final keys = ref.read(aiCredentialsProvider).changes.listen((_) => service.invalidate());
+  ref.onDispose(keys.cancel);
+  ref.onDispose(service.dispose);
+  return service;
+});
 
 final agentBackendProvider = Provider<AgentBackend>((_) => throw StateError('Agent backend not installed'));
 final aiModelProvider = Provider<ModelProvider>((ref) {

@@ -3,8 +3,6 @@ import 'dart:typed_data';
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/ids.dart';
 
-enum AgentMode { explain, diagnose, execute }
-
 enum AgentPhase {
   idle,
   preparing,
@@ -28,9 +26,7 @@ class AgentHost {
 }
 
 class AgentScope {
-  AgentScope({required this.mode, Iterable<HostId> hosts = const [], this.revision = 0})
-    : hosts = Set.unmodifiable(hosts);
-  final AgentMode mode;
+  AgentScope({Iterable<HostId> hosts = const [], this.revision = 0}) : hosts = Set.unmodifiable(hosts);
   final Set<HostId> hosts;
   final int revision;
 }

@@ -306,6 +306,13 @@ extension _CommandAssistance on TerminalSession {
   void _rememberCommand(String text) {
     _commands.remember(text);
     _history.value = _commands.commands;
+    if (validTerminalAiCommand(text) && !text.startsWith(' ')) {
+      _aiHistory.add(TerminalAiHistoryEntry(text: text, at: DateTime.now(), generation: _shellGeneration));
+      while (_aiHistory.length > 8 ||
+          _aiHistory.fold<int>(0, (bytes, entry) => bytes + utf8.encode(entry.text).length) > 4096) {
+        _aiHistory.removeAt(0);
+      }
+    }
   }
 
   void _invalidateCommandDraft() {
@@ -332,6 +339,7 @@ extension _CommandAssistance on TerminalSession {
 
   void _resetCommandDraft() {
     _shellGeneration++;
+    _aiHistory.clear();
     _semanticSeen = _semanticInput = false;
     _promptRow = _promptColumn = null;
     _submittedLine = null;

@@ -1,4 +1,6 @@
 export 'domain/ai_terminal.dart';
+export 'domain/command_catalog.dart' show catalogCommandNames, catalogSuggestions, CatalogSuggestion;
+export 'application/ai.dart' show terminalAiServiceProvider;
 export 'domain/command_assistance.dart';
 export 'domain/terminal_paths.dart'
     show

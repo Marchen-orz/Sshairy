@@ -103,7 +103,7 @@ void main() {
 
   setUp(() {
     transport = _Transport();
-    manager = ConnectionManager((_, _, _) async => transport, park: Duration.zero);
+    manager = ConnectionManager((_, _, _) async => transport, park: const Duration(minutes: 1));
     session = TerminalSession(
       const SessionId('session'),
       const Host(id: HostId('host'), label: 'private alias', address: 'example.com', username: 'account'),
@@ -156,6 +156,7 @@ void main() {
     expect(context.directory, isNull);
     expect(context.ready, isTrue);
     session.close();
+    manager.closeAll();
     await tester.pump();
   });
 
@@ -170,6 +171,7 @@ void main() {
     expect(await session.acceptAiDraft(session.readAiContext(), 'echo replacement'), InsertResult.rejected);
     expect(shell.writes, ['printf hello']);
     session.close();
+    manager.closeAll();
     await tester.pump();
   });
 
@@ -186,6 +188,7 @@ void main() {
     expect(await session.acceptAiDraft(original, '\nwhoami', suffix: true), InsertResult.rejected);
     expect(shell.writes, ['atus']);
     session.close();
+    manager.closeAll();
     await tester.pump();
   });
 
@@ -210,6 +213,7 @@ void main() {
     expect(await session.acceptAiDraft(foreign, 'pwd'), InsertResult.stale);
     expect(shell.writes, isEmpty);
     session.close();
+    manager.closeAll();
     await tester.pump();
   });
 
@@ -228,6 +232,45 @@ void main() {
     expect(await session.acceptAiDraft(beforeEnter, 'pwd'), InsertResult.stale);
     expect(shell.writes, isEmpty);
     session.close();
+    manager.closeAll();
+    await tester.pump();
+  });
+
+  testWidgets('recent AI history is bounded, belongs to this shell generation and is revoked on clear', (tester) async {
+    final shell = await connect(tester);
+    for (var i = 0; i < 10; i++) {
+      await _feed(tester, shell.echo, '${i == 0 ? '' : '\r\n'}u@box:~\$ echo $i');
+      session.commandSubmitted();
+    }
+    await _feed(tester, shell.echo, '\r\nu@box:~\$ echo ');
+    final current = session.readAiContext();
+    final history = session.readAiHistory(current);
+    expect(history.map((entry) => entry.text), [for (var i = 2; i < 10; i++) 'echo $i']);
+    expect(history.every((entry) => entry.generation == current.generation), isTrue);
+    expect(history.last.at.isBefore(history.first.at), isFalse);
+    await _feed(tester, shell.echo, 'new');
+    expect(session.readAiHistory(current), isEmpty);
+    session.clearCommandHistory();
+    expect(session.readAiHistory(session.readAiContext()), isEmpty);
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\nu@box:~\$ ');
+    expect(session.readAiHistory(session.readAiContext()), hasLength(1));
+    shell.close();
+    for (var i = 0; i < 10 && session.status != SessionStatus.disconnected; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(session.status, SessionStatus.disconnected);
+    final count = transport.channels.length;
+    unawaited(session.connect(NoPrompts()));
+    for (var i = 0; i < 10 && transport.channels.length == count; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(transport.channels, hasLength(count + 1));
+    await _feed(tester, transport.channels.last.echo, '\r\nu@box:~\$ ');
+    expect(session.readAiContext().generation, isNot(current.generation));
+    expect(session.readAiHistory(session.readAiContext()), isEmpty);
+    session.close();
+    manager.closeAll();
     await tester.pump();
   });
 
@@ -249,6 +292,7 @@ void main() {
     await _feed(tester, shell.echo, 'pwd');
     expect(session.readAiSnapshot(context), isNull);
     session.close();
+    manager.closeAll();
     await tester.pump();
   });
 
@@ -272,6 +316,7 @@ void main() {
     expect(await session.acceptAiDraft(context, 'dir'), InsertResult.sent);
     expect(factory.pty.writes, ['dir']);
     session.close();
+    manager.closeAll();
     await tester.pump();
   });
 }

@@ -10,6 +10,7 @@ import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
 import 'ai_backend.dart';
+import 'ai_terminal_hosts.dart';
 import 'capabilities/ai.dart';
 import 'capabilities/hosts.dart';
 import 'capabilities/host_library.dart';
@@ -22,6 +23,8 @@ import 'capabilities/forwarding.dart';
 
 /// The composition root: the one place that knows every feature and registers what each one offers.
 List<Override> appOverrides() => [
+  aiTerminalHostsProvider.overrideWith((ref) => aiTerminalHosts(ref.watch(hostsProvider))),
+  terminalAiServiceProvider.overrideWith((ref) => ref.watch(aiTerminalServiceProvider)),
   agentBackendProvider.overrideWith(
     (ref) => SshAgentBackend(ref.read(connectionManagerProvider), () => ref.read(hostsProvider)),
   ),

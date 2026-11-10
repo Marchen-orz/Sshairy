@@ -4364,24 +4364,6 @@ abstract class AppLocalizations {
   /// **'AI configuration could not be read. Review it in Settings.'**
   String get aiAgentConfigurationFailed;
 
-  /// No description provided for @aiAgentExplain.
-  ///
-  /// In en, this message translates to:
-  /// **'Explain'**
-  String get aiAgentExplain;
-
-  /// No description provided for @aiAgentDiagnose.
-  ///
-  /// In en, this message translates to:
-  /// **'Fixed diagnostics'**
-  String get aiAgentDiagnose;
-
-  /// No description provided for @aiAgentExecute.
-  ///
-  /// In en, this message translates to:
-  /// **'Approve each command'**
-  String get aiAgentExecute;
-
   /// No description provided for @aiAgentChooseHost.
   ///
   /// In en, this message translates to:
@@ -4555,6 +4537,300 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Move a pane to a window'**
   String get cmdTmuxBreak;
+
+  /// No description provided for @aiAgentNewTask.
+  ///
+  /// In en, this message translates to:
+  /// **'New task'**
+  String get aiAgentNewTask;
+
+  /// No description provided for @aiAgentWelcome.
+  ///
+  /// In en, this message translates to:
+  /// **'What would you like to work on?'**
+  String get aiAgentWelcome;
+
+  /// No description provided for @aiAgentWelcomeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe a task. Choose a server when you need remote tools.'**
+  String get aiAgentWelcomeHint;
+
+  /// No description provided for @aiAgentSetupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your SSH assistant'**
+  String get aiAgentSetupTitle;
+
+  /// No description provided for @aiAgentConfigureAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Configure AI'**
+  String get aiAgentConfigureAction;
+
+  /// No description provided for @aiAgentExampleExplain.
+  ///
+  /// In en, this message translates to:
+  /// **'Explain a command'**
+  String get aiAgentExampleExplain;
+
+  /// No description provided for @aiAgentExampleExplainGoal.
+  ///
+  /// In en, this message translates to:
+  /// **'Explain how to read a shell command and spot its side effects.'**
+  String get aiAgentExampleExplainGoal;
+
+  /// No description provided for @aiAgentExampleDiagnose.
+  ///
+  /// In en, this message translates to:
+  /// **'Check server health'**
+  String get aiAgentExampleDiagnose;
+
+  /// No description provided for @aiAgentExampleDiagnoseGoal.
+  ///
+  /// In en, this message translates to:
+  /// **'Check this server\'s load, memory and disk space. Explain any missing evidence before suggesting a change.'**
+  String get aiAgentExampleDiagnoseGoal;
+
+  /// No description provided for @aiAgentNoHost.
+  ///
+  /// In en, this message translates to:
+  /// **'No server'**
+  String get aiAgentNoHost;
+
+  /// No description provided for @aiAgentScopeDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Data and command permissions'**
+  String get aiAgentScopeDetails;
+
+  /// No description provided for @aiAgentScopeSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Fixed diagnostics allowed · commands ask first'**
+  String get aiAgentScopeSummary;
+
+  /// No description provided for @aiAgentTextOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Text only'**
+  String get aiAgentTextOnly;
+
+  /// No description provided for @aiAgentSendShortcut.
+  ///
+  /// In en, this message translates to:
+  /// **'Send · Ctrl/Cmd+Enter'**
+  String get aiAgentSendShortcut;
+
+  /// No description provided for @aiAgentApproveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve command'**
+  String get aiAgentApproveTitle;
+
+  /// No description provided for @aiAgentShareTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Share output'**
+  String get aiAgentShareTitle;
+
+  /// No description provided for @aiAgentExecutionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Finished with errors'**
+  String get aiAgentExecutionFailed;
+
+  /// No description provided for @aiAgentErrorConfiguration.
+  ///
+  /// In en, this message translates to:
+  /// **'Review the model configuration and API key in Settings.'**
+  String get aiAgentErrorConfiguration;
+
+  /// No description provided for @aiAgentErrorNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the model. Check the connection and try a new task.'**
+  String get aiAgentErrorNetwork;
+
+  /// No description provided for @aiAgentErrorHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'The model service rejected this request. Check its credentials, quota and settings.'**
+  String get aiAgentErrorHttp;
+
+  /// No description provided for @aiAgentErrorTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'The request reached its time limit. Review the task before trying again.'**
+  String get aiAgentErrorTimeout;
+
+  /// No description provided for @aiAgentErrorLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'This task reached its context, output or step limit. Start a smaller task.'**
+  String get aiAgentErrorLimit;
+
+  /// No description provided for @aiAgentErrorScope.
+  ///
+  /// In en, this message translates to:
+  /// **'The model configuration or server connection changed. Start a new task to authorize the current target.'**
+  String get aiAgentErrorScope;
+
+  /// No description provided for @aiAgentErrorJournal.
+  ///
+  /// In en, this message translates to:
+  /// **'The operation record could not be saved. Review the execution status before trying another command.'**
+  String get aiAgentErrorJournal;
+
+  /// No description provided for @aiAgentErrorProtocol.
+  ///
+  /// In en, this message translates to:
+  /// **'The model returned an incomplete or unsupported response. No partial tool request was executed.'**
+  String get aiAgentErrorProtocol;
+
+  /// No description provided for @aiAgentErrorUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'This server does not support the current command adapter.'**
+  String get aiAgentErrorUnsupported;
+
+  /// No description provided for @aiConfigAdvanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Model capabilities and limits'**
+  String get aiConfigAdvanced;
+
+  /// No description provided for @aiConfigInline.
+  ///
+  /// In en, this message translates to:
+  /// **'Inline command generation'**
+  String get aiConfigInline;
+
+  /// No description provided for @aiConfigInlineHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Send only when you click the terminal AI button or press its shortcut. Review the command before filling it in.'**
+  String get aiConfigInlineHint;
+
+  /// No description provided for @aiConfigCompletion.
+  ///
+  /// In en, this message translates to:
+  /// **'AI suggestions'**
+  String get aiConfigCompletion;
+
+  /// No description provided for @aiConfigTerminalScope.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow terminal input and known directory to be sent for these SSH hosts'**
+  String get aiConfigTerminalScope;
+
+  /// No description provided for @aiConfigTerminalNoHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a host to allow SSH suggestions. Local shells can use explicit inline generation.'**
+  String get aiConfigTerminalNoHosts;
+
+  /// No description provided for @aiConfigPosix.
+  ///
+  /// In en, this message translates to:
+  /// **'These SSH terminals use Linux / POSIX shells'**
+  String get aiConfigPosix;
+
+  /// No description provided for @aiConfigPosixHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm the input environment yourself. Disable suggestions inside su, tmux or nested SSH; the client cannot verify the inner identity.'**
+  String get aiConfigPosixHint;
+
+  /// No description provided for @aiConfigCompletionHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Use recent commands from the same session'**
+  String get aiConfigCompletionHistory;
+
+  /// No description provided for @aiConfigCompletionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatically sends eligible drafts after a pause. History is separate: up to 8 relevant commands from this connection only.'**
+  String get aiConfigCompletionHint;
+
+  /// No description provided for @aiAgentErrorHostTrust.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a normal SSH connection and review this server\'s host key before using remote tools.'**
+  String get aiAgentErrorHostTrust;
+
+  /// No description provided for @aiAgentErrorAuthentication.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a normal SSH connection to provide or update this server\'s credentials.'**
+  String get aiAgentErrorAuthentication;
+
+  /// No description provided for @aiAgentErrorHostUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This server is no longer available. Select a saved server for the next task.'**
+  String get aiAgentErrorHostUnavailable;
+
+  /// No description provided for @aiAgentErrorConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'The SSH connection failed. Check the server with a normal connection before trying again.'**
+  String get aiAgentErrorConnection;
+
+  /// No description provided for @aiAgentErrorExecution.
+  ///
+  /// In en, this message translates to:
+  /// **'The command could not be completed. Review its local output and exit status before trying again.'**
+  String get aiAgentErrorExecution;
+
+  /// No description provided for @terminalAiGenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate command'**
+  String get terminalAiGenerate;
+
+  /// No description provided for @terminalAiInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Describe what you want to do'**
+  String get terminalAiInstruction;
+
+  /// No description provided for @terminalAiFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not generate a command. Try again.'**
+  String get terminalAiFailed;
+
+  /// No description provided for @terminalAiChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The terminal context changed. Reopen to start a new request.'**
+  String get terminalAiChanged;
+
+  /// No description provided for @terminalAiClarify.
+  ///
+  /// In en, this message translates to:
+  /// **'Add more detail, or use Agent for a task with several steps.'**
+  String get terminalAiClarify;
+
+  /// No description provided for @terminalAiClearPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear the terminal input before inserting this command.'**
+  String get terminalAiClearPrompt;
+
+  /// No description provided for @terminalAiInsert.
+  ///
+  /// In en, this message translates to:
+  /// **'Insert command'**
+  String get terminalAiInsert;
+
+  /// No description provided for @terminalAiOpenAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Agent'**
+  String get terminalAiOpenAgent;
 }
 
 class _AppLocalizationsDelegate

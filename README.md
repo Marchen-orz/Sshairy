@@ -2,7 +2,7 @@
 
 Lightweight SSH. Powered by AI.
 
-基于 Flutter 的桌面 SSH 客户端，已接入首批侧栏 AI Agent 架构：文本解释、固定 Linux 诊断与逐次确认的独立命令执行。AI 默认关闭，真实模型和服务器闭环仍待实测；完整目标与完成范围见 [ROADMAP](docs/ROADMAP.md)。
+基于 Flutter 的桌面 SSH 客户端，提供侧栏 Agent、行内命令生成与 AI 提示补全。Agent 根据任务自行选择回答、固定诊断或提出命令，执行前逐次确认。AI 默认关闭，真实模型和服务器闭环仍待实测；完整目标与完成范围见 [ROADMAP](docs/ROADMAP.md)。
 
 主要供作者自用，处于开发阶段，不提供兼容性、可用性或数据恢复保障。目标平台为 Windows、macOS、Linux；目前只在作者的 Windows 11 和 Ubuntu 24.04 服务器上实际测试，macOS 和 Linux 桌面尚未验证。
 
@@ -12,7 +12,7 @@ Lightweight SSH. Powered by AI.
 - 片段：搜索、标签、编辑与持久化；插入焦点终端或确认后运行，断线重连使旧确认失效。
 - 外观：六套浅深品牌主题、界面缩放与独立背景图片。Windows 默认 Skia，可在设置中切换 Impeller，重启生效。
 - 连接扩展：跳板链、SOCKS5／HTTP CONNECT 代理、按主机启用旧版算法。实际验证范围见 [ROADMAP](docs/ROADMAP.md)。
-- AI：设置中配置 Anthropic Messages 或 OpenAI-compatible Chat Completions；导航打开 Agent，显式选择模式和主机。任意命令逐次批准，执行输出另行选择是否发送。
+- AI：设置中配置 Anthropic Messages 或 OpenAI-compatible Chat Completions；导航或 Ctrl/Cmd+Shift+A 打开 Agent，选择主机后由 Agent 决定步骤。行内生成与自动补全分别开启，命令先预览或填入，按 Enter 才执行；Agent 命令逐次批准，执行输出另选发送。
 
 密码与私钥只存系统安全存储。连接先检查主机密钥，变化时默认阻断；不修改系统 SSH 配置或 `known_hosts`。
 
@@ -47,7 +47,7 @@ flutter test
 
 采用按功能划分的模块化单体；跨模块仅通过 `api.dart`，第三方库封装在适配层，连接、终端和传输分别持有自己的资源。业务行为通过 typed 用例，命令面板经 `CapabilityDispatcher` 调用；新能力默认不向 AI 暴露。
 
-首批 Agent 经同一调度器调用审核过的能力，绑定实际连接身份并在执行前重验。后续按工具扩展 Capability 和窄端口，无需重写 SSH/SFTP 核心；凭据与信任授权始终由确定性代码控制。行内生成、AI 补全及完整应用/多机工具仍按阶段推进。设计入口：[DESIGN](docs/DESIGN.md)、[CONTRACTS](docs/CONTRACTS.md)、[SECURITY](docs/SECURITY.md)、[AI](docs/AI.md)。
+首批 Agent 经同一调度器调用审核过的能力，绑定实际连接身份并在执行前重验。行内生成和补全共用无工具的模型端口，各自限制发送范围和请求寿命。后续按工具扩展 Capability 和窄端口，无需重写 SSH/SFTP 核心；凭据与信任授权始终由确定性代码控制，完整应用/多机工具继续按阶段推进。设计入口：[DESIGN](docs/DESIGN.md)、[CONTRACTS](docs/CONTRACTS.md)、[SECURITY](docs/SECURITY.md)、[AI](docs/AI.md)。
 
 ## 许可证
 

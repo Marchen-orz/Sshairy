@@ -7,6 +7,7 @@ extension _AssistancePane on _TerminalPaneState {
       !_searching &&
       !_composerOpen &&
       !_historyOpen &&
+      !_inlineAiOpen &&
       _focus.hasFocus &&
       _completionCursor.value != null &&
       state.request != null &&
@@ -15,13 +16,14 @@ extension _AssistancePane on _TerminalPaneState {
 
   KeyEventResult? _assistanceKey(KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return null;
+    if (!_terminalCompositionReady) return null;
     final keys = HardwareKeyboard.instance;
     final modifier = defaultTargetPlatform == TargetPlatform.macOS ? keys.isMetaPressed : keys.isControlPressed;
     if (modifier && keys.isShiftPressed && event.logicalKey == LogicalKeyboardKey.keyH) {
       _showHistory();
       return KeyEventResult.handled;
     }
-    final state = _session.commandAssistance.value;
+    final state = _candidateState;
     if (modifier &&
         !keys.isShiftPressed &&
         !keys.isAltPressed &&
@@ -84,7 +86,7 @@ extension _AssistancePane on _TerminalPaneState {
       if (_candidateMode && state.request != null && state.candidates.isNotEmpty) {
         final candidate = state.candidates[_candidateIndex.clamp(0, state.candidates.length - 1)];
         if (key == LogicalKeyboardKey.tab) {
-          _session.acceptCommand(state.request!, candidate.text);
+          unawaited(_acceptCandidate(state.request!, candidate));
           return KeyEventResult.handled;
         }
         if (_session.browseCommand(state.request!, candidate)) return KeyEventResult.handled;
@@ -156,7 +158,7 @@ extension _AssistancePane on _TerminalPaneState {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _candidateTranslationsScheduled = false;
       if (!mounted) return;
-      final state = _session.commandAssistance.value;
+      final state = _candidateState;
       final locale = AppLocalizations.of(context).localeName.toLowerCase().replaceAll('_', '-').split('-').first;
       if (!_popupAvailable(state) ||
           locale != 'zh' ||
@@ -214,7 +216,7 @@ extension _AssistancePane on _TerminalPaneState {
   Widget _completionList(CompletionTranslations translations, bool enabled) => ListenableBuilder(
     listenable: Listenable.merge([_session.commandAssistance, _completionCursor, translations]),
     builder: (context, _) {
-      final state = _session.commandAssistance.value;
+      final state = _candidateState;
       _syncCandidateSelection(state);
       _scheduleCandidateTranslations();
       if (!_popupAvailable(state)) return const SizedBox.shrink();
@@ -414,7 +416,7 @@ extension _AssistancePane on _TerminalPaneState {
                                     if (candidate.directory != null) {
                                       _session.browseCommand(state.request!, candidate);
                                     } else {
-                                      _session.acceptCommand(state.request!, candidate.text);
+                                      unawaited(_acceptCandidate(state.request!, candidate));
                                     }
                                     _focus.requestFocus();
                                   },

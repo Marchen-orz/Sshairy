@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
+import 'package:sshairy/design/dock_panel.dart';
 import 'package:sshairy/design/popup.dart';
+import 'package:sshairy/features/ai/api.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/features/connections/api.dart';
@@ -26,6 +28,14 @@ const _shell = LocalShell(kind: LocalShellKind.cmd, executable: r'C:\Windows\Sys
 class _Hosts extends HostsNotifier {
   @override
   List<Host> build() => const [Host(id: HostId('h'), label: 'remote', address: 'example.com', username: 'u')];
+}
+
+class _AiConfiguration extends AiConfigurationController {
+  @override
+  AiConfiguration build() => AiConfiguration(
+    enabled: true,
+    profile: ModelProfile(protocol: ModelProtocol.openai, endpoint: 'https://model.example/v1', model: 'example'),
+  );
 }
 
 class _Pty implements LocalPty {
@@ -78,6 +88,7 @@ void main() {
         ...appOverrides(),
         dataDirProvider.overrideWithValue(dir.path),
         hostsProvider.overrideWith(_Hosts.new),
+        aiConfigurationProvider.overrideWith(_AiConfiguration.new),
         localShellsProvider.overrideWithValue(const [_shell]),
         localPtyProvider.overrideWithValue(factory),
         connectionManagerProvider.overrideWithValue(manager),
@@ -138,6 +149,41 @@ void main() {
     expect(find.byTooltip('Files'), findsNothing);
     expect(dials, 0);
     expect(tester.takeException(), isNull);
+
+    Future<void> agentShortcut(LogicalKeyboardKey modifier) async {
+      await tester.sendKeyDownEvent(modifier);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(modifier);
+      await tester.pumpAndSettle();
+    }
+
+    await agentShortcut(LogicalKeyboardKey.controlLeft);
+    expect(find.byType(AgentPanel), findsOneWidget);
+    final agentDock = find.ancestor(of: find.byType(AgentPanel), matching: find.byType(DockPanel)).first;
+    expect(tester.widget<DockPanel>(agentDock).showHeader, isFalse);
+    expect(find.descendant(of: find.byType(AgentPanel), matching: find.text('Agent')), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Keep this draft');
+    await tester.pump();
+    await agentShortcut(LogicalKeyboardKey.controlLeft);
+    expect(find.byType(AgentPanel), findsNothing);
+    await agentShortcut(LogicalKeyboardKey.metaLeft);
+    expect(find.byType(AgentPanel), findsOneWidget);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('ai-agent-goal'))).controller!.text, 'Keep this draft');
+    await agentShortcut(LogicalKeyboardKey.metaLeft);
+    expect(find.byType(AgentPanel), findsNothing);
+    final terminal = tester.widget<TerminalPane>(find.byType(TerminalPane));
+    terminal.onAskAgent!('Investigate service health');
+    await tester.pumpAndSettle();
+    expect(find.byType(AgentPanel), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('ai-agent-goal'))).controller!.text,
+      'Keep this draft\nInvestigate service health',
+    );
+    expect(container.read(agentComposerProvider).host, isNull);
+    expect(container.read(agentRuntimeProvider).busy, isFalse);
+    expect(dials, 0);
 
     final dispatcher = container.read(capabilityDispatcherProvider);
     final invalid = await dispatcher.dispatch('session.openLocal', {

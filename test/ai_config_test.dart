@@ -158,6 +158,63 @@ void main() {
     expect(container.read(aiConfigurationProvider).revision, 3);
   });
 
+  test('terminal policies are opt-in, bound to destination and exact effective host route', () async {
+    const host = AiTerminalHost(HostId('web'), 'Web', 'effective-route-v1');
+    final scope = ProviderContainer(
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        aiTerminalHostsProvider.overrideWithValue([host]),
+      ],
+    );
+    addTearDown(scope.dispose);
+    final notifier = scope.read(aiConfigurationProvider.notifier);
+    await notifier.save(enabled: true, profile: _profile());
+    expect(scope.read(aiConfigurationProvider).inlineEnabled, isFalse);
+    await notifier.save(
+      enabled: true,
+      profile: _profile(),
+      inlineEnabled: true,
+      completionEnabled: true,
+      completionHistory: true,
+      completionPosix: true,
+      completionHosts: {host.id: host.signature},
+    );
+    final policy = scope.read(aiConfigurationProvider);
+    expect(policy.inlineEnabled, isTrue);
+    expect(policy.completionEnabled, isTrue);
+    expect(policy.completionHistory, isTrue);
+    expect(policy.completionHosts, {host.id: host.signature});
+    expect(policy.terminalDestination, _profile().identity);
+    final restart = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    expect(restart.read(aiConfigurationProvider).completionHosts, {host.id: host.signature});
+    restart.dispose();
+    await notifier.save(enabled: true, profile: _profile('https://new.example/v1'));
+    final changed = scope.read(aiConfigurationProvider);
+    expect(changed.inlineEnabled, isFalse);
+    expect(changed.completionEnabled, isFalse);
+    expect(changed.completionHistory, isFalse);
+    expect(changed.completionPosix, isFalse);
+    expect(changed.completionHosts, isEmpty);
+    await notifier.save(
+      enabled: true,
+      profile: _profile('https://explicit.example/v1'),
+      inlineEnabled: true,
+      completionEnabled: true,
+      completionHistory: true,
+      completionPosix: true,
+      completionHosts: {host.id: host.signature},
+    );
+    final authorized = scope.read(aiConfigurationProvider);
+    expect(authorized.inlineEnabled, isTrue);
+    expect(authorized.completionEnabled, isTrue);
+    expect(authorized.completionHosts, {host.id: host.signature});
+    expect(authorized.terminalDestination, authorized.profile!.identity);
+    await expectLater(
+      notifier.save(enabled: true, profile: changed.profile, completionHosts: {host.id: 'stale-route'}),
+      throwsArgumentError,
+    );
+  });
+
   test('stale configuration cannot overwrite a newer profile', () async {
     final notifier = container.read(aiConfigurationProvider.notifier);
     await notifier.save(enabled: false, profile: _profile());

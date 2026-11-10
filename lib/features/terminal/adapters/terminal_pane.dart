@@ -16,6 +16,7 @@ class TerminalPane extends ConsumerStatefulWidget {
     required this.active,
     this.visible = true,
     this.onKeyEvent,
+    this.onAskAgent,
     this.focusNode,
     this.actions = const [],
   });
@@ -26,6 +27,7 @@ class TerminalPane extends ConsumerStatefulWidget {
 
   /// Sees keys before the terminal does, so application shortcuts are not sent to the shell.
   final FocusOnKeyEventCallback? onKeyEvent;
+  final ValueChanged<String>? onAskAgent;
 
   /// Lets the owner move focus between panes; the pane makes its own when none is given.
   final FocusNode? focusNode;
@@ -35,7 +37,7 @@ class TerminalPane extends ConsumerStatefulWidget {
   ConsumerState<TerminalPane> createState() => _TerminalPaneState();
 }
 
-class _TerminalPaneState extends ConsumerState<TerminalPane> {
+class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBindingObserver {
   late final FocusNode _focus = widget.focusNode ?? FocusNode();
   final _controller = TerminalController();
   final _view = GlobalKey<TerminalViewState>();
@@ -61,6 +63,16 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   var _historyOpen = false, _historyPinned = false, _composerOpen = false;
   Offset? _historyOffset;
   int? _composerGeneration;
+  TerminalAiService? _aiService;
+  StreamSubscription<void>? _aiChanges;
+  Timer? _aiTimer;
+  CancellationToken? _aiCompletionCancel;
+  TerminalAiContext? _aiCompletionContext;
+  (bool, bool)? _aiPresentation;
+  CommandCandidate? _aiCandidate;
+  bool? _aiLastCompositionReady;
+  bool _inlineAiOpen = false, _aiScheduled = false, _aiFrameListening = false, _applicationActive = true;
+  late final VoidCallback _aiFrameCallback = _aiFrame;
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;
@@ -71,6 +83,11 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _session.commandAssistance.addListener(_scheduleAi);
+    _session._directory.changes.addListener(_scheduleAi);
+    _focus.addListener(_scheduleAi);
+    _session.addListener(_scheduleAi);
     _session.addListener(_focusWhenConnected);
     _terminal.addListener(_scheduleImeRect);
     _terminal.addListener(_backgroundChanged);
@@ -95,13 +112,26 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
     if (!widget.active || !widget.visible) {
       if (!_historyPinned) _historyOpen = false;
       _composerOpen = false;
+      _inlineAiOpen = false;
+      _cancelAiCompletion();
     }
+    _scheduleAi();
     if (widget.active != old.active) _markViewed();
     if (widget.active && !old.active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.active && !_searching && !_composerOpen) _focus.requestFocus();
+        if (mounted && widget.active && !_searching && !_composerOpen && !_inlineAiOpen) _focus.requestFocus();
       });
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _applicationActive = state == AppLifecycleState.resumed;
+    if (!_applicationActive) {
+      _cancelAiCompletion();
+      if (mounted) setState(() => _inlineAiOpen = false);
+    }
+    _scheduleAi();
   }
 
   /// Clearing the unread mark rebuilds the tab bar, so it waits until this build is over.
@@ -112,7 +142,12 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   Future<void> _connect() => _session.connect(DialogPrompts(context));
 
   void _focusWhenConnected() {
-    if (widget.active && !_searching && !_historyOpen && !_composerOpen && _session.status == SessionStatus.connected) {
+    if (widget.active &&
+        !_searching &&
+        !_historyOpen &&
+        !_composerOpen &&
+        !_inlineAiOpen &&
+        _session.status == SessionStatus.connected) {
       _focus.requestFocus();
     }
   }
@@ -164,6 +199,14 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _session.commandAssistance.removeListener(_scheduleAi);
+    _session._directory.changes.removeListener(_scheduleAi);
+    _focus.removeListener(_scheduleAi);
+    _session.removeListener(_scheduleAi);
+    _aiChanges?.cancel();
+    _cancelAiCompletion();
+    _stopAiFrames();
     _terminal.removeListener(_scheduleImeRect);
     _terminal.removeListener(_backgroundChanged);
     _terminalOwnsBackground.dispose();
@@ -183,13 +226,23 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final keys = HardwareKeyboard.instance;
+    final modifier = defaultTargetPlatform == TargetPlatform.macOS ? keys.isMetaPressed : keys.isControlPressed;
+    if (event is KeyDownEvent &&
+        modifier &&
+        keys.isShiftPressed &&
+        !keys.isAltPressed &&
+        event.logicalKey == LogicalKeyboardKey.keyG &&
+        _canOpenInlineAi) {
+      _showInlineAi();
+      return KeyEventResult.handled;
+    }
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape && _historyOpen) {
       _closeHistory();
       return KeyEventResult.handled;
     }
     final assistance = _assistanceKey(event);
     if (assistance != null) return assistance;
-    final keys = HardwareKeyboard.instance;
     if (event is KeyDownEvent && keys.isControlPressed && keys.isShiftPressed && !keys.isAltPressed) {
       if (event.logicalKey == LogicalKeyboardKey.keyF) {
         setState(() => _searching = true);
@@ -316,6 +369,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
   @override
   Widget build(BuildContext context) {
     _scheduleImeRect();
+    _bindAiService(ref.watch(terminalAiServiceProvider));
     final l = AppLocalizations.of(context);
     final settings = ref.watch(settingsProvider);
     final copyOnSelect = settings.get(SettingKeys.copyOnSelect);
@@ -332,6 +386,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
       builder: (context, _) {
         final hasImage = imageAvailable && _terminal.backgroundColorOverride == null && !_terminal.reverseDisplayMode;
         return Stack(
+          fit: StackFit.expand,
           children: [
             Positioned.fill(
               child: Stack(
@@ -429,20 +484,46 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> {
                 ),
               ),
             if (widget.visible) ...[
-              if (!_searching && !_composerOpen && !_historyOpen && _session.status == SessionStatus.connected)
+              if (!_searching &&
+                  !_composerOpen &&
+                  !_historyOpen &&
+                  !_inlineAiOpen &&
+                  _session.status == SessionStatus.connected)
                 Positioned(
                   top: Space.xs,
                   right: Space.sm,
-                  child: IconButton(
-                    key: const ValueKey('terminal-multiline-toggle'),
-                    tooltip: l.terminalMultilineInput,
-                    icon: const Icon(Icons.edit_note_outlined, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _showComposer,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_canOpenInlineAi)
+                        IconButton(
+                          key: const ValueKey('terminal-ai-toggle'),
+                          tooltip: l.terminalAiGenerate,
+                          icon: Icon(
+                            Icons.auto_awesome_outlined,
+                            size: 18,
+                            color:
+                                terminalInputIntent(_session.readAiContext().draft ?? '') ==
+                                    TerminalInputIntent.naturalLanguage
+                                ? Theme.of(context).colorScheme.primary
+                                : null,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: _showInlineAi,
+                        ),
+                      IconButton(
+                        key: const ValueKey('terminal-multiline-toggle'),
+                        tooltip: l.terminalMultilineInput,
+                        icon: const Icon(Icons.edit_note_outlined, size: 18),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: _showComposer,
+                      ),
+                    ],
                   ),
                 ),
               if ((widget.active || _historyPinned) && _historyOpen) _historyOverlay(),
               if (widget.active && _composerOpen) _composerOverlay(),
+              if (widget.active && _inlineAiOpen) _inlineAiOverlay(),
             ],
           ],
         );

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/controls.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
+import '../../../foundation/ids.dart';
 import '../../../foundation/secret.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../credentials/api.dart';
@@ -25,7 +26,9 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   final _contextWindow = TextEditingController(), _maxOutput = TextEditingController();
   final _form = GlobalKey<FormState>();
   late AiConfiguration _initial;
-  late bool _enabled, _tools;
+  late bool _enabled, _tools, _inlineEnabled, _completionEnabled, _completionHistory, _completionPosix;
+  var _advanced = false;
+  final _completionHosts = <HostId, String>{};
   late ModelProtocol _protocol;
   Timer? _checkTimer;
   var _generation = 0;
@@ -65,6 +68,12 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   bool get _credentialBlocked => (_checking || _keyError) && (_enabled || _key.text.isNotEmpty || _removeKey);
   bool get _dirty =>
       _enabled != _initial.enabled ||
+      _inlineEnabled != _initial.inlineEnabled ||
+      _completionEnabled != _initial.completionEnabled ||
+      _completionHistory != _initial.completionHistory ||
+      _completionPosix != _initial.completionPosix ||
+      jsonEncode({for (final e in _completionHosts.entries) e.key.value: e.value}) !=
+          jsonEncode({for (final e in _initial.completionHosts.entries) e.key.value: e.value}) ||
       jsonEncode(_profile?.toJson()) != jsonEncode(_initial.profile?.toJson()) ||
       _key.text.isNotEmpty ||
       _removeKey ||
@@ -82,6 +91,13 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _generation++;
     _initial = config;
     _enabled = config.enabled;
+    _inlineEnabled = config.inlineEnabled;
+    _completionEnabled = config.completionEnabled;
+    _completionHistory = config.completionHistory;
+    _completionPosix = config.completionPosix;
+    _completionHosts
+      ..clear()
+      ..addAll(config.completionHosts);
     _protocol = config.profile?.protocol ?? ModelProtocol.anthropic;
     _tools = config.profile?.tools ?? false;
     _endpoint.text = config.profile?.endpoint ?? '';
@@ -111,6 +127,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       _checkTimer?.cancel();
       _generation++;
       _identity = next;
+      _inlineEnabled = _completionEnabled = _completionHistory = _completionPosix = false;
+      _completionHosts.clear();
       _key.clear();
       _hasKey = _keyError = _removeKey = false;
       _checking = next != null;
@@ -198,7 +216,16 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
           _removeKey = false;
         }
       }
-      await notifier.save(enabled: enabled, profile: profile, expectedRevision: revision);
+      await notifier.save(
+        enabled: enabled,
+        profile: profile,
+        expectedRevision: revision,
+        inlineEnabled: _inlineEnabled,
+        completionEnabled: _completionEnabled,
+        completionHistory: _completionHistory,
+        completionPosix: _completionPosix,
+        completionHosts: _completionHosts,
+      );
       if (!mounted) return;
       setState(() => _load(ref.read(aiConfigurationProvider)));
       _checkKey();
@@ -287,37 +314,50 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             onChanged: (_) => _changed(identity: true),
           ),
           gap,
-          AppToggleRow(
-            title: l.aiConfigTools,
-            value: _tools,
-            onChanged: blocked ? null : (v) => setState(() => _tools = v),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('ai-config-advanced'),
+              onPressed: () => setState(() => _advanced = !_advanced),
+              icon: Icon(_advanced ? Icons.expand_less : Icons.expand_more, size: 16),
+              label: Text(l.aiConfigAdvanced),
+            ),
           ),
-          gap,
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _contextWindow,
-                  enabled: !blocked,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(labelText: l.aiConfigContextWindow),
-                  onChanged: (_) => _changed(identity: true),
+          if (_advanced) ...[
+            AppToggleRow(
+              title: l.aiConfigTools,
+              value: _tools,
+              onChanged: blocked ? null : (v) => setState(() => _tools = v),
+            ),
+            gap,
+            Wrap(
+              spacing: Space.md,
+              runSpacing: Space.md,
+              children: [
+                SizedBox(
+                  width: 210,
+                  child: TextFormField(
+                    controller: _contextWindow,
+                    enabled: !blocked,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: l.aiConfigContextWindow),
+                    onChanged: (_) => _changed(),
+                  ),
                 ),
-              ),
-              const SizedBox(width: Space.md),
-              Expanded(
-                child: TextFormField(
-                  controller: _maxOutput,
-                  enabled: !blocked,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(labelText: l.aiConfigMaxOutput),
-                  onChanged: (_) => _changed(identity: true),
+                SizedBox(
+                  width: 210,
+                  child: TextFormField(
+                    controller: _maxOutput,
+                    enabled: !blocked,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: l.aiConfigMaxOutput),
+                    onChanged: (_) => _changed(),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          gap,
+              ],
+            ),
+            gap,
+          ],
           TextField(
             key: const ValueKey('ai-config-key'),
             controller: _key,
@@ -363,6 +403,77 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                 child: Text(l.aiConfigRemoveKey),
               ),
             ),
+          gap,
+          const Divider(),
+          gap,
+          AppToggleRow(
+            key: const ValueKey('ai-config-inline'),
+            title: l.aiConfigInline,
+            value: _inlineEnabled,
+            onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _inlineEnabled = v),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            l.aiConfigInlineHint,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          gap,
+          AppToggleRow(
+            key: const ValueKey('ai-config-completion'),
+            title: l.aiConfigCompletion,
+            value: _completionEnabled,
+            onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _completionEnabled = v),
+          ),
+          if (_inlineEnabled || _completionEnabled) ...[
+            gap,
+            Text(l.aiConfigTerminalScope, style: theme.textTheme.bodySmall),
+            const SizedBox(height: Space.sm),
+            for (final host in ref.watch(aiTerminalHostsProvider))
+              AppToggleRow(
+                key: ValueKey('ai-config-host-${host.id.value}'),
+                title: host.label,
+                value: _completionHosts[host.id] == host.signature,
+                checkbox: true,
+                onChanged: blocked
+                    ? null
+                    : (v) => setState(() {
+                        if (v) {
+                          _completionHosts[host.id] = host.signature;
+                        } else {
+                          _completionHosts.remove(host.id);
+                        }
+                      }),
+              ),
+            if (ref.watch(aiTerminalHostsProvider).isEmpty)
+              Text(l.aiConfigTerminalNoHosts, style: theme.textTheme.bodySmall),
+            const SizedBox(height: Space.sm),
+            AppToggleRow(
+              key: const ValueKey('ai-config-posix'),
+              title: l.aiConfigPosix,
+              value: _completionPosix,
+              checkbox: true,
+              onChanged: blocked ? null : (v) => setState(() => _completionPosix = v),
+            ),
+            const SizedBox(height: Space.xs),
+            Text(
+              l.aiConfigPosixHint,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+          if (_completionEnabled) ...[
+            gap,
+            AppToggleRow(
+              key: const ValueKey('ai-config-history'),
+              title: l.aiConfigCompletionHistory,
+              value: _completionHistory,
+              onChanged: blocked ? null : (v) => setState(() => _completionHistory = v),
+            ),
+            const SizedBox(height: Space.xs),
+            Text(
+              l.aiConfigCompletionHint,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
           if (_error != null || _conflict) ...[
             const SizedBox(height: Space.sm),
             Text(_error ?? l.aiConfigConflict, style: TextStyle(color: theme.colorScheme.error)),

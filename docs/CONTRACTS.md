@@ -23,6 +23,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | TerminalSessionManager | open / openLocal / reconnect / close / readSnapshot；SSH/local typed target，模型独立于视图；本地不申请 SSH 租约 |
 | TerminalIo | 有序 bytes、writeInput、resize、close；数据路径不 JSON 化 |
 | TerminalContextReader | SSH/local typed 身份、session/generation/草稿 revision、已知 cwd、当前回显提示符投影；显式 readAiSnapshot 另限 200 行/32 KiB，不隐式读历史/输出，不包含本地 executable 或 shell 对象；发送授权仍在调用者 |
+| TerminalAiService | terminal 定义的无工具生成/补全端口，app 注入 AI 实现；只收固定上下文与当代有限历史，公开可用性/取消变更流，不接触 shell/目录列表/dispatcher；AI 只被动观察已知 cwd，订阅不启动目录跟随或远端探测；配置与 Key/目标变化使请求失效 |
 | TerminalDraftAcceptor | acceptAiDraft(expected,text,suffix) 完整命令须空的已识别提示符，后缀只追加精确回显前缀；重验实际 target/generation/revision/cwd/回显，统一字符/UTF-8 限额，无 Enter/删行/执行参数；调用方另管焦点/IME/发送授权，不登记 Agent 工具 |
 | TransferManager | enqueue / cancel / retry / watch；任务不由 SftpPane 持有 |
 | SettingsService | get / patch(expectedRevision)；类型、范围、策略统一验证 |

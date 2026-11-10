@@ -12,13 +12,17 @@ import '../domain/agent.dart';
 import '../domain/model.dart';
 import 'output_store.dart';
 
-class AgentChatEntry {
+sealed class AgentTimelineEntry {
+  const AgentTimelineEntry();
+}
+
+class AgentChatEntry extends AgentTimelineEntry {
   AgentChatEntry(this.role, this.text);
   final String role;
   String text;
 }
 
-class AgentExecution {
+class AgentExecution extends AgentTimelineEntry {
   AgentExecution(this.id, this.capability, this.target, this.command, this.cwd);
   final String id, capability, target, command, cwd;
   String state = 'pending';
@@ -73,6 +77,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
   final OutputStore outputs;
   final _messages = <AgentChatEntry>[];
   final _executions = <AgentExecution>[];
+  final _timeline = <AgentTimelineEntry>[];
+  Timer? _updateTimer;
   final _prepared = <OperationId, _Prepared>{};
   final _targets = <HostId, AgentTarget>{};
   final _denied = <String>{};
@@ -94,12 +100,27 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
   AgentDataRequest? dataRequest;
   List<AgentChatEntry> get messages => List.unmodifiable(_messages);
   List<AgentExecution> get executions => List.unmodifiable(_executions);
+  List<AgentTimelineEntry> get timeline => List.unmodifiable(_timeline);
   bool get busy => _cancel != null;
   Future<void> get settled => _working ?? Future.value();
 
   void _emit() {
+    _updateTimer?.cancel();
+    _updateTimer = null;
     if (!_disposed) notifyListeners();
   }
+
+  void _queueEmit() {
+    if (_disposed) return;
+    _updateTimer ??= Timer(const Duration(milliseconds: 50), _emit);
+  }
+
+  void _addMessage(AgentChatEntry message) {
+    _messages.add(message);
+    _timeline.add(message);
+  }
+
+  bool get _hasTools => _profile!.tools && _scope!.hosts.isNotEmpty;
 
   void _phase(AgentPhase value) {
     phase = value;
@@ -127,8 +148,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         config.profile == null ||
         goal.trim().isEmpty ||
         utf8.encode(goal).length > 16384 ||
-        scope.hosts.length > 5 ||
-        (scope.mode != AgentMode.explain && (!config.profile!.tools || scope.hosts.isEmpty))) {
+        scope.hosts.length > 5) {
       error = 'notConfigured';
       _emit();
       return Future.value();
@@ -136,7 +156,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     _cancel = CancellationToken();
     _profile = config.profile;
     _configRevision = config.revision;
-    _scope = scope;
+    _scope = config.profile!.tools ? scope : AgentScope(revision: scope.revision);
     _owner = newId();
     _deadline = DateTime.now().add(const Duration(minutes: 15));
     _uncertain = false;
@@ -145,9 +165,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     // New turns use a fresh protocol context. Old output and derived answers cannot cross a new scope.
     _messages.clear();
     _executions.clear();
+    _timeline.clear();
     outputs.clear();
     _conversationBytes = utf8.encode(goal).length;
-    _messages.add(AgentChatEntry('user', goal));
+    _addMessage(AgentChatEntry('user', goal));
     _phase(AgentPhase.preparing);
     final work = _run(goal);
     _working = work;
@@ -172,16 +193,25 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       }
     });
     try {
-      if (_scope!.mode == AgentMode.execute) await journal.load();
       _check();
       final tools = <ModelTool>[
-        if (_scope!.mode != AgentMode.explain)
+        if (_hasTools)
           for (final entry in toolIds.entries)
-            if (_scope!.mode == AgentMode.execute || entry.value != 'agent.execute')
-              if (dispatcher[entry.value] case final capability?)
-                ModelTool(entry.key, _description(entry.value), capability.inputSchema),
+            if (dispatcher[entry.value] case final capability?)
+              ModelTool(entry.key, _description(entry.value), capability.inputSchema),
       ];
-      final history = <ModelMessage>[ModelMessage(ModelRole.user, text: goal)];
+      // Host aliases are untrusted user data, never system instructions or connection details.
+      final input = _hasTools
+          ? jsonEncode({
+              'goal': goal,
+              'authorizedHosts': [
+                for (final host in backend.hosts)
+                  if (_scope!.hosts.contains(host.id)) {'id': host.id.value, 'alias': _bounded(host.label, 256)},
+              ],
+            })
+          : goal;
+      _conversationBytes = utf8.encode(input).length;
+      final history = <ModelMessage>[ModelMessage(ModelRole.user, text: input)];
       var toolCount = 0;
       for (var step = 0; step < 20; step++) {
         _check();
@@ -204,7 +234,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         if (input + utf8.encode(_system).length > budget) throw const AgentFailure('contextLimit');
         _phase(AgentPhase.streaming);
         final visible = AgentChatEntry('assistant', '');
-        _messages.add(visible);
+        _addMessage(visible);
         ModelMessage? complete;
         var messageBytes = 0;
         await for (final event in model.stream(
@@ -218,7 +248,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
             _conversationBytes += bytes;
             if (messageBytes > 1 << 20 || _conversationBytes > 1 << 20) throw const AgentFailure('messageLimit');
             visible.text += event.text;
-            _emit();
+            _queueEmit();
           } else if (event is ModelMessageComplete) {
             if (complete != null) throw const AgentFailure('protocol');
             complete = event.message;
@@ -229,6 +259,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         _conversationBytes += utf8.encode(complete.text).length - messageBytes;
         if (_conversationBytes > 1 << 20) throw const AgentFailure('messageLimit');
         visible.text = complete.text;
+        _queueEmit();
         if (complete.calls.length > 8 || toolCount + complete.calls.length > 64 || _messages.length >= 200) {
           throw const AgentFailure('toolLimit');
         }
@@ -340,15 +371,12 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
 
     try {
       currentTurn();
-      if (!toolIds.values.contains(capability.id) || _scope!.mode == AgentMode.explain) {
+      if (!toolIds.values.contains(capability.id) || !_hasTools) {
         return const Err(AppError('notExposed'));
       }
       if (capability.id == 'agent.hosts' || capability.id == 'agent.output') return const Ok(null);
       final host = _host(args);
       if (host == null) return const Err(AppError('outsideScope'));
-      if (capability.id == 'agent.execute' && _scope!.mode != AgentMode.execute) {
-        return const Err(AppError('notExposed'));
-      }
       final target = _targets[host] ?? await backend.prepare(host, token!);
       try {
         currentTurn();
@@ -367,7 +395,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       currentTurn();
       final supported = await target.supportsPosix(token!);
       currentTurn();
-      if (!supported) return const Err(AppError('unsupported'));
+      if (!supported) throw const AgentFailure('unsupported');
       if (capability.id == 'agent.execute') {
         approval = AgentApproval(target.display, args['command'] as String, args['cwd'] as String, capability.id);
         _approvalResult = Completer<bool>();
@@ -382,7 +410,28 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         }
       }
       return const Ok(null);
+    } on AgentFailure catch (failure) {
+      const safe = {
+        'cancelled',
+        'scopeChanged',
+        'deadline',
+        'hostUnavailable',
+        'hostTrustRequired',
+        'authenticationRequired',
+        'connectionFailed',
+        'unsupported',
+      };
+      final code = safe.contains(failure.code) ? failure.code : 'authorizationFailed';
+      if (code != 'cancelled' && identical(token, _cancel) && owner == _owner) {
+        error = code;
+        _emit();
+      }
+      return Err(AppError(code));
     } on Object {
+      if (identical(token, _cancel) && owner == _owner) {
+        error = 'authorizationFailed';
+        _emit();
+      }
       return const Err(AppError('authorizationFailed'));
     }
   }
@@ -463,6 +512,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     final output = outputs.create(_owner, target.hostId, _profile!.identity, _scope!.revision);
     execution.output = output;
     _executions.add(execution);
+    _timeline.add(execution);
     final record = OperationRecord(
       context.operationId,
       target.hostId,
@@ -473,7 +523,13 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     var submitted = false, remoteFinished = false;
     Timer? watch;
     try {
-      if (!diagnostic) await journal.record(record);
+      if (!diagnostic) {
+        try {
+          await journal.record(record);
+        } on Object {
+          throw const AgentFailure('journalFailed');
+        }
+      }
       _check();
       if (!target.current) throw const AgentFailure('scopeChanged');
       execution.state = 'running';
@@ -493,17 +549,28 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         wrapped,
         (stderr, bytes) {
           outputs.append(output, stderr, bytes);
+          _queueEmit();
         },
         timeout: Duration(seconds: diagnostic ? 15 : ((args['timeoutSeconds'] as num?)?.toInt() ?? 60)),
         cancel: _cancel!,
       );
       remoteFinished = true;
-      execution.state = execution.exitCode == null ? 'outcomeUnknown' : 'completed';
+      execution.state = execution.exitCode == null
+          ? 'outcomeUnknown'
+          : execution.exitCode == 0
+          ? 'completed'
+          : 'failed';
       _uncertain |= execution.exitCode == null;
       if (!diagnostic) {
         try {
           await journal.record(
-            record.withState(execution.exitCode == null ? OperationState.outcomeUnknown : OperationState.completed),
+            record.withState(
+              execution.exitCode == null
+                  ? OperationState.outcomeUnknown
+                  : execution.exitCode == 0
+                  ? OperationState.completed
+                  : OperationState.failed,
+            ),
           );
         } on Object {
           error = 'journalFailed';
@@ -563,8 +630,21 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           error = 'journalFailed';
         }
       }
+      final code = unknown
+          ? 'outcomeUnknown'
+          : failure is AgentFailure &&
+                const {
+                  'journalFailed',
+                  'outputLimit',
+                  'scopeChanged',
+                  'unsupported',
+                  'invalidCommand',
+                }.contains(failure.code)
+          ? failure.code
+          : 'executionFailed';
+      error = code;
       _emit();
-      return Err(AppError(unknown ? 'outcomeUnknown' : 'executionFailed'));
+      return Err(AppError(code));
     } finally {
       watch?.cancel();
     }
@@ -602,6 +682,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     if (!busy) {
       _messages.clear();
       _executions.clear();
+      _timeline.clear();
       outputs.clear();
       error = null;
       phase = AgentPhase.idle;
@@ -618,8 +699,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
   @override
   void dispose() {
     _disposed = true;
+    _updateTimer?.cancel();
+    _updateTimer = null;
     stop();
-    model.close();
     super.dispose();
   }
 }

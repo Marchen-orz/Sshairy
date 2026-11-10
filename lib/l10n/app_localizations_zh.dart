@@ -2260,15 +2260,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentConfigurationFailed => 'AI 配置读取失败，请在设置中检查。';
 
   @override
-  String get aiAgentExplain => '解释';
-
-  @override
-  String get aiAgentDiagnose => '固定诊断';
-
-  @override
-  String get aiAgentExecute => '逐次批准命令';
-
-  @override
   String get aiAgentChooseHost => '选择服务器';
 
   @override
@@ -2358,4 +2349,153 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get cmdTmuxBreak => '将窗格移入独立窗口';
+
+  @override
+  String get aiAgentNewTask => '新任务';
+
+  @override
+  String get aiAgentWelcome => '有什么想一起解决的？';
+
+  @override
+  String get aiAgentWelcomeHint => '直接描述任务，需要远程工具时选择主机。';
+
+  @override
+  String get aiAgentSetupTitle => '你的 SSH 助手';
+
+  @override
+  String get aiAgentConfigureAction => '配置 AI';
+
+  @override
+  String get aiAgentExampleExplain => '解释一条命令';
+
+  @override
+  String get aiAgentExampleExplainGoal => '教我读懂一条 shell 命令，并判断它可能产生的影响。';
+
+  @override
+  String get aiAgentExampleDiagnose => '看看服务器状态';
+
+  @override
+  String get aiAgentExampleDiagnoseGoal => '检查这台服务器的负载、内存和磁盘空间。在建议修改前说明还缺哪些依据。';
+
+  @override
+  String get aiAgentNoHost => '不使用主机';
+
+  @override
+  String get aiAgentScopeDetails => '数据与命令权限';
+
+  @override
+  String get aiAgentScopeSummary => '允许固定诊断 · 命令逐次确认';
+
+  @override
+  String get aiAgentTextOnly => '仅文本';
+
+  @override
+  String get aiAgentSendShortcut => '发送 · Ctrl/Cmd+Enter';
+
+  @override
+  String get aiAgentApproveTitle => '确认执行命令';
+
+  @override
+  String get aiAgentShareTitle => '选择发送输出';
+
+  @override
+  String get aiAgentExecutionFailed => '执行返回错误';
+
+  @override
+  String get aiAgentErrorConfiguration => '请在设置中检查模型配置与 API Key。';
+
+  @override
+  String get aiAgentErrorNetwork => '无法连接模型，请检查网络后重新发起任务。';
+
+  @override
+  String get aiAgentErrorHttp => '模型服务拒绝了请求，请检查凭据、额度和接口设置。';
+
+  @override
+  String get aiAgentErrorTimeout => '请求已到期限，请核对任务后再试。';
+
+  @override
+  String get aiAgentErrorLimit => '任务已达到上下文、输出或步骤上限，请缩小范围后重试。';
+
+  @override
+  String get aiAgentErrorScope => '模型配置或主机连接已变化，请新建任务以授权当前目标。';
+
+  @override
+  String get aiAgentErrorJournal => '操作记录未能保存，请先核对执行状态再发起其他命令。';
+
+  @override
+  String get aiAgentErrorProtocol => '模型响应不完整或不受支持，未执行不完整的工具请求。';
+
+  @override
+  String get aiAgentErrorUnsupported => '当前命令适配器不支持这台主机。';
+
+  @override
+  String get aiConfigAdvanced => '模型能力与额度';
+
+  @override
+  String get aiConfigInline => '行内命令生成';
+
+  @override
+  String get aiConfigInlineHint => '点击终端 AI 按钮或快捷键才发送需求，检查生成命令后再填入。';
+
+  @override
+  String get aiConfigCompletion => 'AI 提示补全';
+
+  @override
+  String get aiConfigTerminalScope => '允许这些 SSH 主机向模型发送当前输入与已知目录';
+
+  @override
+  String get aiConfigTerminalNoHosts => '添加主机后可授权 SSH 提示。本地终端可使用手动触发的行内生成。';
+
+  @override
+  String get aiConfigPosix => '已选 SSH 终端使用 Linux / POSIX shell';
+
+  @override
+  String get aiConfigPosixHint =>
+      '请自行确认输入环境；进入 su、tmux 或嵌套 SSH 时关闭提示，客户端无法确认内层身份。';
+
+  @override
+  String get aiConfigCompletionHistory => '使用当前会话近期命令';
+
+  @override
+  String get aiConfigCompletionHint =>
+      '停顿后自动发送符合条件的草稿；历史单独授权，仅限本次连接最多 8 条相关命令。';
+
+  @override
+  String get aiAgentErrorHostTrust => '请先正常连接这台主机并核对主机密钥，再使用远程工具。';
+
+  @override
+  String get aiAgentErrorAuthentication => '请先正常连接这台主机，提供或更新认证凭据。';
+
+  @override
+  String get aiAgentErrorHostUnavailable => '这台主机已不可用，请为新任务重新选择已保存的主机。';
+
+  @override
+  String get aiAgentErrorConnection => 'SSH 连接失败，请先通过正常连接检查主机后重试。';
+
+  @override
+  String get aiAgentErrorExecution => '命令未能完成，请核对本地输出和退出状态后再试。';
+
+  @override
+  String get terminalAiGenerate => '生成命令';
+
+  @override
+  String get terminalAiInstruction => '描述你想完成的操作';
+
+  @override
+  String get terminalAiFailed => '未能生成命令，请重试。';
+
+  @override
+  String get terminalAiChanged => '终端上下文已变化，重新打开后可发起新请求。';
+
+  @override
+  String get terminalAiClarify => '请补充需求；多步骤任务可交给 Agent。';
+
+  @override
+  String get terminalAiClearPrompt => '清空终端输入后可填入此命令。';
+
+  @override
+  String get terminalAiInsert => '填入命令';
+
+  @override
+  String get terminalAiOpenAgent => '打开 Agent';
 }

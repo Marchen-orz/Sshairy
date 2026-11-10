@@ -197,6 +197,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     const SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true): () => _workspace.showVault(),
     const SingleActivator(LogicalKeyboardKey.keyW, control: true, shift: true): () => _workspace.closeFocused(),
     const SingleActivator(LogicalKeyboardKey.keyP, control: true, shift: true): _openPalette,
+    const SingleActivator(LogicalKeyboardKey.keyA, control: true, shift: true): _toggleAgent,
+    const SingleActivator(LogicalKeyboardKey.keyA, meta: true, shift: true): _toggleAgent,
     const SingleActivator(LogicalKeyboardKey.comma, control: true): _openSettings,
     const SingleActivator(LogicalKeyboardKey.tab, control: true): () => _workspace.cycle(1),
     const SingleActivator(LogicalKeyboardKey.tab, control: true, shift: true): () => _workspace.cycle(-1),
@@ -298,6 +300,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     setState(() => _monitorWidth = width);
     ref.read(settingsProvider.notifier).set(SettingKeys.monitorWidth, width);
   }
+
+  void _toggleAgent() => setState(() => _agentOpen = !_agentOpen);
 
   /// Open or closed for every tab, and for the next start, like the monitor.
   void _setSideFiles(bool open) {
@@ -427,6 +431,13 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                         active: state.active == tab.id && focused,
                         visible: state.active == tab.id,
                         onKeyEvent: _onKey,
+                        onAskAgent: (instruction) {
+                          final draft = ref.read(agentComposerProvider);
+                          final composer = ref.read(agentComposerProvider.notifier);
+                          composer.setGoal(draft.goal.isEmpty ? instruction : '${draft.goal}\n$instruction');
+                          if (!ref.read(agentRuntimeProvider).busy) composer.selectHost(null);
+                          setState(() => _agentOpen = true);
+                        },
                         focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),
                         actions: [
                           PaneAction(
@@ -613,7 +624,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     icon: Icons.auto_awesome_outlined,
                     label: l.aiAgentTitle,
                     selected: _agentOpen,
-                    onTap: () => setState(() => _agentOpen = !_agentOpen),
+                    onTap: _toggleAgent,
                   ),
                   RailItem(icon: Icons.key_outlined, label: l.keys, onTap: _openKeys),
                   RailItem(icon: Icons.lan_outlined, label: l.proxy, onTap: _openProxies),
@@ -642,7 +653,10 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     onClose: () => setState(() => _agentOpen = false),
                     closeLabel: l.close,
                     resizeLabel: l.aiAgentTitle,
-                    panel: _agentOpen ? const AgentPanel() : const SizedBox.shrink(),
+                    showHeader: false,
+                    panel: _agentOpen
+                        ? AgentPanel(onClose: () => setState(() => _agentOpen = false))
+                        : const SizedBox.shrink(),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [

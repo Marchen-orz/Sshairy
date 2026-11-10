@@ -50,6 +50,8 @@ class _Target implements AgentTarget {
   @override
   bool current = true;
   bool posix = true, block = false;
+  AgentFailure? probeFailure;
+  void Function(bool stderr, Uint8List bytes)? writeOutput;
   int? result = 0;
   String stdout = _privateOutput, stderr = '';
   var probes = 0, releases = 0;
@@ -61,6 +63,7 @@ class _Target implements AgentTarget {
   @override
   Future<bool> supportsPosix(CancellationToken cancel) async {
     probes++;
+    if (probeFailure case final failure?) throw failure;
     return posix;
   }
 
@@ -72,6 +75,7 @@ class _Target implements AgentTarget {
     required CancellationToken cancel,
   }) async {
     beforeExecute?.call();
+    writeOutput = output;
     commands.add(command);
     tokens.add(cancel);
     deadlines.add(timeout);
@@ -92,12 +96,14 @@ class _Backend implements AgentBackend {
   final target = _Target();
   final prepared = <HostId>[];
   Future<AgentTarget>? pendingPreparation;
+  AgentFailure? prepareFailure;
   @override
   List<AgentHost> hosts = const [AgentHost(_host, 'selected host'), AgentHost(_other, 'unselected host')];
 
   @override
   Future<AgentTarget> prepare(HostId host, CancellationToken cancel) async {
     prepared.add(host);
+    if (prepareFailure case final failure?) throw failure;
     if (host != _host) throw const AgentFailure('wrongTarget');
     return await (pendingPreparation ?? Future.value(target));
   }
@@ -106,11 +112,12 @@ class _Backend implements AgentBackend {
 class _Journal implements OperationJournal {
   final records = <OperationRecord>[];
   var loads = 0;
-  bool failIntent = false;
+  bool failIntent = false, failLoad = false;
 
   @override
   Future<List<OperationRecord>> load() async {
     loads++;
+    if (failLoad) throw StateError('simulated corrupt journal');
     return List.unmodifiable(records);
   }
 
@@ -210,8 +217,8 @@ class _Harness {
   bool enabled = true;
   int revision = 0;
 
-  Future<void> start([AgentMode mode = AgentMode.execute]) =>
-      runtime.start('check the selected host', AgentScope(mode: mode, hosts: mode == AgentMode.explain ? [] : [_host]));
+  Future<void> start({Iterable<HostId> hosts = const [_host]}) =>
+      runtime.start('check the selected host', AgentScope(hosts: hosts));
 
   Future<void> close() async {
     runtime.stop();
@@ -261,12 +268,12 @@ void main() {
     addTearDown(h.close);
     h.backend.target.stdout = _systemOutput;
 
-    await h.start(AgentMode.diagnose);
+    await h.start();
 
     expect(h.runtime.phase, AgentPhase.completed);
     expect(h.model.requests, hasLength(2));
     expect(h.model.requests.first.tools.map((tool) => tool.name), contains('diagnostics_collect'));
-    expect(h.model.requests.first.tools.map((tool) => tool.name), isNot(contains('command_execute')));
+    expect(h.model.requests.first.tools.map((tool) => tool.name), contains('command_execute'));
     expect(h.backend.prepared, [_host]);
     expect(h.backend.target.commands, hasLength(1));
     expect(h.backend.target.probes, 1);
@@ -282,6 +289,13 @@ void main() {
     expect(result['data'], containsPair('memory', containsPair('availableKib', 512)));
     expect(result['handle'], isA<String>());
     expect(h.runtime.messages.last.text, 'done');
+    expect(h.runtime.timeline, [
+      h.runtime.messages[0],
+      h.runtime.messages[1],
+      h.runtime.executions.single,
+      h.runtime.messages[2],
+    ]);
+    expect(() => h.runtime.timeline.clear(), throwsUnsupportedError);
   });
 
   test('large storage evidence remains valid structured JSON and explicitly truncates entries', () async {
@@ -292,7 +306,7 @@ void main() {
     h.backend.target.stdout =
         '@@storage\nFilesystem Type 1024-blocks Used Available Capacity Mounted on\n'
         '${[for (var i = 0; i < 90; i++) '/dev/disk$i ext4 1000 400 600 40% /mount-$i-$longPath'].join('\n')}\n';
-    await h.start(AgentMode.diagnose);
+    await h.start();
     expect(h.runtime.phase, AgentPhase.completed);
     final result = _result(h.model.requests.last);
     expect(result['truncated'], isTrue);
@@ -329,7 +343,7 @@ void main() {
     expect(h.backend.target.deadlines.single, const Duration(seconds: 60));
     h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
     await turn;
-    expect(h.journal.loads, 1);
+    expect(h.journal.loads, 0);
     expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
     expect(h.journal.records.first.id, h.journal.records.last.id);
     expect(h.backend.target.releases, 1);
@@ -545,7 +559,7 @@ void main() {
     await oldTurn;
     expect(h.runtime.phase, AgentPhase.cancelled);
 
-    final newTurn = h.start(AgentMode.explain);
+    final newTurn = h.start(hosts: const []);
     await newTurn;
     expect(h.runtime.phase, AgentPhase.completed);
     expect(h.model.requests, hasLength(2));
@@ -628,7 +642,7 @@ void main() {
     expect(h.backend.target.commands, isEmpty);
     expect(h.runtime.executions.single.state, 'failed');
     expect(h.runtime.executions.single.exitCode, isNull);
-    expect(_result(h.model.requests.last), {'error': 'executionFailed'});
+    expect(_result(h.model.requests.last), {'error': 'journalFailed'});
     expect(h.backend.target.releases, 1);
   });
 
@@ -676,7 +690,7 @@ void main() {
     final call = _call('host_list', {});
     final h = _Harness((_, _, index) => _oneCall(call, index));
     addTearDown(h.close);
-    await h.start(AgentMode.diagnose);
+    await h.start();
     final data = jsonDecode(_results(h.model.requests.last).single.text);
     expect(data, [
       {'id': 'host-a', 'alias': 'selected host'},
@@ -685,19 +699,215 @@ void main() {
     expect(h.backend.prepared, isEmpty);
   });
 
-  test('explain mode has no tools or remote preparation and disabled AI sends nothing', () async {
+  test('chat without a selected host has no tools and disabled AI sends nothing', () async {
     final h = _Harness((_, _, _) async* {
       yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'explanation'));
     }, tools: false);
     addTearDown(h.close);
-    await h.start(AgentMode.explain);
+    await h.start(hosts: const []);
     expect(h.runtime.phase, AgentPhase.completed);
     expect(h.model.requests.single.tools, isEmpty);
     expect(h.backend.prepared, isEmpty);
     h.enabled = false;
-    await h.start(AgentMode.explain);
+    await h.start(hosts: const []);
     expect(h.model.requests, hasLength(1));
     expect(h.runtime.error, 'notConfigured');
+  });
+
+  test('selected scope makes all reviewed tools available without selecting a mode', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'I can answer without a tool.'));
+    });
+    addTearDown(h.close);
+    h.journal.failLoad = true;
+    h.backend.hosts = const [AgentHost(_host, 'scope-data-only-alias'), AgentHost(_other, 'unselected host')];
+    await h.start();
+    final request = h.model.requests.single;
+    expect(request.tools.map((tool) => tool.name), unorderedEquals(AgentRuntime.toolIds.keys));
+    final data = jsonDecode(request.messages.single.text) as Map;
+    expect(data['goal'], 'check the selected host');
+    expect(data['authorizedHosts'], [
+      {'id': 'host-a', 'alias': 'scope-data-only-alias'},
+    ]);
+    expect(request.system, isNot(contains('scope-data-only-alias')));
+    expect(_requestText(request), isNot(contains('unselected host')));
+    expect(h.runtime.phase, AgentPhase.completed);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.journal.loads, 0, reason: 'a broken execution journal cannot block a direct answer');
+  });
+
+  test('no selected host is plain chat even with a tool-capable model', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'a direct answer'));
+    });
+    addTearDown(h.close);
+    await h.start(hosts: const []);
+    expect(h.model.requests.single.tools, isEmpty);
+    expect(h.model.requests.single.messages.single.text, 'check the selected host');
+    expect(h.backend.prepared, isEmpty);
+    expect(h.journal.loads, 0);
+    expect(h.runtime.phase, AgentPhase.completed);
+  });
+
+  test('a text-only profile never sends selected hosts or offers remote tools', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'a direct answer'));
+    }, tools: false);
+    addTearDown(h.close);
+    await h.start();
+    final request = h.model.requests.single;
+    expect(request.tools, isEmpty);
+    expect(request.messages.single.text, 'check the selected host');
+    expect(_requestText(request), isNot(contains('host-a')));
+    expect(h.backend.prepared, isEmpty);
+    expect(h.runtime.phase, AgentPhase.completed);
+  });
+
+  test('connection and support failures keep safe paired error codes', () async {
+    for (final code in ['hostTrustRequired', 'authenticationRequired', 'connectionFailed', 'unsupported']) {
+      final call = _call('diagnostics_collect', {'hostId': 'host-a', 'template': 'systemSummary'});
+      final h = _Harness((_, _, index) => _oneCall(call, index));
+      try {
+        if (code == 'unsupported') {
+          h.backend.target.probeFailure = AgentFailure(code);
+        } else {
+          h.backend.prepareFailure = AgentFailure(code);
+        }
+        await h.start();
+        expect(h.runtime.error, code);
+        expect(_result(h.model.requests.last), {'error': code});
+        expect(_results(h.model.requests.last).single.toolCallId, 'call-a');
+        expect(_results(h.model.requests.last).single.isError, isTrue);
+        expect(h.backend.target.commands, isEmpty);
+      } finally {
+        await h.close();
+      }
+    }
+  });
+
+  test('a nonzero exit is a known failed execution and remains failed after Stop', () async {
+    final call = _call('command_execute', _command());
+    final h = _Harness((_, _, index) => _oneCall(call, index));
+    addTearDown(h.close);
+    h.backend.target.result = 7;
+    final turn = h.start();
+    await _until(() => h.runtime.approval != null);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await _until(() => h.runtime.dataRequest != null);
+    expect(h.runtime.executions.single.exitCode, 7);
+    expect(h.runtime.executions.single.state, 'failed');
+    expect(h.journal.records.last.state, OperationState.failed);
+    h.runtime.stop();
+    await turn;
+    expect(h.runtime.phase, AgentPhase.cancelled);
+    expect(h.runtime.executions.single.state, 'failed');
+    expect(h.journal.records.last.state, OperationState.failed);
+  });
+
+  testWidgets('streaming text is coalesced then final completion flushes immediately', (tester) async {
+    final events = StreamController<ModelEvent>();
+    final h = _Harness((_, _, _) => events.stream);
+    addTearDown(h.close);
+    final turn = h.start(hosts: const []);
+    await tester.pump();
+    var notifications = 0;
+    h.runtime.addListener(() => notifications++);
+    for (var i = 0; i < 20; i++) {
+      events.add(const ModelTextDelta('x'));
+    }
+    await tester.pump();
+    expect(notifications, 0);
+    await tester.pump(const Duration(milliseconds: 49));
+    expect(notifications, 0);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(notifications, 1);
+    expect(h.runtime.messages.last.text, List.filled(20, 'x').join());
+    events.add(ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'final text')));
+    unawaited(events.close());
+    await tester.pump();
+    await turn;
+    expect(h.runtime.messages.last.text, 'final text');
+    expect(h.runtime.phase, AgentPhase.completed);
+    final finalNotifications = notifications;
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(notifications, finalNotifications, reason: 'no delayed refresh survives the terminal state');
+  });
+
+  testWidgets('streaming output refreshes before execution ends and coalesces chunks', (tester) async {
+    final call = _call('command_execute', _command());
+    final h = _Harness((_, _, index) => _oneCall(call, index));
+    addTearDown(h.close);
+    h.backend.target.block = true;
+    final turn = h.start();
+    await tester.pump();
+    expect(h.runtime.approval, isNotNull);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await tester.pump();
+    expect(h.runtime.executions.single.state, 'running');
+    var notifications = 0;
+    h.runtime.addListener(() => notifications++);
+    for (var i = 0; i < 20; i++) {
+      h.backend.target.writeOutput!(false, Uint8List.fromList(utf8.encode('chunk')));
+    }
+    await tester.pump(const Duration(milliseconds: 49));
+    expect(notifications, 0);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(notifications, 1);
+    expect(h.runtime.executions.single.state, 'running');
+    expect(h.runtime.executions.single.output!.stdout, contains(List.filled(20, 'chunk').join()));
+    h.runtime.stop();
+    await tester.pump();
+    await turn;
+    final finalNotifications = notifications;
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(notifications, finalNotifications);
+  });
+
+  test('disposing a runtime cancels only its turn and leaves the shared model usable', () async {
+    final otherReady = Completer<void>(), otherFinish = Completer<void>();
+    final h = _Harness((_, cancel, index) async* {
+      if (index == 0) {
+        await cancel.whenCancelled;
+        throw const ModelFailure('cancelled');
+      }
+      otherReady.complete();
+      await otherFinish.future;
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'independent result'));
+    });
+    var disposed = false;
+    addTearDown(() async {
+      if (!disposed) h.runtime.dispose();
+      if (!otherFinish.isCompleted) otherFinish.complete();
+      await h.runtime.settled;
+      h.model.close();
+    });
+    final turn = h.start(hosts: const []);
+    await _until(() => h.model.requests.length == 1);
+    final otherCancel = CancellationToken();
+    final other = h.model
+        .stream(
+          ModelRequest(
+            profile: h.profile,
+            system: '',
+            messages: [ModelMessage(ModelRole.user, text: 'independent request')],
+          ),
+          otherCancel,
+        )
+        .toList();
+    await otherReady.future;
+
+    h.runtime.dispose();
+    disposed = true;
+    await turn;
+    expect(h.model.cancellations.first.isCancelled, isTrue);
+    expect(h.runtime.phase, AgentPhase.cancelled);
+    expect(h.model.closes, 0);
+    expect(otherCancel.isCancelled, isFalse);
+
+    otherFinish.complete();
+    final events = await other;
+    expect((events.single as ModelMessageComplete).message.text, 'independent result');
+    expect(h.model.closes, 0);
   });
 
   test('model-call and total-tool budgets terminate otherwise valid loops', () async {
@@ -711,7 +921,7 @@ void main() {
         );
       });
       try {
-        await h.start(AgentMode.diagnose);
+        await h.start();
         expect(h.runtime.phase, AgentPhase.failed);
         expect(h.runtime.error, callsPerMessage == 1 ? 'stepLimit' : 'toolLimit');
         expect(h.model.requests, hasLength(callsPerMessage == 1 ? 20 : 9));
@@ -735,7 +945,7 @@ void main() {
       );
     });
     addTearDown(h.close);
-    await h.start(AgentMode.diagnose);
+    await h.start();
     expect(h.runtime.error, 'toolLimit');
     expect(h.backend.prepared, isEmpty);
     expect(h.backend.target.commands, isEmpty);

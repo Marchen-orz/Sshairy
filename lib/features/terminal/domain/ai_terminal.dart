@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/ids.dart';
 import 'insertion.dart';
 import 'terminal_target.dart';
@@ -63,6 +64,41 @@ abstract interface class TerminalContextReader {
   /// Explicit local access only. Callers still need a separate grant before sending terminal content to a model.
   TerminalAiSnapshot? readAiSnapshot(TerminalAiContext expected, {int maxLines = 200, int maxBytes = 32768});
 }
+
+enum TerminalAiGenerationKind { command, clarify, useAgent }
+
+class TerminalAiGeneration {
+  const TerminalAiGeneration(this.kind, {this.command, this.message});
+  final TerminalAiGenerationKind kind;
+  final String? command, message;
+}
+
+class TerminalAiHistoryEntry {
+  const TerminalAiHistoryEntry({required this.text, required this.at, required this.generation});
+  final String text;
+  final DateTime at;
+  final int generation;
+}
+
+abstract interface class TerminalAiService {
+  bool canGenerate(TerminalAiContext context);
+  bool canComplete(TerminalAiContext context);
+  Stream<void> get changes;
+  Future<TerminalAiGeneration> generate(TerminalAiContext context, String instruction, CancellationToken cancel);
+  Future<String?> complete(TerminalAiContext context, List<TerminalAiHistoryEntry> history, CancellationToken cancel);
+}
+
+bool sameTerminalAiContext(TerminalAiContext a, TerminalAiContext b, {bool draft = true}) =>
+    a.sessionId == b.sessionId &&
+    a.generation == b.generation &&
+    (!draft || (a.revision == b.revision && a.draft == b.draft)) &&
+    a.prompt == b.prompt &&
+    a.directory == b.directory &&
+    switch ((a.target, b.target)) {
+      (SshTerminalAiTarget(hostId: final x), SshTerminalAiTarget(hostId: final y)) => x == y,
+      (LocalTerminalAiTarget(kind: final x), LocalTerminalAiTarget(kind: final y)) => x == y,
+      _ => false,
+    };
 
 abstract interface class TerminalDraftAcceptor {
   /// Full commands require an empty prompt. A suffix is appended to the exact captured echoed draft.
