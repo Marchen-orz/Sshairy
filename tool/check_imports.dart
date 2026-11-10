@@ -71,7 +71,7 @@ List<String> checkImports(Directory lib) {
       if (!relative.startsWith('features/')) continue;
       final other = relative.substring('features/'.length).split('/');
       if (other.first == feature) continue;
-      if (feature != null && other.first == 'capabilities') {
+      if (feature != null && feature != 'ai' && other.first == 'capabilities') {
         fail('business features must not depend on capabilities; register them in app');
       }
       if (other.length != 2 || other[1] != 'api.dart') fail('features may only import each other through api.dart');

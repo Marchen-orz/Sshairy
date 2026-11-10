@@ -9,12 +9,23 @@ enum Effect { query, localChange, connect, remoteWrite, security }
 enum Origin { ui, palette, agent }
 
 class RequestContext {
-  RequestContext(this.origin, {OperationId? operationId, this.cancellation})
-      : operationId = operationId ?? OperationId(newId());
+  RequestContext(this.origin, {OperationId? operationId, this.cancellation, this.deadline, this.authority})
+    : operationId = operationId ?? OperationId(newId());
 
   final Origin origin;
   final OperationId operationId;
   final CancellationToken? cancellation;
+  final DateTime? deadline;
+
+  /// Supplied by application wiring, never decoded from tool arguments.
+  final AgentAuthority? authority;
+}
+
+/// Owns the actor, scope and approval bindings for one agent turn. Approval must bind the capability version,
+/// these frozen arguments and [RequestContext.operationId]; [revalidate] checks the actual target again.
+abstract interface class AgentAuthority {
+  Future<Result<void>> authorize(Capability capability, Map<String, Object?> args, RequestContext context);
+  Future<Result<void>> revalidate(Capability capability, Map<String, Object?> args, RequestContext context);
 }
 
 /// A business action that the command palette, and later the AI, can call by ID.
