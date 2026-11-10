@@ -26,10 +26,11 @@ const appVersion = '0.1.0';
 /// A section another feature adds to the panel, such as trust records from connections; settings cannot import
 /// those features without a cycle, so the app wires them in.
 class SettingsSection {
-  const SettingsSection(this.title, this.build);
+  const SettingsSection(this.title, this.build, {this.icon = Icons.tune_outlined});
 
   final String Function(AppLocalizations l) title;
   final WidgetBuilder build;
+  final IconData icon;
 }
 
 final settingsSectionsProvider = Provider<List<SettingsSection>>((_) => const []);
@@ -295,7 +296,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
 
     final extra = ref.watch(settingsSectionsProvider);
     final sections = [
-      _Section(l.appearance, [
+      _Section(l.appearance, Icons.palette_outlined, [
         _Field.stacked(
           l.theme,
           segmented(SettingKeys.themeMode, {
@@ -335,7 +336,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
             hint: hint(SettingKeys.renderer),
           ),
       ]),
-      _Section(l.terminal, [
+      _Section(l.terminal, Icons.terminal_outlined, [
         _Field.stacked(l.terminalBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.terminal)),
         _Field.stacked(l.terminalFont, font(SettingKeys.terminalFontFamily, fallback: AppFonts.mono, monoOnly: true)),
         _Field.stacked(l.fontSize, slider(SettingKeys.fontSize)),
@@ -364,7 +365,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
         _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
       ]),
-      _Section(l.workspaceSection, [
+      _Section(l.workspaceSection, Icons.space_dashboard_outlined, [
         _Field(l.monitor, toggle(SettingKeys.showMonitor)),
         _Field(l.files, toggle(SettingKeys.showFiles)),
         _Field(
@@ -377,7 +378,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ),
         _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
       ]),
-      _Section(l.connection, [
+      _Section(l.connection, Icons.dns_outlined, [
         _Field(
           l.connectTimeout,
           seconds(SettingKeys.connectTimeout, const [10, 20, 30, 60]),
@@ -391,7 +392,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _Field(l.idleTtl, seconds(SettingKeys.idleTtl, const [0, 30, 60, 120, 300], zeroIsOff: true)),
         _Field(l.autoReconnect, toggle(SettingKeys.autoReconnect)),
       ]),
-      _Section(l.files, [
+      _Section(l.files, Icons.folder_outlined, [
         _Field(l.hiddenFiles, toggle(SettingKeys.showHidden)),
         _Field(
           l.transferConcurrency,
@@ -403,8 +404,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           ),
         ),
       ]),
-      for (final s in extra) _Section(s.title(l), [s.build(context)]),
-      _Section(l.about, [
+      for (final s in extra) _Section(s.title(l), s.icon, [s.build(context)]),
+      _Section(l.about, Icons.info_outline, [
         const Padding(
           padding: EdgeInsets.symmetric(vertical: Space.md),
           child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
@@ -430,132 +431,163 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     return FormSaveScope(
       controller: _saves,
       child: LayoutBuilder(
-        builder: (context, constraints) => SizedBox(
-          height: math.min(WorkspaceSize.settingsHeight, constraints.maxHeight),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      width: constraints.maxWidth < WorkspaceSize.settingsDialog * .7
-                          ? WorkspaceSize.settingsNavigationCompact
-                          : WorkspaceSize.settingsNavigation,
-                      child: SingleChildScrollView(
-                        key: const ValueKey('settings-navigation'),
-                        controller: _navigationScroll,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: Space.sm),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var index = 0; index < sections.length; index++)
-                                Padding(
-                                  key: _navigationKeys[index],
-                                  padding: const EdgeInsets.only(bottom: Space.xs),
-                                  child: Semantics(
-                                    selected: index == _selected,
-                                    inMutuallyExclusiveGroup: true,
-                                    child: TextButton(
-                                      key: ValueKey('settings-tab-$index'),
-                                      style: TextButton.styleFrom(
-                                        alignment: Alignment.centerLeft,
-                                        padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.md),
-                                        backgroundColor: index == _selected ? theme.colorScheme.primaryContainer : null,
-                                        foregroundColor: index == _selected
-                                            ? theme.colorScheme.onPrimaryContainer
-                                            : theme.colorScheme.onSurfaceVariant,
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < WorkspaceSize.settingsDialog * .7;
+          return SizedBox(
+            height: math.min(WorkspaceSize.settingsHeight, constraints.maxHeight),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: compact ? WorkspaceSize.settingsNavigationCompact : WorkspaceSize.settingsNavigation,
+                        child: SingleChildScrollView(
+                          key: const ValueKey('settings-navigation'),
+                          controller: _navigationScroll,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: Space.sm),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var index = 0; index < sections.length; index++)
+                                  Padding(
+                                    key: _navigationKeys[index],
+                                    padding: const EdgeInsets.only(bottom: Space.xs),
+                                    child: Semantics(
+                                      selected: index == _selected,
+                                      inMutuallyExclusiveGroup: true,
+                                      child: TextButton(
+                                        key: ValueKey('settings-tab-$index'),
+                                        style: TextButton.styleFrom(
+                                          alignment: compact ? Alignment.center : Alignment.centerLeft,
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: compact ? Space.sm : Space.md,
+                                            vertical: Space.md,
+                                          ),
+                                          backgroundColor: index == _selected
+                                              ? theme.colorScheme.primaryContainer
+                                              : null,
+                                          foregroundColor: index == _selected
+                                              ? theme.colorScheme.onPrimaryContainer
+                                              : theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                        onPressed: () => _goTo(index),
+                                        child: compact
+                                            ? Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(sections[index].icon),
+                                                  const SizedBox(height: Space.xs),
+                                                  Text(sections[index].title, textAlign: TextAlign.center),
+                                                ],
+                                              )
+                                            : Row(
+                                                children: [
+                                                  Icon(sections[index].icon),
+                                                  const SizedBox(width: Space.sm),
+                                                  Expanded(child: Text(sections[index].title)),
+                                                ],
+                                              ),
                                       ),
-                                      onPressed: () => _goTo(index),
-                                      child: Text(sections[index].title),
                                     ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const VerticalDivider(width: Space.lg),
-                    Expanded(
-                      child: AbsorbPointer(
-                        absorbing: _saves.busy,
-                        child: ExcludeFocus(
-                          excluding: _saves.busy,
-                          child: NotificationListener<ScrollMetricsNotification>(
-                            onNotification: (_) {
-                              _scheduleSync();
-                              return false;
-                            },
-                            child: SingleChildScrollView(
-                              key: const ValueKey('settings-content'),
-                              controller: _scroll,
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: Space.sm),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    for (var index = 0; index < sections.length; index++)
-                                      KeyedSubtree(key: _anchors[index], child: sections[index]),
-                                  ],
+                      const VerticalDivider(width: Space.lg),
+                      Expanded(
+                        child: AbsorbPointer(
+                          absorbing: _saves.busy,
+                          child: ExcludeFocus(
+                            excluding: _saves.busy,
+                            child: NotificationListener<ScrollMetricsNotification>(
+                              onNotification: (_) {
+                                _scheduleSync();
+                                return false;
+                              },
+                              child: SingleChildScrollView(
+                                key: const ValueKey('settings-content'),
+                                controller: _scroll,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: Space.sm, top: Space.sm, bottom: Space.lg),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      for (var index = 0; index < sections.length; index++) ...[
+                                        if (index > 0)
+                                          const Padding(
+                                            padding: EdgeInsets.symmetric(vertical: Space.xl),
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: SizedBox(
+                                                width: WorkspaceSize.settingsSeparator,
+                                                child: Divider(height: WorkspaceSize.divider),
+                                              ),
+                                            ),
+                                          ),
+                                        KeyedSubtree(key: _anchors[index], child: sections[index]),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              if (_saves.dirty || _saves.busy) ...[
-                const Divider(height: Space.xl),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(onPressed: _saves.busy ? null : _saves.reset, child: Text(l.cancel)),
-                    const SizedBox(width: Space.sm),
-                    FilledButton(
-                      key: const ValueKey('settings-save'),
-                      onPressed: _saves.canSave ? _save : null,
-                      child: _saves.busy
-                          ? const SizedBox.square(dimension: Space.lg, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text(l.save),
-                    ),
-                  ],
-                ),
+                if (_saves.dirty || _saves.busy) ...[
+                  const Divider(height: Space.xl),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: _saves.busy ? null : _saves.reset, child: Text(l.cancel)),
+                      const SizedBox(width: Space.sm),
+                      FilledButton(
+                        key: const ValueKey('settings-save'),
+                        onPressed: _saves.canSave ? _save : null,
+                        child: _saves.busy
+                            ? const SizedBox.square(
+                                dimension: Space.lg,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(l.save),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
 class _Section extends StatelessWidget {
-  const _Section(this.title, this.children);
+  const _Section(this.title, this.icon, this.children);
 
   final String title;
+  final IconData icon;
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.primary)),
-          const SizedBox(height: Space.sm),
-          ...children,
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(title, style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: Space.lg),
+      ...children,
+    ],
+  );
 }
 
 /// A label beside its control, or above it when the control needs the width.

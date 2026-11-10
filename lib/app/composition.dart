@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter_riverpod/misc.dart';
 
 import '../features/ai/api.dart';
@@ -30,13 +31,14 @@ List<Override> appOverrides() => [
   ),
   settingsSectionsProvider.overrideWith(
     (ref) => [
-      SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings()),
+      SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings(), icon: Icons.auto_awesome_outlined),
       SettingsSection(
         (l) => l.translationService,
         (_) => TranslationSettings(
           credentials: ref.read(translationCredentialsProvider),
           onCredentialsChanged: () => ref.invalidate(completionTranslationsProvider),
         ),
+        icon: Icons.translate_outlined,
       ),
     ],
   ),

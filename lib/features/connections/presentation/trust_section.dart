@@ -14,7 +14,11 @@ import 'known_hosts_dialog.dart';
 
 /// The sidebar's host-key panel. Removing a record makes the next connection ask again; only the user
 /// manages these, never the agent (docs/SECURITY.md).
-final trustSettingsSection = SettingsSection((l) => l.dataSecurity, (_) => const _TrustedKeys());
+final trustSettingsSection = SettingsSection(
+  (l) => l.dataSecurity,
+  (_) => const _TrustedKeys(),
+  icon: Icons.verified_user_outlined,
+);
 
 class _TrustedKeys extends ConsumerStatefulWidget {
   const _TrustedKeys();

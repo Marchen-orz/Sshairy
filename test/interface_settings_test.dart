@@ -71,7 +71,10 @@ void main() {
     expect(surface.top, greaterThanOrEqualTo(0));
     expect(surface.right, lessThanOrEqualTo(960));
     expect(surface.bottom, lessThanOrEqualTo(640));
-    await tester.tap(find.byKey(const ValueKey('settings-tab-5')));
+    final about = find.byKey(const ValueKey('settings-tab-5'));
+    await tester.ensureVisible(about);
+    await tester.pumpAndSettle();
+    await tester.tap(about);
     await tester.pumpAndSettle();
     expect(find.text('About').hitTestable(), findsNWidgets(2));
     expect(find.byTooltip('Close').hitTestable(), findsOneWidget);

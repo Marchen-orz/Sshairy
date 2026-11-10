@@ -66,8 +66,13 @@ void main() {
         systemFontsProvider.overrideWith((_) async => []),
         aiCredentialsProvider.overrideWithValue(aiCredentials ?? _AiCredentials()),
         settingsSectionsProvider.overrideWithValue([
-          if (withAi) SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings()),
-          SettingsSection((l) => l.translationService, (_) => TranslationSettings(credentials: _Credentials())),
+          if (withAi)
+            SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings(), icon: Icons.auto_awesome_outlined),
+          SettingsSection(
+            (l) => l.translationService,
+            (_) => TranslationSettings(credentials: _Credentials()),
+            icon: Icons.translate_outlined,
+          ),
         ]),
       ],
     );
