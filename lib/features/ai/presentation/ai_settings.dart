@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/controls.dart';
+import '../../../design/form_field.dart';
 import '../../../design/form_save.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
@@ -409,33 +410,36 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                   },
           ),
           gap,
-          TextFormField(
-            key: const ValueKey('ai-config-endpoint'),
-            controller: _endpoint,
-            enabled: !blocked,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-            decoration: InputDecoration(
-              labelText: l.aiConfigEndpoint,
-              helperText: l.aiConfigEndpointHint,
-              helperMaxLines: 2,
+          AppFormField(
+            label: l.aiConfigEndpoint,
+            helperText: l.aiConfigEndpointHint,
+            child: TextFormField(
+              key: const ValueKey('ai-config-endpoint'),
+              controller: _endpoint,
+              enabled: !blocked,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              decoration: AppFormField.decoration,
+              validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
+              onChanged: (_) => _changed(identity: true),
             ),
-            validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
-            onChanged: (_) => _changed(identity: true),
           ),
           gap,
-          TextField(
-            key: const ValueKey('ai-config-key'),
-            controller: _key,
-            enabled: !blocked && !_checking && !_keyError && _draftProvider != null,
-            obscureText: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            decoration: InputDecoration(labelText: l.aiConfigApiKeyOptional),
-            onChanged: (_) => setState(() {
-              _removeKey = false;
-              _error = null;
-            }),
+          AppFormField(
+            label: l.aiConfigApiKeyOptional,
+            child: TextField(
+              key: const ValueKey('ai-config-key'),
+              controller: _key,
+              enabled: !blocked && !_checking && !_keyError && _draftProvider != null,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: AppFormField.decoration,
+              onChanged: (_) => setState(() {
+                _removeKey = false;
+                _error = null;
+              }),
+            ),
           ),
           const SizedBox(height: Space.xs),
           Text(
@@ -483,56 +487,73 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
           gap,
           Text(l.aiConfigAdvanced, style: theme.textTheme.titleSmall),
           const SizedBox(height: Space.sm),
-          Wrap(
-            spacing: Space.md,
-            runSpacing: Space.md,
-            children: [
-              SizedBox(
-                width: 210,
-                child: AppSelect<int>(
-                  key: const ValueKey('ai-config-context-preset'),
-                  label: l.aiConfigContextWindow,
-                  value: _customContext ? -1 : int.parse(_contextWindow.text),
-                  options: [
-                    const AppOption(1000000, '1M'),
-                    const AppOption(256000, '256K'),
-                    AppOption(-1, l.aiConfigContextCustom),
-                  ],
-                  onChanged: blocked
-                      ? null
-                      : (value) => setState(() {
-                          _customContext = value == -1;
-                          if (!_customContext) _contextWindow.text = '$value';
-                          _error = null;
-                        }),
-                ),
-              ),
-              if (_customContext)
-                SizedBox(
-                  width: 210,
-                  child: TextFormField(
-                    key: const ValueKey('ai-config-context-custom'),
-                    controller: _contextWindow,
-                    enabled: !blocked,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(labelText: l.aiConfigContextWindow),
-                    validator: (_) => _profile == null ? l.aiConfigInvalid : null,
-                    onChanged: (_) => _changed(),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = ((constraints.maxWidth + Space.md) / (210 + Space.md)).floor().clamp(
+                1,
+                _customContext ? 3 : 2,
+              );
+              final width = (constraints.maxWidth - Space.md * (columns - 1)) / columns;
+              return Wrap(
+                spacing: Space.md,
+                runSpacing: Space.md,
+                children: [
+                  SizedBox(
+                    width: width,
+                    child: AppFormField(
+                      label: l.aiConfigContextWindow,
+                      child: AppSelect<int>(
+                        key: const ValueKey('ai-config-context-preset'),
+                        value: _customContext ? -1 : int.parse(_contextWindow.text),
+                        options: [
+                          const AppOption(1000000, '1M'),
+                          const AppOption(256000, '256K'),
+                          AppOption(-1, l.aiConfigContextCustom),
+                        ],
+                        onChanged: blocked
+                            ? null
+                            : (value) => setState(() {
+                                _customContext = value == -1;
+                                if (!_customContext) _contextWindow.text = '$value';
+                                _error = null;
+                              }),
+                      ),
+                    ),
                   ),
-                ),
-              SizedBox(
-                width: 210,
-                child: TextFormField(
-                  key: const ValueKey('ai-config-max-output'),
-                  controller: _maxOutput,
-                  enabled: !blocked,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(labelText: l.aiConfigMaxOutput),
-                  validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
-                  onChanged: (_) => _changed(),
-                ),
-              ),
-            ],
+                  if (_customContext)
+                    SizedBox(
+                      width: width,
+                      child: AppFormField(
+                        label: l.aiConfigContextWindow,
+                        child: TextFormField(
+                          key: const ValueKey('ai-config-context-custom'),
+                          controller: _contextWindow,
+                          enabled: !blocked,
+                          keyboardType: TextInputType.number,
+                          decoration: AppFormField.decoration,
+                          validator: (_) => _profile == null ? l.aiConfigInvalid : null,
+                          onChanged: (_) => _changed(),
+                        ),
+                      ),
+                    ),
+                  SizedBox(
+                    width: width,
+                    child: AppFormField(
+                      label: l.aiConfigMaxOutput,
+                      child: TextFormField(
+                        key: const ValueKey('ai-config-max-output'),
+                        controller: _maxOutput,
+                        enabled: !blocked,
+                        keyboardType: TextInputType.number,
+                        decoration: AppFormField.decoration,
+                        validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
+                        onChanged: (_) => _changed(),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           gap,
           const Divider(),

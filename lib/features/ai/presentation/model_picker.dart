@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/form_field.dart';
 import '../../../design/popup.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/cancellation.dart';
@@ -98,7 +99,10 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
       children: [
         const Icon(Icons.auto_awesome_outlined, size: 14),
         const SizedBox(width: Space.xs),
-        Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        if (widget.compact)
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis))
+        else
+          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
         const SizedBox(width: Space.xs),
         const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
       ],
@@ -115,7 +119,23 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
             onPressed: enabled ? _show : null,
             child: content,
           )
-        : OutlinedButton(key: _anchor, onPressed: enabled ? _show : null, child: content);
+        : OutlinedButton(
+            key: _anchor,
+            style: OutlinedButton.styleFrom(
+              fixedSize: const Size.fromHeight(WorkspaceSize.control),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              alignment: Alignment.centerLeft,
+              textStyle: Theme.of(context).textTheme.bodyMedium,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+            ),
+            onPressed: enabled ? _show : null,
+            child: content,
+          );
+    if (!widget.compact) {
+      final field = Tooltip(message: label, child: button);
+      return widget.label == null ? field : AppFormField(label: widget.label!, child: field);
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -487,6 +487,7 @@ void main() {
     WidgetTester tester, {
     bool configured = true,
     bool enabled = false,
+    double width = 500,
     List<AiTerminalHost> hosts = const [],
   }) async {
     final credentials = _UiCredentials();
@@ -519,8 +520,10 @@ void main() {
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: const Scaffold(
-            body: SingleChildScrollView(child: SizedBox(width: 500, child: AiSettings())),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SizedBox(width: width, child: const AiSettings()),
+            ),
           ),
         ),
       ),
@@ -553,6 +556,49 @@ void main() {
     expect(find.byKey(const ValueKey('ai-config-completion-advanced')), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-config-posix')), findsNothing);
     expect(find.byKey(const ValueKey('ai-config-history')), findsNothing);
+  });
+
+  testWidgets('AI settings align labelled inputs and selections at the same control height', (tester) async {
+    await showSettings(tester, enabled: true, width: 820);
+    final preset = find.byKey(const ValueKey('ai-config-context-preset'));
+    tester.widget<AppSelect<int>>(preset).onChanged!(-1);
+    await tester.pumpAndSettle();
+    final custom = find.byKey(const ValueKey('ai-config-context-custom'));
+    final output = find.byKey(const ValueKey('ai-config-max-output'));
+    final modelButton = find.descendant(
+      of: find.byKey(const ValueKey('ai-config-model')),
+      matching: find.byType(OutlinedButton),
+    );
+    for (final field in [
+      find.byType(AppSelect<ModelProtocol>),
+      find.byKey(const ValueKey('ai-config-endpoint')),
+      find.byKey(const ValueKey('ai-config-key')),
+      modelButton,
+      preset,
+      custom,
+      output,
+    ]) {
+      expect(tester.getSize(field).height, closeTo(WorkspaceSize.control, .01));
+    }
+    expect(tester.getTopLeft(preset).dy, tester.getTopLeft(custom).dy);
+    expect(tester.getTopLeft(custom).dy, tester.getTopLeft(output).dy);
+    expect(tester.getSize(preset).width, tester.getSize(custom).width);
+    expect(tester.getSize(custom).width, tester.getSize(output).width);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI settings wrap capacity fields into equal aligned columns in a narrow form', (tester) async {
+    await showSettings(tester, enabled: true);
+    final preset = find.byKey(const ValueKey('ai-config-context-preset'));
+    tester.widget<AppSelect<int>>(preset).onChanged!(-1);
+    await tester.pumpAndSettle();
+    final custom = find.byKey(const ValueKey('ai-config-context-custom'));
+    final output = find.byKey(const ValueKey('ai-config-max-output'));
+    expect(tester.getTopLeft(preset).dy, tester.getTopLeft(custom).dy);
+    expect(tester.getTopLeft(output).dy, greaterThan(tester.getTopLeft(custom).dy));
+    expect(tester.getTopLeft(output).dx, tester.getTopLeft(preset).dx);
+    expect(tester.getSize(custom), tester.getSize(output));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('feature host filters start collapsed and exclude hosts independently', (tester) async {

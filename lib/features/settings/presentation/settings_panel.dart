@@ -571,12 +571,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                                         if (index > 0)
                                           const Padding(
                                             padding: EdgeInsets.symmetric(vertical: Space.xl),
-                                            child: Center(
-                                              child: FractionallySizedBox(
-                                                widthFactor: WorkspaceSize.settingsSeparatorWidthFactor,
-                                                child: Divider(height: WorkspaceSize.divider),
-                                              ),
-                                            ),
+                                            child: Divider(height: WorkspaceSize.divider),
                                           ),
                                         KeyedSubtree(key: _anchors[index], child: sections[index]),
                                       ],
