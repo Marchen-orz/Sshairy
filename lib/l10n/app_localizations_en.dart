@@ -2383,52 +2383,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentNewTask => 'New conversation';
 
   @override
-  String get aiAgentHistory => 'Conversation history';
-
-  @override
-  String get aiAgentHistoryEmpty => 'No conversations yet';
-
-  @override
-  String get aiAgentContinueConversation => 'Continue conversation';
-
-  @override
-  String aiAgentHistoryContinueNotice(String destination, String host) {
-    return 'Continuing resends this conversation\'s retained, limited history to $destination. Current server: $host.';
-  }
-
-  @override
-  String get aiAgentHistoryTargetChanged => 'The server or model destination changed. Start a new conversation.';
-
-  @override
-  String get aiAgentHistoryLoadFailed => 'Could not load conversation history. Try again.';
-
-  @override
-  String get aiAgentHistorySaveFailed =>
-      'Conversation history could not be saved. The current content is still in memory.';
-
-  @override
-  String get aiAgentHistoryRetry => 'Retry';
-
-  @override
-  String get aiAgentHistoryTruncated => 'Some conversation history was trimmed to stay within storage limits.';
-
-  @override
-  String get aiAgentHistoryOutputUnavailable => 'Raw tool output is not saved in history.';
-
-  @override
-  String get aiAgentHistoryDelete => 'Delete conversation';
-
-  @override
-  String get aiAgentHistoryDeleteConfirm => 'Delete this conversation and its local history?';
-
-  @override
-  String get aiAgentHistoryBusy => 'Stop the current task or wait for it to finish before switching conversations.';
-
-  @override
-  String get aiAgentHistoryLocalNotice =>
-      'Conversation text is saved locally and may contain sensitive information. Raw tool output is not saved.';
-
-  @override
   String get aiAgentWelcome => 'What would you like to work on?';
 
   @override
@@ -2584,6 +2538,52 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get terminalAiOpenAgent => 'Open Airy';
+
+  @override
+  String get aiAgentHistory => 'Conversation history';
+
+  @override
+  String get aiAgentHistoryEmpty => 'No conversations yet';
+
+  @override
+  String get aiAgentContinueConversation => 'Continue conversation';
+
+  @override
+  String aiAgentHistoryContinueNotice(String destination, String host) {
+    return 'Continuing resends this conversation\'s retained, limited history to $destination. Current server: $host.';
+  }
+
+  @override
+  String get aiAgentHistoryTargetChanged => 'The server or model destination changed. Start a new conversation.';
+
+  @override
+  String get aiAgentHistoryLoadFailed => 'Could not load conversation history. Try again.';
+
+  @override
+  String get aiAgentHistorySaveFailed =>
+      'Conversation history could not be saved. The current content is still in memory.';
+
+  @override
+  String get aiAgentHistoryRetry => 'Retry';
+
+  @override
+  String get aiAgentHistoryTruncated => 'Some conversation history was trimmed to stay within storage limits.';
+
+  @override
+  String get aiAgentHistoryOutputUnavailable => 'Raw tool output is not saved in history.';
+
+  @override
+  String get aiAgentHistoryDelete => 'Delete conversation';
+
+  @override
+  String get aiAgentHistoryDeleteConfirm => 'Delete this conversation and its local history?';
+
+  @override
+  String get aiAgentHistoryBusy => 'Stop the current task or wait for it to finish before switching conversations.';
+
+  @override
+  String get aiAgentHistoryLocalNotice =>
+      'Conversation text is saved locally and may contain sensitive information. Raw tool output is not saved.';
 
   @override
   String get aiModelSearch => 'Search models';

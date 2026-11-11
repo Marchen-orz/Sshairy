@@ -2342,50 +2342,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentNewTask => '新会话';
 
   @override
-  String get aiAgentHistory => '历史会话';
-
-  @override
-  String get aiAgentHistoryEmpty => '暂无历史会话';
-
-  @override
-  String get aiAgentContinueConversation => '继续会话';
-
-  @override
-  String aiAgentHistoryContinueNotice(String destination, String host) {
-    return '继续时，将向 $destination 重新发送本会话保留的有限历史；当前主机：$host。';
-  }
-
-  @override
-  String get aiAgentHistoryTargetChanged => '主机或模型目的地已变化，请新建会话。';
-
-  @override
-  String get aiAgentHistoryLoadFailed => '无法读取会话历史，请重试。';
-
-  @override
-  String get aiAgentHistorySaveFailed => '会话历史未能保存，当前内容仍保留在内存中。';
-
-  @override
-  String get aiAgentHistoryRetry => '重试';
-
-  @override
-  String get aiAgentHistoryTruncated => '部分会话记录已按容量限制裁剪。';
-
-  @override
-  String get aiAgentHistoryOutputUnavailable => '原始工具输出未保存在历史中。';
-
-  @override
-  String get aiAgentHistoryDelete => '删除会话';
-
-  @override
-  String get aiAgentHistoryDeleteConfirm => '删除此会话及其本地历史记录？';
-
-  @override
-  String get aiAgentHistoryBusy => '请先停止当前任务或等待结束，再切换会话。';
-
-  @override
-  String get aiAgentHistoryLocalNotice => '会话文字保存在本地，可能含敏感信息；不保存原始工具输出。';
-
-  @override
   String get aiAgentWelcome => '有什么想一起解决的？';
 
   @override
@@ -2528,6 +2484,50 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get terminalAiOpenAgent => '打开 Airy';
+
+  @override
+  String get aiAgentHistory => '历史会话';
+
+  @override
+  String get aiAgentHistoryEmpty => '暂无历史会话';
+
+  @override
+  String get aiAgentContinueConversation => '继续会话';
+
+  @override
+  String aiAgentHistoryContinueNotice(String destination, String host) {
+    return '继续时，将向 $destination 重新发送本会话保留的有限历史；当前主机：$host。';
+  }
+
+  @override
+  String get aiAgentHistoryTargetChanged => '主机或模型目的地已变化，请新建会话。';
+
+  @override
+  String get aiAgentHistoryLoadFailed => '无法读取会话历史，请重试。';
+
+  @override
+  String get aiAgentHistorySaveFailed => '会话历史未能保存，当前内容仍保留在内存中。';
+
+  @override
+  String get aiAgentHistoryRetry => '重试';
+
+  @override
+  String get aiAgentHistoryTruncated => '部分会话记录已按容量限制裁剪。';
+
+  @override
+  String get aiAgentHistoryOutputUnavailable => '原始工具输出未保存在历史中。';
+
+  @override
+  String get aiAgentHistoryDelete => '删除会话';
+
+  @override
+  String get aiAgentHistoryDeleteConfirm => '删除此会话及其本地历史记录？';
+
+  @override
+  String get aiAgentHistoryBusy => '请先停止当前任务或等待结束，再切换会话。';
+
+  @override
+  String get aiAgentHistoryLocalNotice => '会话文字保存在本地，可能含敏感信息；不保存原始工具输出。';
 
   @override
   String get aiModelSearch => '搜索模型';

@@ -4538,90 +4538,6 @@ abstract class AppLocalizations {
   /// **'New conversation'**
   String get aiAgentNewTask;
 
-  /// No description provided for @aiAgentHistory.
-  ///
-  /// In en, this message translates to:
-  /// **'Conversation history'**
-  String get aiAgentHistory;
-
-  /// No description provided for @aiAgentHistoryEmpty.
-  ///
-  /// In en, this message translates to:
-  /// **'No conversations yet'**
-  String get aiAgentHistoryEmpty;
-
-  /// No description provided for @aiAgentContinueConversation.
-  ///
-  /// In en, this message translates to:
-  /// **'Continue conversation'**
-  String get aiAgentContinueConversation;
-
-  /// No description provided for @aiAgentHistoryContinueNotice.
-  ///
-  /// In en, this message translates to:
-  /// **'Continuing resends this conversation\'s retained, limited history to {destination}. Current server: {host}.'**
-  String aiAgentHistoryContinueNotice(String destination, String host);
-
-  /// No description provided for @aiAgentHistoryTargetChanged.
-  ///
-  /// In en, this message translates to:
-  /// **'The server or model destination changed. Start a new conversation.'**
-  String get aiAgentHistoryTargetChanged;
-
-  /// No description provided for @aiAgentHistoryLoadFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not load conversation history. Try again.'**
-  String get aiAgentHistoryLoadFailed;
-
-  /// No description provided for @aiAgentHistorySaveFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Conversation history could not be saved. The current content is still in memory.'**
-  String get aiAgentHistorySaveFailed;
-
-  /// No description provided for @aiAgentHistoryRetry.
-  ///
-  /// In en, this message translates to:
-  /// **'Retry'**
-  String get aiAgentHistoryRetry;
-
-  /// No description provided for @aiAgentHistoryTruncated.
-  ///
-  /// In en, this message translates to:
-  /// **'Some conversation history was trimmed to stay within storage limits.'**
-  String get aiAgentHistoryTruncated;
-
-  /// No description provided for @aiAgentHistoryOutputUnavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Raw tool output is not saved in history.'**
-  String get aiAgentHistoryOutputUnavailable;
-
-  /// No description provided for @aiAgentHistoryDelete.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete conversation'**
-  String get aiAgentHistoryDelete;
-
-  /// No description provided for @aiAgentHistoryDeleteConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete this conversation and its local history?'**
-  String get aiAgentHistoryDeleteConfirm;
-
-  /// No description provided for @aiAgentHistoryBusy.
-  ///
-  /// In en, this message translates to:
-  /// **'Stop the current task or wait for it to finish before switching conversations.'**
-  String get aiAgentHistoryBusy;
-
-  /// No description provided for @aiAgentHistoryLocalNotice.
-  ///
-  /// In en, this message translates to:
-  /// **'Conversation text is saved locally and may contain sensitive information. Raw tool output is not saved.'**
-  String get aiAgentHistoryLocalNotice;
-
   /// No description provided for @aiAgentWelcome.
   ///
   /// In en, this message translates to:
@@ -4909,6 +4825,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open Airy'**
   String get terminalAiOpenAgent;
+
+  /// No description provided for @aiAgentHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation history'**
+  String get aiAgentHistory;
+
+  /// No description provided for @aiAgentHistoryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No conversations yet'**
+  String get aiAgentHistoryEmpty;
+
+  /// No description provided for @aiAgentContinueConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue conversation'**
+  String get aiAgentContinueConversation;
+
+  /// No description provided for @aiAgentHistoryContinueNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Continuing resends this conversation\'s retained, limited history to {destination}. Current server: {host}.'**
+  String aiAgentHistoryContinueNotice(String destination, String host);
+
+  /// No description provided for @aiAgentHistoryTargetChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The server or model destination changed. Start a new conversation.'**
+  String get aiAgentHistoryTargetChanged;
+
+  /// No description provided for @aiAgentHistoryLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load conversation history. Try again.'**
+  String get aiAgentHistoryLoadFailed;
+
+  /// No description provided for @aiAgentHistorySaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation history could not be saved. The current content is still in memory.'**
+  String get aiAgentHistorySaveFailed;
+
+  /// No description provided for @aiAgentHistoryRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get aiAgentHistoryRetry;
+
+  /// No description provided for @aiAgentHistoryTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'Some conversation history was trimmed to stay within storage limits.'**
+  String get aiAgentHistoryTruncated;
+
+  /// No description provided for @aiAgentHistoryOutputUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw tool output is not saved in history.'**
+  String get aiAgentHistoryOutputUnavailable;
+
+  /// No description provided for @aiAgentHistoryDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete conversation'**
+  String get aiAgentHistoryDelete;
+
+  /// No description provided for @aiAgentHistoryDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this conversation and its local history?'**
+  String get aiAgentHistoryDeleteConfirm;
+
+  /// No description provided for @aiAgentHistoryBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the current task or wait for it to finish before switching conversations.'**
+  String get aiAgentHistoryBusy;
+
+  /// No description provided for @aiAgentHistoryLocalNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation text is saved locally and may contain sensitive information. Raw tool output is not saved.'**
+  String get aiAgentHistoryLocalNotice;
 
   /// No description provided for @aiModelSearch.
   ///
