@@ -93,6 +93,15 @@ abstract interface class TerminalAiService {
   Future<String?> complete(TerminalAiContext context, List<TerminalAiHistoryEntry> history, CancellationToken cancel);
 }
 
+/// Why an inline request produced no usable command; carries no user text or credential.
+enum TerminalAiFailureReason { unavailable, cancelled, timeout, network, http, invalid }
+
+class TerminalAiFailure implements Exception {
+  const TerminalAiFailure(this.reason, {this.statusCode});
+  final TerminalAiFailureReason reason;
+  final int? statusCode;
+}
+
 bool sameTerminalAiContext(TerminalAiContext a, TerminalAiContext b, {bool draft = true}) =>
     a.sessionId == b.sessionId &&
     a.generation == b.generation &&

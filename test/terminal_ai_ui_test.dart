@@ -354,6 +354,19 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('inline failure names the reason instead of hiding it', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    ai.generations.single.completeError(const TerminalAiFailure(TerminalAiFailureReason.http, statusCode: 429));
+    await tester.pump();
+    expect(find.text('The model service returned HTTP 429.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('terminal-ai-generate')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inline with remote text cannot replace it and retained preview can be accepted after clearing', (
     tester,
   ) async {

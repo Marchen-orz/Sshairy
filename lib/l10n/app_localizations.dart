@@ -4916,6 +4916,30 @@ abstract class AppLocalizations {
   /// **'Could not generate a command. Try again.'**
   String get terminalAiFailed;
 
+  /// No description provided for @terminalAiFailedTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Generation timed out. Try again.'**
+  String get terminalAiFailedTimeout;
+
+  /// No description provided for @terminalAiFailedNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the model service. Check the network or settings.'**
+  String get terminalAiFailedNetwork;
+
+  /// No description provided for @terminalAiFailedHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'The model service returned HTTP {code}.'**
+  String terminalAiFailedHttp(int code);
+
+  /// No description provided for @terminalAiFailedInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The model returned an invalid command. Try rephrasing.'**
+  String get terminalAiFailedInvalid;
+
   /// No description provided for @terminalAiChanged.
   ///
   /// In en, this message translates to:

@@ -158,7 +158,12 @@ void main() {
       {'status': 'clarify', 'command': 'echo ok', 'message': 'Why?'},
     ]) {
       model.json(data);
-      await expectLater(service.generate(_context(), 'A task', CancellationToken()), throwsA(isA<ModelFailure>()));
+      await expectLater(
+        service.generate(_context(), 'A task', CancellationToken()),
+        throwsA(
+          isA<TerminalAiFailure>().having((failure) => failure.reason, 'reason', TerminalAiFailureReason.invalid),
+        ),
+      );
     }
     model.answer = () => Stream.value(
       ModelMessageComplete(
@@ -169,9 +174,9 @@ void main() {
         ),
       ),
     );
-    await expectLater(service.generate(_context(), 'A task', CancellationToken()), throwsA(isA<ModelFailure>()));
+    await expectLater(service.generate(_context(), 'A task', CancellationToken()), throwsA(isA<TerminalAiFailure>()));
     model.answer = () => Stream.value(const ModelTextDelta('{"status":"command"'));
-    await expectLater(service.generate(_context(), 'A task', CancellationToken()), throwsA(isA<ModelFailure>()));
+    await expectLater(service.generate(_context(), 'A task', CancellationToken()), throwsA(isA<TerminalAiFailure>()));
     model.json({'status': 'clarify', 'message': 'Which service?'});
     expect(
       (await service.generate(_context(), 'Restart a service', CancellationToken())).kind,
@@ -332,7 +337,7 @@ void main() {
     model.answer = () => stream.stream;
     final completing = service.complete(_context(), const [], CancellationToken());
     final first = service.generate(_context(), 'Earlier request', CancellationToken());
-    final superseded = expectLater(first, throwsA(isA<ModelFailure>()));
+    final superseded = expectLater(first, throwsA(isA<TerminalAiFailure>()));
     final latest = service.generate(_context(), 'Latest request', CancellationToken());
     await cancelling.future;
     expect(model.requests, hasLength(1));
@@ -351,7 +356,7 @@ void main() {
   test('latest inline intent also supersedes an earlier intent before either reaches the model', () async {
     model.json({'status': 'command', 'command': 'pwd'});
     final first = service.generate(_context(), 'Earlier request', CancellationToken());
-    final superseded = expectLater(first, throwsA(isA<ModelFailure>()));
+    final superseded = expectLater(first, throwsA(isA<TerminalAiFailure>()));
     final latest = service.generate(_context(), 'Latest request', CancellationToken());
     expect(await service.complete(_context(), const [], CancellationToken()), isNull);
     await superseded;
@@ -364,13 +369,31 @@ void main() {
     final stream = StreamController<ModelEvent>();
     model.answer = () => stream.stream;
     final request = service.generate(_context(), 'Show directory', CancellationToken());
-    final failure = expectLater(request, throwsA(isA<ModelFailure>()));
+    final failure = expectLater(request, throwsA(isA<TerminalAiFailure>()));
     await Future<void>.delayed(Duration.zero);
     config = const AiConfiguration();
     service.invalidate();
     await failure;
     expect(model.cancellations.single.isCancelled, isTrue);
     stream.add(ModelMessageComplete(ModelMessage(ModelRole.assistant, text: '{"status":"command","command":"pwd"}')));
+    await stream.close();
+  });
+
+  test('inline timeout is reported as a timeout failure', () async {
+    service.dispose();
+    service = AiTerminalService(
+      model: model,
+      configuration: () => config,
+      hosts: () => hosts,
+      now: () => now,
+      generationTimeout: const Duration(milliseconds: 10),
+    );
+    final stream = StreamController<ModelEvent>();
+    model.answer = () => stream.stream;
+    await expectLater(
+      service.generate(_context(), 'Show directory', CancellationToken()),
+      throwsA(isA<TerminalAiFailure>().having((failure) => failure.reason, 'reason', TerminalAiFailureReason.timeout)),
+    );
     await stream.close();
   });
 

@@ -2644,6 +2644,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalAiFailed => 'Could not generate a command. Try again.';
 
   @override
+  String get terminalAiFailedTimeout => 'Generation timed out. Try again.';
+
+  @override
+  String get terminalAiFailedNetwork =>
+      'Could not reach the model service. Check the network or settings.';
+
+  @override
+  String terminalAiFailedHttp(int code) {
+    return 'The model service returned HTTP $code.';
+  }
+
+  @override
+  String get terminalAiFailedInvalid =>
+      'The model returned an invalid command. Try rephrasing.';
+
+  @override
   String get terminalAiChanged =>
       'The terminal context changed. Reopen to start a new request.';
 

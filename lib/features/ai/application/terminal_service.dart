@@ -114,7 +114,7 @@ class AiTerminalService implements TerminalAiService {
         instruction.length > 2048 ||
         utf8.encode(instruction).length > 4096 ||
         instruction.runes.any((r) => r < 32 && r != 10 || r >= 127 && r <= 159)) {
-      throw const ModelFailure('terminalUnavailable');
+      throw const TerminalAiFailure(TerminalAiFailureReason.unavailable);
     }
     final config = configuration(), revision = _revision;
     final intent = ++_generationIntent;
@@ -163,10 +163,24 @@ class AiTerminalService implements TerminalAiService {
         'useAgent' => TerminalAiGeneration(TerminalAiGenerationKind.useAgent, message: result['message'] as String),
         _ => throw const ModelFailure('invalidSuggestion'),
       };
+    } on TerminalAiFailure {
+      rethrow;
+    } on ModelFailure catch (error) {
+      throw TerminalAiFailure(_failureReason(error), statusCode: error.statusCode);
+    } on Object {
+      throw const TerminalAiFailure(TerminalAiFailureReason.invalid);
     } finally {
       if (_pendingGeneration == intent) _pendingGeneration = null;
     }
   }
+
+  static TerminalAiFailureReason _failureReason(ModelFailure failure) => switch (failure.code) {
+    'cancelled' => TerminalAiFailureReason.cancelled,
+    'timeout' => TerminalAiFailureReason.timeout,
+    'modelHttpError' => TerminalAiFailureReason.http,
+    'modelNetworkError' => TerminalAiFailureReason.network,
+    _ => TerminalAiFailureReason.invalid,
+  };
 
   @override
   Future<String?> complete(
@@ -324,7 +338,10 @@ class AiTerminalService implements TerminalAiService {
         if (!request.settled.isCompleted) request.cancel.cancel();
       }),
     );
-    final timer = Timer(inline ? generationTimeout : completionTimeout, request.cancel.cancel);
+    final timer = Timer(inline ? generationTimeout : completionTimeout, () {
+      request.timedOut = true;
+      request.cancel.cancel();
+    });
     StreamSubscription<ModelEvent>? subscription;
     final done = Completer<ModelMessage>();
     ModelMessage? complete;
@@ -394,6 +411,11 @@ class AiTerminalService implements TerminalAiService {
       return decoded;
     } on FormatException {
       throw const ModelFailure('invalidSuggestion');
+    } on ModelFailure catch (error) {
+      if (request.timedOut && !caller.isCancelled && error.code == 'cancelled') {
+        throw const ModelFailure('timeout');
+      }
+      rethrow;
     } finally {
       timer.cancel();
       await subscription?.cancel();
@@ -423,4 +445,5 @@ class _LightRequest {
   final bool inline;
   final cancel = CancellationToken();
   final settled = Completer<void>();
+  bool timedOut = false;
 }

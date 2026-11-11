@@ -288,6 +288,14 @@ class _InlineAiComposer extends StatefulWidget {
   State<_InlineAiComposer> createState() => _InlineAiComposerState();
 }
 
+String _failureText(AppLocalizations l, TerminalAiFailure failure) => switch (failure.reason) {
+  TerminalAiFailureReason.timeout => l.terminalAiFailedTimeout,
+  TerminalAiFailureReason.network => l.terminalAiFailedNetwork,
+  TerminalAiFailureReason.http => l.terminalAiFailedHttp(failure.statusCode ?? 0),
+  TerminalAiFailureReason.invalid => l.terminalAiFailedInvalid,
+  _ => l.terminalAiFailed,
+};
+
 class _InlineAiComposerState extends State<_InlineAiComposer> {
   late final _captured = widget.session.readAiContext();
   late final _instruction = TextEditingController(
@@ -298,7 +306,8 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
   final _focus = FocusNode();
   CancellationToken? _cancel;
   TerminalAiGeneration? _result;
-  bool _failed = false, _stale = false;
+  TerminalAiFailure? _failure;
+  bool _stale = false;
 
   @override
   void initState() {
@@ -354,7 +363,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
     setState(() {
       _cancel = token;
       _result = null;
-      _failed = false;
+      _failure = null;
     });
     try {
       final result = await widget.service.generate(
@@ -371,8 +380,12 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
         _result = result;
         _command.text = result.command ?? '';
       });
+    } on TerminalAiFailure catch (failure) {
+      if (mounted && !token.isCancelled) setState(() => _failure = failure);
     } on Object {
-      if (mounted && !token.isCancelled) setState(() => _failed = true);
+      if (mounted && !token.isCancelled) {
+        setState(() => _failure = const TerminalAiFailure(TerminalAiFailureReason.invalid));
+      }
     } finally {
       if (mounted && identical(_cancel, token)) setState(() => _cancel = null);
     }
@@ -493,10 +506,10 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                     padding: EdgeInsets.symmetric(vertical: Space.md),
                     child: LinearProgressIndicator(minHeight: 2),
                   ),
-                if (_failed)
+                if (_failure case final failure?)
                   Padding(
                     padding: const EdgeInsets.only(top: Space.sm),
-                    child: Text(l.terminalAiFailed, style: TextStyle(color: theme.colorScheme.error)),
+                    child: Text(_failureText(l, failure), style: TextStyle(color: theme.colorScheme.error)),
                   ),
                 if (_stale)
                   Padding(

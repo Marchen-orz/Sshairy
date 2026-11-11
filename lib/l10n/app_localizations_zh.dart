@@ -2545,6 +2545,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get terminalAiFailed => '未能生成命令，请重试。';
 
   @override
+  String get terminalAiFailedTimeout => '生成超时，请重试。';
+
+  @override
+  String get terminalAiFailedNetwork => '无法连接模型服务，请检查网络或设置。';
+
+  @override
+  String terminalAiFailedHttp(int code) {
+    return '模型服务返回 HTTP $code。';
+  }
+
+  @override
+  String get terminalAiFailedInvalid => '模型返回的命令无效，请换个说法重试。';
+
+  @override
   String get terminalAiChanged => '终端上下文已变化，重新打开后可发起新请求。';
 
   @override
