@@ -896,5 +896,12 @@
   "aiAgentPermissionConfirmHint": "Confirm each command",
   "aiAgentPermissionObserveHint": "Fixed read-only diagnostics",
   "aiAgentContextUsage": "Estimated context: {percent}% · {used} / {total} tokens",
-  "@aiAgentContextUsage": {"placeholders": {"percent": {"type": "int"}, "used": {"type": "int"}, "total": {"type": "int"}}}
+  "@aiAgentContextUsage": {"placeholders": {"percent": {"type": "int"}, "used": {"type": "int"}, "total": {"type": "int"}}},
+  "aiAgentRegenerate": "Regenerate",
+  "aiAgentRegenerateHint": "Generate another answer without running commands again",
+  "aiAgentWithdraw": "Withdraw last turn",
+  "aiAgentWithdrawHint": "Restore the last question as a draft. Executed operations are not undone; clear the current draft first.",
+  "aiAgentExecutionRecord": "Execution record",
+  "aiAgentCopied": "Copied",
+  "aiAgentCopyFailed": "Could not copy. Select the text and copy manually."
 }

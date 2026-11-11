@@ -11,13 +11,15 @@ class ConversationEntry {
     this.state,
     this.exitCode,
     this.truncated = false,
+    this.retracted = false,
+    this.executionId,
   });
 
   final ConversationEntryKind kind;
   final String text;
-  final String? capability, state;
+  final String? capability, state, executionId;
   final int? exitCode;
-  final bool truncated;
+  final bool truncated, retracted;
 }
 
 class AgentConversationRecord {

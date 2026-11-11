@@ -62,7 +62,8 @@ import 'app_localizations_zh.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale)
+    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -70,7 +71,8 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -82,15 +84,19 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
-    delegate,
-    GlobalMaterialLocalizations.delegate,
-    GlobalCupertinoLocalizations.delegate,
-    GlobalWidgetsLocalizations.delegate,
-  ];
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
+      <LocalizationsDelegate<dynamic>>[
+        delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ];
 
   /// A list of this localizations delegate's supported locales.
-  static const List<Locale> supportedLocales = <Locale>[Locale('en'), Locale('zh')];
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en'),
+    Locale('zh'),
+  ];
 
   /// No description provided for @aiConfigTitle.
   ///
@@ -5041,9 +5047,52 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Estimated context: {percent}% · {used} / {total} tokens'**
   String aiAgentContextUsage(int percent, int used, int total);
+
+  /// No description provided for @aiAgentRegenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Regenerate'**
+  String get aiAgentRegenerate;
+
+  /// No description provided for @aiAgentRegenerateHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate another answer without running commands again'**
+  String get aiAgentRegenerateHint;
+
+  /// No description provided for @aiAgentWithdraw.
+  ///
+  /// In en, this message translates to:
+  /// **'Withdraw last turn'**
+  String get aiAgentWithdraw;
+
+  /// No description provided for @aiAgentWithdrawHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore the last question as a draft. Executed operations are not undone; clear the current draft first.'**
+  String get aiAgentWithdrawHint;
+
+  /// No description provided for @aiAgentExecutionRecord.
+  ///
+  /// In en, this message translates to:
+  /// **'Execution record'**
+  String get aiAgentExecutionRecord;
+
+  /// No description provided for @aiAgentCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get aiAgentCopied;
+
+  /// No description provided for @aiAgentCopyFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not copy. Select the text and copy manually.'**
+  String get aiAgentCopyFailed;
 }
 
-class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate
+    extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -5052,7 +5101,8 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
   }
 
   @override
-  bool isSupported(Locale locale) => <String>['en', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) =>
+      <String>['en', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;

@@ -22,10 +22,18 @@ const _routeA = '0123456789abcdef0123456789abcdef';
 const _routeB = 'abcdef0123456789abcdef0123456789';
 const _changedRoute = '11111111111111111111111111111111';
 
-typedef _Script = Stream<ModelEvent> Function(ModelRequest request, CancellationToken cancel);
+typedef _Script = Stream<ModelEvent> Function(
+  ModelRequest request,
+  CancellationToken cancel,
+);
 
 ModelProfile _profile({String model = 'test-model', bool tools = true}) =>
-    ModelProfile(protocol: ModelProtocol.openai, endpoint: 'https://model.invalid/v1', model: model, tools: tools);
+    ModelProfile(
+      protocol: ModelProtocol.openai,
+      endpoint: 'https://model.invalid/v1',
+      model: model,
+      tools: tools,
+    );
 
 AgentConversationRecord _record(
   String id, {
@@ -49,14 +57,21 @@ AgentConversationRecord _record(
     entries:
         entries ??
         [
-          ConversationEntry(kind: ConversationEntryKind.user, text: 'earlier user $id'),
-          ConversationEntry(kind: ConversationEntryKind.assistant, text: 'earlier answer $id'),
+          ConversationEntry(
+            kind: ConversationEntryKind.user,
+            text: 'earlier user $id',
+          ),
+          ConversationEntry(
+            kind: ConversationEntryKind.assistant,
+            text: 'earlier answer $id',
+          ),
         ],
   );
 }
 
 class _MemoryStore implements ConversationStore {
-  _MemoryStore([List<AgentConversationRecord> initial = const []]) : records = List.of(initial);
+  _MemoryStore([List<AgentConversationRecord> initial = const []])
+    : records = List.of(initial);
 
   List<AgentConversationRecord> records;
   final writes = <List<AgentConversationRecord>>[];
@@ -94,13 +109,18 @@ class _Model implements ModelProvider {
   final requests = <ModelRequest>[];
 
   @override
-  Stream<ModelEvent> stream(ModelRequest request, CancellationToken cancel) async* {
+  Stream<ModelEvent> stream(
+    ModelRequest request,
+    CancellationToken cancel,
+  ) async* {
     requests.add(request);
     if (script case final run?) {
       yield* run(request, cancel);
     } else {
       yield const ModelTextDelta('A safe answer');
-      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'A safe answer'));
+      yield ModelMessageComplete(
+        ModelMessage(ModelRole.assistant, text: 'A safe answer'),
+      );
     }
   }
 
@@ -112,7 +132,10 @@ class _Backend implements AgentBackend {
   final prepared = <HostId>[];
 
   @override
-  List<AgentHost> hosts = const [AgentHost(_hostA, 'Host A'), AgentHost(_hostB, 'Host B')];
+  List<AgentHost> hosts = const [
+    AgentHost(_hostA, 'Host A'),
+    AgentHost(_hostB, 'Host B'),
+  ];
 
   @override
   Future<AgentTarget> prepare(HostId host, CancellationToken cancel) async {
@@ -164,7 +187,12 @@ class _Harness {
             Effect.query,
             (_, _) async => runtime.listHosts(),
             agentExposed: true,
-            inputSchema: const {'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': false},
+            inputSchema: const {
+              'type': 'object',
+              'properties': {},
+              'required': [],
+              'additionalProperties': false,
+            },
           ),
           FunctionCapability(
             'agent.diagnose',
@@ -183,9 +211,12 @@ class _Harness {
           ),
         ],
       ]),
-      configuration: () => (enabled: enabled, profile: profile, revision: revision),
+      configuration: () =>
+          (enabled: enabled, profile: profile, revision: revision),
     );
-    container = ProviderContainer(overrides: [agentRuntimeProvider.overrideWithValue(runtime)]);
+    container = ProviderContainer(
+      overrides: [agentRuntimeProvider.overrideWithValue(runtime)],
+    );
     composer = container.read(agentComposerProvider.notifier);
     conversations = AgentConversations(
       runtime: runtime,
@@ -230,13 +261,19 @@ Future<_Harness> _create({
   _Script? script,
   bool discoveryTools = false,
 }) async {
-  final harness = _Harness(initial: initial, store: store, script: script, discoveryTools: discoveryTools);
+  final harness = _Harness(
+    initial: initial,
+    store: store,
+    script: script,
+    discoveryTools: discoveryTools,
+  );
   addTearDown(harness.close);
   await harness.conversations.ready;
   return harness;
 }
 
-Map<String, dynamic> _input(ModelRequest request) => jsonDecode(request.messages.single.text) as Map<String, dynamic>;
+Map<String, dynamic> _input(ModelRequest request) =>
+    jsonDecode(request.messages.single.text) as Map<String, dynamic>;
 
 void main() {
   test('conversation sends freeze the current user mode and history never restores it', () async {
@@ -251,7 +288,11 @@ void main() {
     h.permissionMode = AgentPermissionMode.auto;
     h.conversations.select('old');
     expect(h.runtime.permissionMode, AgentPermissionMode.confirm);
-    final work = h.conversations.send('use the selected mode', _hostA, continueHistory: true);
+    final work = h.conversations.send(
+      'use the selected mode',
+      _hostA,
+      continueHistory: true,
+    );
     await entered.future;
     expect(h.runtime.permissionMode, AgentPermissionMode.auto);
     h.permissionMode = AgentPermissionMode.observe;
@@ -282,7 +323,10 @@ void main() {
     expect(h.draft.host, _hostB);
     await h.conversations.saved;
     expect(h.conversations.records.map((record) => record.id).toSet(), {a, b});
-    expect(h.conversations.records.every((record) => record.entries.isEmpty), isTrue);
+    expect(
+      h.conversations.records.every((record) => record.entries.isEmpty),
+      isTrue,
+    );
     expect(h.store.records, isEmpty);
     expect(h.model.requests, isEmpty);
     expect(h.backend.prepared, isEmpty);
@@ -344,7 +388,11 @@ void main() {
       },
     );
     expect(h.conversations.select('a'), isTrue);
-    final work = h.conversations.send('wait for stop', _hostA, continueHistory: true);
+    final work = h.conversations.send(
+      'wait for stop',
+      _hostA,
+      continueHistory: true,
+    );
     await entered.future.timeout(const Duration(seconds: 2));
     expect(h.runtime.busy, isTrue);
     final before = h.conversations.records.map((record) => record.id).toSet();
@@ -369,7 +417,10 @@ void main() {
         _record(
           'restored',
           entries: const [
-            ConversationEntry(kind: ConversationEntryKind.user, text: 'old question'),
+            ConversationEntry(
+              kind: ConversationEntryKind.user,
+              text: 'old question',
+            ),
             ConversationEntry(
               kind: ConversationEntryKind.execution,
               text: 'previously shared projection',
@@ -377,7 +428,10 @@ void main() {
               state: 'running',
               truncated: true,
             ),
-            ConversationEntry(kind: ConversationEntryKind.assistant, text: 'old answer'),
+            ConversationEntry(
+              kind: ConversationEntryKind.assistant,
+              text: 'old answer',
+            ),
           ],
         ),
       ],
@@ -385,7 +439,10 @@ void main() {
     expect(h.model.requests, isEmpty);
     expect(h.runtime.timeline, isEmpty);
     expect(h.conversations.select('restored'), isTrue);
-    expect(h.runtime.messages.map((entry) => entry.text), ['old question', 'old answer']);
+    expect(h.runtime.messages.map((entry) => entry.text), [
+      'old question',
+      'old answer',
+    ]);
     final execution = h.runtime.executions.single;
     expect(execution.archived, isTrue);
     expect(execution.state, 'outcomeUnknown');
@@ -411,18 +468,31 @@ void main() {
       script: (_, _) async* {
         if (step++ == 0) {
           h.routes[_hostA] = _changedRoute;
-          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, calls: [ModelCall('list', 'host_list', {})]));
+          yield ModelMessageComplete(
+            ModelMessage(
+              ModelRole.assistant,
+              calls: [ModelCall('list', 'host_list', {})],
+            ),
+          );
         } else if (step == 2) {
           yield ModelMessageComplete(
             ModelMessage(
               ModelRole.assistant,
               calls: [
-                ModelCall('target', 'diagnostics_collect', {'hostId': _hostA.value, 'template': 'systemSummary'}),
+                ModelCall('target', 'diagnostics_collect', {
+                  'hostId': _hostA.value,
+                  'template': 'systemSummary',
+                }),
               ],
             ),
           );
         } else {
-          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'The host could not connect.'));
+          yield ModelMessageComplete(
+            ModelMessage(
+              ModelRole.assistant,
+              text: 'The host could not connect.',
+            ),
+          );
         }
       },
     );
@@ -433,17 +503,36 @@ void main() {
     expect(h.conversations.current!.routeSignature, _routeA);
     expect(h.store.records.single.host, _hostA);
     expect(h.store.records.single.routeSignature, _routeA);
-    expect(h.conversations.canContinue(_hostA), isFalse, reason: 'a later route cannot bless earlier evidence');
+    expect(
+      h.conversations.canContinue(_hostA),
+      isFalse,
+      reason: 'a later route cannot bless earlier evidence',
+    );
     expect(h.conversations.canContinue(null), isFalse);
-    expect(_input(h.model.requests.first)['targetSelection'], 'discoverFromUserRequest');
+    expect(
+      _input(h.model.requests.first)['targetSelection'],
+      'discoverFromUserRequest',
+    );
   });
 
-  test('host-bound history is not seeded into an unfocused discovery turn', () async {
+  test('host-bound history is never seeded into an unfocused discovery turn without a new conversation', () async {
     final h = await _create(initial: [_record('host-bound')]);
     h.conversations.select('host-bound');
     expect(h.conversations.canContinue(null), isFalse);
-    await h.conversations.send('which host should I use?', null, continueHistory: true);
-    expect(h.conversations.selectedId, isNot('host-bound'));
+    await h.conversations.send(
+      'which host should I use?',
+      null,
+      continueHistory: true,
+    );
+    expect(h.model.requests, isEmpty);
+    expect(h.conversations.selectedId, 'host-bound');
+    expect(h.backend.prepared, isEmpty);
+    h.conversations.newConversation(keepDraft: true);
+    await h.conversations.send(
+      'which host should I use?',
+      null,
+      continueHistory: true,
+    );
     final input = _input(h.model.requests.single);
     expect(input['targetSelection'], 'discoverFromUserRequest');
     expect(input.containsKey('conversationHistory'), isFalse);
@@ -461,13 +550,20 @@ void main() {
     final input = _input(h.model.requests.single);
     expect(input['goal'], 'new question');
     expect(input.containsKey('conversationHistory'), isFalse);
-    expect(h.conversations.current!.entries.map((entry) => entry.text), ['new question', 'A safe answer']);
+    expect(h.conversations.current!.entries.map((entry) => entry.text), [
+      'new question',
+      'A safe answer',
+    ]);
   });
 
   test('explicit matching continuation sends bounded plain history in a fresh protocol context', () async {
     final h = await _create(initial: [_record('old')]);
     h.conversations.select('old');
-    await h.conversations.send('continue question', _hostA, continueHistory: true);
+    await h.conversations.send(
+      'continue question',
+      _hostA,
+      continueHistory: true,
+    );
     expect(h.conversations.selectedId, 'old');
     final request = h.model.requests.single;
     expect(request.messages, hasLength(1));
@@ -479,7 +575,10 @@ void main() {
     final input = _input(request);
     expect(input['goal'], 'continue question');
     final history = input['conversationHistory'] as Map;
-    expect((history['entries'] as List).map((entry) => entry['text']), ['earlier user old', 'earlier answer old']);
+    expect((history['entries'] as List).map((entry) => entry['text']), [
+      'earlier user old',
+      'earlier answer old',
+    ]);
     expect(h.conversations.current!.entries.map((entry) => entry.text), [
       'earlier user old',
       'earlier answer old',
@@ -489,33 +588,56 @@ void main() {
   });
 
   for (final change in ['destination', 'host', 'route', 'missing route']) {
-    test('explicit continuation starts fresh after $change mismatch', () async {
-      final h = await _create(initial: [_record('old')]);
-      h.conversations.select('old');
-      var selectedHost = _hostA;
-      switch (change) {
-        case 'destination':
-          h.profile = _profile(model: 'different-model');
-          h.revision++;
-        case 'host':
-          selectedHost = _hostB;
-        case 'route':
-          h.routes[_hostA] = _changedRoute;
-        case 'missing route':
-          h.routes.remove(_hostA);
-      }
-      expect(h.conversations.canContinue(selectedHost), isFalse);
-      await h.conversations.send('fresh after mismatch', selectedHost, continueHistory: true);
-      expect(h.conversations.selectedId, isNot('old'));
-      expect(h.conversations.current!.destination, h.profile.identity);
-      expect(h.conversations.current!.host, selectedHost);
-      expect(h.conversations.current!.routeSignature, h.routes[selectedHost]);
-      expect(_input(h.model.requests.single).containsKey('conversationHistory'), isFalse);
-      final old = h.conversations.records.singleWhere((record) => record.id == 'old');
-      expect(old.destination, _profile().identity);
-      expect(old.routeSignature, _routeA);
-      expect(old.entries.map((entry) => entry.text), ['earlier user old', 'earlier answer old']);
-    });
+    test(
+      'explicit continuation refuses $change mismatch without a request or history resend',
+      () async {
+        final h = await _create(initial: [_record('old')]);
+        h.conversations.select('old');
+        var selectedHost = _hostA;
+        switch (change) {
+          case 'destination':
+            h.profile = _profile(model: 'different-model');
+            h.revision++;
+          case 'host':
+            selectedHost = _hostB;
+          case 'route':
+            h.routes[_hostA] = _changedRoute;
+          case 'missing route':
+            h.routes.remove(_hostA);
+        }
+        expect(h.conversations.canContinue(selectedHost), isFalse);
+        await h.conversations.send(
+          'fresh after mismatch',
+          selectedHost,
+          continueHistory: true,
+        );
+        expect(h.model.requests, isEmpty);
+        expect(h.conversations.selectedId, 'old');
+        h.conversations.newConversation(keepDraft: true);
+        await h.conversations.send(
+          'fresh after mismatch',
+          selectedHost,
+          continueHistory: true,
+        );
+        expect(h.conversations.selectedId, isNot('old'));
+        expect(h.conversations.current!.destination, h.profile.identity);
+        expect(h.conversations.current!.host, selectedHost);
+        expect(h.conversations.current!.routeSignature, h.routes[selectedHost]);
+        expect(
+          _input(h.model.requests.single).containsKey('conversationHistory'),
+          isFalse,
+        );
+        final old = h.conversations.records.singleWhere(
+          (record) => record.id == 'old',
+        );
+        expect(old.destination, _profile().identity);
+        expect(old.routeSignature, _routeA);
+        expect(old.entries.map((entry) => entry.text), [
+          'earlier user old',
+          'earlier answer old',
+        ]);
+      },
+    );
   }
 
   test('oversized discovery keeps the draft without copying a prior conversation into the new record', () async {
@@ -523,7 +645,10 @@ void main() {
     await h.conversations.send('previous host-bound question', _hostA);
     final previous = h.conversations.selectedId;
     h.composer.setGoal('check another server');
-    h.backend.hosts = [for (var index = 0; index < 1001; index++) AgentHost(HostId('host-$index'), 'Host $index')];
+    h.backend.hosts = [
+      for (var index = 0; index < 1001; index++)
+        AgentHost(HostId('host-$index'), 'Host $index'),
+    ];
     await h.conversations.send('check another server', null);
     await h.conversations.flush();
     expect(h.runtime.error, 'scopeLimit');
@@ -534,12 +659,15 @@ void main() {
     expect(h.model.requests, hasLength(1));
   });
 
-  test('tools disabled removes host binding and prevents host-derived history continuation', () async {
+  test('tools disabled refuses host-bound history continuation until a new conversation starts', () async {
     final h = await _create(initial: [_record('old')]);
     h.conversations.select('old');
     h.profile = _profile(tools: false);
     await h.conversations.send('plain question', _hostA, continueHistory: true);
-    expect(h.conversations.selectedId, isNot('old'));
+    expect(h.model.requests, isEmpty);
+    expect(h.conversations.selectedId, 'old');
+    h.conversations.newConversation(keepDraft: true);
+    await h.conversations.send('plain question', _hostA, continueHistory: true);
     expect(h.conversations.current!.host, isNull);
     expect(h.conversations.current!.routeSignature, isNull);
     expect(h.model.requests.single.messages.single.text, 'plain question');
@@ -564,15 +692,31 @@ void main() {
     expect(current.routeSignature, _routeB);
     expect(current.entries.first.text, 'actual first question');
     expect(h.conversations.canContinue(_hostB), isTrue);
-    expect(_input(h.model.requests.single).containsKey('conversationHistory'), isFalse);
+    expect(
+      _input(h.model.requests.single).containsKey('conversationHistory'),
+      isFalse,
+    );
   });
 
   test('snapshots retain only user-shared execution text and status, never raw buffers or command metadata', () async {
     final h = await _create();
     await h.conversations.send('safe question', _hostA);
-    final output = h.runtime.outputs.create('synthetic-owner', _hostA, h.profile.identity, 0);
-    h.runtime.outputs.append(output, false, Uint8List.fromList(utf8.encode('synthetic-private-stdout')));
-    h.runtime.outputs.append(output, true, Uint8List.fromList(utf8.encode('synthetic-private-stderr')));
+    final output = h.runtime.outputs.create(
+      'synthetic-owner',
+      _hostA,
+      h.profile.identity,
+      0,
+    );
+    h.runtime.outputs.append(
+      output,
+      false,
+      Uint8List.fromList(utf8.encode('synthetic-private-stdout')),
+    );
+    h.runtime.outputs.append(
+      output,
+      true,
+      Uint8List.fromList(utf8.encode('synthetic-private-stderr')),
+    );
     output.dropped = 1;
     final withheld =
         AgentExecution(
@@ -595,11 +739,14 @@ void main() {
           )
           ..state = 'running'
           ..output = output
-          ..sharedText = 'API_KEY=synthetic-shared-secret\nshared readable line';
+          ..sharedText =
+              'API_KEY=synthetic-shared-secret\nshared readable line';
     h.runtime.projectedTimeline = [...h.runtime.timeline, withheld, shared];
     await h.conversations.flush();
     final record = h.store.records.single;
-    final executions = record.entries.where((entry) => entry.kind == ConversationEntryKind.execution).toList();
+    final executions = record.entries
+        .where((entry) => entry.kind == ConversationEntryKind.execution)
+        .toList();
     expect(executions, hasLength(2));
     expect(executions.first.text, isEmpty);
     expect(executions.first.state, 'completed');
@@ -607,7 +754,10 @@ void main() {
     expect(executions.last.text, 'API_KEY=[redacted]\nshared readable line');
     expect(executions.last.state, 'outcomeUnknown');
     expect(executions.every((entry) => entry.truncated), isTrue);
-    final readable = [record.title, for (final entry in record.entries) entry.text].join('\n');
+    final readable = [
+      record.title,
+      for (final entry in record.entries) entry.text,
+    ].join('\n');
     for (final private in [
       'synthetic-private-stdout',
       'synthetic-private-stderr',
@@ -629,14 +779,20 @@ void main() {
     await h.conversations.saved;
     final id = h.conversations.selectedId;
     expect(h.conversations.saveFailed, isTrue);
-    expect(h.conversations.current!.entries.map((entry) => entry.text), ['retain this question', 'A safe answer']);
+    expect(h.conversations.current!.entries.map((entry) => entry.text), [
+      'retain this question',
+      'A safe answer',
+    ]);
     expect(store.records, isEmpty);
     h.composer.setGoal('unsent retry draft');
     store.failSave = false;
     await h.conversations.retrySave();
     expect(h.conversations.saveFailed, isFalse);
     expect(store.records.single.id, id);
-    expect(store.records.single.entries.map((entry) => entry.text), ['retain this question', 'A safe answer']);
+    expect(store.records.single.entries.map((entry) => entry.text), [
+      'retain this question',
+      'A safe answer',
+    ]);
     expect(h.draft.goal, 'unsent retry draft');
     expect(h.model.requests, hasLength(1));
   });
@@ -653,24 +809,36 @@ void main() {
     });
     final olderSave = h.conversations.retrySave();
     await h.store.saveStarted!.future.timeout(const Duration(seconds: 2));
-    h.runtime.projectedTimeline = [AgentChatEntry('user', 'x' * maxConversationTextBytes)];
+    h.runtime.projectedTimeline = [
+      AgentChatEntry('user', 'x' * maxConversationTextBytes),
+    ];
     final validationFailed = Completer<void>();
     void observeValidation() {
-      if (h.conversations.saveFailed && !validationFailed.isCompleted) validationFailed.complete();
+      if (h.conversations.saveFailed && !validationFailed.isCompleted)
+        validationFailed.complete();
     }
 
     h.conversations.addListener(observeValidation);
-    final newerFlush = h.conversations.flush().then<Object?>((_) => null, onError: (Object error) => error);
+    final newerFlush = h.conversations.flush().then<Object?>(
+      (_) => null,
+      onError: (Object error) => error,
+    );
     await validationFailed.future.timeout(const Duration(seconds: 2));
     h.conversations.removeListener(observeValidation);
     await h.conversations.retrySave();
     expect(h.conversations.saveFailed, isTrue);
-    expect(h.conversations.current!.entries.single.text.length, maxConversationTextBytes);
+    expect(
+      h.conversations.current!.entries.single.text.length,
+      maxConversationTextBytes,
+    );
     h.store.saveGate!.complete();
     await olderSave;
     expect(await newerFlush, isA<StateError>());
     expect(h.conversations.saveFailed, isTrue);
-    expect(h.store.records.single.entries.map((entry) => entry.text), accepted.map((entry) => entry.text));
+    expect(
+      h.store.records.single.entries.map((entry) => entry.text),
+      accepted.map((entry) => entry.text),
+    );
     h.runtime.projectedTimeline = null;
     await h.conversations.flush();
     expect(h.conversations.saveFailed, isFalse);
@@ -694,7 +862,9 @@ void main() {
       );
     }
 
-    final h = await _create(initial: [at('older', olderTime), at('newer', newerTime)]);
+    final h = await _create(
+      initial: [at('older', olderTime), at('newer', newerTime)],
+    );
     h.conversations.select('older');
     await h.conversations.flush();
     expect(h.conversations.current!.updatedAt, olderTime);
@@ -703,10 +873,22 @@ void main() {
     expect(h.conversations.current!.updatedAt, newerTime);
     h.conversations.newConversation();
     await h.conversations.saved;
-    expect(h.conversations.records.map((record) => record.id), ['newer', 'older']);
-    expect(h.store.records.singleWhere((record) => record.id == 'older').updatedAt, olderTime);
-    expect(h.store.records.singleWhere((record) => record.id == 'newer').updatedAt, newerTime);
-    final afterRetention = boundedConversationRecords(h.store.records, now: olderTime.add(const Duration(days: 31)));
+    expect(h.conversations.records.map((record) => record.id), [
+      'newer',
+      'older',
+    ]);
+    expect(
+      h.store.records.singleWhere((record) => record.id == 'older').updatedAt,
+      olderTime,
+    );
+    expect(
+      h.store.records.singleWhere((record) => record.id == 'newer').updatedAt,
+      newerTime,
+    );
+    final afterRetention = boundedConversationRecords(
+      h.store.records,
+      now: olderTime.add(const Duration(days: 31)),
+    );
     expect(afterRetention.map((record) => record.id), ['newer']);
     expect(h.model.requests, isEmpty);
   });
@@ -717,38 +899,56 @@ void main() {
     expect(h.conversations.loadFailed, isTrue);
     await h.conversations.send('new in-memory question', _hostB);
     final selected = h.conversations.selectedId;
-    expect(h.conversations.current!.entries.first.text, 'new in-memory question');
+    expect(
+      h.conversations.current!.entries.first.text,
+      'new in-memory question',
+    );
     expect(store.attempts, 0);
     await expectLater(h.conversations.flush(), throwsStateError);
     store.failLoad = false;
     await h.conversations.reload();
     expect(h.conversations.loadFailed, isFalse);
     expect(h.conversations.selectedId, selected);
-    expect(h.conversations.records.map((record) => record.id).toSet(), {'disk', selected});
-    expect(h.conversations.current!.entries.first.text, 'new in-memory question');
+    expect(h.conversations.records.map((record) => record.id).toSet(), {
+      'disk',
+      selected,
+    });
+    expect(
+      h.conversations.current!.entries.first.text,
+      'new in-memory question',
+    );
     await h.conversations.retrySave();
-    expect(store.records.map((record) => record.id).toSet(), {'disk', selected});
+    expect(store.records.map((record) => record.id).toSet(), {
+      'disk',
+      selected,
+    });
     expect(h.model.requests, hasLength(1));
   });
 
-  test('flush and restart never persist unsent drafts or draft-only conversations', () async {
-    final h = await _create();
-    await h.conversations.send('sent question', _hostA);
-    final sentId = h.conversations.selectedId;
-    h.composer.setGoal('unsent follow-up must remain local');
-    h.composer.selectHost(_hostB);
-    h.conversations.newConversation();
-    h.composer.setGoal('draft-only question must remain local');
-    h.conversations.newConversation();
-    await h.conversations.flush();
-    expect(h.store.records, hasLength(1));
-    expect(h.store.records.single.id, sentId);
-    expect(h.store.records.single.entries.map((entry) => entry.text), ['sent question', 'A safe answer']);
-    final reopened = await _create(initial: h.store.records);
-    expect(reopened.draft.goal, isEmpty);
-    expect(reopened.conversations.records, hasLength(1));
-    expect(reopened.model.requests, isEmpty);
-  });
+  test(
+    'flush and restart never persist unsent drafts or draft-only conversations',
+    () async {
+      final h = await _create();
+      await h.conversations.send('sent question', _hostA);
+      final sentId = h.conversations.selectedId;
+      h.composer.setGoal('unsent follow-up must remain local');
+      h.composer.selectHost(_hostB);
+      h.conversations.newConversation();
+      h.composer.setGoal('draft-only question must remain local');
+      h.conversations.newConversation();
+      await h.conversations.flush();
+      expect(h.store.records, hasLength(1));
+      expect(h.store.records.single.id, sentId);
+      expect(h.store.records.single.entries.map((entry) => entry.text), [
+        'sent question',
+        'A safe answer',
+      ]);
+      final reopened = await _create(initial: h.store.records);
+      expect(reopened.draft.goal, isEmpty);
+      expect(reopened.conversations.records, hasLength(1));
+      expect(reopened.model.requests, isEmpty);
+    },
+  );
 
   test('continuing at entry capacity prunes whole old turns and retains the latest turn', () async {
     final h = await _create(
@@ -757,28 +957,150 @@ void main() {
           'full',
           entries: [
             for (var i = 0; i < maxConversationEntries ~/ 2; i++) ...[
-              ConversationEntry(kind: ConversationEntryKind.user, text: 'old user $i'),
-              ConversationEntry(kind: ConversationEntryKind.assistant, text: 'old answer $i'),
+              ConversationEntry(
+                kind: ConversationEntryKind.user,
+                text: 'old user $i',
+              ),
+              ConversationEntry(
+                kind: ConversationEntryKind.assistant,
+                text: 'old answer $i',
+              ),
             ],
           ],
         ),
       ],
     );
     h.conversations.select('full');
-    await h.conversations.send('latest user text', _hostA, continueHistory: true);
+    await h.conversations.send(
+      'latest user text',
+      _hostA,
+      continueHistory: true,
+    );
     final retained = h.conversations.current!;
     expect(retained.id, 'full');
     expect(retained.historyTruncated, isTrue);
     expect(retained.entries, hasLength(maxConversationEntries));
     expect(retained.entries.first.kind, ConversationEntryKind.user);
     expect(retained.entries.first.text, 'old user 1');
-    expect(retained.entries[retained.entries.length - 2].text, 'latest user text');
+    expect(
+      retained.entries[retained.entries.length - 2].text,
+      'latest user text',
+    );
     expect(retained.entries.last.text, 'A safe answer');
     expect(h.store.records.single.historyTruncated, isTrue);
     expect(h.store.records.single.entries, hasLength(maxConversationEntries));
-    final history = _input(h.model.requests.single)['conversationHistory'] as Map;
+    final history =
+        _input(h.model.requests.single)['conversationHistory'] as Map;
     expect((history['entries'] as List).length, lessThanOrEqualTo(32));
     expect(history['truncated'], isTrue);
+  });
+
+  test('regenerate replaces only the answer without tools, approvals or private output', () async {
+    final h = await _create(
+      initial: [
+        _record(
+          'regen',
+          entries: const [
+            ConversationEntry(
+              kind: ConversationEntryKind.user,
+              text: 'explain the load',
+            ),
+            ConversationEntry(
+              kind: ConversationEntryKind.execution,
+              capability: 'agent.diagnose',
+              state: 'completed',
+              exitCode: 0,
+              text: 'Only shared output',
+              executionId: '0123456789abcdef0123456789abcdef',
+            ),
+            ConversationEntry(
+              kind: ConversationEntryKind.assistant,
+              text: 'old answer',
+            ),
+          ],
+        ),
+      ],
+    );
+    h.conversations.select('regen');
+    expect(h.conversations.canRegenerate, isTrue);
+    expect(await h.conversations.regenerate(_hostA), isTrue);
+    final request = h.model.requests.single;
+    expect(request.tools, isEmpty);
+    final input = _input(request);
+    expect(input['responseMode'], 'answerOnly');
+    expect((input['conversationHistory'] as Map)['entries'], isNotEmpty);
+    expect(h.backend.prepared, isEmpty);
+    final entries = h.conversations.current!.entries;
+    expect(entries.map((entry) => entry.text), [
+      'explain the load',
+      'Only shared output',
+      'A safe answer',
+    ]);
+    expect(entries[1].executionId, '0123456789abcdef0123456789abcdef');
+    await h.conversations.flush();
+    expect(
+      h.store.records.single.entries[1].executionId,
+      '0123456789abcdef0123456789abcdef',
+    );
+  });
+
+  test('withdraw restores the last question and keeps executed records out of the next context', () async {
+    final h = await _create(
+      initial: [
+        _record(
+          'turn',
+          entries: const [
+            ConversationEntry(
+              kind: ConversationEntryKind.user,
+              text: 'check disk',
+            ),
+            ConversationEntry(
+              kind: ConversationEntryKind.execution,
+              capability: 'agent.execute',
+              state: 'completed',
+              text: 'shared disk output',
+              executionId: '0123456789abcdef0123456789abcdef',
+            ),
+            ConversationEntry(
+              kind: ConversationEntryKind.assistant,
+              text: 'disk answer',
+            ),
+          ],
+        ),
+      ],
+    );
+    h.conversations.select('turn');
+    expect(h.conversations.canWithdraw, isTrue);
+    expect(h.conversations.withdrawLastTurn(), isTrue);
+    expect(h.draft.goal, 'check disk');
+    expect(h.conversations.canWithdraw, isFalse);
+    final retracted = h.conversations.current!.entries;
+    expect(retracted.every((entry) => entry.retracted), isTrue);
+    expect(
+      h.runtime.timeline.whereType<AgentExecution>().single.retracted,
+      isTrue,
+    );
+    expect(
+      h.runtime.timeline.whereType<AgentExecution>().single.sharedText,
+      'shared disk output',
+    );
+    h.composer.setGoal('follow up after undo');
+    await h.conversations.send(
+      'follow up after undo',
+      _hostA,
+      continueHistory: true,
+    );
+    final input = _input(h.model.requests.single);
+    expect((input['conversationHistory'] as Map)['entries'], isEmpty);
+    expect(h.backend.prepared, isEmpty);
+    final answer = h.conversations.current!.entries.last;
+    expect(answer.text, 'A safe answer');
+    expect(
+      h.conversations.current!.entries.any(
+        (entry) => entry.text == 'disk answer',
+      ),
+      isTrue,
+    );
   });
 
   test('deleting an inactive conversation preserves current draft and deleting current clears it', () async {

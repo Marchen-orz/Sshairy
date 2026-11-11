@@ -25,7 +25,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigEndpoint => 'API base URL';
 
   @override
-  String get aiConfigEndpointHint => 'Include the API base path, such as /v1. HTTPS or exact local loopback HTTP only.';
+  String get aiConfigEndpointHint =>
+      'Include the API base path, such as /v1. HTTPS or exact local loopback HTTP only.';
 
   @override
   String get aiConfigModel => 'Model';
@@ -46,22 +47,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigKeyLoading => 'Checking secure storage…';
 
   @override
-  String get aiConfigKeyLoadFailed => 'Could not check the API key in secure storage.';
+  String get aiConfigKeyLoadFailed =>
+      'Could not check the API key in secure storage.';
 
   @override
-  String get aiConfigKeySaved => 'A key is saved for this destination. Leave the field empty to keep it.';
+  String get aiConfigKeySaved =>
+      'A key is saved for this destination. Leave the field empty to keep it.';
 
   @override
   String get aiConfigKeyMissing => 'No API key saved for this destination.';
 
   @override
-  String get aiConfigKeyRemoved => 'The saved key will be removed when you save.';
+  String get aiConfigKeyRemoved =>
+      'The saved key will be removed when you save.';
 
   @override
   String get aiConfigRemoveKey => 'Remove saved key';
 
   @override
-  String get aiConfigInvalid => 'Check the API address, model and token limits.';
+  String get aiConfigInvalid =>
+      'Check the API address, model and token limits.';
 
   @override
   String get aiConfigSaveFailed =>
@@ -76,7 +81,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'AI configuration could not be read. AI is disabled and the existing file is protected.';
 
   @override
-  String get aiConfigConflict => 'AI settings changed elsewhere. Cancel to reload before saving.';
+  String get aiConfigConflict =>
+      'AI settings changed elsewhere. Cancel to reload before saving.';
 
   @override
   String deleteHostsConfirm(int count) {
@@ -103,7 +109,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noHostsInGroup => 'No hosts in this group';
 
   @override
-  String get hostEmptyHint => 'Add a host or import saved connections to get started.';
+  String get hostEmptyHint =>
+      'Add a host or import saved connections to get started.';
 
   @override
   String get moveToGroup => 'Move to group…';
@@ -196,7 +203,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Import failed and some new credentials could not be removed. Check OS secure storage before retrying.';
 
   @override
-  String get importSourceChanged => 'The source changed or is unreadable. Choose it again.';
+  String get importSourceChanged =>
+      'The source changed or is unreadable. Choose it again.';
 
   @override
   String get importGuideOpenSsh =>
@@ -223,7 +231,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose conn inside the FinalShell program folder, or an export folder containing *_connect_config.json files. Extract archives first. Choose portable or custom installations manually.';
 
   @override
-  String get importGuideTabby => 'Choose the Tabby config.yaml configuration file.';
+  String get importGuideTabby =>
+      'Choose the Tabby config.yaml configuration file.';
 
   @override
   String get importGuideCsv =>
@@ -299,7 +308,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostPasswordLoading => 'Loading saved password…';
 
   @override
-  String get hostPasswordLoadFailed => 'Could not read the saved password. Unlock secure storage and retry.';
+  String get hostPasswordLoadFailed =>
+      'Could not read the saved password. Unlock secure storage and retry.';
 
   @override
   String get hostPasswordRetry => 'Retry password loading';
@@ -311,7 +321,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hostPasswordKeep => 'Keep saved password';
 
   @override
-  String get hostPasswordRemovalPending => 'The saved password will be removed when you save.';
+  String get hostPasswordRemovalPending =>
+      'The saved password will be removed when you save.';
 
   @override
   String get hostPasswordSaveFailed =>
@@ -522,7 +533,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get confirmPaste => 'Confirm multi-line paste';
 
   @override
-  String get completionTranslation => 'Translate completion descriptions automatically';
+  String get completionTranslation =>
+      'Translate completion descriptions automatically';
 
   @override
   String get completionTranslationHint =>
@@ -556,16 +568,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get translationOpenAi => 'OpenAI compatible';
 
   @override
-  String get translationMyMemoryHint => 'No key required · 5,000 characters/day, or 50,000 with a valid email';
+  String get translationMyMemoryHint =>
+      'No key required · 5,000 characters/day, or 50,000 with a valid email';
 
   @override
   String get translationEmail => 'Email (optional)';
 
   @override
-  String get translationEmailHint => 'Sent only to MyMemory so they can contact you if needed.';
+  String get translationEmailHint =>
+      'Sent only to MyMemory so they can contact you if needed.';
 
   @override
-  String get translationEmailInvalid => 'Enter a valid email address of up to 254 ASCII characters.';
+  String get translationEmailInvalid =>
+      'Enter a valid email address of up to 254 ASCII characters.';
 
   @override
   String get translationDeepLFree => 'Use DeepL API Free';
@@ -577,7 +592,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get translationEndpoint => 'API base URL';
 
   @override
-  String get translationEndpointHint => 'For example, https://api.example.com/v1 · omit /chat/completions';
+  String get translationEndpointHint =>
+      'For example, https://api.example.com/v1 · omit /chat/completions';
 
   @override
   String get translationModel => 'Model';
@@ -601,22 +617,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get translationKeyLoading => 'Checking secure storage…';
 
   @override
-  String get translationKeyLoadFailed => 'Could not check secure storage. Cancel to try again.';
+  String get translationKeyLoadFailed =>
+      'Could not check secure storage. Cancel to try again.';
 
   @override
-  String get translationEndpointInvalid => 'Use HTTPS, or HTTP on localhost, without credentials, query or fragment.';
+  String get translationEndpointInvalid =>
+      'Use HTTPS, or HTTP on localhost, without credentials, query or fragment.';
 
   @override
-  String get translationModelInvalid => 'Enter a model name of up to 128 letters, digits, ., _, :, / or -.';
+  String get translationModelInvalid =>
+      'Enter a model name of up to 128 letters, digits, ., _, :, / or -.';
 
   @override
-  String get translationRegionInvalid => 'Use up to 64 lowercase letters, digits or hyphens.';
+  String get translationRegionInvalid =>
+      'Use up to 64 lowercase letters, digits or hyphens.';
 
   @override
-  String get translationConflict => 'Settings changed. Cancel your edits before trying again.';
+  String get translationConflict =>
+      'Settings changed. Cancel your edits before trying again.';
 
   @override
-  String get translationSaveFailed => 'Could not save. A key change may already have been saved to secure storage.';
+  String get translationSaveFailed =>
+      'Could not save. A key change may already have been saved to secure storage.';
 
   @override
   String get connectTimeout => 'Connect timeout';
@@ -749,7 +771,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errKeyUnsupported => 'Not a supported private key';
 
   @override
-  String get errKeyNeedsPassphrase => 'This key is encrypted; enter its passphrase';
+  String get errKeyNeedsPassphrase =>
+      'This key is encrypted; enter its passphrase';
 
   @override
   String get errKeyWrongPassphrase => 'Wrong passphrase';
@@ -1041,10 +1064,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errSizeMismatch => 'Size check failed; nothing was published';
 
   @override
-  String get errTargetChanged => 'The target changed meanwhile and was left alone';
+  String get errTargetChanged =>
+      'The target changed meanwhile and was left alone';
 
   @override
-  String get errReplaceUnsupported => 'This server cannot replace files safely; the original was kept';
+  String get errReplaceUnsupported =>
+      'This server cannot replace files safely; the original was kept';
 
   @override
   String get errSourceMissing => 'The source is gone';
@@ -1104,16 +1129,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get proxyPassword => 'Proxy password';
 
   @override
-  String get errProxyAuth => 'Proxy authentication failed. Check the username and password.';
+  String get errProxyAuth =>
+      'Proxy authentication failed. Check the username and password.';
 
   @override
   String get errRouteLoop => 'The jump host chain contains a loop.';
 
   @override
-  String get errRouteMissing => 'A jump host no longer exists. Edit the connection route.';
+  String get errRouteMissing =>
+      'A jump host no longer exists. Edit the connection route.';
 
   @override
-  String get errRouteTooLong => 'A connection route can contain at most 8 hosts.';
+  String get errRouteTooLong =>
+      'A connection route can contain at most 8 hosts.';
 
   @override
   String get errRouteInvalid => 'The connection route is invalid.';
@@ -1140,10 +1168,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get legacyAlgorithms => 'Legacy algorithms';
 
   @override
-  String get legacyAlgorithmsHint => 'Allow SHA-1 and CBC only for this host when a legacy server requires them.';
+  String get legacyAlgorithmsHint =>
+      'Allow SHA-1 and CBC only for this host when a legacy server requires them.';
 
   @override
-  String get errHostSave => 'Could not save this host. Check access to the data directory and secure storage.';
+  String get errHostSave =>
+      'Could not save this host. Check access to the data directory and secure storage.';
 
   @override
   String get snippets => 'Snippets';
@@ -1161,7 +1191,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get snippetText => 'Command text';
 
   @override
-  String get snippetUnavailable => 'The target terminal is unavailable. Nothing was sent.';
+  String get snippetUnavailable =>
+      'The target terminal is unavailable. Nothing was sent.';
 
   @override
   String get snippetInvalid => 'Enter a name and command of at most 64 KiB.';
@@ -1249,10 +1280,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pauseFolderUnsupported => 'Folders cannot be paused';
 
   @override
-  String get errSourceChanged => 'The source changed, so the transfer cannot continue';
+  String get errSourceChanged =>
+      'The source changed, so the transfer cannot continue';
 
   @override
-  String get errPartInvalid => 'The partial file is missing or no longer matches the source';
+  String get errPartInvalid =>
+      'The partial file is missing or no longer matches the source';
 
   @override
   String leftoverPart(String path) {
@@ -1333,7 +1366,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fwErrLost => 'Connection lost';
 
   @override
-  String get fwErrStop => 'Could not confirm the port was released; the connection is kept';
+  String get fwErrStop =>
+      'Could not confirm the port was released; the connection is kept';
 
   @override
   String get fwErrTarget => 'Cannot reach the destination';
@@ -1368,7 +1402,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get configPreserved => 'The file has been kept. Check or restore it in the data folder, then retry.';
+  String get configPreserved =>
+      'The file has been kept. Check or restore it in the data folder, then retry.';
 
   @override
   String get openDataFolder => 'Open data folder';
@@ -1409,10 +1444,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sshConfigPattern => 'Host pattern provides defaults only';
 
   @override
-  String get sshConfigIncludeOutside => 'Include is outside the selected folder';
+  String get sshConfigIncludeOutside =>
+      'Include is outside the selected folder';
 
   @override
-  String get sshConfigIncludeLimit => 'Include file, depth or size limit reached';
+  String get sshConfigIncludeLimit =>
+      'Include file, depth or size limit reached';
 
   @override
   String get sshConfigIncludeMissing => 'Included file could not be read';
@@ -1442,7 +1479,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sshConfigIdentity => 'Private key path could not be resolved';
 
   @override
-  String get sshConfigExtraIdentity => 'Only the first IdentityFile is supported';
+  String get sshConfigExtraIdentity =>
+      'Only the first IdentityFile is supported';
 
   @override
   String get sshConfigHostLimit => 'Too many hosts in the config';
@@ -1469,7 +1507,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get configRestore => 'Restore';
 
   @override
-  String get configRestoreFailed => 'Could not restore the snapshot. The current file was preserved.';
+  String get configRestoreFailed =>
+      'Could not restore the snapshot. The current file was preserved.';
 
   @override
   String configSnapshotRevision(int revision) {
@@ -1530,7 +1569,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get errSave => 'Could not save. Check access to the data directory and secure storage.';
+  String get errSave =>
+      'Could not save. Check access to the data directory and secure storage.';
 
   @override
   String get monitor => 'Server monitor';
@@ -1575,7 +1615,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get monitorUnsupported => 'This server has no /proc, so there is nothing to show';
+  String get monitorUnsupported =>
+      'This server has no /proc, so there is nothing to show';
 
   @override
   String get monitorFailed => 'Could not read stats; retrying';
@@ -1744,7 +1785,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importUnreadable => 'Could not read this file';
 
   @override
-  String get importPpk => 'PuTTY .ppk key not used; convert it to OpenSSH format first';
+  String get importPpk =>
+      'PuTTY .ppk key not used; convert it to OpenSSH format first';
 
   @override
   String get proxies => 'Proxies';
@@ -1771,7 +1813,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get proxyInvalid => 'Check the proxy address, port and username.';
 
   @override
-  String get proxyChanged => 'Configuration changed. Reopen this editor and try again.';
+  String get proxyChanged =>
+      'Configuration changed. Reopen this editor and try again.';
 
   @override
   String get proxyCleanupFailed =>
@@ -1802,10 +1845,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get logDisabled => 'Diagnostic recording is off.';
 
   @override
-  String get logWriterFailed => 'Diagnostic recording stopped after a write failure.';
+  String get logWriterFailed =>
+      'Diagnostic recording stopped after a write failure.';
 
   @override
-  String get logReadFailed => 'Could not read diagnostic records. Refresh to retry.';
+  String get logReadFailed =>
+      'Could not read diagnostic records. Refresh to retry.';
 
   @override
   String logSkipped(int count) {
@@ -1904,7 +1949,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get backgroundImageUnreadable => 'Could not read the image.';
 
   @override
-  String get backgroundGalleryFull => 'Saved backgrounds are full. Remove one to add another.';
+  String get backgroundGalleryFull =>
+      'Saved backgrounds are full. Remove one to add another.';
 
   @override
   String backgroundImageItem(int number) {
@@ -2281,10 +2327,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentClear => 'Clear conversation';
 
   @override
-  String get aiAgentConfigure => 'Configure a model and enable AI in Settings to begin.';
+  String get aiAgentConfigure =>
+      'Configure a model and enable AI in Settings to begin.';
 
   @override
-  String get aiAgentConfigurationFailed => 'AI configuration could not be read. Review it in Settings.';
+  String get aiAgentConfigurationFailed =>
+      'AI configuration could not be read. Review it in Settings.';
 
   @override
   String get aiAgentChooseHost => 'Choose a server';
@@ -2368,7 +2416,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Only the text below will be sent to the selected model. Edit it to remove private data.';
 
   @override
-  String get aiAgentProjectionTooLarge => 'This text exceeds the request limit. Shorten it before sharing.';
+  String get aiAgentProjectionTooLarge =>
+      'This text exceeds the request limit. Shorten it before sharing.';
 
   @override
   String get aiAgentKeepLocal => 'Keep local';
@@ -2386,7 +2435,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentWelcome => 'What would you like to work on?';
 
   @override
-  String get aiAgentWelcomeHint => 'Describe a task. Airy uses the focused server or asks which one you mean.';
+  String get aiAgentWelcomeHint =>
+      'Describe a task. Airy uses the focused server or asks which one you mean.';
 
   @override
   String get aiAgentSetupTitle => 'Your SSH assistant';
@@ -2398,7 +2448,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentExampleExplain => 'Explain a command';
 
   @override
-  String get aiAgentExampleExplainGoal => 'Explain how to read a shell command and spot its side effects.';
+  String get aiAgentExampleExplainGoal =>
+      'Explain how to read a shell command and spot its side effects.';
 
   @override
   String get aiAgentExampleDiagnose => 'Check server health';
@@ -2414,7 +2465,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentScopeDetails => 'Data and command permissions';
 
   @override
-  String get aiAgentScopeSummary => 'Fixed diagnostics allowed · commands ask first';
+  String get aiAgentScopeSummary =>
+      'Fixed diagnostics allowed · commands ask first';
 
   @override
   String get aiAgentTextOnly => 'Text only';
@@ -2432,19 +2484,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentExecutionFailed => 'Finished with errors';
 
   @override
-  String get aiAgentErrorConfiguration => 'Review the model configuration and API key in Settings.';
+  String get aiAgentErrorConfiguration =>
+      'Review the model configuration and API key in Settings.';
 
   @override
-  String get aiAgentErrorNetwork => 'Could not reach the model. Check the connection and try a new task.';
+  String get aiAgentErrorNetwork =>
+      'Could not reach the model. Check the connection and try a new task.';
 
   @override
-  String get aiAgentErrorHttp => 'The model service rejected this request. Check its credentials, quota and settings.';
+  String get aiAgentErrorHttp =>
+      'The model service rejected this request. Check its credentials, quota and settings.';
 
   @override
-  String get aiAgentErrorTimeout => 'The request reached its time limit. Review the task before trying again.';
+  String get aiAgentErrorTimeout =>
+      'The request reached its time limit. Review the task before trying again.';
 
   @override
-  String get aiAgentErrorLimit => 'This task reached its context, output or step limit. Start a smaller task.';
+  String get aiAgentErrorLimit =>
+      'This task reached its context, output or step limit. Start a smaller task.';
 
   @override
   String get aiAgentErrorScope =>
@@ -2459,7 +2516,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'The model returned an incomplete or unsupported response. No partial tool request was executed.';
 
   @override
-  String get aiAgentErrorUnsupported => 'This server does not support the current command adapter.';
+  String get aiAgentErrorUnsupported =>
+      'This server does not support the current command adapter.';
 
   @override
   String get aiConfigAdvanced => 'Model capabilities and limits';
@@ -2475,7 +2533,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigCompletion => 'AI suggestions';
 
   @override
-  String get aiConfigTerminalScope => 'Allow terminal input and known directory to be sent for these SSH hosts';
+  String get aiConfigTerminalScope =>
+      'Allow terminal input and known directory to be sent for these SSH hosts';
 
   @override
   String get aiConfigTerminalNoHosts =>
@@ -2489,7 +2548,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Confirm the input environment yourself. Disable suggestions inside su, tmux or nested SSH; the client cannot verify the inner identity.';
 
   @override
-  String get aiConfigCompletionHistory => 'Use recent commands from the same session';
+  String get aiConfigCompletionHistory =>
+      'Use recent commands from the same session';
 
   @override
   String get aiConfigCompletionHint =>
@@ -2525,13 +2585,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalAiFailed => 'Could not generate a command. Try again.';
 
   @override
-  String get terminalAiChanged => 'The terminal context changed. Reopen to start a new request.';
+  String get terminalAiChanged =>
+      'The terminal context changed. Reopen to start a new request.';
 
   @override
-  String get terminalAiClarify => 'Add more detail, or use Airy for a task with several steps.';
+  String get terminalAiClarify =>
+      'Add more detail, or use Airy for a task with several steps.';
 
   @override
-  String get terminalAiClearPrompt => 'Clear the terminal input before inserting this command.';
+  String get terminalAiClearPrompt =>
+      'Clear the terminal input before inserting this command.';
 
   @override
   String get terminalAiInsert => 'Insert command';
@@ -2554,10 +2617,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aiAgentHistoryTargetChanged => 'The server or model destination changed. Start a new conversation.';
+  String get aiAgentHistoryTargetChanged =>
+      'The server or model destination changed. Start a new conversation.';
 
   @override
-  String get aiAgentHistoryLoadFailed => 'Could not load conversation history. Try again.';
+  String get aiAgentHistoryLoadFailed =>
+      'Could not load conversation history. Try again.';
 
   @override
   String get aiAgentHistorySaveFailed =>
@@ -2567,19 +2632,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentHistoryRetry => 'Retry';
 
   @override
-  String get aiAgentHistoryTruncated => 'Some conversation history was trimmed to stay within storage limits.';
+  String get aiAgentHistoryTruncated =>
+      'Some conversation history was trimmed to stay within storage limits.';
 
   @override
-  String get aiAgentHistoryOutputUnavailable => 'Raw tool output is not saved in history.';
+  String get aiAgentHistoryOutputUnavailable =>
+      'Raw tool output is not saved in history.';
 
   @override
   String get aiAgentHistoryDelete => 'Delete conversation';
 
   @override
-  String get aiAgentHistoryDeleteConfirm => 'Delete this conversation and its local history?';
+  String get aiAgentHistoryDeleteConfirm =>
+      'Delete this conversation and its local history?';
 
   @override
-  String get aiAgentHistoryBusy => 'Stop the current task or wait for it to finish before switching conversations.';
+  String get aiAgentHistoryBusy =>
+      'Stop the current task or wait for it to finish before switching conversations.';
 
   @override
   String get aiAgentHistoryLocalNotice =>
@@ -2589,7 +2658,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiModelSearch => 'Search models';
 
   @override
-  String get aiModelsLoadFailed => 'Could not load models. Retry or enter a model name.';
+  String get aiModelsLoadFailed =>
+      'Could not load models. Retry or enter a model name.';
 
   @override
   String aiModelCustom(String model) {
@@ -2603,7 +2673,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiModelsRefresh => 'Refresh models';
 
   @override
-  String get aiAgentContextCompacted => 'Earlier context was compacted to stay within the model limit.';
+  String get aiAgentContextCompacted =>
+      'Earlier context was compacted to stay within the model limit.';
 
   @override
   String get aiConfigAgentModel => 'Default Airy model';
@@ -2627,7 +2698,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigAvailableHosts => 'Available hosts';
 
   @override
-  String get aiConfigFeatureNoHosts => 'New SSH hosts will be enabled automatically.';
+  String get aiConfigFeatureNoHosts =>
+      'New SSH hosts will be enabled automatically.';
 
   @override
   String get aiAgentAutoTarget => 'Auto';
@@ -2654,4 +2726,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String aiAgentContextUsage(int percent, int used, int total) {
     return 'Estimated context: $percent% · $used / $total tokens';
   }
+
+  @override
+  String get aiAgentRegenerate => 'Regenerate';
+
+  @override
+  String get aiAgentRegenerateHint =>
+      'Generate another answer without running commands again';
+
+  @override
+  String get aiAgentWithdraw => 'Withdraw last turn';
+
+  @override
+  String get aiAgentWithdrawHint =>
+      'Restore the last question as a draft. Executed operations are not undone; clear the current draft first.';
+
+  @override
+  String get aiAgentExecutionRecord => 'Execution record';
+
+  @override
+  String get aiAgentCopied => 'Copied';
+
+  @override
+  String get aiAgentCopyFailed =>
+      'Could not copy. Select the text and copy manually.';
 }
