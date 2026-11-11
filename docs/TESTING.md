@@ -100,7 +100,7 @@
 | A-10 | M4a | 自动+实用 | 行内识别 command/naturalLanguage/uncertain；中文路径/alias/未知命令不因无规格误判，识别不联网/吞 Enter；图标/组合键/IME/未知提示符/TUI 条件正确 |
 | A-11 | M4a | 自动+实用 | 行内原位本地 loading/可编辑结果；无工具/无自动执行，默认不删远端草稿，空行重验才填入；显式本地层原文不远发；新输入/回显/目标变化和取消使迟到结果失效，长度/控制字符统一校验 |
 | A-12 | M4a | 自动+实用 | AI 补全输入不足/意图不清返回空，模型自评不作授权；有效候选纯追加且置顶去重，迟到不抢选中/Tab，Enter 不隐式接受；失焦/IME/切标签等取消，缓存命中重验，无自动失败重试 |
-| A-13 | M4a | 自动+实用 | 三入口开关/目的地/权限独立，无授权不发送草稿或历史；历史带来源/时间、重连/清空失效，无其他会话/目录缓存外发；限频/并发/短期限生效，Agent Stop 与轻量取消不串错，总 AI 关闭全部收束 |
+| A-13 | M4a | 自动+实用 | AI 总开关默认关闭，两轻量功能默认开启、主机过滤分别保存；功能关闭或主机排除时不发送草稿或历史，换模型/路由不重置功能选择但取消旧请求；同会话有界历史带来源/时间、重连/清空失效，无其他会话/目录缓存外发；未知 cwd 不阻断且不新增远端探测；限频/并发/短期限生效，Agent Stop 与轻量取消不串错，总 AI 关闭全部收束 |
 | A-14 | M4d | 自动+实用 | 每项完整 Agent 工具均有 scope/精确审批/修订与终态；主机改端点不扩大连接权；文件 diff/冲突/保稿，传输仅用户选定本地资源，转发暴露确认；长 job 可查/停且有界、不重放，停止未知如实保留 |
 
 ## 6. 有效验证记录
@@ -111,9 +111,9 @@
 
 ### 自动与真实 SSH/SFTP
 
-2026-11-11 Airy、模型选择与设置直达最终回归：明确列入 26 份测试（ai_authorization、ai_journal、ai_diagnostics、ai_backend、ai_output_store、ai_terminal_hosts、ai_protocol、ai_config、ai_http、ai_terminal_service、ai_conversation_route、ai_conversation_store、ai_conversations、ai_markdown、ai_model_catalog、ai_model_picker、ai_model_selection、ai_runtime、ai_panel、settings_dialog、translation_settings、interface_settings、workspace_local、terminal_assistance、terminal_ai_ui、terminal_ai_ports），331 项、59 秒、退出码 0。覆盖安全历史 DTO/容量/过期/损坏及写入冲突、整 turn 裁剪/超限拒存、保存失败与代次、草稿隔离/busy 保护/明确续传/目的地及路由变更、恢复不执行和旧输出句柄失效；OpenAI 默认/可选 Key/同服务复制与跨服务隔离、目录有界分页/取消/禁重定向、搜索/自定义/IME、三角色模型与许可失效、窗口当前模型和唯一 runtime；Markdown 图片不联网/安全外链/宽代码、紧凑执行卡与 300/560×420 的 150% 布局、设置 typed 定位/复用弹窗与草稿、历史关闭间距相关终端回归。上下文覆盖完整工具组整理、opaque 重建普通数据、保留目标/范围、超限安全拒绝和不重放工具；配置窗口是声明与保守估算，不等于实测供应商 1M token 能力。
+2026-11-11 Airy 自动目标与轻量功能简化最终回归：明确列入 26 份测试（ai_authorization、ai_journal、ai_diagnostics、ai_backend、ai_output_store、ai_terminal_hosts、ai_protocol、ai_config、ai_http、ai_terminal_service、ai_conversation_route、ai_conversation_store、ai_conversations、ai_markdown、ai_model_catalog、ai_model_picker、ai_model_selection、ai_runtime、ai_panel、settings_dialog、translation_settings、interface_settings、workspace_local、terminal_assistance、terminal_ai_ui、terminal_ai_ports），349 项、56 秒、退出码 0。新增覆盖两功能默认开启、schema1→2 一次开启而 schema2 显式关闭保留、坏迁移/排除集合保护、默认全选且独立折叠主机筛选、模型/服务/路由变化保留功能与过滤；未知 cwd 可请求且不探测，行内生成与补全自动发送有限同代次历史及敏感项/条数/字节过滤。Airy 覆盖工作区焦点投影、移除手选主机、聚焦目标冻结、无聚焦先列表、发送时快照 ID/别名、新增/伪造 ID 拒绝、拨号前锁单机及失败不换机、命令逐次审批、实际目标与开始路由绑定、主机历史不带入无焦点发现、候选超限保留草稿且不串入旧历史。追问测试使用脚本模型，不能证明真实模型对未指明或歧义语义总能正确判断。既有历史容量/坏档/冲突/显式续传、目的地及路由重验、恢复不执行、模型目录/窄凭据、Markdown、300/560×420 的 150% 紧凑布局、设置定位/保稿/统一保存、终端输入/取消/IME/无自动回车和完整工具组上下文整理继续通过；配置窗口是声明与保守估算，不等于实测供应商 1M token 能力。
 
-本轮静态分析覆盖 lib、tool、integration_test、test_driver 及 model_selection/model_catalog/model_picker/markdown/conversations/panel/config/runtime 八份改动测试，无问题；imports、47 份改动 Dart 格式检查和 git diff --check 通过。文档复核分别检查 README 与 11 份专题的 53 处本地链接，以及 README/DESIGN/导读/ROADMAP/TESTING 的 115 处本地链接、17 节编号和代码围栏配对，通过。测试使用临时配置、内存凭据和本机协议服务器，没有读取作者真实配置/系统安全存储、调用真实模型或连接 Ubuntu；原 zz_probe 未读取/修改/分析/运行。新历史文字可能包含未知敏感信息，测试不证明通用脱敏；实际模型目录/生成/SSH Agent 闭环、原生观感/输入法和跨屏 DPI 未验。本轮中间编译或测试自身异步处理失败已修，以上只记最终完整运行。
+本轮静态分析覆盖 lib、tool、integration_test、test_driver 及 panel/terminal_ai_ui/workspace_local/terminal_service/config/conversations/runtime 七份改动测试，无问题；imports、25 份改动 Dart 格式检查和 git diff --check 通过。文档复核分别检查 README 与 11 份专题的 53 处本地链接，以及 README/DESIGN/导读/ROADMAP/TESTING 的 118 处本地链接、17 节编号和代码围栏配对，通过。测试使用临时配置、内存凭据和本机协议服务器，没有读取作者真实配置/系统安全存储、调用真实模型或连接 Ubuntu；原 zz_probe 未读取/修改/分析/运行。历史文字可能包含未知敏感信息，测试不证明通用脱敏；实际模型目录/生成/SSH Agent 闭环、原生观感/输入法和跨屏 DPI 未验。首轮 26 份回归有一项配置测试仍断言旧异常类型，修正为统一持久化错误并保留原件字节检查后，以上最终完整运行通过。
 
 2026-11-11 设置分隔线调整：settings_dialog、interface_settings、brand_theme 三份明确测试共 14 项、12 秒、退出码 0，覆盖分类联动、统一保存及关闭保护、960×640 的 150% 缩放和窄预览/最大字号中文。改动仅为居中 75% 宽细线；两个改动 Dart 文件静态分析、格式检查、imports、52 处文档本地链接与 git diff --check 通过。本轮未新增机械样式测试，未做原生观感/DPI 验收，未访问真实应用数据、模型或服务器。
 
