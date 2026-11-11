@@ -288,6 +288,7 @@ class _CommandHistoryPopupState extends State<_CommandHistoryPopup> {
                         visualDensity: VisualDensity.compact,
                         onPressed: widget.onClose,
                       ),
+                      const SizedBox(width: Space.sm),
                     ],
                   ),
                   Padding(
