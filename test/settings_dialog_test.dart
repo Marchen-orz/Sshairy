@@ -67,10 +67,16 @@ void main() {
         aiCredentialsProvider.overrideWithValue(aiCredentials ?? _AiCredentials()),
         settingsSectionsProvider.overrideWithValue([
           if (withAi)
-            SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings(), icon: Icons.auto_awesome_outlined),
+            SettingsSection(
+              (l) => l.aiConfigTitle,
+              (_) => const AiSettings(),
+              id: SettingsSectionId.ai,
+              icon: Icons.auto_awesome_outlined,
+            ),
           SettingsSection(
             (l) => l.translationService,
             (_) => TranslationSettings(credentials: _Credentials()),
+            id: SettingsSectionId.translation,
             icon: Icons.translate_outlined,
           ),
         ]),
@@ -226,6 +232,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(selected(tester, 6), isTrue);
     expect(find.text('About').hitTestable(), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final withAi in [false, true]) {
+    testWidgets('opening a targeted section uses its identity with AI present: $withAi', (tester) async {
+      final env = await start(tester, withAi: withAi);
+      showSettingsDialog(env.context, section: SettingsSectionId.translation);
+      await tester.pumpAndSettle();
+      expect(selected(tester, withAi ? 6 : 5), isTrue);
+      expect(find.widgetWithText(TextFormField, 'Email (optional)').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('targeted opening reuses the dialog and preserves drafts while changing sections', (tester) async {
+    final env = await start(tester, withAi: true);
+    final first = showSettingsDialog(env.context, section: SettingsSectionId.appearance);
+    final pending = showSettingsDialog(env.context, section: SettingsSectionId.ai);
+    expect(identical(first, pending), isTrue);
+    await tester.pumpAndSettle();
+    expect(selected(tester, 5), isTrue);
+    await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://example.com/v1');
+    await tester.pumpAndSettle();
+    final form = tester.state(find.byType(AiSettings));
+    final reopened = showSettingsDialog(env.context, section: SettingsSectionId.translation);
+    expect(identical(first, reopened), isTrue);
+    await tester.pumpAndSettle();
+    expect(find.byType(AppDialog), findsOneWidget);
+    expect(selected(tester, 6), isTrue);
+    expect(tester.state(find.byType(AiSettings)), same(form));
+    expect(
+      tester.widget<TextFormField>(find.byKey(const ValueKey('ai-config-endpoint'))).controller!.text,
+      'https://example.com/v1',
+    );
+    showSettingsDialog(env.context);
+    await tester.pumpAndSettle();
+    expect(selected(tester, 6), isTrue, reason: 'the general entry does not reset an already open dialog');
+    showSettingsDialog(env.context, section: SettingsSectionId.security);
+    await tester.pumpAndSettle();
+    expect(selected(tester, 6), isTrue, reason: 'an unavailable optional section leaves the current position intact');
     expect(tester.takeException(), isNull);
   });
 

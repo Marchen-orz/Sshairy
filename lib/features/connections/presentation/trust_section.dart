@@ -17,6 +17,7 @@ import 'known_hosts_dialog.dart';
 final trustSettingsSection = SettingsSection(
   (l) => l.dataSecurity,
   (_) => const _TrustedKeys(),
+  id: SettingsSectionId.security,
   icon: Icons.verified_user_outlined,
 );
 

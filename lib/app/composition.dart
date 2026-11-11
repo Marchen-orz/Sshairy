@@ -31,13 +31,19 @@ List<Override> appOverrides() => [
   ),
   settingsSectionsProvider.overrideWith(
     (ref) => [
-      SettingsSection((l) => l.aiConfigTitle, (_) => const AiSettings(), icon: Icons.auto_awesome_outlined),
+      SettingsSection(
+        (l) => l.aiConfigTitle,
+        (_) => const AiSettings(),
+        id: SettingsSectionId.ai,
+        icon: Icons.auto_awesome_outlined,
+      ),
       SettingsSection(
         (l) => l.translationService,
         (_) => TranslationSettings(
           credentials: ref.read(translationCredentialsProvider),
           onCredentialsChanged: () => ref.invalidate(completionTranslationsProvider),
         ),
+        id: SettingsSectionId.translation,
         icon: Icons.translate_outlined,
       ),
     ],

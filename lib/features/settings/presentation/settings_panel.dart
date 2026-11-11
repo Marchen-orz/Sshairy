@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -23,11 +24,14 @@ import 'background_image.dart';
 
 const appVersion = '0.1.0';
 
+enum SettingsSectionId { appearance, terminal, workspace, connection, files, ai, translation, security, about }
+
 /// A section another feature adds to the panel, such as trust records from connections; settings cannot import
 /// those features without a cycle, so the app wires them in.
 class SettingsSection {
-  const SettingsSection(this.title, this.build, {this.icon = Icons.tune_outlined});
+  const SettingsSection(this.title, this.build, {required this.id, this.icon = Icons.tune_outlined});
 
+  final SettingsSectionId id;
   final String Function(AppLocalizations l) title;
   final WidgetBuilder build;
   final IconData icon;
@@ -37,28 +41,47 @@ final settingsSectionsProvider = Provider<List<SettingsSection>>((_) => const []
 
 final systemFontsProvider = FutureProvider<List<SystemFont>>((_) => loadSystemFonts());
 
-final _settingsDialogs = Expando<Future<void>>();
+class _SettingsDialogHandle {
+  _SettingsDialogHandle(this.section);
 
-Future<void> showSettingsDialog(BuildContext context) {
+  final panel = GlobalKey<_SettingsPanelState>();
+  SettingsSectionId? section;
+  late final Future<void> closed;
+
+  void select(SettingsSectionId section) {
+    this.section = section;
+    panel.currentState?._showSection(section);
+  }
+}
+
+final _settingsDialogs = Expando<_SettingsDialogHandle>();
+
+Future<void> showSettingsDialog(BuildContext context, {SettingsSectionId? section}) {
   final navigator = Navigator.of(context, rootNavigator: true);
   final existing = _settingsDialogs[navigator];
-  if (existing != null) return existing;
+  if (existing != null) {
+    if (section != null) existing.select(section);
+    return existing.closed;
+  }
 
+  final handle = _SettingsDialogHandle(section);
   Future<void> open() async {
     try {
-      await showAppDialog<void>(context: context, builder: (_) => const _SettingsDialog());
+      await showAppDialog<void>(context: context, builder: (_) => _SettingsDialog(handle));
     } finally {
       _settingsDialogs[navigator] = null;
     }
   }
 
-  final future = open();
-  _settingsDialogs[navigator] = future;
-  return future;
+  handle.closed = open();
+  _settingsDialogs[navigator] = handle;
+  return handle.closed;
 }
 
 class _SettingsDialog extends StatefulWidget {
-  const _SettingsDialog();
+  const _SettingsDialog(this.handle);
+
+  final _SettingsDialogHandle handle;
 
   @override
   State<_SettingsDialog> createState() => _SettingsDialogState();
@@ -87,6 +110,8 @@ class _SettingsDialogState extends State<_SettingsDialog> {
             ],
           ),
           content: SettingsPanel(
+            key: widget.handle.panel,
+            initialSection: widget.handle.section,
             onSavingChanged: (saving) {
               if (_saving != saving) setState(() => _saving = saving);
             },
@@ -98,9 +123,10 @@ class _SettingsDialogState extends State<_SettingsDialog> {
 }
 
 class SettingsPanel extends ConsumerStatefulWidget {
-  const SettingsPanel({super.key, this.onSavingChanged});
+  const SettingsPanel({super.key, this.onSavingChanged, this.initialSection});
 
   final ValueChanged<bool>? onSavingChanged;
+  final SettingsSectionId? initialSection;
 
   @override
   ConsumerState<SettingsPanel> createState() => _SettingsPanelState();
@@ -112,13 +138,16 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   final _saves = FormSaveController();
   final _anchors = <GlobalKey>[];
   final _navigationKeys = <GlobalKey>[];
+  List<SettingsSectionId> _sectionIds = const [];
+  SettingsSectionId? _requestedSection;
   int _selected = 0, _navigationGeneration = 0;
   int? _navigating;
-  bool _syncScheduled = false;
+  bool _syncScheduled = false, _sectionScheduled = false;
 
   @override
   void initState() {
     super.initState();
+    _requestedSection = widget.initialSection;
     _scroll.addListener(_syncSelection);
     _saves.addListener(_saveStateChanged);
   }
@@ -127,6 +156,24 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     if (!mounted) return;
     widget.onSavingChanged?.call(_saves.busy);
     setState(() {});
+  }
+
+  void _showSection(SettingsSectionId section) {
+    _requestedSection = section;
+    _scheduleSection();
+  }
+
+  void _scheduleSection() {
+    if (_requestedSection == null || _sectionScheduled) return;
+    _sectionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sectionScheduled = false;
+      if (!mounted || _requestedSection == null) return;
+      final index = _sectionIds.indexOf(_requestedSection!);
+      _requestedSection = null;
+      if (index >= 0) unawaited(_goTo(index));
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   double? _offset(int index) {
@@ -296,7 +343,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
 
     final extra = ref.watch(settingsSectionsProvider);
     final sections = [
-      _Section(l.appearance, Icons.palette_outlined, [
+      _Section(SettingsSectionId.appearance, l.appearance, Icons.palette_outlined, [
         _Field.stacked(
           l.theme,
           segmented(SettingKeys.themeMode, {
@@ -336,7 +383,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
             hint: hint(SettingKeys.renderer),
           ),
       ]),
-      _Section(l.terminal, Icons.terminal_outlined, [
+      _Section(SettingsSectionId.terminal, l.terminal, Icons.terminal_outlined, [
         _Field.stacked(l.terminalBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.terminal)),
         _Field.stacked(l.terminalFont, font(SettingKeys.terminalFontFamily, fallback: AppFonts.mono, monoOnly: true)),
         _Field.stacked(l.fontSize, slider(SettingKeys.fontSize)),
@@ -365,7 +412,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
         _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
       ]),
-      _Section(l.workspaceSection, Icons.space_dashboard_outlined, [
+      _Section(SettingsSectionId.workspace, l.workspaceSection, Icons.space_dashboard_outlined, [
         _Field(l.monitor, toggle(SettingKeys.showMonitor)),
         _Field(l.files, toggle(SettingKeys.showFiles)),
         _Field(
@@ -378,7 +425,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ),
         _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
       ]),
-      _Section(l.connection, Icons.dns_outlined, [
+      _Section(SettingsSectionId.connection, l.connection, Icons.dns_outlined, [
         _Field(
           l.connectTimeout,
           seconds(SettingKeys.connectTimeout, const [10, 20, 30, 60]),
@@ -392,7 +439,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _Field(l.idleTtl, seconds(SettingKeys.idleTtl, const [0, 30, 60, 120, 300], zeroIsOff: true)),
         _Field(l.autoReconnect, toggle(SettingKeys.autoReconnect)),
       ]),
-      _Section(l.files, Icons.folder_outlined, [
+      _Section(SettingsSectionId.files, l.files, Icons.folder_outlined, [
         _Field(l.hiddenFiles, toggle(SettingKeys.showHidden)),
         _Field(
           l.transferConcurrency,
@@ -404,8 +451,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           ),
         ),
       ]),
-      for (final s in extra) _Section(s.title(l), s.icon, [s.build(context)]),
-      _Section(l.about, Icons.info_outline, [
+      for (final s in extra) _Section(s.id, s.title(l), s.icon, [s.build(context)]),
+      _Section(SettingsSectionId.about, l.about, Icons.info_outline, [
         const Padding(
           padding: EdgeInsets.symmetric(vertical: Space.md),
           child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
@@ -426,7 +473,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       _anchors.removeRange(sections.length, _anchors.length);
       _navigationKeys.removeRange(sections.length, _navigationKeys.length);
     }
+    _sectionIds = [for (final section in sections) section.id];
     _selected = _selected.clamp(0, sections.length - 1);
+    _scheduleSection();
     _scheduleSync();
     return FormSaveScope(
       controller: _saves,
@@ -572,8 +621,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
 }
 
 class _Section extends StatelessWidget {
-  const _Section(this.title, this.icon, this.children);
+  const _Section(this.id, this.title, this.icon, this.children);
 
+  final SettingsSectionId id;
   final String title;
   final IconData icon;
   final List<Widget> children;

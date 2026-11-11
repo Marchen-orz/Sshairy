@@ -97,6 +97,7 @@ void main() {
     final section = SettingsSection(
       (l) => l.translationService,
       (_) => TranslationSettings(credentials: credentials, onCredentialsChanged: onCredentialsChanged),
+      id: SettingsSectionId.translation,
     );
     final container = ProviderContainer(
       overrides: [

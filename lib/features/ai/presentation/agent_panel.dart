@@ -124,7 +124,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                     ),
                     IconButton(
                       tooltip: l.settings,
-                      onPressed: () => showSettingsDialog(context),
+                      onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
                       icon: const Icon(Icons.tune_outlined, size: 17),
                     ),
                     if (widget.onClose != null)
@@ -350,7 +350,7 @@ class _Welcome extends StatelessWidget {
             ),
             const SizedBox(height: Space.lg),
             if (!enabled)
-              FilledButton.tonal(onPressed: () => showSettingsDialog(context), child: Text(l.aiAgentConfigureAction))
+              FilledButton.tonal(onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai), child: Text(l.aiAgentConfigureAction))
             else
               Wrap(
                 alignment: WrapAlignment.center,
