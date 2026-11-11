@@ -112,7 +112,7 @@ class _Backend implements AgentBackend {
   final prepared = <HostId>[];
 
   @override
-  List<AgentHost> get hosts => const [AgentHost(_hostA, 'Host A'), AgentHost(_hostB, 'Host B')];
+  List<AgentHost> hosts = const [AgentHost(_hostA, 'Host A'), AgentHost(_hostB, 'Host B')];
 
   @override
   Future<AgentTarget> prepare(HostId host, CancellationToken cancel) async {
@@ -146,14 +146,43 @@ class _Runtime extends AgentRuntime {
 }
 
 class _Harness {
-  _Harness({List<AgentConversationRecord> initial = const [], _MemoryStore? store, _Script? script})
-    : store = store ?? _MemoryStore(initial),
-      model = _Model(script) {
+  _Harness({
+    List<AgentConversationRecord> initial = const [],
+    _MemoryStore? store,
+    _Script? script,
+    bool discoveryTools = false,
+  }) : store = store ?? _MemoryStore(initial),
+       model = _Model(script) {
     runtime = _Runtime(
       model: model,
       backend: backend,
       journal: _Journal(),
-      dispatcher: CapabilityDispatcher([]),
+      dispatcher: CapabilityDispatcher([
+        if (discoveryTools) ...[
+          FunctionCapability(
+            'agent.hosts',
+            Effect.query,
+            (_, _) async => runtime.listHosts(),
+            agentExposed: true,
+            inputSchema: const {'type': 'object', 'properties': {}, 'required': [], 'additionalProperties': false},
+          ),
+          FunctionCapability(
+            'agent.diagnose',
+            Effect.connect,
+            (args, context) => runtime.diagnose(args.raw, context),
+            agentExposed: true,
+            inputSchema: const {
+              'type': 'object',
+              'properties': {
+                'hostId': {'type': 'string'},
+                'template': {'type': 'string'},
+              },
+              'required': ['hostId', 'template'],
+              'additionalProperties': false,
+            },
+          ),
+        ],
+      ]),
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
     container = ProviderContainer(overrides: [agentRuntimeProvider.overrideWithValue(runtime)]);
@@ -197,8 +226,9 @@ Future<_Harness> _create({
   List<AgentConversationRecord> initial = const [],
   _MemoryStore? store,
   _Script? script,
+  bool discoveryTools = false,
 }) async {
-  final harness = _Harness(initial: initial, store: store, script: script);
+  final harness = _Harness(initial: initial, store: store, script: script, discoveryTools: discoveryTools);
   addTearDown(harness.close);
   await harness.conversations.ready;
   return harness;
@@ -346,6 +376,54 @@ void main() {
     expect(h.backend.prepared, isEmpty);
   });
 
+  test('automatic discovery binds its selected host to the route snapshot taken at send', () async {
+    late final _Harness h;
+    var step = 0;
+    h = await _create(
+      discoveryTools: true,
+      script: (_, _) async* {
+        if (step++ == 0) {
+          h.routes[_hostA] = _changedRoute;
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, calls: [ModelCall('list', 'host_list', {})]));
+        } else if (step == 2) {
+          yield ModelMessageComplete(
+            ModelMessage(
+              ModelRole.assistant,
+              calls: [
+                ModelCall('target', 'diagnostics_collect', {'hostId': _hostA.value, 'template': 'systemSummary'}),
+              ],
+            ),
+          );
+        } else {
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'The host could not connect.'));
+        }
+      },
+    );
+    await h.conversations.send('check Host A', null);
+    expect(h.runtime.resolvedHost, _hostA);
+    expect(h.backend.prepared, [_hostA]);
+    expect(h.conversations.current!.host, _hostA);
+    expect(h.conversations.current!.routeSignature, _routeA);
+    expect(h.store.records.single.host, _hostA);
+    expect(h.store.records.single.routeSignature, _routeA);
+    expect(h.conversations.canContinue(_hostA), isFalse, reason: 'a later route cannot bless earlier evidence');
+    expect(h.conversations.canContinue(null), isFalse);
+    expect(_input(h.model.requests.first)['targetSelection'], 'discoverFromUserRequest');
+  });
+
+  test('host-bound history is not seeded into an unfocused discovery turn', () async {
+    final h = await _create(initial: [_record('host-bound')]);
+    h.conversations.select('host-bound');
+    expect(h.conversations.canContinue(null), isFalse);
+    await h.conversations.send('which host should I use?', null, continueHistory: true);
+    expect(h.conversations.selectedId, isNot('host-bound'));
+    final input = _input(h.model.requests.single);
+    expect(input['targetSelection'], 'discoverFromUserRequest');
+    expect(input.containsKey('conversationHistory'), isFalse);
+    expect(h.conversations.current!.host, isNull);
+    expect(h.backend.prepared, isEmpty);
+  });
+
   test('send without explicit continue creates a new conversation and omits old history', () async {
     final h = await _create(initial: [_record('old')]);
     h.conversations.select('old');
@@ -412,6 +490,22 @@ void main() {
       expect(old.entries.map((entry) => entry.text), ['earlier user old', 'earlier answer old']);
     });
   }
+
+  test('oversized discovery keeps the draft without copying a prior conversation into the new record', () async {
+    final h = await _create();
+    await h.conversations.send('previous host-bound question', _hostA);
+    final previous = h.conversations.selectedId;
+    h.composer.setGoal('check another server');
+    h.backend.hosts = [for (var index = 0; index < 1001; index++) AgentHost(HostId('host-$index'), 'Host $index')];
+    await h.conversations.send('check another server', null);
+    await h.conversations.flush();
+    expect(h.runtime.error, 'scopeLimit');
+    expect(h.conversations.selectedId, isNot(previous));
+    expect(h.draft.goal, 'check another server');
+    expect(h.conversations.current!.entries, isEmpty);
+    expect(h.store.records.map((record) => record.id), [previous]);
+    expect(h.model.requests, hasLength(1));
+  });
 
   test('tools disabled removes host binding and prevents host-derived history continuation', () async {
     final h = await _create(initial: [_record('old')]);

@@ -435,7 +435,6 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                           final draft = ref.read(agentComposerProvider);
                           final composer = ref.read(agentComposerProvider.notifier);
                           composer.setGoal(draft.goal.isEmpty ? instruction : '${draft.goal}\n$instruction');
-                          if (!ref.read(agentRuntimeProvider).busy) composer.selectHost(null);
                           setState(() => _agentOpen = true);
                         },
                         focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),

@@ -26,9 +26,11 @@ class AgentHost {
 }
 
 class AgentScope {
-  AgentScope({Iterable<HostId> hosts = const [], this.revision = 0}) : hosts = Set.unmodifiable(hosts);
+  AgentScope({Iterable<HostId> hosts = const [], this.revision = 0, this.discoverHosts = false})
+    : hosts = Set.unmodifiable(hosts);
   final Set<HostId> hosts;
   final int revision;
+  final bool discoverHosts;
 }
 
 /// Only the app's connection adapter can supply a prepared target. No shell or transport escapes this port.

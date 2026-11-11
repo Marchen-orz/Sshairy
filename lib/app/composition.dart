@@ -26,6 +26,12 @@ import 'capabilities/forwarding.dart';
 /// The composition root: the one place that knows every feature and registers what each one offers.
 List<Override> appOverrides() => [
   aiTerminalHostsProvider.overrideWith((ref) => aiTerminalHosts(ref.watch(hostsProvider))),
+  agentFocusedHostProvider.overrideWith((ref) {
+    final tab = ref.watch(workspaceProvider).activeTab;
+    final sessions = ref.watch(terminalSessionsProvider);
+    final host = tab == null ? null : sessions[tab.layout.focusedLeaf.session]?.sshHost;
+    return host == null || host.transient ? null : host.id;
+  }),
   agentConversationRoutesProvider.overrideWith((ref) {
     // Security revisions reset at startup, so server history requires a new conversation after restart.
     final securitySession = newId();

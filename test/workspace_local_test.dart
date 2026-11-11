@@ -201,5 +201,16 @@ void main() {
     expect(opened, isA<Ok<Object?>>());
     await tester.pump();
     expect(container.read(workspaceProvider).tabs, hasLength(2));
+    expect(container.read(agentFocusedHostProvider), isNull);
+    final workspace = container.read(workspaceProvider.notifier);
+    final localTab = container.read(workspaceProvider).active!;
+    final remoteTab = workspace.openHost(container.read(hostsProvider).single);
+    expect(container.read(agentFocusedHostProvider), const HostId('h'));
+    workspace.showVault();
+    expect(container.read(agentFocusedHostProvider), isNull);
+    workspace.activate(remoteTab);
+    expect(container.read(agentFocusedHostProvider), const HostId('h'));
+    workspace.activate(localTab);
+    expect(container.read(agentFocusedHostProvider), isNull);
   });
 }

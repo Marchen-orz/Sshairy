@@ -1081,6 +1081,156 @@ void main() {
     expect(_result(h.model.requests.last, 2), {'error': 'invalidArgument'});
   });
 
+  test('discovery lists the frozen saved hosts and asks for an unspecified target without connecting', () async {
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('host_list', {}));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'Which server should I check?'));
+      }
+    });
+    addTearDown(h.close);
+    await h.runtime.start('check disk space', AgentScope(discoverHosts: true));
+    final request = h.model.requests.first;
+    final input = jsonDecode(request.messages.single.text) as Map;
+    expect(input['targetSelection'], 'discoverFromUserRequest');
+    expect(input.containsKey('authorizedHosts'), isFalse);
+    expect(request.system, contains('If no host is specified'));
+    expect(request.system, contains('Never choose the first or only host'));
+    expect(jsonDecode(_results(h.model.requests.last).single.text), [
+      {'id': 'host-a', 'alias': 'selected host'},
+      {'id': 'host-b', 'alias': 'unselected host'},
+    ]);
+    expect(h.runtime.resolvedHost, isNull);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.runtime.phase, AgentPhase.completed);
+  });
+
+  test('discovered saved host still requires a fresh exact command approval', () async {
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('host_list', {}));
+      } else if (index == 1) {
+        yield ModelMessageComplete(_call('command_execute', _command()));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'command finished'));
+      }
+    });
+    addTearDown(h.close);
+    final work = h.runtime.start('run printf result on selected host', AgentScope(discoverHosts: true));
+    await _until(() => h.runtime.approval != null);
+    expect(h.runtime.resolvedHost, _host);
+    expect(h.backend.prepared, [_host]);
+    expect(h.backend.target.commands, isEmpty);
+    expect(h.journal.records, isEmpty);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await _until(() => h.runtime.dataRequest != null);
+    h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
+    await work;
+    expect(h.backend.target.commands, hasLength(1));
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
+    expect(h.runtime.phase, AgentPhase.completed);
+  });
+
+  test('discovery requires listing before preparing a saved target', () async {
+    final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command()), index));
+    addTearDown(h.close);
+    await h.runtime.start('use selected host', AgentScope(discoverHosts: true));
+    expect(_result(h.model.requests.last), {'error': 'hostSelectionRequired'});
+    expect(h.runtime.resolvedHost, isNull);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.runtime.approval, isNull);
+  });
+
+  test('discovery locks its first target before a failed connection and rejects switching hosts', () async {
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('host_list', {}));
+      } else if (index == 1) {
+        yield ModelMessageComplete(_call('command_execute', _command()));
+      } else if (index == 2) {
+        yield ModelMessageComplete(_call('command_execute', _command(host: 'host-b')));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'connection failed'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.prepareFailure = const AgentFailure('connectionFailed');
+    await h.runtime.start('use selected host', AgentScope(discoverHosts: true));
+    expect(h.runtime.resolvedHost, _host);
+    expect(h.backend.prepared, [_host]);
+    expect(_result(h.model.requests[2], 1), {'error': 'connectionFailed'});
+    expect(_result(h.model.requests.last, 2), {'error': 'outsideScope'});
+    expect(h.backend.target.commands, isEmpty);
+  });
+
+  test('discovery never adds hosts created after the turn snapshot or fabricated IDs', () async {
+    const added = HostId('host-added');
+    late final _Harness h;
+    h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        h.backend.hosts = const [
+          AgentHost(_host, 'changed alias'),
+          AgentHost(_other, 'unselected host'),
+          AgentHost(added, 'new host'),
+        ];
+        yield ModelMessageComplete(_call('host_list', {}));
+      } else if (index == 1) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('new-host', 'command_execute', _command(host: added.value)),
+              ModelCall('fake-host', 'command_execute', _command(host: 'fabricated')),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'need a saved target'));
+      }
+    });
+    addTearDown(h.close);
+    await h.runtime.start('use new host', AgentScope(discoverHosts: true));
+    expect(jsonDecode(_results(h.model.requests[1]).single.text), [
+      {'id': 'host-a', 'alias': 'selected host'},
+      {'id': 'host-b', 'alias': 'unselected host'},
+    ]);
+    expect(_result(h.model.requests.last, 1), {'error': 'outsideScope'});
+    expect(_result(h.model.requests.last, 2), {'error': 'outsideScope'});
+    expect(h.runtime.resolvedHost, isNull);
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  test('focused target stays exclusive even when discovery is also requested', () async {
+    final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command(host: 'host-b')), index));
+    addTearDown(h.close);
+    final work = h.runtime.start('check the focused server', AgentScope(hosts: const [_host], discoverHosts: true));
+    expect(h.runtime.resolvedHost, _host);
+    await work;
+    final input = jsonDecode(h.model.requests.first.messages.single.text) as Map;
+    expect(input['targetSelection'], 'focusedHost');
+    expect(input['authorizedHosts'], [
+      {'id': 'host-a', 'alias': 'selected host'},
+    ]);
+    expect(_result(h.model.requests.last), {'error': 'outsideScope'});
+    expect(h.backend.prepared, isEmpty);
+    h.runtime.clear();
+    expect(h.runtime.resolvedHost, isNull);
+  });
+
+  test('discovery refuses an oversized host snapshot before making a model request', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'unused'));
+    });
+    addTearDown(h.close);
+    h.backend.hosts = [for (var index = 0; index < 1001; index++) AgentHost(HostId('host-$index'), 'host $index')];
+    await h.runtime.start('check server', AgentScope(discoverHosts: true));
+    expect(h.runtime.error, 'scopeLimit');
+    expect(h.model.requests, isEmpty);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.runtime.busy, isFalse);
+  });
+
   test('host projection contains only explicitly selected IDs and aliases', () async {
     final call = _call('host_list', {});
     final h = _Harness((_, _, index) => _oneCall(call, index));

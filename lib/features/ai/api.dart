@@ -2,6 +2,7 @@ export 'domain/agent.dart';
 export 'domain/model.dart';
 export 'application/runtime.dart';
 export 'application/composer.dart';
+export 'application/target.dart';
 export 'application/conversations.dart';
 export 'adapters/conversation_route.dart' show conversationRouteFingerprint;
 export 'application/providers.dart';

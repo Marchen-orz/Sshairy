@@ -14,6 +14,7 @@ import 'package:sshairy/features/ai/application/output_store.dart';
 import 'package:sshairy/features/ai/application/model_catalog.dart';
 import 'package:sshairy/features/ai/application/model_selection.dart';
 import 'package:sshairy/features/ai/application/providers.dart';
+import 'package:sshairy/features/ai/application/target.dart';
 import 'package:sshairy/features/ai/application/runtime.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
@@ -233,6 +234,7 @@ Future<ProviderContainer> _panel(
   Size size = const Size(440, 1000),
   double textScale = 1,
   _ConversationStore? store,
+  HostId? focusedHost,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -242,6 +244,7 @@ Future<ProviderContainer> _panel(
     overrides: [
       aiConfigurationProvider.overrideWith(() => _Configuration(enabled, tools)),
       agentBackendProvider.overrideWithValue(_Backend()),
+      agentFocusedHostProvider.overrideWithValue(focusedHost),
       aiModelCatalogProvider.overrideWithValue(_Catalog()),
       agentRuntimeProvider.overrideWithValue(runtime),
       agentConversationStoreProvider.overrideWithValue(store ?? _ConversationStore()),
@@ -272,13 +275,6 @@ Future<ProviderContainer> _panel(
   return container;
 }
 
-Future<void> _chooseHost(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('ai-agent-host')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Production web').last);
-  await tester.pumpAndSettle();
-}
-
 void main() {
   testWidgets('disabled AI has a brand welcome and no request or mode selector', (tester) async {
     final runtime = _Runtime();
@@ -302,19 +298,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
     await tester.pump();
     expect(runtime.sentScope!.hosts, isEmpty);
+    expect(runtime.sentScope!.discoverHosts, isTrue);
     expect(runtime.busy, isTrue);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('server scope is explicit and a busy local draft survives Stop', (tester) async {
+  testWidgets('focused server is used automatically and a busy local draft survives Stop', (tester) async {
     final runtime = _Runtime();
-    final container = await _panel(tester, runtime);
-    await _chooseHost(tester);
-    expect(find.byKey(const ValueKey('ai-agent-scope-details')), findsOneWidget);
-    expect(find.textContaining('Fixed Linux diagnostics may send'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('ai-agent-scope-details')));
-    await tester.pump();
-    expect(find.textContaining('Fixed Linux diagnostics may send'), findsOneWidget);
+    final container = await _panel(tester, runtime, focusedHost: const HostId('web'));
+    expect(find.byKey(const ValueKey('ai-agent-host')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-target')), findsOneWidget);
+    expect(find.text('Production web'), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Check the server');
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
@@ -330,10 +324,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('closing and reopening preserves target and unsent input', (tester) async {
+  testWidgets('closing and reopening preserves unsent input and shows current focus', (tester) async {
     final runtime = _Runtime();
-    final container = await _panel(tester, runtime);
-    await _chooseHost(tester);
+    final container = await _panel(tester, runtime, focusedHost: const HostId('web'));
     await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Keep this local');
     await tester.pumpWidget(_app(container, visible: false));
     await tester.pump();
@@ -459,13 +452,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('legacy tools-off profiles retain the server picker and errors use a safe actionable message', (
+  testWidgets('legacy tools-off profiles use automatic targets and errors use a safe actionable message', (
     tester,
   ) async {
     final runtime = _Runtime()..error = 'scopeChanged';
     await _panel(tester, runtime, tools: false);
     expect(find.text('Text only'), findsNothing);
-    expect(find.byKey(const ValueKey('ai-agent-host')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-agent-host')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-target')), findsOneWidget);
     expect(find.textContaining('Start a new task to authorize the current target.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -502,10 +496,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('history switches conversations and preserves each local draft and server choice', (tester) async {
+  testWidgets('history switches local drafts while target keeps following current focus', (tester) async {
     final runtime = _Runtime();
     final store = _ConversationStore([_conversation('a'), _conversation('b')]);
-    final container = await _panel(tester, runtime, store: store);
+    final container = await _panel(tester, runtime, store: store, focusedHost: const HostId('web'));
     final conversations = container.read(agentConversationsProvider);
     final goal = find.byKey(const ValueKey('ai-agent-goal'));
 
@@ -518,7 +512,6 @@ void main() {
 
     await select('a');
     expect(find.text('Previous a'), findsOneWidget);
-    await _chooseHost(tester);
     await tester.enterText(goal, 'Only draft A');
     await select('b');
     expect(find.text('Previous a'), findsNothing);
@@ -529,7 +522,7 @@ void main() {
     await select('a');
     expect(conversations.selectedId, 'a');
     expect(tester.widget<TextField>(goal).controller!.text, 'Only draft A');
-    expect(container.read(agentComposerProvider).host, const HostId('web'));
+    expect(find.text('Production web'), findsOneWidget);
     await select('b');
     expect(tester.widget<TextField>(goal).controller!.text, 'Only draft B');
     expect(container.read(agentComposerProvider).host, isNull);
@@ -596,6 +589,7 @@ void main() {
     expect(runtime.goal, 'Follow up');
     expect(runtime.sentHistory.map((entry) => entry.text), ['Previous a']);
     expect(runtime.sentScope!.hosts, isEmpty);
+    expect(runtime.sentScope!.discoverHosts, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -714,7 +708,6 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('ai-agent-new-task')));
       await tester.pumpAndSettle();
-      await _chooseHost(tester);
       await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'A short task');
       await tester.pump();
       await tester.ensureVisible(find.byKey(const ValueKey('ai-agent-send')));

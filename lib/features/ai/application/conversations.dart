@@ -64,6 +64,8 @@ class AgentConversations extends ChangeNotifier {
   Future<void> _pending = Future.value();
   late final Future<void> ready;
   int _saveGeneration = 0;
+  String? _turnConversation;
+  Map<HostId, String> _turnRoutes = const {};
 
   String get selectedId => _selected;
   AgentConversationRecord? get current => _records.where((entry) => entry.id == _selected).firstOrNull;
@@ -143,9 +145,14 @@ class AgentConversations extends ChangeNotifier {
 
   void _capture() {
     final record = current;
-    if (record == null) return;
+    if (record == null ||
+        _turnConversation == record.id && (runtime.error == 'notConfigured' || runtime.error == 'scopeLimit')) {
+      return;
+    }
     final entries = _snapshot();
-    if (entries.isEmpty || _sameEntries(record.entries, entries)) return;
+    final host = _turnConversation == record.id ? runtime.resolvedHost ?? record.host : record.host;
+    final signature = host == record.host ? record.routeSignature : _turnRoutes[host];
+    if (entries.isEmpty || _sameEntries(record.entries, entries) && host == record.host) return;
     final index = _records.indexOf(record);
     _records[index] = AgentConversationRecord(
       id: record.id,
@@ -153,8 +160,8 @@ class AgentConversations extends ChangeNotifier {
       createdAt: record.createdAt,
       updatedAt: DateTime.now().toUtc(),
       destination: record.destination,
-      host: record.host,
-      routeSignature: record.routeSignature,
+      host: host,
+      routeSignature: signature,
       entries: entries,
       historyTruncated: record.historyTruncated,
     );
@@ -282,9 +289,20 @@ class AgentConversations extends ChangeNotifier {
       _records.add(_newRecord(goal, host));
     }
     final sendingId = _selected;
+    _turnConversation = sendingId;
+    _turnRoutes = Map.unmodifiable(routes());
     composer.setGoal('');
-    final work = runtime.startConversation(goal, AgentScope(hosts: [?host]), history);
+    final work = runtime.startConversation(
+      goal,
+      AgentScope(hosts: [?host], discoverHosts: host == null && toolsEnabled()),
+      history,
+    );
     _wasBusy = runtime.busy;
+    if (!runtime.busy && (runtime.error == 'notConfigured' || runtime.error == 'scopeLimit')) {
+      if (draft().goal.isEmpty) composer.setGoal(goal);
+      _emit();
+      return;
+    }
     _capture();
     unawaited(_persist());
     await work;

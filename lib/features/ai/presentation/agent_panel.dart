@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/brand.dart';
 import '../../../design/dialog.dart';
 import '../../../design/popup.dart';
-import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
@@ -19,6 +18,7 @@ import '../application/conversations.dart';
 import '../application/configuration.dart';
 import '../application/providers.dart';
 import '../application/model_selection.dart';
+import '../application/target.dart';
 import '../adapters/markdown_view.dart';
 import 'model_picker.dart';
 import '../application/runtime.dart';
@@ -34,12 +34,10 @@ class AgentPanel extends ConsumerStatefulWidget {
 
 class _AgentPanelState extends ConsumerState<AgentPanel> {
   late final _goal = TextEditingController(text: ref.read(agentComposerProvider).goal);
-  bool _scopeDetails = false;
   bool _startFailed = false, _confirming = false;
 
   void _resetConversationUi() => setState(() {
     _startFailed = false;
-    _scopeDetails = false;
   });
 
   Future<void> _history(BuildContext anchorContext) async {
@@ -101,7 +99,8 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
       final configuration = ref.read(aiConfigurationProvider);
       final profile = ref.read(effectiveAgentProfileProvider);
       final hostName =
-          ref.read(agentBackendProvider).hosts.where((entry) => entry.id == host).firstOrNull?.label ?? l.aiAgentNoHost;
+          ref.read(agentBackendProvider).hosts.where((entry) => entry.id == host).firstOrNull?.label ??
+          l.aiAgentAutoTarget;
       final selectedId = conversations.selectedId;
       _confirming = true;
       final accepted = await showAppDialog<bool>(
@@ -131,7 +130,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
           _goal.text.trim() != goal ||
           ref.read(aiConfigurationProvider) != configuration ||
           ref.read(effectiveAgentProfileProvider)?.identity != profile?.identity ||
-          ref.read(agentComposerProvider).host != host && (profile?.tools ?? false)) {
+          ref.read(agentFocusedHostProvider) != host && (profile?.tools ?? false)) {
         return;
       }
       if (canContinue && !conversations.canContinue(host)) return;
@@ -164,7 +163,8 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     final enabled = configuration.enabled && configuration.profile != null && !configuration.loadFailed;
     final profile = ref.watch(effectiveAgentProfileProvider);
     final tools = profile?.tools ?? false;
-    final selectedHost = tools && hosts.any((host) => host.id == draft.host) ? draft.host : null;
+    final focusedHost = ref.watch(agentFocusedHostProvider);
+    final selectedHost = tools && hosts.any((host) => host.id == focusedHost) ? focusedHost : null;
     final theme = Theme.of(context);
 
     return ListenableBuilder(
@@ -172,245 +172,248 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
       builder: (context, _) => LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxHeight < 440;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.xs, Space.sm),
-                child: Row(
-                  children: [
-                    Icon(Icons.auto_awesome_outlined, size: 18, color: theme.colorScheme.primary),
-                    const SizedBox(width: Space.xs),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(l.aiAgentTitle, style: theme.textTheme.titleSmall),
-                          if (runtime.phase != AgentPhase.idle)
-                            Text(
-                              _phase(l, runtime.phase),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                            ),
-                        ],
-                      ),
-                    ),
-                    Builder(
-                      builder: (anchorContext) => IconButton(
-                        key: const ValueKey('ai-agent-history'),
-                        tooltip: l.aiAgentHistory,
-                        onPressed: () => _history(anchorContext),
-                        icon: const Icon(Icons.history_rounded, size: 17),
-                      ),
-                    ),
-                    IconButton(
-                      key: const ValueKey('ai-agent-new-task'),
-                      tooltip: l.aiAgentNewTask,
-                      onPressed: runtime.busy || conversations.loading
-                          ? null
-                          : () {
-                              if (conversations.newConversation()) _resetConversationUi();
-                            },
-                      icon: const Icon(Icons.add_comment_outlined, size: 17),
-                    ),
-                    IconButton(
-                      tooltip: l.settings,
-                      onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
-                      icon: const Icon(Icons.tune_outlined, size: 17),
-                    ),
-                    if (widget.onClose != null)
-                      IconButton(tooltip: l.close, onPressed: widget.onClose, icon: const Icon(Icons.close, size: 17)),
-                  ],
-                ),
+          final targetHost = runtime.busy ? runtime.resolvedHost : selectedHost;
+          final targetLabel = hosts.where((host) => host.id == targetHost).firstOrNull?.label ?? l.aiAgentAutoTarget;
+          return IconButtonTheme(
+            data: IconButtonThemeData(
+              style: IconButton.styleFrom(
+                minimumSize: const Size(WorkspaceSize.tabHeight, WorkspaceSize.tabHeight),
+                padding: const EdgeInsets.all(Space.xs),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              const Divider(height: 1),
-              Expanded(
-                child: runtime.timeline.isEmpty && !runtime.busy
-                    ? _Welcome(
-                        enabled: enabled,
-                        failed: configuration.loadFailed,
-                        compact: compact,
-                        onExample: _replaceGoal,
-                      )
-                    : _Conversation(runtime: runtime, conversationId: conversations.selectedId),
-              ),
-              if (runtime.error != null || _startFailed)
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.md, 0),
+                  padding: const EdgeInsets.fromLTRB(Space.sm, Space.xs, Space.xs, Space.xs),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.error),
+                      Icon(Icons.auto_awesome_outlined, size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: Space.xs),
+                      Text(l.aiAgentTitle, style: theme.textTheme.titleSmall),
                       const SizedBox(width: Space.sm),
                       Expanded(
-                        child: Text(
-                          _error(l, runtime.error),
-                          maxLines: compact ? 2 : 4,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                        child: runtime.phase == AgentPhase.idle
+                            ? const SizedBox.shrink()
+                            : Text(
+                                _phase(l, runtime.phase),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                              ),
+                      ),
+                      Builder(
+                        builder: (anchorContext) => IconButton(
+                          key: const ValueKey('ai-agent-history'),
+                          tooltip: l.aiAgentHistory,
+                          onPressed: () => _history(anchorContext),
+                          icon: const Icon(Icons.history_rounded, size: 17),
                         ),
                       ),
+                      IconButton(
+                        key: const ValueKey('ai-agent-new-task'),
+                        tooltip: l.aiAgentNewTask,
+                        onPressed: runtime.busy || conversations.loading
+                            ? null
+                            : () {
+                                if (conversations.newConversation()) _resetConversationUi();
+                              },
+                        icon: const Icon(Icons.add_comment_outlined, size: 17),
+                      ),
+                      IconButton(
+                        tooltip: l.settings,
+                        onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
+                        icon: const Icon(Icons.tune_outlined, size: 17),
+                      ),
+                      if (widget.onClose != null)
+                        IconButton(
+                          tooltip: l.close,
+                          onPressed: widget.onClose,
+                          icon: const Icon(Icons.close, size: 17),
+                        ),
                     ],
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.all(Space.sm),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: max(112, constraints.maxHeight * (compact ? .58 : .46))),
-                  child: SingleChildScrollView(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerLow,
-                        border: Border.all(color: theme.colorScheme.outlineVariant),
-                        borderRadius: BorderRadius.circular(Radii.card),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(Space.sm),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (conversations.loadFailed || conversations.saveFailed)
+                const Divider(height: 1),
+                Expanded(
+                  child: runtime.timeline.isEmpty && !runtime.busy
+                      ? _Welcome(
+                          enabled: enabled,
+                          failed: configuration.loadFailed,
+                          compact: compact,
+                          onExample: _replaceGoal,
+                        )
+                      : _Conversation(runtime: runtime, conversationId: conversations.selectedId),
+                ),
+                if (runtime.error != null || _startFailed)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.md, 0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.error),
+                        const SizedBox(width: Space.sm),
+                        Expanded(
+                          child: Text(
+                            _error(l, runtime.error),
+                            maxLines: compact ? 2 : 4,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(Space.sm),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: max(112, constraints.maxHeight * (compact ? .58 : .46))),
+                    child: SingleChildScrollView(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerLow,
+                          border: Border.all(color: theme.colorScheme.outlineVariant),
+                          borderRadius: BorderRadius.circular(Radii.card),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(Space.sm),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (conversations.loadFailed || conversations.saveFailed)
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        conversations.loadFailed
+                                            ? l.aiAgentHistoryLoadFailed
+                                            : l.aiAgentHistorySaveFailed,
+                                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          conversations.loadFailed ? conversations.reload() : conversations.retrySave(),
+                                      child: Text(l.aiAgentHistoryRetry),
+                                    ),
+                                  ],
+                                ),
+                              if (conversations.current?.historyTruncated ?? false)
+                                Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
+                              if (runtime.contextCompacted)
+                                Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
+                              Focus(
+                                onKeyEvent: (_, event) {
+                                  if (event is! KeyDownEvent ||
+                                      event.logicalKey != LogicalKeyboardKey.enter ||
+                                      !(HardwareKeyboard.instance.isControlPressed ||
+                                          HardwareKeyboard.instance.isMetaPressed) ||
+                                      !_goal.value.composing.isCollapsed) {
+                                    return KeyEventResult.ignored;
+                                  }
+                                  if (enabled &&
+                                      !runtime.busy &&
+                                      !conversations.loading &&
+                                      _goal.text.trim().isNotEmpty) {
+                                    unawaited(_send(runtime, selectedHost));
+                                  }
+                                  return KeyEventResult.handled;
+                                },
+                                child: TextField(
+                                  key: const ValueKey('ai-agent-goal'),
+                                  controller: _goal,
+                                  enabled: enabled,
+                                  minLines: 1,
+                                  maxLines: compact ? 2 : 4,
+                                  maxLength: 4096,
+                                  decoration: InputDecoration(
+                                    hintText: l.aiAgentGoal,
+                                    counterText: '',
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    disabledBorder: InputBorder.none,
+                                    filled: false,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      vertical: Space.sm,
+                                      horizontal: Space.xs,
+                                    ),
+                                  ),
+                                  onChanged: (_) => _goalChanged(),
+                                ),
+                              ),
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      conversations.loadFailed
-                                          ? l.aiAgentHistoryLoadFailed
-                                          : l.aiAgentHistorySaveFailed,
-                                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                                    child: profile == null
+                                        ? Text(l.aiAgentConfigureAction, style: theme.textTheme.bodySmall)
+                                        : AiModelPicker(
+                                            key: const ValueKey('ai-agent-model'),
+                                            value: profile.model,
+                                            protocol: profile.protocol,
+                                            endpoint: profile.endpoint,
+                                            credentialIdentity: configuration.profile?.identity,
+                                            compact: true,
+                                            onChanged: runtime.busy
+                                                ? null
+                                                : ref.read(selectedAgentModelProvider.notifier).select,
+                                          ),
+                                  ),
+                                  const SizedBox(width: Space.xs),
+                                  Flexible(
+                                    child: Tooltip(
+                                      message: targetLabel,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.dns_outlined, size: 12, color: theme.colorScheme.onSurfaceVariant),
+                                          const SizedBox(width: Space.xs),
+                                          Flexible(
+                                            child: Text(
+                                              targetLabel,
+                                              key: const ValueKey('ai-agent-target'),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.bodySmall?.copyWith(
+                                                color: theme.colorScheme.onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        conversations.loadFailed ? conversations.reload() : conversations.retrySave(),
-                                    child: Text(l.aiAgentHistoryRetry),
-                                  ),
+                                  const SizedBox(width: Space.xs),
+                                  runtime.busy
+                                      ? IconButton.filledTonal(
+                                          key: const ValueKey('ai-agent-stop'),
+                                          tooltip: l.stop,
+                                          onPressed: runtime.stop,
+                                          icon: const Icon(Icons.stop_rounded, size: 16),
+                                        )
+                                      : IconButton.filled(
+                                          key: const ValueKey('ai-agent-send'),
+                                          tooltip: l.aiAgentSendShortcut,
+                                          onPressed: !enabled || conversations.loading || draft.goal.trim().isEmpty
+                                              ? null
+                                              : () => _send(runtime, selectedHost),
+                                          icon: const Icon(Icons.arrow_upward_rounded, size: 16),
+                                        ),
                                 ],
                               ),
-                            if (conversations.current?.historyTruncated ?? false)
-                              Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
-                            if (runtime.contextCompacted)
-                              Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
-                            Focus(
-                              onKeyEvent: (_, event) {
-                                if (event is! KeyDownEvent ||
-                                    event.logicalKey != LogicalKeyboardKey.enter ||
-                                    !(HardwareKeyboard.instance.isControlPressed ||
-                                        HardwareKeyboard.instance.isMetaPressed) ||
-                                    !_goal.value.composing.isCollapsed) {
-                                  return KeyEventResult.ignored;
-                                }
-                                if (enabled &&
-                                    !runtime.busy &&
-                                    !conversations.loading &&
-                                    _goal.text.trim().isNotEmpty) {
-                                  unawaited(_send(runtime, selectedHost));
-                                }
-                                return KeyEventResult.handled;
-                              },
-                              child: TextField(
-                                key: const ValueKey('ai-agent-goal'),
-                                controller: _goal,
-                                enabled: enabled,
-                                minLines: 1,
-                                maxLines: compact ? 2 : 4,
-                                maxLength: 4096,
-                                decoration: InputDecoration(
-                                  hintText: l.aiAgentGoal,
-                                  counterText: '',
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  disabledBorder: InputBorder.none,
-                                  filled: false,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.xs),
-                                ),
-                                onChanged: (_) => _goalChanged(),
-                              ),
-                            ),
-                            const SizedBox(height: Space.xs),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: profile == null
-                                      ? Text(l.aiAgentConfigureAction, style: theme.textTheme.bodySmall)
-                                      : AiModelPicker(
-                                          key: const ValueKey('ai-agent-model'),
-                                          value: profile.model,
-                                          protocol: profile.protocol,
-                                          endpoint: profile.endpoint,
-                                          credentialIdentity: configuration.profile?.identity,
-                                          compact: true,
-                                          onChanged: runtime.busy
-                                              ? null
-                                              : ref.read(selectedAgentModelProvider.notifier).select,
-                                        ),
-                                ),
-                                if (!tools) Text(l.aiAgentTextOnly, style: theme.textTheme.bodySmall),
-                              ],
-                            ),
-                            const SizedBox(height: Space.sm),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: tools
-                                      ? AppSelect<HostId?>(
-                                          key: const ValueKey('ai-agent-host'),
-                                          value: selectedHost,
-                                          options: [
-                                            AppOption(null, l.aiAgentNoHost, icon: Icons.chat_bubble_outline_rounded),
-                                            for (final host in hosts)
-                                              AppOption(host.id, host.label, icon: Icons.dns_outlined),
-                                          ],
-                                          searchable: hosts.length > 8,
-                                          searchHint: l.aiAgentChooseHost,
-                                          onChanged: !enabled || runtime.busy
-                                              ? null
-                                              : ref.read(agentComposerProvider.notifier).selectHost,
-                                        )
-                                      : const SizedBox.shrink(),
-                                ),
-                                if (tools && selectedHost != null)
-                                  IconButton(
-                                    key: const ValueKey('ai-agent-scope-details'),
-                                    tooltip: l.aiAgentScopeDetails,
-                                    isSelected: _scopeDetails,
-                                    onPressed: () => setState(() => _scopeDetails = !_scopeDetails),
-                                    icon: const Icon(Icons.shield_outlined, size: 17),
-                                  ),
-                                const SizedBox(width: Space.sm),
-                                runtime.busy
-                                    ? IconButton.filledTonal(
-                                        key: const ValueKey('ai-agent-stop'),
-                                        tooltip: l.stop,
-                                        onPressed: runtime.stop,
-                                        icon: const Icon(Icons.stop_rounded, size: 18),
-                                      )
-                                    : IconButton.filled(
-                                        key: const ValueKey('ai-agent-send'),
-                                        tooltip: l.aiAgentSendShortcut,
-                                        onPressed: !enabled || conversations.loading || draft.goal.trim().isEmpty
-                                            ? null
-                                            : () => _send(runtime, selectedHost),
-                                        icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-                                      ),
-                              ],
-                            ),
-                            if (tools && selectedHost != null && _scopeDetails) ...[
-                              const SizedBox(height: Space.sm),
-                              Text(l.aiAgentDiagnosticScope, style: theme.textTheme.bodySmall),
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),
@@ -895,6 +898,7 @@ String _error(AppLocalizations l, String? code) => switch (code) {
   'modelHttpError' || 'modelStreamError' || 'modelRefused' => l.aiAgentErrorHttp,
   'deadline' || 'modelTimedOut' => l.aiAgentErrorTimeout,
   'contextLimit' ||
+  'scopeLimit' ||
   'messageLimit' ||
   'toolLimit' ||
   'stepLimit' ||
