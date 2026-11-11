@@ -205,6 +205,44 @@ extension _TerminalAiPane on _TerminalPaneState {
         (_aiService?.canGenerate(context) ?? false);
   }
 
+  /// A small AI badge rides above the cursor so it belongs to the line being typed, not the pane corner.
+  Widget _inlineAiBadge(BoxConstraints box) => ValueListenableBuilder<Rect?>(
+    valueListenable: _completionCursor,
+    builder: (context, cursor, _) {
+      if (cursor == null || !_canOpenInlineAi) return const SizedBox.shrink();
+      final scheme = Theme.of(context).colorScheme;
+      final natural = terminalInputIntent(_session.readAiContext().draft ?? '') == TerminalInputIntent.naturalLanguage;
+      const size = 20.0, gap = 2.0;
+      final left = min(max(cursor.right + gap, gap), max(gap, box.maxWidth - size - gap));
+      final above = cursor.top - size - gap;
+      final top = min(above >= gap ? above : cursor.bottom + gap, max(gap, box.maxHeight - size - gap));
+      return Positioned(
+        left: left,
+        top: top,
+        width: size,
+        height: size,
+        child: Tooltip(
+          message: AppLocalizations.of(context).terminalAiGenerate,
+          child: IconButton(
+            key: const ValueKey('terminal-ai-toggle'),
+            onPressed: _showInlineAi,
+            padding: EdgeInsets.zero,
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(size),
+              fixedSize: const Size.square(size),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: .92),
+              foregroundColor: natural ? scheme.primary : scheme.onSurfaceVariant,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
+            ),
+            icon: const Icon(Icons.auto_awesome_outlined, size: 12),
+          ),
+        ),
+      );
+    },
+  );
+
   void _showInlineAi() {
     if (!_canOpenInlineAi) return;
     _cancelAiCompletion();
@@ -338,6 +376,12 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
     } finally {
       if (mounted && identical(_cancel, token)) setState(() => _cancel = null);
     }
+  }
+
+  /// Stops the visible wait at once; the cancelled token makes any late model result a no-op.
+  void _stop() {
+    _cancel?.cancel();
+    if (mounted) setState(() => _cancel = null);
   }
 
   bool get _canAccept {
@@ -508,7 +552,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                         label: Text(l.terminalAiOpenAgent),
                       ),
                     if (_cancel != null)
-                      TextButton(onPressed: () => _cancel?.cancel(), child: Text(l.stop))
+                      TextButton(key: const ValueKey('terminal-ai-stop'), onPressed: _stop, child: Text(l.stop))
                     else if (_result?.kind == TerminalAiGenerationKind.command)
                       FilledButton.icon(
                         key: const ValueKey('terminal-ai-accept'),

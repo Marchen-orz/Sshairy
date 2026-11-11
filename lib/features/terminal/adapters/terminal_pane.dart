@@ -432,6 +432,10 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
               ),
             ),
             _completionOverlay(),
+            if (widget.visible)
+              Positioned.fill(
+                child: LayoutBuilder(builder: (context, box) => Stack(children: [_inlineAiBadge(box)])),
+              ),
             if (_searching)
               Positioned(
                 top: Space.sm,
@@ -494,33 +498,12 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                 Positioned(
                   top: Space.xs,
                   right: Space.sm,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_canOpenInlineAi)
-                        IconButton(
-                          key: const ValueKey('terminal-ai-toggle'),
-                          tooltip: l.terminalAiGenerate,
-                          icon: Icon(
-                            Icons.auto_awesome_outlined,
-                            size: 18,
-                            color:
-                                terminalInputIntent(_session.readAiContext().draft ?? '') ==
-                                    TerminalInputIntent.naturalLanguage
-                                ? Theme.of(context).colorScheme.primary
-                                : null,
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          onPressed: _showInlineAi,
-                        ),
-                      IconButton(
-                        key: const ValueKey('terminal-multiline-toggle'),
-                        tooltip: l.terminalMultilineInput,
-                        icon: const Icon(Icons.edit_note_outlined, size: 18),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: _showComposer,
-                      ),
-                    ],
+                  child: IconButton(
+                    key: const ValueKey('terminal-multiline-toggle'),
+                    tooltip: l.terminalMultilineInput,
+                    icon: const Icon(Icons.edit_note_outlined, size: 18),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _showComposer,
                   ),
                 ),
               if ((widget.active || _historyPinned) && _historyOpen) _historyOverlay(),

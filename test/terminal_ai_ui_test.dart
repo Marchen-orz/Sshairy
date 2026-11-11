@@ -323,6 +323,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the AI badge sits at the cursor and moves with the typed line', (tester) async {
+    await mount(tester, 'show disk usage');
+    final badge = find.byKey(const ValueKey('terminal-ai-toggle'));
+    expect(badge, findsOneWidget);
+    final pane = tester.getRect(find.byType(TerminalPane));
+    final before = tester.getRect(badge);
+    expect(before.left, lessThan(pane.width / 2));
+    await feed(tester, ' now');
+    final after = tester.getRect(badge);
+    expect(after.left, greaterThan(before.left));
+    expect(after.top, closeTo(before.top, 1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stopping inline generation clears the wait and ignores the late result', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('terminal-ai-stop')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-stop')));
+    await tester.pump();
+    expect(ai.generationTokens.single.isCancelled, isTrue);
+    expect(find.byKey(const ValueKey('terminal-ai-generate')), findsOneWidget);
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('terminal-ai-accept')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inline with remote text cannot replace it and retained preview can be accepted after clearing', (
     tester,
   ) async {
