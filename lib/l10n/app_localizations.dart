@@ -4999,6 +4999,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Auto'**
   String get aiAgentAutoTarget;
+
+  /// No description provided for @aiAgentPermissionAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get aiAgentPermissionAuto;
+
+  /// No description provided for @aiAgentPermissionConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get aiAgentPermissionConfirm;
+
+  /// No description provided for @aiAgentPermissionObserve.
+  ///
+  /// In en, this message translates to:
+  /// **'Observe'**
+  String get aiAgentPermissionObserve;
+
+  /// No description provided for @aiAgentPermissionAutoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Execute commands automatically'**
+  String get aiAgentPermissionAutoHint;
+
+  /// No description provided for @aiAgentPermissionConfirmHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm each command'**
+  String get aiAgentPermissionConfirmHint;
+
+  /// No description provided for @aiAgentPermissionObserveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Fixed read-only diagnostics'**
+  String get aiAgentPermissionObserveHint;
+
+  /// No description provided for @aiAgentContextUsage.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated context: {percent}% · {used} / {total} tokens'**
+  String aiAgentContextUsage(int percent, int used, int total);
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

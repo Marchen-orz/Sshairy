@@ -2575,4 +2575,27 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentAutoTarget => '自动选择';
+
+  @override
+  String get aiAgentPermissionAuto => '自动';
+
+  @override
+  String get aiAgentPermissionConfirm => '确认';
+
+  @override
+  String get aiAgentPermissionObserve => '观察';
+
+  @override
+  String get aiAgentPermissionAutoHint => '自动执行命令';
+
+  @override
+  String get aiAgentPermissionConfirmHint => '逐条确认命令';
+
+  @override
+  String get aiAgentPermissionObserveHint => '固定只读诊断';
+
+  @override
+  String aiAgentContextUsage(int percent, int used, int total) {
+    return '上下文估算占用：$percent% · $used / $total tokens';
+  }
 }

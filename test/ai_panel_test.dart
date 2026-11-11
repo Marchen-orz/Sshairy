@@ -15,6 +15,7 @@ import 'package:sshairy/features/ai/application/model_catalog.dart';
 import 'package:sshairy/features/ai/application/model_selection.dart';
 import 'package:sshairy/features/ai/application/providers.dart';
 import 'package:sshairy/features/ai/application/target.dart';
+import 'package:sshairy/features/ai/application/permission_mode.dart';
 import 'package:sshairy/features/ai/application/runtime.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
@@ -130,6 +131,13 @@ class _Runtime extends AgentRuntime {
         configuration: () => (enabled: true, profile: _profile, revision: 0),
       );
   bool active = false;
+  int estimatedUsed = 0, estimatedWindow = 0;
+  @override
+  int get contextUsedTokens => estimatedUsed;
+  @override
+  int get contextWindow => estimatedWindow;
+  @override
+  AgentPermissionMode get permissionMode => sentScope?.permissionMode ?? AgentPermissionMode.confirm;
   String? goal;
   AgentScope? sentScope;
   bool? approved;
@@ -493,6 +501,77 @@ void main() {
     await tester.pumpWidget(_app(container));
     await tester.pump();
     expect(container.read(effectiveAgentProfileProvider)!.model, 'alternate-model');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('composer shows mode, model and estimated context with host above and send at bottom right', (
+    tester,
+  ) async {
+    final runtime = _Runtime();
+    await _panel(tester, runtime, focusedHost: const HostId('web'));
+    final host = tester.getRect(find.byKey(const ValueKey('ai-agent-target')));
+    final goal = tester.getRect(find.byKey(const ValueKey('ai-agent-goal')));
+    final send = tester.getRect(find.byKey(const ValueKey('ai-agent-send')));
+    final model = tester.getRect(find.byKey(const ValueKey('ai-agent-model')));
+    expect(host.bottom, lessThan(goal.top));
+    expect(send.right, greaterThan(model.right));
+    expect(send.bottom, greaterThanOrEqualTo(model.bottom));
+    expect(find.text('0%'), findsOneWidget);
+    runtime.estimatedUsed = 32000;
+    runtime.estimatedWindow = 128000;
+    runtime.refresh();
+    await tester.pump();
+    expect(find.text('25%'), findsOneWidget);
+    final usage = tester.widget<Tooltip>(
+      find.ancestor(of: find.byKey(const ValueKey('ai-agent-context-usage')), matching: find.byType(Tooltip)).first,
+    );
+    expect(usage.message, 'Estimated context: 25% · 32000 / 128000 tokens');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('permission selection applies to send and is disabled during a turn', (tester) async {
+    final runtime = _Runtime();
+    final container = await _panel(tester, runtime);
+    expect(container.read(selectedAgentPermissionModeProvider), AgentPermissionMode.confirm);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-permission')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-agent-permission-auto')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-permission-observe')));
+    await tester.pumpAndSettle();
+    expect(container.read(selectedAgentPermissionModeProvider), AgentPermissionMode.observe);
+    await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Observe the server');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
+    await tester.pump();
+    expect(runtime.sentScope!.permissionMode, AgentPermissionMode.observe);
+    expect(tester.widget<TextButton>(find.byKey(const ValueKey('ai-agent-permission'))).onPressed, isNull);
+    container.read(selectedAgentPermissionModeProvider.notifier).select(AgentPermissionMode.auto);
+    expect(container.read(selectedAgentPermissionModeProvider), AgentPermissionMode.observe);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-stop')));
+    await tester.pump();
+    expect(tester.widget<TextButton>(find.byKey(const ValueKey('ai-agent-permission'))).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('history expands inside the sidebar and toggles without an overlay', (tester) async {
+    await _panel(tester, _Runtime(), store: _ConversationStore([_conversation('a')]));
+    expect(find.byKey(const ValueKey('ai-agent-history-list')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    final history = find.byKey(const ValueKey('ai-agent-history-list'));
+    expect(history, findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(AgentPanel), matching: find.byKey(const ValueKey('ai-conversation-a'))),
+      findsOneWidget,
+    );
+    expect(find.byType(PopupSurface), findsNothing);
+    expect(
+      tester.getRect(history).top,
+      greaterThan(tester.getRect(find.byKey(const ValueKey('ai-agent-history'))).bottom),
+    );
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    expect(history, findsNothing);
     expect(tester.takeException(), isNull);
   });
 

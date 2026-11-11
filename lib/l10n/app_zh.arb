@@ -847,5 +847,12 @@
   "aiConfigFeatureAdvanced": "高级设置",
   "aiConfigAvailableHosts": "可用主机",
   "aiConfigFeatureNoHosts": "新增 SSH 主机将自动启用。",
-  "aiAgentAutoTarget": "自动选择"
+  "aiAgentAutoTarget": "自动选择",
+  "aiAgentPermissionAuto": "自动",
+  "aiAgentPermissionConfirm": "确认",
+  "aiAgentPermissionObserve": "观察",
+  "aiAgentPermissionAutoHint": "自动执行命令",
+  "aiAgentPermissionConfirmHint": "逐条确认命令",
+  "aiAgentPermissionObserveHint": "固定只读诊断",
+  "aiAgentContextUsage": "上下文估算占用：{percent}% · {used} / {total} tokens"
 }

@@ -888,5 +888,13 @@
   "aiConfigFeatureAdvanced": "Advanced",
   "aiConfigAvailableHosts": "Available hosts",
   "aiConfigFeatureNoHosts": "New SSH hosts will be enabled automatically.",
-  "aiAgentAutoTarget": "Auto"
+  "aiAgentAutoTarget": "Auto",
+  "aiAgentPermissionAuto": "Auto",
+  "aiAgentPermissionConfirm": "Confirm",
+  "aiAgentPermissionObserve": "Observe",
+  "aiAgentPermissionAutoHint": "Execute commands automatically",
+  "aiAgentPermissionConfirmHint": "Confirm each command",
+  "aiAgentPermissionObserveHint": "Fixed read-only diagnostics",
+  "aiAgentContextUsage": "Estimated context: {percent}% · {used} / {total} tokens",
+  "@aiAgentContextUsage": {"placeholders": {"percent": {"type": "int"}, "used": {"type": "int"}, "total": {"type": "int"}}}
 }

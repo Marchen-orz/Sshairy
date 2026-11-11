@@ -2631,4 +2631,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentAutoTarget => 'Auto';
+
+  @override
+  String get aiAgentPermissionAuto => 'Auto';
+
+  @override
+  String get aiAgentPermissionConfirm => 'Confirm';
+
+  @override
+  String get aiAgentPermissionObserve => 'Observe';
+
+  @override
+  String get aiAgentPermissionAutoHint => 'Execute commands automatically';
+
+  @override
+  String get aiAgentPermissionConfirmHint => 'Confirm each command';
+
+  @override
+  String get aiAgentPermissionObserveHint => 'Fixed read-only diagnostics';
+
+  @override
+  String aiAgentContextUsage(int percent, int used, int total) {
+    return 'Estimated context: $percent% · $used / $total tokens';
+  }
 }
