@@ -39,6 +39,10 @@ abstract final class CompletionSize {
   static const maxHeight = 272.0, row = 32.0;
 }
 
+abstract final class InlineAiPopupSize {
+  static const width = 360.0, maxHeight = 280.0;
+}
+
 abstract final class HistoryPopupSize {
   static const width = 440.0, height = 360.0, minWidth = 280.0, minHeight = 180.0;
   static const maxWidth = 720.0, maxHeight = 560.0, resizeGrip = 20.0;

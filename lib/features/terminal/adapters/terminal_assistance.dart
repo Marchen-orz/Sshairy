@@ -319,6 +319,7 @@ extension _CommandAssistance on TerminalSession {
     _cancelCompletion();
     _draftRevision++;
     _assistance.value = const CommandAssistanceState();
+    _inlineAi.synchronize();
   }
 
   void _markCommandSubmitted() {

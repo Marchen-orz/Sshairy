@@ -24,6 +24,7 @@ import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../application/completion_translations.dart';
 import '../application/ai.dart';
+import '../application/inline_ai.dart';
 import '../domain/ai_intent.dart';
 import '../domain/ai_terminal.dart';
 import '../domain/command_assistance.dart';
@@ -102,6 +103,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   }
 
   void _configureTerminal() {
+    _assistance.addListener(_inlineAi.synchronize);
+    _directory.changes.addListener(_inlineAi.synchronize);
     _terminal.onSemanticPrompt = _semanticPrompt;
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
@@ -159,9 +162,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   final _browseStack = <_BrowseFrame>[];
   final _commands = CommandHistory();
   final _aiHistory = <TerminalAiHistoryEntry>[];
-  String inlineAiDraft = '', inlineAiCommand = '';
-  TerminalAiContext? inlineAiContext;
-  TerminalAiGeneration? inlineAiResult;
+  late final _inlineAi = InlineAiController(readContext: readAiContext, readHistory: readAiHistory);
   final _history = ValueNotifier<List<String>>(const []);
   final _assistance = ValueNotifier<CommandAssistanceState>(const CommandAssistanceState());
   Timer? _completionTimer;
@@ -756,9 +757,9 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _ownedPaths = null;
     _commands.clear();
     _aiHistory.clear();
-    inlineAiDraft = inlineAiCommand = '';
-    inlineAiContext = null;
-    inlineAiResult = null;
+    _assistance.removeListener(_inlineAi.synchronize);
+    _directory.changes.removeListener(_inlineAi.synchronize);
+    _inlineAi.dispose();
     multilineDraft = '';
     _history.value = const [];
     _assistance.value = const CommandAssistanceState();

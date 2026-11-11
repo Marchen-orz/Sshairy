@@ -41,6 +41,7 @@ extension _TerminalAiPane on _TerminalPaneState {
     _aiChanges?.cancel();
     _cancelAiCompletion();
     _aiService = service;
+    _session._inlineAi.bind(service);
     _aiChanges = service.changes.listen((_) {
       _cancelAiCompletion();
       if (mounted) _update(() => _inlineAiOpen = false);
@@ -246,6 +247,9 @@ extension _TerminalAiPane on _TerminalPaneState {
   void _showInlineAi() {
     if (!_canOpenInlineAi) return;
     _cancelAiCompletion();
+    final inline = _session._inlineAi;
+    inline.open();
+    if (!inline.busy && inline.result == null && inline.instruction.trim().isNotEmpty) unawaited(inline.generate());
     _update(() {
       _historyOpen = _composerOpen = false;
       _inlineAiOpen = true;
@@ -260,29 +264,55 @@ extension _TerminalAiPane on _TerminalPaneState {
   }
 
   Widget _inlineAiOverlay() => Positioned.fill(
-    child: Padding(
-      padding: const EdgeInsets.all(Space.sm),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: WorkspaceSize.flyoutWide, maxHeight: WorkspaceSize.toolPanel),
-          child: _InlineAiComposer(
-            session: _session,
-            service: _aiService!,
-            onClose: _closeInlineAi,
-            onAskAgent: widget.onAskAgent,
-          ),
-        ),
-      ),
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final width = min(InlineAiPopupSize.width, max(0.0, box.maxWidth - Space.sm * 2));
+        final height = min(InlineAiPopupSize.maxHeight, max(0.0, box.maxHeight - Space.sm * 2));
+        Offset constrain(Offset offset) => Offset(
+          offset.dx.clamp(Space.sm, max(Space.sm, box.maxWidth - width - Space.sm)),
+          offset.dy.clamp(Space.sm, max(Space.sm, box.maxHeight - height - Space.sm)),
+        );
+        final offset = constrain(
+          _inlineAiOffset ?? _completionCursor.value?.bottomLeft ?? const Offset(Space.sm, Space.sm),
+        );
+        return Stack(
+          children: [
+            Positioned(
+              left: offset.dx,
+              top: offset.dy,
+              width: width,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: height),
+                child: _InlineAiComposer(
+                  key: ObjectKey(_session._inlineAi.context),
+                  session: _session,
+                  service: _aiService!,
+                  onClose: _closeInlineAi,
+                  onDrag: (delta) => _update(() => _inlineAiOffset = constrain((_inlineAiOffset ?? offset) + delta)),
+                  onAskAgent: widget.onAskAgent,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     ),
   );
 }
 
 class _InlineAiComposer extends StatefulWidget {
-  const _InlineAiComposer({required this.session, required this.service, required this.onClose, this.onAskAgent});
+  const _InlineAiComposer({
+    super.key,
+    required this.session,
+    required this.service,
+    required this.onClose,
+    required this.onDrag,
+    this.onAskAgent,
+  });
   final TerminalSession session;
   final TerminalAiService service;
   final VoidCallback onClose;
+  final ValueChanged<Offset> onDrag;
   final ValueChanged<String>? onAskAgent;
   @override
   State<_InlineAiComposer> createState() => _InlineAiComposerState();
@@ -297,104 +327,43 @@ String _failureText(AppLocalizations l, TerminalAiFailure failure) => switch (fa
 };
 
 class _InlineAiComposerState extends State<_InlineAiComposer> {
-  late final _captured = widget.session.readAiContext();
-  late final _instruction = TextEditingController(
-    text: _captured.draft!.isEmpty ? widget.session.inlineAiDraft : _captured.draft,
-  );
-  late final _command = TextEditingController(text: widget.session.inlineAiCommand);
+  late final _inline = widget.session._inlineAi;
+  late final _captured = _inline.context!;
+  late final _instruction = TextEditingController(text: _inline.instruction);
+  late final _command = TextEditingController(text: _inline.command);
   final _editorFocus = FocusNode();
   final _focus = FocusNode();
-  CancellationToken? _cancel;
-  TerminalAiGeneration? _result;
-  TerminalAiFailure? _failure;
-  bool _stale = false;
+  TerminalAiGeneration? get _result => _inline.result;
+  TerminalAiFailure? get _failure => _inline.failure;
+  bool get _stale => _inline.stale;
 
   @override
   void initState() {
     super.initState();
-    final saved = widget.session.inlineAiContext;
-    if (saved != null && sameTerminalAiContext(saved, _captured, draft: false)) {
-      _result = widget.session.inlineAiResult;
-    } else {
-      _command.clear();
-    }
+    _inline.addListener(_changed);
     widget.session.commandAssistance.addListener(_changed);
     widget.session._directory.changes.addListener(_changed);
     widget.session.addListener(_changed);
     _instruction.addListener(_edited);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _focus.requestFocus();
-      // Opening from an existing prompt asks the model straight away; the result stays editable.
-      if (_result == null && _captured.draft!.trim().isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _editorFocus.hasFocus) unawaited(_generate());
-        });
-      }
+      if (mounted) _focus.requestFocus();
     });
   }
 
   void _edited() {
-    widget.session.inlineAiDraft = _instruction.text;
-    if (!_instruction.value.composing.isCollapsed) _cancel?.cancel();
+    _inline.editInstruction(_instruction.text);
+    if (!_instruction.value.composing.isCollapsed) _inline.stop();
     if (mounted) setState(() {});
   }
 
   void _changed() {
-    final current = widget.session.readAiContext();
-    if (!sameTerminalAiContext(_captured, current)) {
-      _cancel?.cancel();
-      _stale = true;
-    }
+    if (_command.text != _inline.command) _command.text = _inline.command;
     if (mounted) setState(() {});
   }
 
   Future<void> _generate() async {
-    if (_cancel != null ||
-        _stale ||
-        !_editorFocus.hasFocus ||
-        !_instruction.value.composing.isCollapsed ||
-        _instruction.text.trim().isEmpty) {
-      return;
-    }
-    final current = widget.session.readAiContext();
-    if (!sameTerminalAiContext(_captured, current) || !widget.service.canGenerate(current)) return;
-    final token = CancellationToken();
-    setState(() {
-      _cancel = token;
-      _result = null;
-      _failure = null;
-    });
-    try {
-      final result = await widget.service.generate(
-        _captured,
-        _instruction.text.trim(),
-        token,
-        history: widget.session.readAiHistory(_captured),
-      );
-      if (!mounted || token.isCancelled || !sameTerminalAiContext(_captured, widget.session.readAiContext())) return;
-      if (result.kind == TerminalAiGenerationKind.command && !validTerminalAiCommand(result.command ?? '')) {
-        throw const FormatException('command');
-      }
-      setState(() {
-        _result = result;
-        _command.text = result.command ?? '';
-      });
-    } on TerminalAiFailure catch (failure) {
-      if (mounted && !token.isCancelled) setState(() => _failure = failure);
-    } on Object {
-      if (mounted && !token.isCancelled) {
-        setState(() => _failure = const TerminalAiFailure(TerminalAiFailureReason.invalid));
-      }
-    } finally {
-      if (mounted && identical(_cancel, token)) setState(() => _cancel = null);
-    }
-  }
-
-  /// Stops the visible wait at once; the cancelled token makes any late model result a no-op.
-  void _stop() {
-    _cancel?.cancel();
-    if (mounted) setState(() => _cancel = null);
+    if (_stale || !_editorFocus.hasFocus || !_instruction.value.composing.isCollapsed) return;
+    await _inline.generate();
   }
 
   bool get _canAccept {
@@ -402,7 +371,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
     return !_stale &&
         _editorFocus.hasFocus &&
         _result?.kind == TerminalAiGenerationKind.command &&
-        _cancel == null &&
+        !_inline.busy &&
         _command.value.composing.isCollapsed &&
         current.ready &&
         current.draft!.isEmpty &&
@@ -416,8 +385,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
     final current = widget.session.readAiContext();
     final sent = await widget.session.acceptAiDraft(current, _command.text);
     if (mounted && sent == InsertResult.sent) {
-      _result = null;
-      _command.clear();
+      _inline.clear();
       widget.onClose();
     }
   }
@@ -444,15 +412,10 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
 
   @override
   void dispose() {
-    _cancel?.cancel();
+    _inline.removeListener(_changed);
     widget.session.commandAssistance.removeListener(_changed);
     widget.session._directory.changes.removeListener(_changed);
     widget.session.removeListener(_changed);
-    if (widget.session.canInsert) {
-      widget.session.inlineAiContext = _captured;
-      widget.session.inlineAiResult = _result;
-      widget.session.inlineAiCommand = _command.text;
-    }
     _instruction.removeListener(_edited);
     _instruction.dispose();
     _command.dispose();
@@ -469,14 +432,13 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
       child: Focus(
         focusNode: _editorFocus,
         onFocusChange: (focused) {
-          if (!focused) _cancel?.cancel();
           if (mounted) setState(() {});
         },
         onKeyEvent: _onKey,
         child: PopupSurface(
           key: const ValueKey('terminal-ai-composer'),
           radius: Radii.panel,
-          padding: const EdgeInsets.all(Space.md),
+          padding: const EdgeInsets.all(Space.sm),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -484,9 +446,26 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.auto_awesome_outlined, size: 16),
-                    const SizedBox(width: Space.sm),
-                    Expanded(child: Text(l.terminalAiGenerate, style: theme.textTheme.labelLarge)),
+                    Expanded(
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.move,
+                        child: GestureDetector(
+                          key: const ValueKey('terminal-ai-drag'),
+                          behavior: HitTestBehavior.opaque,
+                          onPanUpdate: (details) => widget.onDrag(details.delta),
+                          child: SizedBox(
+                            height: WorkspaceSize.control,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.auto_awesome_outlined, size: 14),
+                                const SizedBox(width: Space.sm),
+                                Flexible(child: Text(l.terminalAiGenerate, style: theme.textTheme.labelLarge)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                     IconButton(onPressed: widget.onClose, tooltip: l.close, icon: const Icon(Icons.close, size: 16)),
                   ],
                 ),
@@ -495,15 +474,14 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                   key: const ValueKey('terminal-ai-instruction'),
                   controller: _instruction,
                   focusNode: _focus,
-                  readOnly: _cancel != null,
-                  minLines: 2,
-                  maxLines: 4,
+                  minLines: 1,
+                  maxLines: 3,
                   maxLength: 2048,
-                  decoration: InputDecoration(hintText: l.terminalAiInstruction, counterText: ''),
+                  decoration: InputDecoration(isDense: true, hintText: l.terminalAiInstruction, counterText: ''),
                 ),
-                if (_cancel != null)
+                if (_inline.busy)
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: Space.md),
+                    padding: EdgeInsets.symmetric(vertical: Space.sm),
                     child: LinearProgressIndicator(minHeight: 2),
                   ),
                 if (_failure case final failure?)
@@ -523,9 +501,12 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                       key: const ValueKey('terminal-ai-command'),
                       controller: _command,
                       minLines: 1,
-                      maxLines: 5,
+                      maxLines: 3,
                       style: mono(context),
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (value) {
+                        _inline.command = value;
+                        setState(() {});
+                      },
                       decoration: const InputDecoration(isDense: true),
                     )
                   else
@@ -564,8 +545,8 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                         icon: const Icon(Icons.auto_awesome_outlined, size: 16),
                         label: Text(l.terminalAiOpenAgent),
                       ),
-                    if (_cancel != null)
-                      TextButton(key: const ValueKey('terminal-ai-stop'), onPressed: _stop, child: Text(l.stop))
+                    if (_inline.busy)
+                      TextButton(key: const ValueKey('terminal-ai-stop'), onPressed: _inline.stop, child: Text(l.stop))
                     else if (_result?.kind == TerminalAiGenerationKind.command)
                       FilledButton.icon(
                         key: const ValueKey('terminal-ai-accept'),

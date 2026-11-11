@@ -103,10 +103,13 @@ class TerminalAiFailure implements Exception {
 }
 
 bool sameTerminalAiContext(TerminalAiContext a, TerminalAiContext b, {bool draft = true}) =>
+    sameTerminalAiEnvironment(a, b) &&
+    (!draft || (a.revision == b.revision && a.draft == b.draft)) &&
+    a.prompt == b.prompt;
+
+bool sameTerminalAiEnvironment(TerminalAiContext a, TerminalAiContext b) =>
     a.sessionId == b.sessionId &&
     a.generation == b.generation &&
-    (!draft || (a.revision == b.revision && a.draft == b.draft)) &&
-    a.prompt == b.prompt &&
     a.directory == b.directory &&
     switch ((a.target, b.target)) {
       (SshTerminalAiTarget(hostId: final x), SshTerminalAiTarget(hostId: final y)) => x == y,

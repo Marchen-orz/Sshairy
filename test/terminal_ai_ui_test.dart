@@ -139,13 +139,17 @@ void main() {
   late TerminalSession session;
   String? handedOff;
 
-  Future<void> view(WidgetTester tester, {bool active = true}) async {
+  Future<void> view(WidgetTester tester, {bool active = true, double textScale = 1}) async {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
           theme: buildTheme(Brightness.light).copyWith(platform: TargetPlatform.windows),
           locale: const Locale('en'),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
@@ -367,14 +371,160 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('outside dismissal keeps the request and reopening reuses it and its result', (tester) async {
+    await mount(tester, 'show disk usage');
+    final toggle = find.byKey(const ValueKey('terminal-ai-toggle'));
+    final composer = find.byKey(const ValueKey('terminal-ai-composer'));
+    await tester.tap(toggle);
+    await tester.pump();
+    final pane = tester.getRect(find.byType(TerminalPane));
+    await tester.tapAt(pane.bottomRight - const Offset(20, 20));
+    await tester.pump();
+    expect(composer, findsNothing);
+    expect(ai.generationTokens.single.isCancelled, isFalse);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(ai.generations, hasLength(1));
+    expect(find.byKey(const ValueKey('terminal-ai-stop')), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(ai.generations, hasLength(1));
+    final command = find.byKey(const ValueKey('terminal-ai-command'));
+    expect(tester.widget<TextField>(command).controller!.text, 'df -h');
+    await tester.enterText(command, 'df -h /');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(tester.widget<TextField>(command).controller!.text, 'df -h /');
+    expect(ai.generations, hasLength(1));
+    expect(transport.shell.writes, isEmpty);
+  });
+
+  testWidgets('hidden inline input changes cancel immediately and wait for a manual request', (tester) async {
+    await mount(tester, 'show disk usage');
+    final toggle = find.byKey(const ValueKey('terminal-ai-toggle'));
+    await tester.tap(toggle);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    tester.testTextInput.enterText(' now');
+    await tester.pump();
+    expect(ai.generationTokens.single.isCancelled, isTrue);
+    await feed(tester, ' now');
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'old'));
+    await tester.pump(const Duration(seconds: 1));
+    expect(ai.generations, hasLength(1));
+    expect(find.byKey(const ValueKey('terminal-ai-composer')), findsNothing);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(ai.generations, hasLength(2));
+    expect(find.byKey(const ValueKey('terminal-ai-command')), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('terminal-ai-instruction'))).controller!.text,
+      'show disk usage now',
+    );
+  });
+
+  testWidgets('manual stop discards late results before reopening starts a fresh request', (tester) async {
+    await mount(tester, 'show disk usage');
+    final toggle = find.byKey(const ValueKey('terminal-ai-toggle'));
+    await tester.tap(toggle);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-stop')));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(ai.generations, hasLength(2));
+    ai.generations.first.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'old'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('terminal-ai-command')), findsNothing);
+    ai.generations.last.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'new'));
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('terminal-ai-command'))).controller!.text, 'new');
+  });
+
+  testWidgets('inline generation survives a pane unmount but session close cancels it', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(ai.generationTokens.single.isCancelled, isFalse);
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    await view(tester);
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    expect(ai.generations, hasLength(1));
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('terminal-ai-command'))).controller!.text, 'df -h');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await feed(tester, ' now');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    session.close();
+    expect(ai.generationTokens.last.isCancelled, isTrue);
+  });
+
+  testWidgets('editing the local request cancels generation without automatically restarting it', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const ValueKey('terminal-ai-instruction')), 'show memory');
+    await tester.pump();
+    expect(ai.generationTokens.single.isCancelled, isTrue);
+    expect(ai.generations, hasLength(1));
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-generate')));
+    await tester.pump();
+    expect(ai.generations, hasLength(2));
+  });
+
+  testWidgets('inline editor is compact, draggable and stays within a narrow scaled pane', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    final composer = find.byKey(const ValueKey('terminal-ai-composer'));
+    final drag = find.byKey(const ValueKey('terminal-ai-drag'));
+    final before = tester.getRect(composer);
+    expect(before.width, 360);
+    expect(before.height, lessThan(240));
+    await tester.drag(drag, const Offset(100, 80));
+    await tester.pump();
+    final after = tester.getRect(composer);
+    expect(after.left, greaterThan(before.left));
+    expect(after.top, greaterThan(before.top));
+    expect(ai.generationTokens.single.isCancelled, isFalse);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(300, 300);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await view(tester, textScale: 1.5);
+    await tester.pump();
+    await tester.drag(drag, const Offset(1000, 1000));
+    await tester.pump();
+    final pane = tester.getRect(find.byType(TerminalPane));
+    final bounds = tester.getRect(composer);
+    expect(bounds.left, greaterThanOrEqualTo(pane.left));
+    expect(bounds.right, lessThanOrEqualTo(pane.right));
+    expect(bounds.top, greaterThanOrEqualTo(pane.top));
+    expect(bounds.bottom, lessThanOrEqualTo(pane.bottom));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inline with remote text cannot replace it and retained preview can be accepted after clearing', (
     tester,
   ) async {
     await mount(tester, '请查看磁盘');
     await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('terminal-ai-generate')));
-    await tester.pump();
+    expect(ai.generations, hasLength(1));
     ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
     await tester.pump();
     expect(tester.widget<FilledButton>(find.byKey(const ValueKey('terminal-ai-accept'))).onPressed, isNull);
@@ -427,6 +577,25 @@ void main() {
     expect(handedOff, 'Investigate service health');
     expect(transport.shell.writes, isEmpty);
     expect(find.byKey(const ValueKey('terminal-ai-composer')), findsNothing);
+  });
+
+  testWidgets('policy changes cancel an inline request even with no mounted pane', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    ai.enabled = false;
+    ai.changed.add(null);
+    expect(ai.generationTokens.single.isCancelled, isTrue);
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'old'));
+    await tester.pump();
+    ai.enabled = true;
+    ai.changed.add(null);
+    await view(tester);
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    expect(ai.generations, hasLength(2));
+    expect(find.byKey(const ValueKey('terminal-ai-command')), findsNothing);
   });
 
   testWidgets('revoking model policy closes local editor and cancels generation', (tester) async {
