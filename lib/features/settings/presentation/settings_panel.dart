@@ -522,10 +522,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                                         if (index > 0)
                                           const Padding(
                                             padding: EdgeInsets.symmetric(vertical: Space.xl),
-                                            child: Align(
-                                              alignment: Alignment.centerLeft,
-                                              child: SizedBox(
-                                                width: WorkspaceSize.settingsSeparator,
+                                            child: Center(
+                                              child: FractionallySizedBox(
+                                                widthFactor: WorkspaceSize.settingsSeparatorWidthFactor,
                                                 child: Divider(height: WorkspaceSize.divider),
                                               ),
                                             ),

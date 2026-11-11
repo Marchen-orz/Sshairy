@@ -26,7 +26,7 @@ abstract final class WorkspaceSize {
   static const dockBottom = 260.0, dockBottomMin = 160.0, dockBottomMaxShare = 0.6;
   static const directoryTree = 240.0, settingsDialog = 960.0;
   static const settingsHeight = 640.0, settingsNavigation = 164.0, settingsNavigationCompact = 104.0;
-  static const settingsSeparator = 64.0;
+  static const settingsSeparatorWidthFactor = .75;
   static const divider = 1.0, dividerGrab = 8.0, treeRow = 26.0, listRow = 34.0, control = 32.0;
   static const paneMin = 120.0, paneHeader = 24.0;
 }
