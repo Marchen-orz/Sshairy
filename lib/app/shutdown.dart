@@ -96,6 +96,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             ref.read(workspaceProvider.notifier).saved,
             if (ref.exists(aiConfigurationProvider)) ref.read(aiConfigurationProvider.notifier).saved,
             if (ref.exists(aiJournalProvider)) ref.read(aiJournalProvider).saved,
+            if (ref.exists(agentConversationsProvider)) ref.read(agentConversationsProvider).flush(),
           ]).timeout(const Duration(seconds: 5));
           await ref.read(terminalSessionsProvider.notifier).shutdown().timeout(const Duration(seconds: 5));
           ref.read(connectionManagerProvider).closeAll();

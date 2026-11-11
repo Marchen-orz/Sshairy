@@ -38,7 +38,7 @@ class AiTerminalService implements TerminalAiService {
       config.enabled &&
       !config.loadFailed &&
       config.profile != null &&
-      config.terminalDestination == config.profile!.identity;
+      config.terminalDestination == config.terminalIdentity;
 
   bool _granted(TerminalAiContext context, AiConfiguration config) {
     final target = context.target;
@@ -130,7 +130,7 @@ class AiTerminalService implements TerminalAiService {
         throw const ModelFailure('cancelled');
       }
       final result = await _request(
-        config.profile!,
+        config.profileForInline!,
         _generateSystem,
         {'instruction': instruction, ..._environment(context)},
         cancel,
@@ -203,7 +203,7 @@ class AiTerminalService implements TerminalAiService {
     _attempts.add(now);
     try {
       final result = await _request(
-        config.profile!,
+        config.profileForCompletion!,
         _completeSystem,
         {
           'draft': context.draft,

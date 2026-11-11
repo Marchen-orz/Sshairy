@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/features/ai/application/context.dart';
 import 'package:sshairy/features/ai/application/output_store.dart';
 import 'package:sshairy/features/ai/application/runtime.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
+import 'package:sshairy/features/ai/domain/conversation.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/foundation/cancellation.dart';
@@ -262,6 +264,396 @@ String _requestText(ModelRequest request) => jsonEncode([
 ]);
 
 void main() {
+  test('compaction keeps the newest complete tool group and records older outcomes as untrusted text', () {
+    final profile = ModelProfile(
+      protocol: ModelProtocol.openai,
+      endpoint: 'https://model.example.invalid/v1',
+      model: 'small-window',
+      contextWindow: 8000,
+      maxOutputTokens: 1000,
+    );
+    final context = AgentContext(input: 'keep the exact current goal', goalInput: 'keep the exact current goal');
+    context.add(
+      ModelMessage(
+        ModelRole.assistant,
+        text: 'prior proposed work',
+        calls: [
+          ModelCall('old-effect', 'command_execute', {'command': 'never run this again'}),
+        ],
+      ),
+    );
+    context.add(
+      ModelMessage(
+        ModelRole.tool,
+        toolCallId: 'old-effect',
+        text: jsonEncode({'exitCode': 0, 'text': List.filled(7000, 'x').join(), 'handle': 'old-evidence'}),
+      ),
+    );
+    final latest = ModelMessage(
+      ModelRole.assistant,
+      calls: [
+        ModelCall('latest-a', 'output_read', {'handle': 'current-evidence'}),
+        ModelCall('latest-b', 'host_list', {}),
+      ],
+    );
+    final firstResult = ModelMessage(ModelRole.tool, toolCallId: 'latest-a', text: '{"text":"recent approved data"}');
+    final secondResult = ModelMessage(ModelRole.tool, toolCallId: 'latest-b', text: '[]');
+    context
+      ..add(latest)
+      ..add(firstResult)
+      ..add(secondResult);
+
+    expect(context.prepare(profile, 'system permissions stay fixed', const []), isTrue);
+    expect(context.messages.skip(1), [latest, firstResult, secondResult]);
+    final root = jsonDecode(context.messages.first.text) as Map;
+    expect(root['currentRequest'], 'keep the exact current goal');
+    final summary = root['contextSummary'] as Map;
+    expect(summary['untrustedData'], isTrue);
+    expect(summary['truncated'], isTrue);
+    expect(jsonEncode(summary), contains('old-effect'));
+    expect(jsonEncode(summary), contains('exitCode'));
+    expect(jsonEncode(summary), isNot(contains('never run this again')));
+    expect(jsonEncode(summary), isNot(contains('old-evidence')));
+    expect(summary['protocolRestarted'], isFalse);
+  });
+
+  test('runtime compacts a long approved projection without repeating side effects or losing its goal', () async {
+    final selected = List.filled(6400, 's').join();
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('command_execute', _command(), 'executed-once'));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'result preserved'));
+      }
+    });
+    addTearDown(h.close);
+    h.profile = ModelProfile(
+      protocol: h.profile.protocol,
+      endpoint: h.profile.endpoint,
+      model: h.profile.model,
+      tools: true,
+      contextWindow: 7000,
+      maxOutputTokens: 1000,
+    );
+    var compactNotifications = 0, approvals = 0;
+    AgentApproval? seen;
+    h.runtime.addListener(() {
+      if (h.runtime.contextCompacted) compactNotifications++;
+      if (h.runtime.approval case final approval?) {
+        if (!identical(seen, approval)) {
+          seen = approval;
+          approvals++;
+        }
+      }
+    });
+    final turn = h.start();
+    await _until(() => h.runtime.approval != null);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await _until(() => h.runtime.dataRequest != null);
+    h.runtime.shareOutput(selected, expected: h.runtime.dataRequest!);
+    await turn;
+
+    expect(h.runtime.phase, AgentPhase.completed);
+    expect(h.runtime.contextCompacted, isTrue);
+    expect(compactNotifications, greaterThan(0));
+    expect(h.backend.target.commands, hasLength(1));
+    expect(approvals, 1);
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
+    expect(h.model.requests, hasLength(2));
+    final second = h.model.requests.last;
+    expect(_requestText(second), contains('check the selected host'));
+    expect(_requestText(second), contains('host-a'));
+    expect(_requestText(second), isNot(contains(_privateOutput)));
+    expect(_requestText(second), contains('executed-once'));
+    expect(_requestText(second), contains('exitCode'));
+    expect(second.messages, hasLength(1), reason: 'an oversized complete group becomes plain data as a whole');
+    expect(second.messages.single.calls, isEmpty);
+    expect(second.messages.single.role, ModelRole.user);
+    expect((jsonDecode(second.messages.single.text) as Map)['contextSummary'], containsPair('truncated', true));
+    expect(h.runtime.executions.single.sharedText, selected);
+    h.runtime.clear();
+    expect(h.runtime.contextCompacted, isFalse);
+  });
+
+  test('compaction restarts opaque protocol context with data and leaves unmatched groups unusable', () async {
+    final opaque = Object();
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(
+          ModelMessage(ModelRole.assistant, opaque: opaque, calls: [ModelCall('old-signed-call', 'host_list', {})]),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'fresh protocol context'));
+      }
+    });
+    addTearDown(h.close);
+    h.profile = ModelProfile(
+      protocol: ModelProtocol.anthropic,
+      endpoint: h.profile.endpoint,
+      model: h.profile.model,
+      tools: true,
+      contextWindow: 32768,
+    );
+    await h.start();
+    expect(h.runtime.phase, AgentPhase.completed);
+    expect(h.runtime.contextCompacted, isTrue);
+    final request = h.model.requests.last;
+    expect(request.messages, hasLength(1));
+    expect(request.messages.every((message) => message.opaque == null && message.calls.isEmpty), isTrue);
+    final summary = (jsonDecode(request.messages.single.text) as Map)['contextSummary'] as Map;
+    expect(summary['protocolRestarted'], isTrue);
+    expect(h.backend.target.commands, isEmpty);
+
+    final context = AgentContext(input: 'goal', goalInput: 'goal');
+    context.add(ModelMessage(ModelRole.assistant, opaque: opaque, calls: [ModelCall('pending', 'host_list', {})]));
+    expect(
+      () => context.prepare(h.profile, '', const []),
+      throwsA(isA<AgentFailure>().having((failure) => failure.code, 'code', 'protocol')),
+    );
+  });
+
+  test('context compaction can shrink authorized prior history but cannot drop the current goal', () {
+    final profile = ModelProfile(
+      protocol: ModelProtocol.openai,
+      endpoint: 'https://model.example.invalid/v1',
+      model: 'small-window',
+      contextWindow: 6000,
+      maxOutputTokens: 1000,
+    );
+    final previous = {
+      'entries': [
+        {'kind': 'assistant', 'text': List.filled(10000, 'h').join()},
+      ],
+      'truncated': false,
+    };
+    final context = AgentContext(
+      input: jsonEncode({'goal': 'current exact user goal', 'conversationHistory': previous}),
+      goalInput: 'current exact user goal',
+      previous: previous,
+    );
+    expect(context.prepare(profile, 'fixed constraints', const []), isTrue);
+    final root = jsonDecode(context.messages.single.text) as Map;
+    expect(root['currentRequest'], 'current exact user goal');
+    expect(root['contextSummary'], containsPair('truncated', true));
+    expect(jsonEncode(root['contextSummary']), contains('conversationHistory'));
+
+    final tooLarge = List.filled(10000, 'g').join();
+    final oversized = AgentContext(input: tooLarge, goalInput: tooLarge);
+    expect(
+      () => oversized.prepare(profile, 'fixed constraints', const []),
+      throwsA(isA<AgentFailure>().having((failure) => failure.code, 'code', 'contextLimit')),
+    );
+  });
+
+  test('restoring history only rebuilds readable entries and clears raw buffers', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'unused'));
+    });
+    addTearDown(h.close);
+    final output = h.runtime.outputs.create('old-owner', _host, h.profile.identity, 0);
+    h.runtime.outputs.append(output, false, Uint8List.fromList(utf8.encode(_privateOutput)));
+    h.runtime.outputs.share(output, 'previously approved projection');
+
+    h.runtime.restoreConversation(const [
+      ConversationEntry(kind: ConversationEntryKind.user, text: 'previous question'),
+      ConversationEntry(kind: ConversationEntryKind.assistant, text: 'previous answer'),
+      ConversationEntry(
+        kind: ConversationEntryKind.execution,
+        text: 'previously approved projection',
+        capability: 'agent.execute',
+        state: 'completed',
+        exitCode: 0,
+        truncated: true,
+      ),
+      ConversationEntry(
+        kind: ConversationEntryKind.execution,
+        text: '',
+        capability: 'agent.diagnose',
+        state: 'running',
+      ),
+    ]);
+
+    expect(h.runtime.phase, AgentPhase.idle);
+    expect(h.runtime.busy, isFalse);
+    expect(h.runtime.messages.map((entry) => [entry.role, entry.text]), [
+      ['user', 'previous question'],
+      ['assistant', 'previous answer'],
+    ]);
+    expect(h.runtime.timeline, hasLength(4));
+    final restored = h.runtime.executions.first;
+    expect(restored.archived, isTrue);
+    expect(restored.output, isNull);
+    expect(restored.target, isEmpty);
+    expect(restored.command, isEmpty);
+    expect(restored.cwd, isEmpty);
+    expect(restored.sharedText, 'previously approved projection');
+    expect(restored.historyTruncated, isTrue);
+    expect(restored.exitCode, 0);
+    expect(h.runtime.executions.last.state, 'outcomeUnknown');
+    expect(h.runtime.executions.last.sharedText, isNull);
+    expect(h.runtime.outputs.count, 0);
+    expect(h.runtime.approval, isNull);
+    expect(h.runtime.dataRequest, isNull);
+    expect(h.model.requests, isEmpty);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.backend.target.commands, isEmpty);
+    expect(h.journal.records, isEmpty);
+  });
+
+  test('a new conversation turn uses plain history data without old protocol state or evidence rights', () async {
+    final opaque = Object();
+    late String oldHandle;
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [ModelCall('old-call', 'command_execute', _command(command: 'printf private-command'))],
+          ),
+        );
+      } else if (index == 1) {
+        oldHandle = _result(request)['handle'] as String;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'first answer', opaque: opaque));
+      } else if (index == 2) {
+        yield ModelMessageComplete(_call('output_read', {'hostId': 'host-a', 'handle': oldHandle}, 'new-read'));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'the previous handle is unavailable'));
+      }
+    });
+    addTearDown(h.close);
+    final first = h.runtime.startConversation('first question', AgentScope(hosts: const [_host]), const []);
+    await _until(() => h.runtime.approval != null);
+    final oldApproval = h.runtime.approval!;
+    h.runtime.approve(true, expected: oldApproval);
+    await _until(() => h.runtime.dataRequest != null);
+    final oldData = h.runtime.dataRequest!;
+    h.runtime.shareOutput('approved summary', expected: oldData);
+    await first;
+    expect(h.runtime.executions.single.sharedText, 'approved summary');
+    expect(h.runtime.executions.single.output!.stdout, _privateOutput);
+    final entries = [
+      for (final entry in h.runtime.timeline)
+        switch (entry) {
+          AgentChatEntry(:final role, :final text) => ConversationEntry(
+            kind: role == 'user' ? ConversationEntryKind.user : ConversationEntryKind.assistant,
+            text: text,
+          ),
+          AgentExecution(:final capability, :final state, :final exitCode, :final sharedText) => ConversationEntry(
+            kind: ConversationEntryKind.execution,
+            text: sharedText ?? '',
+            capability: capability,
+            state: state,
+            exitCode: exitCode,
+          ),
+        },
+    ];
+
+    h.runtime.restoreConversation(entries);
+    h.runtime.approve(true, expected: oldApproval);
+    h.runtime.shareOutput('stale selection', expected: oldData);
+    await h.runtime.startConversation('follow-up question', AgentScope(hosts: const [_host]), entries);
+
+    final request = h.model.requests[2];
+    expect(request.messages, hasLength(1));
+    expect(request.messages.single.role, ModelRole.user);
+    expect(request.messages.single.calls, isEmpty);
+    expect(request.messages.single.toolCallId, isNull);
+    expect(request.messages.single.opaque, isNull);
+    final input = jsonDecode(request.messages.single.text) as Map;
+    expect(input['goal'], 'follow-up question');
+    final history = input['conversationHistory'] as Map;
+    expect(history['truncated'], isFalse);
+    expect(history['entries'], contains(containsPair('text', 'approved summary')));
+    expect(_requestText(request), contains('first answer'));
+    expect(_requestText(request), isNot(contains('private-command')));
+    expect(_requestText(request), isNot(contains(_privateOutput)));
+    expect(_requestText(request), isNot(contains(oldHandle)));
+    expect(_requestText(request), isNot(contains('old-call')));
+    expect(_requestText(request), isNot(contains('stale selection')));
+    expect(_result(h.model.requests.last), {'error': 'unavailable'});
+    expect(h.backend.target.commands, hasLength(1));
+    expect(h.runtime.messages.where((entry) => entry.role == 'user').map((entry) => entry.text), [
+      'first question',
+      'follow-up question',
+    ]);
+    expect(h.runtime.executions.single.archived, isTrue);
+    expect(h.runtime.executions.single.output, isNull);
+    expect(h.runtime.outputs.count, 0);
+    expect(h.runtime.phase, AgentPhase.completed);
+  });
+
+  test('conversation history uses bounded JSON data and marks omitted entries', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'answer'));
+    }, tools: false);
+    addTearDown(h.close);
+    final history = [
+      for (var index = 0; index < 40; index++)
+        ConversationEntry(kind: ConversationEntryKind.user, text: 'history-$index'),
+    ];
+    await h.runtime.startConversation('new question', AgentScope(), history);
+    var data = (jsonDecode(h.model.requests.last.messages.single.text) as Map)['conversationHistory'] as Map;
+    expect(data['truncated'], isTrue);
+    expect(data['entries'], hasLength(32));
+    expect((data['entries'] as List).first, containsPair('text', 'history-8'));
+    expect(utf8.encode(jsonEncode(data)).length, lessThanOrEqualTo(16384));
+
+    final large = List.filled(16000, 'x').join();
+    await h.runtime.startConversation('another question', AgentScope(), [
+      ConversationEntry(kind: ConversationEntryKind.user, text: 'older text'),
+      ConversationEntry(kind: ConversationEntryKind.assistant, text: large),
+      const ConversationEntry(kind: ConversationEntryKind.user, text: 'latest text'),
+    ]);
+    data = (jsonDecode(h.model.requests.last.messages.single.text) as Map)['conversationHistory'] as Map;
+    expect(utf8.encode(jsonEncode(data)).length, lessThanOrEqualTo(16384));
+    expect(data['entries'], contains(containsPair('text', 'latest text')));
+    expect((data['entries'] as List).map((entry) => (entry as Map)['text']), contains(large));
+
+    await h.runtime.startConversation('an oversized prior item', AgentScope(), [
+      ConversationEntry(kind: ConversationEntryKind.assistant, text: '$large$large'),
+    ]);
+    data = (jsonDecode(h.model.requests.last.messages.single.text) as Map)['conversationHistory'] as Map;
+    expect(data['truncated'], isTrue);
+    expect(data['entries'], isEmpty, reason: 'whole entries are omitted; text is not silently cut midway');
+  });
+
+  test('direct start remains a fresh turn after restored or continued history', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'answer'));
+    }, tools: false);
+    addTearDown(h.close);
+    const entries = [ConversationEntry(kind: ConversationEntryKind.user, text: 'old private context')];
+    h.runtime.restoreConversation(entries);
+    await h.runtime.startConversation('continued question', AgentScope(), entries);
+    expect(_requestText(h.model.requests.last), contains('old private context'));
+
+    await h.runtime.start('fresh question', AgentScope());
+
+    expect(h.model.requests.last.messages.single.text, 'fresh question');
+    expect(_requestText(h.model.requests.last), isNot(contains('old private context')));
+    expect(h.runtime.messages.map((entry) => entry.text), ['fresh question', 'answer']);
+    expect(h.runtime.executions, isEmpty);
+  });
+
+  test('history restore and conversation start cannot replace an active approval', () async {
+    final call = _call('command_execute', _command());
+    final h = _Harness((_, _, index) => _oneCall(call, index));
+    addTearDown(h.close);
+    final turn = h.start();
+    await _until(() => h.runtime.approval != null);
+    final approval = h.runtime.approval;
+    final timeline = h.runtime.timeline;
+    const other = [ConversationEntry(kind: ConversationEntryKind.user, text: 'another conversation')];
+    h.runtime.restoreConversation(other);
+    await h.runtime.startConversation('replacement question', AgentScope(), other);
+    expect(h.runtime.approval, same(approval));
+    expect(h.runtime.timeline, timeline);
+    expect(h.model.requests, hasLength(1));
+    expect(h.backend.target.commands, isEmpty);
+    h.runtime.stop();
+    await turn;
+  });
+
   test('fixed diagnosis flows through dispatch and returns paired structured evidence', () async {
     final call = _call('diagnostics_collect', {'hostId': 'host-a', 'template': 'systemSummary'});
     final h = _Harness((_, _, index) => _oneCall(call, index));
@@ -289,6 +681,7 @@ void main() {
     expect(result['data'], containsPair('memory', containsPair('availableKib', 512)));
     expect(result['handle'], isA<String>());
     expect(h.runtime.messages.last.text, 'done');
+    expect(jsonDecode(h.runtime.executions.single.sharedText!), result['data']);
     expect(h.runtime.timeline, [
       h.runtime.messages[0],
       h.runtime.messages[1],
@@ -480,6 +873,7 @@ void main() {
     expect(h.model.requests, hasLength(3));
     expect(h.model.requests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
     expect(_result(h.model.requests.last), containsPair('output', 'withheld'));
+    expect(h.runtime.executions.single.sharedText, isNull);
     expect(_result(h.model.requests.last, 1), {'error': 'unavailable'});
     expect(_results(h.model.requests.last).last.toolCallId, 'read-a');
   });
@@ -514,6 +908,7 @@ void main() {
     await turn;
     expect(h.model.requests, hasLength(3));
     expect(_requestText(h.model.requests.last), contains('user selected summary'));
+    expect(h.runtime.executions.single.sharedText, 'user selected summary');
     expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
     expect(_result(h.model.requests.last), containsPair('text', 'user selected summary'));
     expect(_result(h.model.requests.last, 1), containsPair('text', 'user selected summary'));

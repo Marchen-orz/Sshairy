@@ -62,5 +62,7 @@ class AgentComposer extends Notifier<AgentComposerState> {
     state = AgentComposerState(goal: state.goal, host: state.host);
   }
 
+  void restore(AgentComposerState draft) => state = AgentComposerState(goal: draft.goal, host: draft.host);
+
   void newTask() => state = AgentComposerState(host: state.host);
 }

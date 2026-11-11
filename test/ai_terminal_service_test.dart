@@ -46,18 +46,26 @@ TerminalAiContext _context({
   directory: directory,
 );
 
-AiConfiguration _configuration({bool inline = true, bool completion = true, bool history = false, int revision = 1}) =>
-    AiConfiguration(
-      enabled: true,
-      profile: _profile,
-      inlineEnabled: inline,
-      completionEnabled: completion,
-      completionPosix: true,
-      completionHosts: const {HostId('web'): 'route-v1'},
-      completionHistory: history,
-      terminalDestination: _profile.identity,
-      revision: revision,
-    );
+AiConfiguration _configuration({
+  bool inline = true,
+  bool completion = true,
+  bool history = false,
+  int revision = 1,
+  String? inlineModel,
+  String? completionModel,
+}) => AiConfiguration(
+  enabled: true,
+  profile: _profile,
+  inlineEnabled: inline,
+  completionEnabled: completion,
+  completionPosix: true,
+  completionHosts: const {HostId('web'): 'route-v1'},
+  completionHistory: history,
+  terminalDestination: terminalModelDestination(_profile, inlineModel, completionModel),
+  inlineModel: inlineModel,
+  completionModel: completionModel,
+  revision: revision,
+);
 
 void main() {
   late _Model model;
@@ -86,6 +94,27 @@ void main() {
     hosts = [const AiTerminalHost(HostId('web'), 'Web alias', 'route-v2')];
     expect(service.canGenerate(_context()), isFalse);
     expect(service.canComplete(_context()), isFalse);
+  });
+
+  test('inline and completion send their separately selected models without tools', () async {
+    config = _configuration(inlineModel: 'inline-model', completionModel: 'completion-model');
+    model.json({'status': 'command', 'command': 'pwd'});
+    expect((await service.generate(_context(), 'Show the directory', CancellationToken())).command, 'pwd');
+    expect(model.requests.single.profile.model, 'inline-model');
+    expect(model.requests.single.profile.tools, isFalse);
+    model.json({'status': 'suggest', 'command': 'git status'});
+    expect(await service.complete(_context(), const [], CancellationToken()), 'git status');
+    expect(model.requests.last.profile.model, 'completion-model');
+    expect(model.requests.last.profile.tools, isFalse);
+    expect(model.requests.every((request) => request.tools.isEmpty), isTrue);
+    config = AiConfiguration(
+      enabled: true,
+      profile: _profile,
+      inlineEnabled: true,
+      inlineModel: 'unapproved-change',
+      terminalDestination: _profile.identity,
+    );
+    expect(service.canGenerate(_context(target: const LocalTerminalAiTarget(LocalShellKind.pwsh))), isFalse);
   });
 
   test('local inline uses its actual shell kind without SSH grant or executable', () async {

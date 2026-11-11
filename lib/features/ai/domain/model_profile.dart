@@ -3,14 +3,23 @@ import 'dart:convert';
 /// Each protocol has its own request and continuation format.
 enum ModelProtocol { anthropic, openai }
 
+String? terminalModelDestination(ModelProfile? profile, String? inlineModel, String? completionModel) {
+  if (profile == null) return null;
+  final inline = profile.withModel(inlineModel ?? profile.model).identity;
+  final completion = profile.withModel(completionModel ?? profile.model).identity;
+  return inline == profile.identity && completion == profile.identity
+      ? profile.identity
+      : jsonEncode([profile.identity, inline, completion]);
+}
+
 class ModelProfile {
   ModelProfile({
     required this.protocol,
     required String endpoint,
     required this.model,
-    this.tools = false,
+    this.tools = true,
     this.maxOutputTokens = 4096,
-    this.contextWindow = 32768,
+    this.contextWindow = 1000000,
   }) : endpoint = normalizeEndpoint(endpoint) {
     if (model.trim().isEmpty ||
         model != model.trim() ||
@@ -31,6 +40,15 @@ class ModelProfile {
   final bool tools;
   final int maxOutputTokens;
   final int contextWindow;
+
+  ModelProfile withModel(String model, {bool? tools}) => ModelProfile(
+    protocol: protocol,
+    endpoint: endpoint,
+    model: model,
+    tools: tools ?? this.tools,
+    maxOutputTokens: maxOutputTokens,
+    contextWindow: contextWindow,
+  );
 
   /// Credentials and active continuation are tied to this exact destination.
   String get identity => jsonEncode([protocol.name, endpoint, model]);
@@ -63,9 +81,9 @@ class ModelProfile {
       protocol: protocol,
       endpoint: json['endpoint'] as String,
       model: json['model'] as String,
-      tools: json['tools'] as bool? ?? false,
+      tools: json['tools'] as bool? ?? true,
       maxOutputTokens: json['maxOutputTokens'] as int? ?? 4096,
-      contextWindow: json['contextWindow'] as int? ?? 32768,
+      contextWindow: json['contextWindow'] as int? ?? 1000000,
     );
   }
 

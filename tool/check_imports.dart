@@ -10,6 +10,7 @@ const adapters = {
     'lib/features/credentials/adapters/',
     'lib/features/connections/adapters/',
     'lib/features/hosts/adapters/finalshell_login.dart',
+    'lib/features/ai/adapters/conversation_route.dart',
   ],
   // Read compatibility for FinalShell's legacy DES passwords only.
   'pointycastle': ['lib/features/hosts/adapters/finalshell_login.dart'],

@@ -284,7 +284,12 @@ void main() {
         return HttpClient();
       },
     );
-    final p = ModelProfile(protocol: ModelProtocol.anthropic, endpoint: 'http://127.0.0.1:1234/v1', model: 'model');
+    final p = ModelProfile(
+      protocol: ModelProtocol.anthropic,
+      endpoint: 'http://127.0.0.1:1234/v1',
+      model: 'model',
+      contextWindow: 30000,
+    );
     final wire = [
       {
         'type': 'message_start',

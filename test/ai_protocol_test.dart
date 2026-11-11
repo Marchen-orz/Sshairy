@@ -72,7 +72,7 @@ void main() {
       expect(() => profile(ModelProtocol.openai, endpoint: invalid), throwsFormatException, reason: invalid);
     }
     expect(() => ModelProfile.fromJson({...p.toJson(), 'tools': 'true'}), throwsFormatException);
-    expect(() => ModelProfile.fromJson({...p.toJson(), 'maxOutputTokens': 32768}), throwsFormatException);
+    expect(() => ModelProfile.fromJson({...p.toJson(), 'maxOutputTokens': p.contextWindow}), throwsFormatException);
     expect(() => ModelProfile.fromJson({...p.toJson(), 'key': 'secret'}), throwsFormatException);
   });
 

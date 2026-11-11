@@ -27,6 +27,8 @@ class AiConfiguration {
     this.completionPosix = false,
     this.completionHosts = const {},
     this.terminalDestination,
+    this.inlineModel,
+    this.completionModel,
   });
 
   final bool enabled, loadFailed;
@@ -35,6 +37,11 @@ class AiConfiguration {
   final bool inlineEnabled, completionEnabled, completionHistory, completionPosix;
   final Map<HostId, String> completionHosts;
   final String? terminalDestination;
+  final String? inlineModel, completionModel;
+
+  ModelProfile? get profileForInline => profile?.withModel(inlineModel ?? profile!.model, tools: false);
+  ModelProfile? get profileForCompletion => profile?.withModel(completionModel ?? profile!.model, tools: false);
+  String? get terminalIdentity => terminalModelDestination(profile, inlineModel, completionModel);
 }
 
 final aiConfigurationProvider = NotifierProvider<AiConfigurationController, AiConfiguration>(
@@ -63,6 +70,8 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
         completionPosix: value.completionPosix,
         completionHosts: value.completionHosts,
         terminalDestination: value.terminalDestination,
+        inlineModel: value.inlineModel,
+        completionModel: value.completionModel,
       );
     } on JsonFileError catch (error) {
       _loadError = error;
@@ -83,13 +92,23 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
     bool? completionHistory,
     bool? completionPosix,
     Map<HostId, String>? completionHosts,
+    String? inlineModel,
+    String? completionModel,
   }) {
     final selectedHosts = completionHosts == null ? null : Map<HostId, String>.unmodifiable(completionHosts);
     final next = _pending.then((_) async {
       if (_loadError case final error?) throw error;
       if (enabled && profile == null) throw ArgumentError('AI profile required');
       final checked = profile == null ? null : ModelProfile.fromJson(profile.toJson());
-      final changed = checked?.identity != state.profile?.identity;
+      final sameProvider = checked?.protocol == state.profile?.protocol && checked?.endpoint == state.profile?.endpoint;
+      final selectedInline = checked == null
+          ? null
+          : inlineModel ?? (sameProvider ? state.inlineModel : null) ?? checked.model;
+      final selectedCompletion = checked == null
+          ? null
+          : completionModel ?? (sameProvider ? state.completionModel : null) ?? checked.model;
+      final terminalDestination = terminalModelDestination(checked, selectedInline, selectedCompletion);
+      final changed = terminalDestination != state.terminalIdentity;
       final hosts = selectedHosts ?? (changed ? <HostId, String>{} : state.completionHosts);
       final known = {for (final host in ref.read(aiTerminalHostsProvider)) host.id: host.signature};
       if (selectedHosts != null && hosts.entries.any((entry) => known[entry.key] != entry.value)) {
@@ -104,7 +123,9 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
         completionHistory: completionHistory ?? (!changed && state.completionHistory),
         completionPosix: completionPosix ?? (!changed && state.completionPosix),
         completionHosts: hosts,
-        terminalDestination: checked?.identity,
+        terminalDestination: terminalDestination,
+        inlineModel: selectedInline,
+        completionModel: selectedCompletion,
       );
       state = _read();
     });

@@ -10,6 +10,7 @@ import '../features/settings/api.dart';
 import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
+import '../foundation/ids.dart';
 import 'ai_backend.dart';
 import 'ai_terminal_hosts.dart';
 import 'capabilities/ai.dart';
@@ -25,6 +26,23 @@ import 'capabilities/forwarding.dart';
 /// The composition root: the one place that knows every feature and registers what each one offers.
 List<Override> appOverrides() => [
   aiTerminalHostsProvider.overrideWith((ref) => aiTerminalHosts(ref.watch(hostsProvider))),
+  agentConversationRoutesProvider.overrideWith((ref) {
+    // Security revisions reset at startup, so server history requires a new conversation after restart.
+    final securitySession = newId();
+    return () {
+      final trustRevision = ref.read(hostTrustProvider).revision;
+      final credentialRevision = ref.read(connectionCredentialsProvider).revision;
+      return {
+        for (final host in aiTerminalHosts(ref.read(hostsProvider)))
+          host.id: conversationRouteFingerprint(
+            host.signature,
+            trustRevision: trustRevision,
+            credentialRevision: credentialRevision,
+            securitySession: securitySession,
+          ),
+      };
+    };
+  }),
   terminalAiServiceProvider.overrideWith((ref) => ref.watch(aiTerminalServiceProvider)),
   agentBackendProvider.overrideWith(
     (ref) => SshAgentBackend(ref.read(connectionManagerProvider), () => ref.read(hostsProvider)),

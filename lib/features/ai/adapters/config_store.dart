@@ -23,6 +23,8 @@ class AiConfigStore {
       'completionPosix',
       'completionHosts',
       'terminalDestination',
+      'inlineModel',
+      'completionModel',
     };
     if (!json.keys.every(keys.contains) || json['enabled'] is! bool || !json.containsKey('profile')) {
       throw const FormatException('invalid AI configuration');
@@ -38,8 +40,20 @@ class AiConfigStore {
     for (final key in ['inlineEnabled', 'completionEnabled', 'completionHistory', 'completionPosix']) {
       if (json.containsKey(key) && json[key] is! bool) throw const FormatException('invalid AI terminal policy');
     }
+    for (final key in ['inlineModel', 'completionModel']) {
+      final model = json[key];
+      if (model != null) {
+        if (model is! String || profile == null) throw const FormatException('invalid AI role model');
+        profile.withModel(model);
+      }
+    }
+    final expectedDestination = terminalModelDestination(
+      profile,
+      json['inlineModel'] as String?,
+      json['completionModel'] as String?,
+    );
     final destination = json['terminalDestination'];
-    if (destination != null && (destination is! String || destination != profile?.identity)) {
+    if (destination != null && (destination is! String || destination != expectedDestination)) {
       throw const FormatException('AI terminal destination changed');
     }
     final hosts = json['completionHosts'];
@@ -59,7 +73,8 @@ class AiConfigStore {
         }
       }
     }
-    if ((json['inlineEnabled'] == true || json['completionEnabled'] == true) && destination != profile?.identity) {
+    if ((json['inlineEnabled'] == true || json['completionEnabled'] == true) &&
+        (profile == null || destination != expectedDestination)) {
       throw const FormatException('AI terminal destination required');
     }
   }
@@ -74,13 +89,16 @@ class AiConfigStore {
     bool completionPosix,
     Map<HostId, String> completionHosts,
     String? terminalDestination,
+    String? inlineModel,
+    String? completionModel,
   })
   read({bool reload = false}) {
     if (reload) _file = _open(path);
     final json = _file.read();
+    final profile = json?['profile'] == null ? null : ModelProfile.fromJson(json!['profile'] as Map<String, dynamic>);
     return (
       enabled: json?['enabled'] as bool? ?? false,
-      profile: json?['profile'] == null ? null : ModelProfile.fromJson(json!['profile'] as Map<String, dynamic>),
+      profile: profile,
       revision: _file.revision,
       inlineEnabled: json?['inlineEnabled'] as bool? ?? false,
       completionEnabled: json?['completionEnabled'] as bool? ?? false,
@@ -91,6 +109,8 @@ class AiConfigStore {
           HostId(entry.key): entry.value as String,
       }),
       terminalDestination: json?['terminalDestination'] as String?,
+      inlineModel: json?['inlineModel'] as String? ?? profile?.model,
+      completionModel: json?['completionModel'] as String? ?? profile?.model,
     );
   }
 
@@ -104,6 +124,8 @@ class AiConfigStore {
     bool completionPosix = false,
     Map<HostId, String> completionHosts = const {},
     String? terminalDestination,
+    String? inlineModel,
+    String? completionModel,
   }) => _file.write({
     'schemaVersion': 1,
     'enabled': enabled,
@@ -114,6 +136,8 @@ class AiConfigStore {
     'completionPosix': completionPosix,
     'completionHosts': {for (final entry in completionHosts.entries) entry.key.value: entry.value},
     'terminalDestination': terminalDestination,
+    'inlineModel': inlineModel,
+    'completionModel': completionModel,
   }, expectedRevision: expectedRevision);
 
   int get revision => _file.revision;
