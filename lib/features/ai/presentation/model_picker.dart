@@ -65,8 +65,11 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
     if (widget.onChanged == null || _cancel != null) return;
     final cancel = CancellationToken();
     _cancel = cancel;
-    final value = widget.value, protocol = widget.protocol, endpoint = widget.endpoint;
-    final credentialIdentity = widget.credentialIdentity, draftKey = widget.draftKey;
+    final value = widget.value,
+        protocol = widget.protocol,
+        endpoint = widget.endpoint;
+    final credentialIdentity = widget.credentialIdentity,
+        draftKey = widget.draftKey;
     final catalog = ref.read(aiModelCatalogProvider);
     final anchor = anchorOf(_anchor.currentContext!);
     final selected = await showAnchoredPopup<String>(
@@ -84,7 +87,8 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
         cancel: cancel,
       ),
     );
-    if (mounted && !cancel.isCancelled && selected != null) widget.onChanged?.call(selected);
+    if (mounted && !cancel.isCancelled && selected != null)
+      widget.onChanged?.call(selected);
     cancel.cancel();
     if (identical(_cancel, cancel)) _cancel = null;
   }
@@ -92,13 +96,16 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final enabled = widget.onChanged != null && widget.endpoint.trim().isNotEmpty;
+    final enabled =
+        widget.onChanged != null && widget.endpoint.trim().isNotEmpty;
     final label = widget.value.isEmpty ? l.aiConfigModel : widget.value;
     final content = Row(
       children: [
         const Icon(Icons.auto_awesome_outlined, size: 14),
         const SizedBox(width: Space.xs),
-        Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
         const SizedBox(width: Space.xs),
         const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
       ],
@@ -119,20 +126,48 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
           )
         : OutlinedButton(
             key: _anchor,
-            style: OutlinedButton.styleFrom(
-              fixedSize: const Size.fromHeight(WorkspaceSize.control),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              alignment: Alignment.centerLeft,
-              textStyle: Theme.of(context).textTheme.bodyMedium,
-              foregroundColor: Theme.of(context).colorScheme.onSurface,
-              side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-            ),
+            style:
+                OutlinedButton.styleFrom(
+                  minimumSize: Size(0, AppFormField.height(context)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: Space.xs,
+                  ),
+                  alignment: Alignment.centerLeft,
+                  textStyle: Theme.of(context).textTheme.bodyMedium,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.control),
+                  ),
+                  visualDensity: VisualDensity.standard,
+                ).copyWith(
+                  foregroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.disabled)
+                        ? BrandPalette.of(context).textMuted
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+                  backgroundColor: WidgetStateProperty.resolveWith(
+                    (states) => AppFormField.fill(
+                      context,
+                      enabled: !states.contains(WidgetState.disabled),
+                    ),
+                  ),
+                  side: WidgetStateProperty.resolveWith(
+                    (states) => AppFormField.border(
+                      context,
+                      enabled: !states.contains(WidgetState.disabled),
+                      focused: states.contains(WidgetState.focused),
+                      hovered: states.contains(WidgetState.hovered),
+                    ),
+                  ),
+                ),
             onPressed: enabled ? _show : null,
             child: content,
           );
     if (!widget.compact) {
       final field = Tooltip(message: label, child: button);
-      return widget.label == null ? field : AppFormField(label: widget.label!, child: field);
+      return widget.label == null
+          ? field
+          : AppFormField(label: widget.label!, child: field);
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -215,24 +250,31 @@ class _ModelsState extends State<_Models> {
         draftKey: widget.draftKey,
         cancel: cancel,
       );
-      if (!mounted || generation != _generation || widget.cancel.isCancelled) return;
+      if (!mounted || generation != _generation || widget.cancel.isCancelled)
+        return;
       setState(() => _models = models);
     } on Object {
-      if (!mounted || generation != _generation || widget.cancel.isCancelled) return;
+      if (!mounted || generation != _generation || widget.cancel.isCancelled)
+        return;
       setState(() => _failed = true);
     } finally {
-      if (mounted && generation == _generation) setState(() => _loading = false);
+      if (mounted && generation == _generation)
+        setState(() => _loading = false);
     }
   }
 
   bool _valid(String value) =>
-      value.isNotEmpty && value.length <= 256 && !RegExp(r'[\x00-\x20\x7f-\x9f]').hasMatch(value);
+      value.isNotEmpty &&
+      value.length <= 256 &&
+      !RegExp(r'[\x00-\x20\x7f-\x9f]').hasMatch(value);
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final query = _search.text.trim();
-    final matches = _models.where((model) => model.toLowerCase().contains(query.toLowerCase())).toList();
+    final matches = _models
+        .where((model) => model.toLowerCase().contains(query.toLowerCase()))
+        .toList();
     if (widget.value.isNotEmpty &&
         !matches.contains(widget.value) &&
         widget.value.toLowerCase().contains(query.toLowerCase())) {
@@ -264,7 +306,9 @@ class _ModelsState extends State<_Models> {
                     ),
                     onChanged: (_) => setState(() {}),
                     onSubmitted: (_) {
-                      if (available && _valid(query) && _search.value.composing.isCollapsed) {
+                      if (available &&
+                          _valid(query) &&
+                          _search.value.composing.isCollapsed) {
                         Navigator.pop(context, query);
                       }
                     },
@@ -282,7 +326,10 @@ class _ModelsState extends State<_Models> {
             if (_failed)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: Space.sm),
-                child: Text(l.aiModelsLoadFailed, style: Theme.of(context).textTheme.bodySmall),
+                child: Text(
+                  l.aiModelsLoadFailed,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ),
             Flexible(
               child: ListView.builder(
@@ -293,7 +340,9 @@ class _ModelsState extends State<_Models> {
                   return PopupRow(
                     key: ValueKey('ai-model-option-$model'),
                     selected: model == widget.value,
-                    onTap: available ? () => Navigator.pop(context, model) : null,
+                    onTap: available
+                        ? () => Navigator.pop(context, model)
+                        : null,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: Space.sm),
                       child: Text(
@@ -307,7 +356,10 @@ class _ModelsState extends State<_Models> {
               ),
             ),
             if (!_loading && matches.isEmpty && !custom)
-              Padding(padding: const EdgeInsets.all(Space.sm), child: Text(l.aiModelsEmpty)),
+              Padding(
+                padding: const EdgeInsets.all(Space.sm),
+                child: Text(l.aiModelsEmpty),
+              ),
           ],
         ),
       ),

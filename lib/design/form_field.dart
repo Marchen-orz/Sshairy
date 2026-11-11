@@ -1,33 +1,117 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
 
-/// Shared label placement for fields and selections in settings forms.
+/// Shared label placement and visible field geometry in settings forms.
 class AppFormField extends StatelessWidget {
-  const AppFormField({super.key, required this.label, required this.child, this.helperText});
+  const AppFormField({
+    super.key,
+    required this.label,
+    required this.child,
+    this.helperText,
+  });
 
   final String label;
   final Widget child;
   final String? helperText;
 
-  static const decoration = InputDecoration(
+  static double height(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyMedium!;
+    final line =
+        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
+        (style.height ?? 1.5);
+    // Matches AppSelect's painted box: rounded text line, vertical inset and border.
+    return max(WorkspaceSize.control, line.ceilToDouble() + Space.sm + 2);
+  }
+
+  static Color fill(BuildContext context, {bool enabled = true}) => enabled
+      ? Theme.of(context).colorScheme.surface
+      : BrandPalette.of(context).disabledSurface;
+
+  static BorderSide border(
+    BuildContext context, {
+    bool enabled = true,
+    bool focused = false,
+    bool error = false,
+    bool hovered = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return BorderSide(
+      color: !enabled
+          ? scheme.outlineVariant
+          : error
+          ? scheme.error
+          : focused
+          ? scheme.primary
+          : hovered
+          ? scheme.outline
+          : scheme.outlineVariant,
+      width: enabled && focused ? 1.5 : 1,
+    );
+  }
+
+  static InputDecoration decoration(BuildContext context) => InputDecoration(
     isDense: true,
-    constraints: BoxConstraints(minHeight: WorkspaceSize.control),
-    contentPadding: EdgeInsets.symmetric(horizontal: 10),
+    constraints: BoxConstraints(minHeight: height(context)),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+    // InputDecorator's outer minHeight does not stretch its painted container.
+    suffixIcon: SizedBox(width: 10, height: height(context)),
+    suffixIconConstraints: const BoxConstraints(minWidth: 10, minHeight: 0),
   );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final style = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    OutlineInputBorder outline({
+      bool enabled = true,
+      bool focused = false,
+      bool error = false,
+    }) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(Radii.control),
+      borderSide: border(
+        context,
+        enabled: enabled,
+        focused: focused,
+        error: error,
+      ),
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ExcludeSemantics(child: Text(label, style: style)),
         const SizedBox(height: Space.xs),
-        Semantics(label: label, child: child),
-        if (helperText != null) ...[const SizedBox(height: Space.xs), Text(helperText!, style: style)],
+        Theme(
+          data: theme.copyWith(
+            textTheme: theme.textTheme.copyWith(
+              bodyLarge: theme.textTheme.bodyMedium,
+            ),
+            inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+              fillColor: WidgetStateColor.resolveWith(
+                (states) => fill(
+                  context,
+                  enabled: !states.contains(WidgetState.disabled),
+                ),
+              ),
+              border: outline(),
+              enabledBorder: outline(),
+              disabledBorder: outline(enabled: false),
+              focusedBorder: outline(focused: true),
+              errorBorder: outline(error: true),
+              focusedErrorBorder: outline(focused: true, error: true),
+            ),
+          ),
+          child: Semantics(label: label, child: child),
+        ),
+        if (helperText != null) ...[
+          const SizedBox(height: Space.xs),
+          Text(helperText!, style: style),
+        ],
       ],
     );
   }
