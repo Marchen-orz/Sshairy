@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/ai/adapters/model_provider.dart';
 import 'package:sshairy/features/ai/application/configuration.dart';
 import 'package:sshairy/features/ai/application/model_selection.dart';
+import 'package:sshairy/features/ai/application/permission_mode.dart';
 import 'package:sshairy/features/ai/application/providers.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
@@ -185,6 +186,45 @@ void main() {
     expect(container.read(selectedAgentModelProvider), isNull);
     config.replace(const AiConfiguration());
     expect(container.read(effectiveAgentProfileProvider), isNull);
+  });
+
+  test('permission mode is window-local, defaults to confirm and cannot change a running turn', () async {
+    final profile = _profile();
+    final model = _BlockingModel();
+    final container = ProviderContainer(
+      overrides: [
+        aiConfigurationProvider.overrideWith(() => _Configuration(AiConfiguration(enabled: true, profile: profile))),
+        aiCredentialsProvider.overrideWithValue(_Credentials()),
+        aiModelProvider.overrideWithValue(model),
+        agentBackendProvider.overrideWithValue(_Backend()),
+        aiJournalProvider.overrideWithValue(_Journal()),
+        capabilityDispatcherProvider.overrideWithValue(CapabilityDispatcher([])),
+      ],
+    );
+    addTearDown(() async {
+      if (container.exists(agentRuntimeProvider)) await container.read(agentRuntimeProvider).shutdown();
+      container.dispose();
+    });
+    expect(container.read(selectedAgentPermissionModeProvider), AgentPermissionMode.confirm);
+    final selected = container.read(selectedAgentPermissionModeProvider.notifier);
+    selected.select(AgentPermissionMode.auto);
+    final runtime = container.read(agentRuntimeProvider);
+    final work = runtime.start(
+      'hold this turn',
+      AgentScope(permissionMode: container.read(selectedAgentPermissionModeProvider)),
+    );
+    await model.entered.future.timeout(const Duration(seconds: 2));
+    selected.select(AgentPermissionMode.observe);
+    expect(container.read(selectedAgentPermissionModeProvider), AgentPermissionMode.auto);
+    expect(runtime.permissionMode, AgentPermissionMode.auto);
+    runtime.stop();
+    await work.timeout(const Duration(seconds: 2));
+    selected.select(AgentPermissionMode.observe);
+    expect(container.read(selectedAgentPermissionModeProvider), AgentPermissionMode.observe);
+    expect(runtime.permissionMode, AgentPermissionMode.auto);
+    final otherWindow = _container(AiConfiguration(enabled: true, profile: profile));
+    expect(otherWindow.read(selectedAgentPermissionModeProvider), AgentPermissionMode.confirm);
+    expect(container.read(aiConfigurationProvider).profile, same(profile));
   });
 
   test('model choice changes cancel the active owner without replacing AgentRuntime identity', () async {

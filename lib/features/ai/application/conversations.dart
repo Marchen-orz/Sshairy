@@ -11,6 +11,7 @@ import '../domain/agent.dart';
 import 'composer.dart';
 import 'providers.dart';
 import 'model_selection.dart';
+import 'permission_mode.dart';
 import 'runtime.dart';
 
 /// The app supplies opaque route fingerprints without connecting or exposing connection configuration.
@@ -30,6 +31,7 @@ final agentConversationsProvider = Provider<AgentConversations>((ref) {
     destination: () => ref.read(effectiveAgentProfileProvider)?.identity,
     toolsEnabled: () => ref.read(effectiveAgentProfileProvider)?.tools ?? false,
     routes: () => ref.read(agentConversationRoutesProvider)(),
+    permissionMode: () => ref.read(selectedAgentPermissionModeProvider),
   );
   ref.onDispose(controller.dispose);
   return controller;
@@ -44,6 +46,7 @@ class AgentConversations extends ChangeNotifier {
     required this.destination,
     required this.toolsEnabled,
     required this.routes,
+    this.permissionMode = _confirmMode,
   }) {
     runtime.addListener(_runtimeChanged);
     ready = reload();
@@ -56,6 +59,8 @@ class AgentConversations extends ChangeNotifier {
   final String? Function() destination;
   final bool Function() toolsEnabled;
   final Map<HostId, String> Function() routes;
+  final AgentPermissionMode Function() permissionMode;
+  static AgentPermissionMode _confirmMode() => AgentPermissionMode.confirm;
   final _drafts = <String, AgentComposerState>{};
   List<AgentConversationRecord> _records = [];
   String _selected = newId();
@@ -294,7 +299,7 @@ class AgentConversations extends ChangeNotifier {
     composer.setGoal('');
     final work = runtime.startConversation(
       goal,
-      AgentScope(hosts: [?host], discoverHosts: host == null && toolsEnabled()),
+      AgentScope(hosts: [?host], discoverHosts: host == null && toolsEnabled(), permissionMode: permissionMode()),
       history,
     );
     _wasBusy = runtime.busy;

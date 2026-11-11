@@ -195,6 +195,7 @@ class _Harness {
       destination: () => profile.identity,
       toolsEnabled: () => profile.tools,
       routes: () => routes,
+      permissionMode: () => permissionMode,
     );
   }
 
@@ -203,6 +204,7 @@ class _Harness {
   final backend = _Backend();
   final routes = <HostId, String>{_hostA: _routeA, _hostB: _routeB};
   ModelProfile profile = _profile();
+  AgentPermissionMode permissionMode = AgentPermissionMode.confirm;
   bool enabled = true;
   int revision = 0;
   late final _Runtime runtime;
@@ -237,6 +239,31 @@ Future<_Harness> _create({
 Map<String, dynamic> _input(ModelRequest request) => jsonDecode(request.messages.single.text) as Map<String, dynamic>;
 
 void main() {
+  test('conversation sends freeze the current user mode and history never restores it', () async {
+    final entered = Completer<void>();
+    final h = await _create(
+      initial: [_record('old')],
+      script: (_, cancel) async* {
+        entered.complete();
+        await cancel.whenCancelled;
+      },
+    );
+    h.permissionMode = AgentPermissionMode.auto;
+    h.conversations.select('old');
+    expect(h.runtime.permissionMode, AgentPermissionMode.confirm);
+    final work = h.conversations.send('use the selected mode', _hostA, continueHistory: true);
+    await entered.future;
+    expect(h.runtime.permissionMode, AgentPermissionMode.auto);
+    h.permissionMode = AgentPermissionMode.observe;
+    expect(h.runtime.permissionMode, AgentPermissionMode.auto);
+    h.runtime.stop();
+    await work;
+    h.conversations.newConversation();
+    h.conversations.select('old');
+    expect(h.runtime.permissionMode, AgentPermissionMode.confirm);
+    expect(h.permissionMode, AgentPermissionMode.observe);
+  });
+
   test('draft-only A/B conversations preserve independent goals and hosts without persistence', () async {
     final h = await _create();
     final a = h.conversations.selectedId;

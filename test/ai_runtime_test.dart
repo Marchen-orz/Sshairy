@@ -12,6 +12,7 @@ import 'package:sshairy/features/ai/domain/model.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/ids.dart';
+import 'package:sshairy/foundation/result.dart';
 
 const _host = HostId('host-a');
 const _other = HostId('host-b');
@@ -264,6 +265,128 @@ String _requestText(ModelRequest request) => jsonEncode([
 ]);
 
 void main() {
+  test('observe omits command tools and refuses a forged direct dispatch before connecting', () async {
+    final entered = Completer<void>();
+    final h = _Harness((_, cancel, _) async* {
+      entered.complete();
+      await cancel.whenCancelled;
+    });
+    addTearDown(h.close);
+    final work = h.runtime.start(
+      'inspect selected host',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.observe),
+    );
+    await entered.future;
+    final request = h.model.requests.single;
+    expect(request.tools.map((tool) => tool.name), isNot(contains('command_execute')));
+    expect(request.tools.map((tool) => tool.name), contains('diagnostics_collect'));
+    expect(jsonDecode(request.messages.single.text)['permissionMode'], 'observe');
+    final result = await h.runtime.dispatcher.dispatch(
+      'agent.execute',
+      _command(),
+      RequestContext(Origin.agent, authority: h.runtime),
+    );
+    expect(result, isA<Err<Object?>>());
+    expect((result as Err<Object?>).error.code, 'notExposed');
+    expect(h.backend.prepared, isEmpty);
+    expect(h.runtime.approval, isNull);
+    h.runtime.stop();
+    await work;
+  });
+
+  test('observe still permits fixed diagnostics on the frozen host', () async {
+    final h = _Harness(
+      (_, _, index) =>
+          _oneCall(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}), index),
+    );
+    addTearDown(h.close);
+    h.backend.target.stdout = _systemOutput;
+    await h.runtime.start(
+      'inspect selected host',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.observe),
+    );
+    expect(h.backend.target.commands, hasLength(1));
+    expect(h.runtime.approval, isNull);
+    expect(h.runtime.phase, AgentPhase.completed);
+    expect(h.journal.records, isEmpty);
+  });
+
+  test('auto executes without command approval but keeps intent and a separate output decision', () async {
+    final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command()), index));
+    addTearDown(h.close);
+    final work = h.runtime.start(
+      'run selected command',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto),
+    );
+    await _until(() => h.runtime.dataRequest != null);
+    expect(h.runtime.permissionMode, AgentPermissionMode.auto);
+    expect(h.runtime.approval, isNull);
+    expect(h.backend.target.commands, hasLength(1));
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
+    expect(h.model.requests, hasLength(1));
+    h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
+    await work;
+    expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
+    expect(_result(h.model.requests.last)['output'], 'withheld');
+  });
+
+  test('auto still blocks execution when intent cannot be persisted', () async {
+    final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command()), index));
+    addTearDown(h.close);
+    h.journal.failIntent = true;
+    await h.runtime.start(
+      'run selected command',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto),
+    );
+    expect(h.backend.target.commands, isEmpty);
+    expect(h.runtime.approval, isNull);
+    expect(_result(h.model.requests.last)['error'], 'journalFailed');
+  });
+
+  test('default scope requires confirmation and context occupancy survives completion until clear', () async {
+    final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command()), index));
+    addTearDown(h.close);
+    expect(h.runtime.contextUsedTokens, 0);
+    expect(h.runtime.contextWindow, 0);
+    expect(h.runtime.contextUsageRatio, 0);
+    final work = h.start();
+    await _until(() => h.runtime.approval != null);
+    expect(h.runtime.permissionMode, AgentPermissionMode.confirm);
+    expect(h.backend.target.commands, isEmpty);
+    expect(h.runtime.contextWindow, h.profile.contextWindow);
+    expect(h.runtime.contextUsedTokens, greaterThan(0));
+    expect(h.runtime.contextUsageRatio, greaterThan(0));
+    h.runtime.approve(false, expected: h.runtime.approval!);
+    await work;
+    expect(h.runtime.contextUsedTokens, greaterThan(0));
+    h.runtime.clear();
+    expect(h.runtime.contextUsedTokens, 0);
+    expect(h.runtime.contextWindow, 0);
+    expect(h.runtime.permissionMode, AgentPermissionMode.confirm);
+  });
+
+  test('context estimate includes complete response text and resets when history is restored', () async {
+    final entered = Completer<void>(), finish = Completer<void>();
+    final h = _Harness((_, _, _) async* {
+      yield const ModelTextDelta('streamed response');
+      entered.complete();
+      await finish.future;
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'streamed response with completed text'));
+    });
+    addTearDown(h.close);
+    final work = h.start();
+    await entered.future;
+    final streamed = h.runtime.contextUsedTokens;
+    expect(streamed, greaterThan(0));
+    finish.complete();
+    await work;
+    expect(h.runtime.contextUsedTokens, greaterThan(streamed));
+    expect(h.runtime.contextUsageRatio, inInclusiveRange(0, 1));
+    h.runtime.restoreConversation([ConversationEntry(kind: ConversationEntryKind.user, text: 'old text')]);
+    expect(h.runtime.contextUsedTokens, 0);
+    expect(h.runtime.contextWindow, 0);
+  });
+
   test('compaction keeps the newest complete tool group and records older outcomes as untrusted text', () {
     final profile = ModelProfile(
       protocol: ModelProtocol.openai,
@@ -355,6 +478,8 @@ void main() {
 
     expect(h.runtime.phase, AgentPhase.completed);
     expect(h.runtime.contextCompacted, isTrue);
+    expect(h.runtime.contextUsedTokens, greaterThan(0));
+    expect(h.runtime.contextUsageRatio, inInclusiveRange(0, 1));
     expect(compactNotifications, greaterThan(0));
     expect(h.backend.target.commands, hasLength(1));
     expect(approvals, 1);

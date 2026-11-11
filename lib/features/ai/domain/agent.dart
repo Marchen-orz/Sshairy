@@ -19,6 +19,8 @@ enum AgentPhase {
 
 enum OperationState { intent, completed, failed, outcomeUnknown }
 
+enum AgentPermissionMode { observe, confirm, auto }
+
 class AgentHost {
   const AgentHost(this.id, this.label);
   final HostId id;
@@ -26,11 +28,16 @@ class AgentHost {
 }
 
 class AgentScope {
-  AgentScope({Iterable<HostId> hosts = const [], this.revision = 0, this.discoverHosts = false})
-    : hosts = Set.unmodifiable(hosts);
+  AgentScope({
+    Iterable<HostId> hosts = const [],
+    this.revision = 0,
+    this.discoverHosts = false,
+    this.permissionMode = AgentPermissionMode.confirm,
+  }) : hosts = Set.unmodifiable(hosts);
   final Set<HostId> hosts;
   final int revision;
   final bool discoverHosts;
+  final AgentPermissionMode permissionMode;
 }
 
 /// Only the app's connection adapter can supply a prepared target. No shell or transport escapes this port.

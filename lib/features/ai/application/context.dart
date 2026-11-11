@@ -20,6 +20,10 @@ class AgentContext {
 
   void add(ModelMessage message) => _messages.add(message);
 
+  /// Uses the same conservative byte estimate as the context budget, not provider token usage.
+  int estimatedTokens(ModelProfile profile, String system, List<ModelTool> tools, {ModelMessage? pending}) =>
+      (_estimate([..._messages, ?pending], profile, system, tools) + 1) ~/ 2;
+
   bool prepare(
     ModelProfile profile,
     String system,
