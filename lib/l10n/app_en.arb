@@ -760,7 +760,7 @@
   "cmdTmuxHas": "Check for a session",
   "cmdTmuxSource": "Load a configuration file",
   "cmdTmuxBind": "Bind a key",
-  "aiAgentTitle": "Agent",
+  "aiAgentTitle": "Airy",
   "aiAgentClear": "Clear conversation",
   "aiAgentConfigure": "Configure a model and enable AI in Settings to begin.",
   "aiAgentConfigurationFailed": "AI configuration could not be read. Review it in Settings.",
@@ -794,7 +794,7 @@
   "aiAgentKeepLocal": "Keep local",
   "aiAgentShare": "Share this text",
   "cmdTmuxBreak": "Move a pane to a window",
-  "aiAgentNewTask": "New task",
+  "aiAgentNewTask": "New conversation",
   "aiAgentWelcome": "What would you like to work on?",
   "aiAgentWelcomeHint": "Describe a task. Choose a server when you need remote tools.",
   "aiAgentSetupTitle": "Your SSH assistant",
@@ -839,8 +839,50 @@
   "terminalAiInstruction": "Describe what you want to do",
   "terminalAiFailed": "Could not generate a command. Try again.",
   "terminalAiChanged": "The terminal context changed. Reopen to start a new request.",
-  "terminalAiClarify": "Add more detail, or use Agent for a task with several steps.",
+  "terminalAiClarify": "Add more detail, or use Airy for a task with several steps.",
   "terminalAiClearPrompt": "Clear the terminal input before inserting this command.",
   "terminalAiInsert": "Insert command",
-  "terminalAiOpenAgent": "Open Agent"
+  "terminalAiOpenAgent": "Open Airy",
+  "aiAgentHistory": "Conversation history",
+  "aiAgentHistoryEmpty": "No conversations yet",
+  "aiAgentContinueConversation": "Continue conversation",
+  "aiAgentHistoryContinueNotice": "Continuing resends this conversation's retained, limited history to {destination}. Current server: {host}.",
+  "@aiAgentHistoryContinueNotice": {
+    "placeholders": {
+      "destination": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAgentHistoryTargetChanged": "The server or model destination changed. Start a new conversation.",
+  "aiAgentHistoryLoadFailed": "Could not load conversation history. Try again.",
+  "aiAgentHistorySaveFailed": "Conversation history could not be saved. The current content is still in memory.",
+  "aiAgentHistoryRetry": "Retry",
+  "aiAgentHistoryTruncated": "Some conversation history was trimmed to stay within storage limits.",
+  "aiAgentHistoryOutputUnavailable": "Raw tool output is not saved in history.",
+  "aiAgentHistoryDelete": "Delete conversation",
+  "aiAgentHistoryDeleteConfirm": "Delete this conversation and its local history?",
+  "aiAgentHistoryBusy": "Stop the current task or wait for it to finish before switching conversations.",
+  "aiAgentHistoryLocalNotice": "Conversation text is saved locally and may contain sensitive information. Raw tool output is not saved.",
+  "aiModelSearch": "Search models",
+  "aiModelsLoadFailed": "Could not load models. Retry or enter a model name.",
+  "aiModelCustom": "Use {model}",
+  "aiModelsEmpty": "No models found",
+  "aiModelsRefresh": "Refresh models",
+  "aiAgentContextCompacted": "Earlier context was compacted to stay within the model limit.",
+  "@aiModelCustom": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiConfigAgentModel": "Default Airy model",
+  "aiConfigInlineModel": "Inline generation model",
+  "aiConfigCompletionModel": "Completion model",
+  "aiConfigContextCustom": "Custom",
+  "aiConfigApiKeyOptional": "API key (optional)"
 }

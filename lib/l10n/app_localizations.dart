@@ -62,8 +62,7 @@ import 'app_localizations_zh.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -71,8 +70,7 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -84,19 +82,15 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
-      <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
-  static const List<Locale> supportedLocales = <Locale>[
-    Locale('en'),
-    Locale('zh'),
-  ];
+  static const List<Locale> supportedLocales = <Locale>[Locale('en'), Locale('zh')];
 
   /// No description provided for @aiConfigTitle.
   ///
@@ -4343,7 +4337,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentTitle.
   ///
   /// In en, this message translates to:
-  /// **'Agent'**
+  /// **'Airy'**
   String get aiAgentTitle;
 
   /// No description provided for @aiAgentClear.
@@ -4541,8 +4535,92 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentNewTask.
   ///
   /// In en, this message translates to:
-  /// **'New task'**
+  /// **'New conversation'**
   String get aiAgentNewTask;
+
+  /// No description provided for @aiAgentHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation history'**
+  String get aiAgentHistory;
+
+  /// No description provided for @aiAgentHistoryEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No conversations yet'**
+  String get aiAgentHistoryEmpty;
+
+  /// No description provided for @aiAgentContinueConversation.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue conversation'**
+  String get aiAgentContinueConversation;
+
+  /// No description provided for @aiAgentHistoryContinueNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Continuing resends this conversation\'s retained, limited history to {destination}. Current server: {host}.'**
+  String aiAgentHistoryContinueNotice(String destination, String host);
+
+  /// No description provided for @aiAgentHistoryTargetChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The server or model destination changed. Start a new conversation.'**
+  String get aiAgentHistoryTargetChanged;
+
+  /// No description provided for @aiAgentHistoryLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load conversation history. Try again.'**
+  String get aiAgentHistoryLoadFailed;
+
+  /// No description provided for @aiAgentHistorySaveFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation history could not be saved. The current content is still in memory.'**
+  String get aiAgentHistorySaveFailed;
+
+  /// No description provided for @aiAgentHistoryRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get aiAgentHistoryRetry;
+
+  /// No description provided for @aiAgentHistoryTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'Some conversation history was trimmed to stay within storage limits.'**
+  String get aiAgentHistoryTruncated;
+
+  /// No description provided for @aiAgentHistoryOutputUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw tool output is not saved in history.'**
+  String get aiAgentHistoryOutputUnavailable;
+
+  /// No description provided for @aiAgentHistoryDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete conversation'**
+  String get aiAgentHistoryDelete;
+
+  /// No description provided for @aiAgentHistoryDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this conversation and its local history?'**
+  String get aiAgentHistoryDeleteConfirm;
+
+  /// No description provided for @aiAgentHistoryBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the current task or wait for it to finish before switching conversations.'**
+  String get aiAgentHistoryBusy;
+
+  /// No description provided for @aiAgentHistoryLocalNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation text is saved locally and may contain sensitive information. Raw tool output is not saved.'**
+  String get aiAgentHistoryLocalNotice;
 
   /// No description provided for @aiAgentWelcome.
   ///
@@ -4811,7 +4889,7 @@ abstract class AppLocalizations {
   /// No description provided for @terminalAiClarify.
   ///
   /// In en, this message translates to:
-  /// **'Add more detail, or use Agent for a task with several steps.'**
+  /// **'Add more detail, or use Airy for a task with several steps.'**
   String get terminalAiClarify;
 
   /// No description provided for @terminalAiClearPrompt.
@@ -4829,12 +4907,77 @@ abstract class AppLocalizations {
   /// No description provided for @terminalAiOpenAgent.
   ///
   /// In en, this message translates to:
-  /// **'Open Agent'**
+  /// **'Open Airy'**
   String get terminalAiOpenAgent;
+
+  /// No description provided for @aiModelSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search models'**
+  String get aiModelSearch;
+
+  /// No description provided for @aiModelsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load models. Retry or enter a model name.'**
+  String get aiModelsLoadFailed;
+
+  /// No description provided for @aiModelCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {model}'**
+  String aiModelCustom(String model);
+
+  /// No description provided for @aiModelsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No models found'**
+  String get aiModelsEmpty;
+
+  /// No description provided for @aiModelsRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh models'**
+  String get aiModelsRefresh;
+
+  /// No description provided for @aiAgentContextCompacted.
+  ///
+  /// In en, this message translates to:
+  /// **'Earlier context was compacted to stay within the model limit.'**
+  String get aiAgentContextCompacted;
+
+  /// No description provided for @aiConfigAgentModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Default Airy model'**
+  String get aiConfigAgentModel;
+
+  /// No description provided for @aiConfigInlineModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Inline generation model'**
+  String get aiConfigInlineModel;
+
+  /// No description provided for @aiConfigCompletionModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Completion model'**
+  String get aiConfigCompletionModel;
+
+  /// No description provided for @aiConfigContextCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get aiConfigContextCustom;
+
+  /// No description provided for @aiConfigApiKeyOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'API key (optional)'**
+  String get aiConfigApiKeyOptional;
 }
 
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -4843,8 +4986,7 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['en', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;

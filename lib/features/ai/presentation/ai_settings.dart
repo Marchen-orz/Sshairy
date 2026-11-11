@@ -13,7 +13,9 @@ import '../../../foundation/secret.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../credentials/api.dart';
 import '../application/configuration.dart';
+import '../application/model_credentials.dart';
 import '../domain/model_profile.dart';
+import 'model_picker.dart';
 
 class AiSettings extends ConsumerStatefulWidget {
   const AiSettings({super.key});
@@ -27,8 +29,10 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   final _contextWindow = TextEditingController(), _maxOutput = TextEditingController();
   final _form = GlobalKey<FormState>();
   late AiConfiguration _initial;
-  late bool _enabled, _tools, _inlineEnabled, _completionEnabled, _completionHistory, _completionPosix;
-  var _advanced = false;
+  late bool _enabled, _inlineEnabled, _completionEnabled, _completionHistory, _completionPosix;
+  String _inlineModel = '', _completionModel = '';
+  var _customContext = false;
+  String? _providerIdentity;
   final _completionHosts = <HostId, String>{};
   late ModelProtocol _protocol;
   Timer? _checkTimer;
@@ -65,7 +69,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         protocol: _protocol,
         endpoint: _endpoint.text.trim(),
         model: _model.text.trim(),
-        tools: _tools,
+        tools: true,
         contextWindow: int.tryParse(_contextWindow.text) ?? 0,
         maxOutputTokens: int.tryParse(_maxOutput.text) ?? 0,
       );
@@ -86,6 +90,38 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     }
   }
 
+  String? get _draftProvider {
+    try {
+      return jsonEncode([_protocol.name, ModelProfile.normalizeEndpoint(_endpoint.text.trim())]);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  String? get _catalogCredential => _removeKey ? null : _identity;
+
+  void _revokeTerminal() {
+    _inlineEnabled = _completionEnabled = _completionHistory = _completionPosix = false;
+    _completionHosts.clear();
+  }
+
+  void _selectModel(String value, {bool inline = false, bool completion = false}) {
+    setState(() {
+      _revokeTerminal();
+      if (inline) {
+        _inlineModel = value;
+      } else if (completion) {
+        _completionModel = value;
+      } else {
+        _model.text = value;
+        if (_inlineModel.isEmpty) _inlineModel = value;
+        if (_completionModel.isEmpty) _completionModel = value;
+        _identity ??= _draftIdentity;
+      }
+      _error = null;
+    });
+  }
+
   bool get _emptyProfile => _endpoint.text.trim().isEmpty && _model.text.trim().isEmpty;
   bool get _credentialBlocked => (_checking || _keyError) && (_enabled || _key.text.isNotEmpty || _removeKey);
   bool get _dirty =>
@@ -94,6 +130,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       _completionEnabled != _initial.completionEnabled ||
       _completionHistory != _initial.completionHistory ||
       _completionPosix != _initial.completionPosix ||
+      _inlineModel != (_initial.inlineModel ?? _initial.profile?.model ?? '') ||
+      _completionModel != (_initial.completionModel ?? _initial.profile?.model ?? '') ||
       jsonEncode({for (final e in _completionHosts.entries) e.key.value: e.value}) !=
           jsonEncode({for (final e in _initial.completionHosts.entries) e.key.value: e.value}) ||
       jsonEncode(_profile?.toJson()) != jsonEncode(_initial.profile?.toJson()) ||
@@ -120,14 +158,17 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _completionHosts
       ..clear()
       ..addAll(config.completionHosts);
-    _protocol = config.profile?.protocol ?? ModelProtocol.anthropic;
-    _tools = config.profile?.tools ?? false;
+    _protocol = config.profile?.protocol ?? ModelProtocol.openai;
     _endpoint.text = config.profile?.endpoint ?? '';
     _model.text = config.profile?.model ?? '';
-    _contextWindow.text = '${config.profile?.contextWindow ?? 32768}';
+    _inlineModel = config.inlineModel ?? config.profile?.model ?? '';
+    _completionModel = config.completionModel ?? config.profile?.model ?? '';
+    _contextWindow.text = '${config.profile?.contextWindow ?? 1000000}';
+    _customContext = !{1000000, 256000}.contains(int.tryParse(_contextWindow.text));
     _maxOutput.text = '${config.profile?.maxOutputTokens ?? 4096}';
     _key.clear();
     _identity = _draftIdentity;
+    _providerIdentity = _draftProvider;
     _checking = _identity != null;
     _hasKey = _keyError = _removeKey = _conflict = false;
     _error = null;
@@ -145,17 +186,17 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   }
 
   void _changed({bool identity = false}) {
-    final next = _draftIdentity;
-    if (identity && next != _identity) {
+    final nextProvider = _draftProvider;
+    if (identity && nextProvider != _providerIdentity) {
       _checkTimer?.cancel();
       _generation++;
-      _identity = next;
-      _inlineEnabled = _completionEnabled = _completionHistory = _completionPosix = false;
-      _completionHosts.clear();
+      _providerIdentity = nextProvider;
+      _identity = _draftIdentity;
+      _revokeTerminal();
       _key.clear();
       _hasKey = _keyError = _removeKey = false;
-      _checking = next != null;
-      if (next != null) _checkTimer = Timer(const Duration(milliseconds: 250), _checkKey);
+      _checking = _identity != null;
+      if (_identity != null) _checkTimer = Timer(const Duration(milliseconds: 250), _checkKey);
     }
     setState(() => _error = null);
   }
@@ -227,17 +268,30 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         return;
       }
       if (identity != null && (remove || key.isNotEmpty)) {
+        credentialChanged = true;
         if (remove) {
           await _credentials.clear(identity);
+          if (_identity != null && _identity != identity) await _credentials.clear(_identity!);
         } else {
           await _credentials.save(identity, Secret(key));
         }
-        credentialChanged = true;
+        _identity = identity;
         if (mounted) {
           _key.clear();
           _hasKey = !remove;
           _removeKey = false;
         }
+      }
+      if (profile != null &&
+          !remove &&
+          key.isEmpty &&
+          _hasKey &&
+          _identity != null &&
+          _identity != identity &&
+          _providerIdentity == _draftProvider) {
+        await preserveModelKey(_credentials, _identity!, profile);
+        credentialChanged = true;
+        _identity = identity;
       }
       await notifier.save(
         enabled: enabled,
@@ -248,6 +302,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         completionHistory: _completionHistory,
         completionPosix: _completionPosix,
         completionHosts: _completionHosts,
+        inlineModel: _inlineModel.isEmpty ? profile?.model : _inlineModel,
+        completionModel: _completionModel.isEmpty ? profile?.model : _completionModel,
       );
       if (!mounted) return;
       setState(() => _load(ref.read(aiConfigurationProvider)));
@@ -328,68 +384,14 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             onChanged: (_) => _changed(identity: true),
           ),
           gap,
-          TextFormField(
-            key: const ValueKey('ai-config-model'),
-            controller: _model,
-            enabled: !blocked,
-            autocorrect: false,
-            decoration: InputDecoration(labelText: l.aiConfigModel),
-            validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
-            onChanged: (_) => _changed(identity: true),
-          ),
-          gap,
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              key: const ValueKey('ai-config-advanced'),
-              onPressed: () => setState(() => _advanced = !_advanced),
-              icon: Icon(_advanced ? Icons.expand_less : Icons.expand_more, size: 16),
-              label: Text(l.aiConfigAdvanced),
-            ),
-          ),
-          if (_advanced) ...[
-            AppToggleRow(
-              title: l.aiConfigTools,
-              value: _tools,
-              onChanged: blocked ? null : (v) => setState(() => _tools = v),
-            ),
-            gap,
-            Wrap(
-              spacing: Space.md,
-              runSpacing: Space.md,
-              children: [
-                SizedBox(
-                  width: 210,
-                  child: TextFormField(
-                    controller: _contextWindow,
-                    enabled: !blocked,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(labelText: l.aiConfigContextWindow),
-                    onChanged: (_) => _changed(),
-                  ),
-                ),
-                SizedBox(
-                  width: 210,
-                  child: TextFormField(
-                    controller: _maxOutput,
-                    enabled: !blocked,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(labelText: l.aiConfigMaxOutput),
-                    onChanged: (_) => _changed(),
-                  ),
-                ),
-              ],
-            ),
-            gap,
-          ],
           TextField(
             key: const ValueKey('ai-config-key'),
             controller: _key,
-            enabled: !blocked && !_checking && !_keyError && _identity != null,
+            enabled: !blocked && !_checking && !_keyError && _draftProvider != null,
             obscureText: true,
             autocorrect: false,
             enableSuggestions: false,
-            decoration: InputDecoration(labelText: l.aiConfigApiKey),
+            decoration: InputDecoration(labelText: l.aiConfigApiKeyOptional),
             onChanged: (_) => setState(() {
               _removeKey = false;
               _error = null;
@@ -428,6 +430,71 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               ),
             ),
           gap,
+          AiModelPicker(
+            key: const ValueKey('ai-config-model'),
+            value: _model.text,
+            label: l.aiConfigAgentModel,
+            protocol: _protocol,
+            endpoint: _endpoint.text.trim(),
+            credentialIdentity: _catalogCredential,
+            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+            onChanged: blocked || _draftProvider == null ? null : _selectModel,
+          ),
+          gap,
+          Text(l.aiConfigAdvanced, style: theme.textTheme.titleSmall),
+          const SizedBox(height: Space.sm),
+          Wrap(
+            spacing: Space.md,
+            runSpacing: Space.md,
+            children: [
+              SizedBox(
+                width: 210,
+                child: AppSelect<int>(
+                  key: const ValueKey('ai-config-context-preset'),
+                  label: l.aiConfigContextWindow,
+                  value: _customContext ? -1 : int.parse(_contextWindow.text),
+                  options: [
+                    const AppOption(1000000, '1M'),
+                    const AppOption(256000, '256K'),
+                    AppOption(-1, l.aiConfigContextCustom),
+                  ],
+                  onChanged: blocked
+                      ? null
+                      : (value) => setState(() {
+                          _customContext = value == -1;
+                          if (!_customContext) _contextWindow.text = '$value';
+                          _error = null;
+                        }),
+                ),
+              ),
+              if (_customContext)
+                SizedBox(
+                  width: 210,
+                  child: TextFormField(
+                    key: const ValueKey('ai-config-context-custom'),
+                    controller: _contextWindow,
+                    enabled: !blocked,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: l.aiConfigContextWindow),
+                    validator: (_) => _profile == null ? l.aiConfigInvalid : null,
+                    onChanged: (_) => _changed(),
+                  ),
+                ),
+              SizedBox(
+                width: 210,
+                child: TextFormField(
+                  key: const ValueKey('ai-config-max-output'),
+                  controller: _maxOutput,
+                  enabled: !blocked,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(labelText: l.aiConfigMaxOutput),
+                  validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
+                  onChanged: (_) => _changed(),
+                ),
+              ),
+            ],
+          ),
+          gap,
           const Divider(),
           gap,
           AppToggleRow(
@@ -442,11 +509,33 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           gap,
+          AiModelPicker(
+            key: const ValueKey('ai-config-inline-model'),
+            value: _inlineModel,
+            label: l.aiConfigInlineModel,
+            protocol: _protocol,
+            endpoint: _endpoint.text.trim(),
+            credentialIdentity: _catalogCredential,
+            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, inline: true),
+          ),
+          gap,
           AppToggleRow(
             key: const ValueKey('ai-config-completion'),
             title: l.aiConfigCompletion,
             value: _completionEnabled,
             onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _completionEnabled = v),
+          ),
+          const SizedBox(height: Space.sm),
+          AiModelPicker(
+            key: const ValueKey('ai-config-completion-model'),
+            value: _completionModel,
+            label: l.aiConfigCompletionModel,
+            protocol: _protocol,
+            endpoint: _endpoint.text.trim(),
+            credentialIdentity: _catalogCredential,
+            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, completion: true),
           ),
           if (_inlineEnabled || _completionEnabled) ...[
             gap,

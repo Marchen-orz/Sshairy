@@ -2,7 +2,7 @@
 
 Lightweight SSH. Powered by AI.
 
-基于 Flutter 的桌面 SSH 客户端，提供侧栏 Agent、行内命令生成与 AI 提示补全。Agent 根据任务自行选择回答、固定诊断或提出命令，执行前逐次确认。AI 默认关闭，真实模型和服务器闭环仍待实测；完整目标与完成范围见 [ROADMAP](docs/ROADMAP.md)。
+基于 Flutter 的桌面 SSH 客户端，提供侧栏助手 Airy、行内命令生成与 AI 提示补全。Airy 根据任务自行选择回答、固定诊断或提出命令，执行前逐次确认。AI 默认关闭，真实模型和服务器闭环仍待实测；完整目标与完成范围见 [ROADMAP](docs/ROADMAP.md)。
 
 主要供作者自用，处于开发阶段，不提供兼容性、可用性或数据恢复保障。目标平台为 Windows、macOS、Linux；目前只在作者的 Windows 11 和 Ubuntu 24.04 服务器上实际测试，macOS 和 Linux 桌面尚未验证。
 
@@ -12,9 +12,9 @@ Lightweight SSH. Powered by AI.
 - 片段：搜索、标签、编辑与持久化；插入焦点终端或确认后运行，断线重连使旧确认失效。
 - 外观：六套浅深品牌主题、界面缩放与独立背景图片。Windows 默认 Skia，可在设置中切换 Impeller，重启生效。
 - 连接扩展：跳板链、SOCKS5／HTTP CONNECT 代理、按主机启用旧版算法。实际验证范围见 [ROADMAP](docs/ROADMAP.md)。
-- AI：设置中配置 Anthropic Messages 或 OpenAI-compatible Chat Completions；导航或 Ctrl/Cmd+Shift+A 打开 Agent，选择主机后由 Agent 决定步骤。行内生成与自动补全分别开启，命令先预览或填入，按 Enter 才执行；Agent 命令逐次批准，执行输出另选发送。
+- AI：设置中配置 Anthropic Messages 或 OpenAI-compatible Chat Completions；导航或 Ctrl/Cmd+Shift+A 打开 Airy，选择主机后由助手决定步骤。顶部历史入口可查看、切换和删除本地会话，各会话保留内存草稿；再次发送历史需明确确认，旧批准和执行不会恢复。行内生成与自动补全分别开启，命令先预览或填入，按 Enter 才执行；Airy 命令逐次批准，执行输出另选发送。
 
-密码与私钥只存系统安全存储。连接先检查主机密钥，变化时默认阻断；不修改系统 SSH 配置或 `known_hosts`。
+密码与私钥只存系统安全存储。连接先检查主机密钥，变化时默认阻断；不修改系统 SSH 配置或 `known_hosts`。Airy 历史只保存有界文字、执行状态和已允许发送的输出投影，文字仍可能含敏感业务信息，辅助脱敏不保证识别任意秘密；恢复与发送限制见 [AI §4.1](docs/AI.md#41-侧边栏-agent-助手)。
 
 ## 开发
 

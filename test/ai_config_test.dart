@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/controls.dart';
 import 'package:sshairy/design/theme.dart';
+import 'package:sshairy/design/select.dart';
+import 'package:sshairy/features/ai/presentation/model_picker.dart';
 import 'package:sshairy/features/ai/application/configuration.dart';
 import 'package:sshairy/features/ai/domain/model_profile.dart';
 import 'package:sshairy/features/ai/presentation/ai_settings.dart';
@@ -53,6 +55,7 @@ class _UiCredentials implements AiCredentials {
   final checked = <String>[];
   final saved = <String>[];
   var reads = 0;
+  var failRead = false;
 
   @override
   Future<bool> has(String identity) async {
@@ -63,6 +66,7 @@ class _UiCredentials implements AiCredentials {
   @override
   Future<Secret?> read(String identity) async {
     reads++;
+    if (failRead) throw StateError('secure storage unavailable');
     return values[identity];
   }
 
@@ -213,6 +217,86 @@ void main() {
       notifier.save(enabled: true, profile: changed.profile, completionHosts: {host.id: 'stale-route'}),
       throwsArgumentError,
     );
+  });
+
+  test('new model defaults enable Agent tools and use one million context tokens', () {
+    final profile = ModelProfile(protocol: ModelProtocol.openai, endpoint: 'https://model.example/v1', model: 'agent');
+    expect(profile.tools, isTrue);
+    expect(profile.contextWindow, 1000000);
+    expect(profile.maxOutputTokens, 4096);
+    final inline = profile.withModel('inline', tools: false);
+    expect(inline.model, 'inline');
+    expect(inline.tools, isFalse);
+    expect(inline.endpoint, profile.endpoint);
+    expect(inline.contextWindow, profile.contextWindow);
+  });
+
+  test('legacy role models migrate to the default without losing destination grants', () {
+    final profile = _profile();
+    File('${dir.path}/ai.json').writeAsStringSync(
+      jsonEncode({
+        'schemaVersion': 1,
+        'revision': 4,
+        'enabled': true,
+        'profile': profile.toJson(),
+        'inlineEnabled': true,
+        'terminalDestination': profile.identity,
+      }),
+    );
+    final state = container.read(aiConfigurationProvider);
+    expect(state.loadFailed, isFalse);
+    expect(state.inlineModel, profile.model);
+    expect(state.completionModel, profile.model);
+    expect(state.profileForInline!.tools, isFalse);
+    expect(state.terminalIdentity, profile.identity);
+  });
+
+  test('independent role models persist and changes revoke implicit terminal grants', () async {
+    final notifier = container.read(aiConfigurationProvider.notifier);
+    await notifier.save(
+      enabled: true,
+      profile: _profile(),
+      inlineModel: 'inline-fast',
+      completionModel: 'complete-fast',
+      inlineEnabled: true,
+      completionEnabled: true,
+      completionPosix: true,
+    );
+    final before = container.read(aiConfigurationProvider);
+    expect(before.profileForInline!.model, 'inline-fast');
+    expect(before.profileForCompletion!.model, 'complete-fast');
+    expect(before.profileForInline!.tools, isFalse);
+    expect(before.profileForCompletion!.tools, isFalse);
+    expect(before.terminalDestination, before.terminalIdentity);
+    expect(before.terminalDestination, isNot(before.profile!.identity));
+    final restarted = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    expect(restarted.read(aiConfigurationProvider).inlineModel, 'inline-fast');
+    expect(restarted.read(aiConfigurationProvider).completionModel, 'complete-fast');
+    restarted.dispose();
+    await notifier.save(enabled: true, profile: _profile(), inlineModel: 'another-inline');
+    final changed = container.read(aiConfigurationProvider);
+    expect(changed.inlineEnabled, isFalse);
+    expect(changed.completionEnabled, isFalse);
+    expect(changed.completionPosix, isFalse);
+    expect(changed.completionModel, 'complete-fast');
+    expect(changed.terminalDestination, changed.terminalIdentity);
+  });
+
+  test('invalid role model and stale selected model destination protect the file', () async {
+    final notifier = container.read(aiConfigurationProvider.notifier);
+    await notifier.save(enabled: true, profile: _profile());
+    final file = File('${dir.path}/ai.json');
+    final original = file.readAsBytesSync();
+    await expectLater(
+      notifier.save(enabled: true, profile: _profile(), inlineModel: 'bad model'),
+      throwsFormatException,
+    );
+    expect(file.readAsBytesSync(), original);
+    final invalid = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+    invalid['inlineModel'] = 'different-inline';
+    file.writeAsStringSync(jsonEncode(invalid));
+    container.invalidate(aiConfigurationProvider);
+    expect(container.read(aiConfigurationProvider).loadFailed, isTrue);
   });
 
   test('stale configuration cannot overwrite a newer profile', () async {
@@ -387,6 +471,108 @@ void main() {
     return credentials;
   }
 
+  testWidgets('new settings default to OpenAI with optional key before models and visible limits', (tester) async {
+    await showSettings(tester, configured: false);
+    final protocol = tester.widget<AppSelect<ModelProtocol>>(find.byType(AppSelect<ModelProtocol>));
+    expect(protocol.value, ModelProtocol.openai);
+    final endpoint = find.byKey(const ValueKey('ai-config-endpoint'));
+    final key = find.byKey(const ValueKey('ai-config-key'));
+    final model = find.byKey(const ValueKey('ai-config-model'));
+    expect(tester.getTopLeft(endpoint).dy, lessThan(tester.getTopLeft(key).dy));
+    expect(tester.getTopLeft(key).dy, lessThan(tester.getTopLeft(model).dy));
+    expect(tester.widget<TextField>(key).enabled, isFalse);
+    await tester.enterText(endpoint, 'https://model.example/v1');
+    await tester.pump();
+    expect(tester.widget<TextField>(key).enabled, isTrue);
+    expect(tester.widget<AiModelPicker>(model).value, isEmpty);
+    expect(tester.widget<AppSelect<int>>(find.byKey(const ValueKey('ai-config-context-preset'))).value, 1000000);
+    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('ai-config-max-output'))).controller!.text, '4096');
+    expect(find.byKey(const ValueKey('ai-config-advanced')), findsNothing);
+    expect(find.text('Provide model tools'), findsNothing);
+  });
+
+  testWidgets('model changes retain a typed key and save independent model selections', (tester) async {
+    final credentials = await showSettings(tester);
+    final key = find.byKey(const ValueKey('ai-config-key'));
+    await tester.enterText(key, 'synthetic-new-key');
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-model'))).onChanged!('agent-new');
+    await tester.pump();
+    expect(tester.widget<TextField>(key).controller!.text, 'synthetic-new-key');
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-inline-model'))).onChanged!('inline-fast');
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-completion-model'))).onChanged!('complete-fast');
+    await tester.pump();
+    final preset = tester.widget<AppSelect<int>>(find.byKey(const ValueKey('ai-config-context-preset')));
+    preset.onChanged!(256000);
+    await tester.pump();
+    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
+    await tester.tap(find.byKey(const ValueKey('ai-config-save')));
+    await tester.pump();
+    await drainConfiguration(tester, scope);
+    await tester.pumpAndSettle();
+    final state = scope.read(aiConfigurationProvider);
+    expect(state.profile!.model, 'agent-new');
+    expect(state.profile!.tools, isTrue);
+    expect(state.profile!.contextWindow, 256000);
+    expect(state.inlineModel, 'inline-fast');
+    expect(state.completionModel, 'complete-fast');
+    expect(credentials.reads, 0);
+    expect(credentials.values[state.profile!.identity]!.reveal(), 'synthetic-new-key');
+    expect(File('${dir.path}/ai.json').readAsStringSync(), isNot(contains('synthetic-new-key')));
+  });
+
+  testWidgets('changing only the default model preserves its secure key without displaying it', (tester) async {
+    final credentials = await showSettings(tester);
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-model'))).onChanged!('agent-new');
+    await tester.pump();
+    final key = find.byKey(const ValueKey('ai-config-key'));
+    expect(tester.widget<TextField>(key).controller!.text, isEmpty);
+    expect(credentials.reads, 0);
+    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
+    await tester.tap(find.byKey(const ValueKey('ai-config-save')));
+    await tester.pump();
+    await drainConfiguration(tester, scope);
+    await tester.pumpAndSettle();
+    final next = scope.read(aiConfigurationProvider).profile!;
+    expect(next.model, 'agent-new');
+    expect(credentials.reads, 1);
+    expect(credentials.values[next.identity]!.reveal(), 'synthetic-existing-key');
+    expect(tester.widget<TextField>(key).controller!.text, isEmpty);
+  });
+
+  testWidgets('model key copy failure keeps the old configuration and an empty key field', (tester) async {
+    final credentials = await showSettings(tester);
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-model'))).onChanged!('agent-new');
+    await tester.pump();
+    credentials.failRead = true;
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
+    await tester.tap(find.byKey(const ValueKey('ai-config-save')));
+    await tester.pumpAndSettle();
+    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
+    expect(scope.read(aiConfigurationProvider).profile!.model, _profile().model);
+    expect(credentials.saved, isEmpty);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('ai-config-key'))).controller!.text, isEmpty);
+    final l = AppLocalizations.of(tester.element(find.byType(AiSettings)));
+    expect(find.text(l.aiConfigSaveFailed), findsOneWidget);
+  });
+
+  testWidgets('changing provider never copies the previous destination key', (tester) async {
+    final credentials = await showSettings(tester);
+    await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://different.example/v1');
+    await tester.pumpAndSettle();
+    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
+    await tester.tap(find.byKey(const ValueKey('ai-config-save')));
+    await tester.pump();
+    await drainConfiguration(tester, scope);
+    await tester.pumpAndSettle();
+    expect(scope.read(aiConfigurationProvider).profile!.endpoint, 'https://different.example/v1');
+    expect(credentials.reads, 0);
+    expect(credentials.saved, isEmpty);
+    expect(credentials.values.keys, [_profile().identity]);
+  });
+
   testWidgets('settings only check saved key presence, and changing destinations clears the unsaved key', (
     tester,
   ) async {
@@ -411,6 +597,7 @@ void main() {
     await tester.pump();
     final context = tester.element(find.byType(AiSettings));
     final scope = ProviderScope.containerOf(context);
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
     await tester.tap(find.byKey(const ValueKey('ai-config-save')));
     await tester.pump();
     await drainConfiguration(tester, scope);

@@ -7,14 +7,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
+import '../../../design/dialog.dart';
+import '../../../design/popup.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../settings/api.dart';
 import '../application/composer.dart';
+import '../application/conversations.dart';
 import '../application/configuration.dart';
 import '../application/providers.dart';
+import '../application/model_selection.dart';
+import '../adapters/markdown_view.dart';
+import 'model_picker.dart';
 import '../application/runtime.dart';
 import '../domain/agent.dart';
 
@@ -29,7 +35,41 @@ class AgentPanel extends ConsumerStatefulWidget {
 class _AgentPanelState extends ConsumerState<AgentPanel> {
   late final _goal = TextEditingController(text: ref.read(agentComposerProvider).goal);
   bool _scopeDetails = false;
-  bool _startFailed = false;
+  bool _startFailed = false, _confirming = false;
+
+  void _resetConversationUi() => setState(() {
+    _startFailed = false;
+    _scopeDetails = false;
+  });
+
+  Future<void> _history(BuildContext anchorContext) async {
+    final conversations = ref.read(agentConversationsProvider);
+    final choice = await showAnchoredPopup<(String, bool)>(
+      context: context,
+      anchor: anchorOf(anchorContext),
+      width: WorkspaceSize.toolPanel,
+      builder: (context) => _History(conversations: conversations),
+    );
+    if (!mounted || choice == null) return;
+    if (choice.$2) {
+      final l = AppLocalizations.of(context);
+      final confirmed = await showAppDialog<bool>(
+        context: context,
+        builder: (context) => AppDialog(
+          content: Text(l.aiAgentHistoryDeleteConfirm),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: Text(l.aiAgentHistoryDelete)),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+      await conversations.delete(choice.$1);
+    } else {
+      conversations.select(choice.$1);
+    }
+    if (mounted) _resetConversationUi();
+  }
 
   @override
   void dispose() {
@@ -49,11 +89,56 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
 
   Future<void> _send(AgentRuntime runtime, HostId? host) async {
     final goal = _goal.text.trim();
-    if (runtime.busy || goal.isEmpty || !_goal.value.composing.isCollapsed) return;
+    final conversations = ref.read(agentConversationsProvider);
+    if (runtime.busy || conversations.loading || _confirming || goal.isEmpty || !_goal.value.composing.isCollapsed) {
+      return;
+    }
     setState(() => _startFailed = false);
-    _replaceGoal('');
+    var continueHistory = false;
+    if (conversations.hasHistory) {
+      final l = AppLocalizations.of(context);
+      final canContinue = conversations.canContinue(host);
+      final configuration = ref.read(aiConfigurationProvider);
+      final profile = ref.read(effectiveAgentProfileProvider);
+      final hostName =
+          ref.read(agentBackendProvider).hosts.where((entry) => entry.id == host).firstOrNull?.label ?? l.aiAgentNoHost;
+      final selectedId = conversations.selectedId;
+      _confirming = true;
+      final accepted = await showAppDialog<bool>(
+        context: context,
+        builder: (context) => AppDialog(
+          content: SingleChildScrollView(
+            child: Text(
+              canContinue
+                  ? l.aiAgentHistoryContinueNotice('${profile?.endpoint ?? ''} · ${profile?.model ?? ''}', hostName)
+                  : l.aiAgentHistoryTargetChanged,
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+            FilledButton.tonal(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(canContinue ? l.aiAgentContinueConversation : l.aiAgentNewTask),
+            ),
+          ],
+        ),
+      );
+      _confirming = false;
+      if (!mounted ||
+          accepted != true ||
+          runtime.busy ||
+          selectedId != conversations.selectedId ||
+          _goal.text.trim() != goal ||
+          ref.read(aiConfigurationProvider) != configuration ||
+          ref.read(effectiveAgentProfileProvider)?.identity != profile?.identity ||
+          ref.read(agentComposerProvider).host != host && (profile?.tools ?? false)) {
+        return;
+      }
+      if (canContinue && !conversations.canContinue(host)) return;
+      continueHistory = canContinue;
+    }
     try {
-      await runtime.start(goal, AgentScope(hosts: [?host]));
+      await conversations.send(goal, host, continueHistory: continueHistory);
       if (mounted && runtime.error == 'notConfigured' && _goal.text.isEmpty) _replaceGoal(goal);
     } on Object {
       if (!mounted) return;
@@ -67,6 +152,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     final l = AppLocalizations.of(context);
     final configuration = ref.watch(aiConfigurationProvider);
     final runtime = ref.watch(agentRuntimeProvider);
+    final conversations = ref.watch(agentConversationsProvider);
     final draft = ref.watch(agentComposerProvider);
     if (_goal.text != draft.goal) {
       _goal.value = TextEditingValue(
@@ -76,12 +162,13 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     }
     final hosts = ref.watch(agentBackendProvider).hosts;
     final enabled = configuration.enabled && configuration.profile != null && !configuration.loadFailed;
-    final tools = configuration.profile?.tools ?? false;
+    final profile = ref.watch(effectiveAgentProfileProvider);
+    final tools = profile?.tools ?? false;
     final selectedHost = tools && hosts.any((host) => host.id == draft.host) ? draft.host : null;
     final theme = Theme.of(context);
 
     return ListenableBuilder(
-      listenable: runtime,
+      listenable: Listenable.merge([runtime, conversations]),
       builder: (context, _) => LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxHeight < 440;
@@ -93,7 +180,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                 child: Row(
                   children: [
                     Icon(Icons.auto_awesome_outlined, size: 18, color: theme.colorScheme.primary),
-                    const SizedBox(width: Space.sm),
+                    const SizedBox(width: Space.xs),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,16 +196,21 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                         ],
                       ),
                     ),
+                    Builder(
+                      builder: (anchorContext) => IconButton(
+                        key: const ValueKey('ai-agent-history'),
+                        tooltip: l.aiAgentHistory,
+                        onPressed: () => _history(anchorContext),
+                        icon: const Icon(Icons.history_rounded, size: 17),
+                      ),
+                    ),
                     IconButton(
                       key: const ValueKey('ai-agent-new-task'),
                       tooltip: l.aiAgentNewTask,
-                      onPressed: runtime.busy
+                      onPressed: runtime.busy || conversations.loading
                           ? null
                           : () {
-                              runtime.clear();
-                              ref.read(agentComposerProvider.notifier).newTask();
-                              _goal.clear();
-                              setState(() => _startFailed = false);
+                              if (conversations.newConversation()) _resetConversationUi();
                             },
                       icon: const Icon(Icons.add_comment_outlined, size: 17),
                     ),
@@ -141,7 +233,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                         compact: compact,
                         onExample: _replaceGoal,
                       )
-                    : _Conversation(runtime: runtime),
+                    : _Conversation(runtime: runtime, conversationId: conversations.selectedId),
               ),
               if (runtime.error != null || _startFailed)
                 Padding(
@@ -179,6 +271,28 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (conversations.loadFailed || conversations.saveFailed)
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      conversations.loadFailed
+                                          ? l.aiAgentHistoryLoadFailed
+                                          : l.aiAgentHistorySaveFailed,
+                                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        conversations.loadFailed ? conversations.reload() : conversations.retrySave(),
+                                    child: Text(l.aiAgentHistoryRetry),
+                                  ),
+                                ],
+                              ),
+                            if (conversations.current?.historyTruncated ?? false)
+                              Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
+                            if (runtime.contextCompacted)
+                              Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
                             Focus(
                               onKeyEvent: (_, event) {
                                 if (event is! KeyDownEvent ||
@@ -188,7 +302,10 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                     !_goal.value.composing.isCollapsed) {
                                   return KeyEventResult.ignored;
                                 }
-                                if (enabled && !runtime.busy && _goal.text.trim().isNotEmpty) {
+                                if (enabled &&
+                                    !runtime.busy &&
+                                    !conversations.loading &&
+                                    _goal.text.trim().isNotEmpty) {
                                   unawaited(_send(runtime, selectedHost));
                                 }
                                 return KeyEventResult.handled;
@@ -197,7 +314,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                 key: const ValueKey('ai-agent-goal'),
                                 controller: _goal,
                                 enabled: enabled,
-                                minLines: compact ? 1 : 2,
+                                minLines: 1,
                                 maxLines: compact ? 2 : 4,
                                 maxLength: 4096,
                                 decoration: InputDecoration(
@@ -217,28 +334,22 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                             const SizedBox(height: Space.xs),
                             Row(
                               children: [
-                                Icon(Icons.auto_awesome_outlined, size: 12, color: theme.colorScheme.onSurfaceVariant),
-                                const SizedBox(width: Space.xs),
                                 Expanded(
-                                  child: Tooltip(
-                                    message: configuration.profile?.model ?? l.aiAgentConfigureAction,
-                                    child: Text(
-                                      configuration.profile?.model ?? l.aiAgentConfigureAction,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme.colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
+                                  child: profile == null
+                                      ? Text(l.aiAgentConfigureAction, style: theme.textTheme.bodySmall)
+                                      : AiModelPicker(
+                                          key: const ValueKey('ai-agent-model'),
+                                          value: profile.model,
+                                          protocol: profile.protocol,
+                                          endpoint: profile.endpoint,
+                                          credentialIdentity: configuration.profile?.identity,
+                                          compact: true,
+                                          onChanged: runtime.busy
+                                              ? null
+                                              : ref.read(selectedAgentModelProvider.notifier).select,
+                                        ),
                                 ),
-                                if (!tools)
-                                  Text(
-                                    l.aiAgentTextOnly,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
+                                if (!tools) Text(l.aiAgentTextOnly, style: theme.textTheme.bodySmall),
                               ],
                             ),
                             const SizedBox(height: Space.sm),
@@ -281,25 +392,16 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                     : IconButton.filled(
                                         key: const ValueKey('ai-agent-send'),
                                         tooltip: l.aiAgentSendShortcut,
-                                        onPressed: !enabled || draft.goal.trim().isEmpty
+                                        onPressed: !enabled || conversations.loading || draft.goal.trim().isEmpty
                                             ? null
                                             : () => _send(runtime, selectedHost),
                                         icon: const Icon(Icons.arrow_upward_rounded, size: 18),
                                       ),
                               ],
                             ),
-                            if (tools && selectedHost != null) ...[
+                            if (tools && selectedHost != null && _scopeDetails) ...[
                               const SizedBox(height: Space.sm),
-                              Text(
-                                l.aiAgentScopeSummary,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                              ),
-                              if (_scopeDetails) ...[
-                                const SizedBox(height: Space.sm),
-                                Text(l.aiAgentDiagnosticScope, style: theme.textTheme.bodySmall),
-                              ],
+                              Text(l.aiAgentDiagnosticScope, style: theme.textTheme.bodySmall),
                             ],
                           ],
                         ),
@@ -311,6 +413,71 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _History extends StatelessWidget {
+  const _History({required this.conversations});
+  final AgentConversations conversations;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final style = Theme.of(context).textTheme.bodySmall;
+    return PopupSurface(
+      padding: const EdgeInsets.symmetric(vertical: Space.sm),
+      child: PopupKeys(
+        child: ListenableBuilder(
+          listenable: conversations,
+          builder: (context, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
+                child: Text(l.aiAgentHistoryLocalNotice, style: style),
+              ),
+              if (conversations.runtime.busy)
+                Padding(
+                  padding: const EdgeInsets.all(Space.md),
+                  child: Text(l.aiAgentHistoryBusy, style: style),
+                ),
+              if (conversations.loading) const LinearProgressIndicator(),
+              Flexible(
+                child: conversations.records.isEmpty
+                    ? Padding(padding: const EdgeInsets.all(Space.lg), child: Text(l.aiAgentHistoryEmpty))
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: conversations.records.length,
+                        itemBuilder: (context, index) {
+                          final record = conversations.records[index];
+                          final enabled = !conversations.runtime.busy && !conversations.loading;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: PopupRow(
+                                  key: ValueKey('ai-conversation-${record.id}'),
+                                  selected: record.id == conversations.selectedId,
+                                  onTap: enabled ? () => Navigator.pop(context, (record.id, false)) : null,
+                                  child: Text(record.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                              ),
+                              IconButton(
+                                key: ValueKey('ai-conversation-delete-${record.id}'),
+                                tooltip: l.aiAgentHistoryDelete,
+                                onPressed: enabled ? () => Navigator.pop(context, (record.id, true)) : null,
+                                icon: const Icon(Icons.delete_outline_rounded, size: 17),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -350,7 +517,10 @@ class _Welcome extends StatelessWidget {
             ),
             const SizedBox(height: Space.lg),
             if (!enabled)
-              FilledButton.tonal(onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai), child: Text(l.aiAgentConfigureAction))
+              FilledButton.tonal(
+                onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
+                child: Text(l.aiAgentConfigureAction),
+              )
             else
               Wrap(
                 alignment: WrapAlignment.center,
@@ -375,8 +545,9 @@ class _Welcome extends StatelessWidget {
 }
 
 class _Conversation extends StatelessWidget {
-  const _Conversation({required this.runtime});
+  const _Conversation({required this.runtime, required this.conversationId});
   final AgentRuntime runtime;
+  final String conversationId;
 
   @override
   Widget build(BuildContext context) {
@@ -386,7 +557,7 @@ class _Conversation extends StatelessWidget {
     final count = entries.length + (approval == null ? 0 : 1) + (data == null ? 0 : 1);
     return SelectionArea(
       child: ListView.builder(
-        key: const PageStorageKey('ai-agent-conversation'),
+        key: PageStorageKey('ai-agent-conversation-$conversationId'),
         padding: const EdgeInsets.all(Space.md),
         reverse: true,
         itemCount: count,
@@ -400,7 +571,7 @@ class _Conversation extends StatelessWidget {
             final theme = Theme.of(context);
             return Padding(
               key: ObjectKey(message),
-              padding: const EdgeInsets.only(bottom: Space.lg),
+              padding: const EdgeInsets.only(bottom: Space.md),
               child: Align(
                 alignment: user ? Alignment.centerRight : Alignment.centerLeft,
                 child: Container(
@@ -411,7 +582,7 @@ class _Conversation extends StatelessWidget {
                           borderRadius: BorderRadius.circular(Radii.card),
                         )
                       : null,
-                  child: Text(message.text, style: theme.textTheme.bodyMedium),
+                  child: user ? Text(message.text, style: theme.textTheme.bodyMedium) : AiMarkdown(data: message.text),
                 ),
               ),
             );
@@ -462,59 +633,72 @@ class _ExecutionCardState extends State<_ExecutionCard> {
           children: [
             Row(
               children: [
-                Icon(
-                  unknown
-                      ? Icons.help_outline_rounded
-                      : failed
-                      ? Icons.error_outline_rounded
-                      : running
-                      ? Icons.more_horiz_rounded
-                      : Icons.check_circle_outline_rounded,
-                  size: 16,
-                  color: failed || unknown ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: Text(
-                    execution.target,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelMedium,
-                  ),
-                ),
                 IconButton(
+                  visualDensity: VisualDensity.compact,
                   tooltip: _expanded ? l.aiAgentHideOutput : l.aiAgentShowOutput,
                   onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 18),
+                  icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 17),
                 ),
-              ],
-            ),
-            Text(
-              execution.capability == 'agent.diagnose' ? l.aiAgentDiagnostics : execution.command,
-              style: mono(context, theme.textTheme.bodySmall),
-              maxLines: _expanded ? null : 2,
-              overflow: _expanded ? null : TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: Space.sm),
-            Wrap(
-              spacing: Space.md,
-              runSpacing: Space.xs,
-              children: [
-                Text(
-                  failed ? l.aiAgentExecutionFailed : _executionState(l, execution.state),
-                  style: theme.textTheme.bodySmall,
+                Expanded(
+                  child: Text(
+                    execution.archived
+                        ? (execution.capability == 'agent.diagnose' ? l.aiAgentDiagnostics : l.aiAgentHistory)
+                        : execution.capability == 'agent.diagnose'
+                        ? l.aiAgentDiagnostics
+                        : execution.command,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: mono(context, theme.textTheme.bodySmall),
+                  ),
                 ),
-                if (execution.exitCode case final code?)
-                  Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
-                if (output?.truncated ?? false) Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
+                const SizedBox(width: Space.sm),
+                Tooltip(
+                  message: _executionState(l, execution.state),
+                  child: Icon(
+                    unknown
+                        ? Icons.help_outline_rounded
+                        : failed
+                        ? Icons.error_outline_rounded
+                        : running
+                        ? Icons.more_horiz_rounded
+                        : Icons.check_circle_outline_rounded,
+                    size: 16,
+                    color: failed || unknown ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
             if (_expanded) ...[
-              if (execution.cwd.isNotEmpty) ...[
+              if (!execution.archived && execution.target.isNotEmpty)
+                Text(execution.target, style: theme.textTheme.labelMedium),
+              const SizedBox(height: Space.sm),
+              Wrap(
+                spacing: Space.md,
+                runSpacing: Space.xs,
+                children: [
+                  Text(
+                    failed ? l.aiAgentExecutionFailed : _executionState(l, execution.state),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  if (execution.exitCode case final code?)
+                    Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
+                  if (execution.historyTruncated || (output?.truncated ?? false))
+                    Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
+                ],
+              ),
+              if (execution.archived) ...[
+                const SizedBox(height: Space.sm),
+                Text(l.aiAgentHistoryOutputUnavailable, style: theme.textTheme.bodySmall),
+                if (execution.sharedText?.isNotEmpty ?? false) ...[
+                  const SizedBox(height: Space.sm),
+                  Text(execution.sharedText!, style: mono(context, theme.textTheme.bodySmall)),
+                ],
+              ],
+              if (!execution.archived && execution.cwd.isNotEmpty) ...[
                 const SizedBox(height: Space.sm),
                 Text(execution.cwd, style: mono(context, theme.textTheme.bodySmall)),
               ],
-              if (output != null && output.length > 0) ...[
+              if (!execution.archived && output != null && output.length > 0) ...[
                 const SizedBox(height: Space.sm),
                 const Divider(height: 1),
                 const SizedBox(height: Space.sm),
@@ -670,7 +854,7 @@ class _AgentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(Space.md),
+      padding: EdgeInsets.all(emphasized ? Space.md : Space.sm),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(Radii.card),

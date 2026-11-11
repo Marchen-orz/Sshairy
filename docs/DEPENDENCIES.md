@@ -6,10 +6,12 @@
 |---|---|
 | dartssh2、xterm2、flutter_riverpod、pinenacl | MIT |
 | desktop_drop | Apache-2.0 |
-| crypto、ffi、file_selector、flutter_secure_storage、intl、path_provider、yaml | BSD-3-Clause |
+| crypto、ffi、file_selector、flutter_secure_storage、intl、path_provider、yaml、flutter_markdown_plus | BSD-3-Clause |
 | Flutter SDK、flutter_localizations | BSD-3-Clause；SDK 的其他组件另有各自声明 |
 
 yaml（dart-lang 官方，2026-11-08 加入，原为传递依赖）只在 `hosts/adapters` 读 Tabby 的 config.yaml。
+
+flutter_markdown_plus 1.0.12（2026-11-11 加入，发布于 2026-07-10）用于 `ai/adapters` 的回复渲染；BSD-3-Clause 已按 pub.dev 发布包的 LICENSE 核对，维护来源为 Foresight Mobile，精确传递依赖随 lockfile 和 notices 保留。适配器不加载 Markdown 图片，链接只在用户点击后打开 http(s)，不用 HTML/WebView。组件、窄面板和图片/链接边界的验证结果见 TESTING §6；未据上游支持列表推定所有 Markdown 扩展均可用。
 
 Windows 本地终端通过已有 ffi 直接调用系统 ConPTY，无新增分发库。2026-11-10 核对 flutter_pty 0.4.2 时发现其原生句柄释放、退出尾部输出及路径参数实现不满足本项目生命周期要求，未采用；Unix PTY 尚未实现，不据 Windows 结果推定跨平台可用。
 

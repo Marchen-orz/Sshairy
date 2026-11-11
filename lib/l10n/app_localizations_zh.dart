@@ -25,8 +25,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigEndpoint => 'API 基础地址';
 
   @override
-  String get aiConfigEndpointHint =>
-      '包含 /v1 等 API 基础路径；仅允许 HTTPS 或精确本机回环 HTTP。';
+  String get aiConfigEndpointHint => '包含 /v1 等 API 基础路径；仅允许 HTTPS 或精确本机回环 HTTP。';
 
   @override
   String get aiConfigModel => '模型';
@@ -188,24 +187,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importSourceChanged => '来源文件已改变或无法读取，请重新选择。';
 
   @override
-  String get importGuideOpenSsh =>
-      '选择 .ssh 文件夹内的 config 文件；Include 仅在同一配置目录内读取。';
+  String get importGuideOpenSsh => '选择 .ssh 文件夹内的 config 文件；Include 仅在同一配置目录内读取。';
 
   @override
-  String get importGuidePutty =>
-      'Windows 会自动读取 PuTTY 会话注册表。手动导入请选择注册表编辑器导出的 Sessions .reg 文件。';
+  String get importGuidePutty => 'Windows 会自动读取 PuTTY 会话注册表。手动导入请选择注册表编辑器导出的 Sessions .reg 文件。';
 
   @override
-  String get importGuideMoba =>
-      '选择 MobaXterm.ini，或从连接列表导出的 .mxtsessions 文件。便携版配置通常在程序旁。';
+  String get importGuideMoba => '选择 MobaXterm.ini，或从连接列表导出的 .mxtsessions 文件。便携版配置通常在程序旁。';
 
   @override
-  String get importGuideSecureCrt =>
-      '在 SecureCRT 的全局选项中查看配置文件夹，选择其中的 Sessions 文件夹（内含 .ini 会话）。';
+  String get importGuideSecureCrt => '在 SecureCRT 的全局选项中查看配置文件夹，选择其中的 Sessions 文件夹（内含 .ini 会话）。';
 
   @override
-  String get importGuideXshell =>
-      '选择文档目录 NetSarang Computer 对应版本下的 Xshell/Sessions 文件夹（内含 .xsh 会话）。';
+  String get importGuideXshell => '选择文档目录 NetSarang Computer 对应版本下的 Xshell/Sessions 文件夹（内含 .xsh 会话）。';
 
   @override
   String get importGuideFinalShell =>
@@ -215,8 +209,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importGuideTabby => '选择 Tabby 的 config.yaml 配置文件。';
 
   @override
-  String get importGuideCsv =>
-      '选择 UTF-8 CSV 文件。第一行应包含 host（或“地址”）表头，可另有 name、port、username、group、key。';
+  String get importGuideCsv => '选择 UTF-8 CSV 文件。第一行应包含 host（或“地址”）表头，可另有 name、port、username、group、key。';
 
   @override
   String get hosts => '主机';
@@ -306,8 +299,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hostPasswordSaveFailed => '主机配置已保存，但密码修改未能确认。请检查系统安全存储后再次保存。';
 
   @override
-  String get hostPasswordCleanupFailed =>
-      '主机配置已保存，但旧代理凭据未能移除，密码修改尚未保存。请检查系统安全存储后再次保存。';
+  String get hostPasswordCleanupFailed => '主机配置已保存，但旧代理凭据未能移除，密码修改尚未保存。请检查系统安全存储后再次保存。';
 
   @override
   String get privateKey => '私钥';
@@ -563,8 +555,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get translationEndpoint => 'API 基础地址';
 
   @override
-  String get translationEndpointHint =>
-      '例如 https://api.example.com/v1，不含 /chat/completions';
+  String get translationEndpointHint => '例如 https://api.example.com/v1，不含 /chat/completions';
 
   @override
   String get translationModel => '模型';
@@ -1327,8 +1318,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get quitFailed =>
-      '部分更改未能保存，或任务未能停止。可以重试或返回应用。仍然退出可能丢失未保存的更改，本地编辑副本会保留。';
+  String get quitFailed => '部分更改未能保存，或任务未能停止。可以重试或返回应用。仍然退出可能丢失未保存的更改，本地编辑副本会保留。';
 
   @override
   String get returnToApp => '返回应用';
@@ -2248,7 +2238,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get cmdTmuxBind => '绑定按键';
 
   @override
-  String get aiAgentTitle => 'Agent';
+  String get aiAgentTitle => 'Airy';
 
   @override
   String get aiAgentClear => '清空对话';
@@ -2308,8 +2298,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentDiagnostics => '固定诊断';
 
   @override
-  String get aiAgentDiagnosticScope =>
-      '固定 Linux 诊断可向所选模型发送系统、内核、负载、内存、磁盘挂载点及容量，不含进程参数和环境变量。';
+  String get aiAgentDiagnosticScope => '固定 Linux 诊断可向所选模型发送系统、内核、负载、内存、磁盘挂载点及容量，不含进程参数和环境变量。';
 
   @override
   String aiAgentExitCode(int code) {
@@ -2326,8 +2315,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentHideOutput => '收起输出';
 
   @override
-  String get aiAgentShellPermission =>
-      '命令以 SSH 账号权限执行，可能修改文件或访问网络。停止会关闭本客户端的通道，远端进程仍可能继续。';
+  String get aiAgentShellPermission => '命令以 SSH 账号权限执行，可能修改文件或访问网络。停止会关闭本客户端的通道，远端进程仍可能继续。';
 
   @override
   String get aiAgentReject => '拒绝';
@@ -2351,7 +2339,51 @@ class AppLocalizationsZh extends AppLocalizations {
   String get cmdTmuxBreak => '将窗格移入独立窗口';
 
   @override
-  String get aiAgentNewTask => '新任务';
+  String get aiAgentNewTask => '新会话';
+
+  @override
+  String get aiAgentHistory => '历史会话';
+
+  @override
+  String get aiAgentHistoryEmpty => '暂无历史会话';
+
+  @override
+  String get aiAgentContinueConversation => '继续会话';
+
+  @override
+  String aiAgentHistoryContinueNotice(String destination, String host) {
+    return '继续时，将向 $destination 重新发送本会话保留的有限历史；当前主机：$host。';
+  }
+
+  @override
+  String get aiAgentHistoryTargetChanged => '主机或模型目的地已变化，请新建会话。';
+
+  @override
+  String get aiAgentHistoryLoadFailed => '无法读取会话历史，请重试。';
+
+  @override
+  String get aiAgentHistorySaveFailed => '会话历史未能保存，当前内容仍保留在内存中。';
+
+  @override
+  String get aiAgentHistoryRetry => '重试';
+
+  @override
+  String get aiAgentHistoryTruncated => '部分会话记录已按容量限制裁剪。';
+
+  @override
+  String get aiAgentHistoryOutputUnavailable => '原始工具输出未保存在历史中。';
+
+  @override
+  String get aiAgentHistoryDelete => '删除会话';
+
+  @override
+  String get aiAgentHistoryDeleteConfirm => '删除此会话及其本地历史记录？';
+
+  @override
+  String get aiAgentHistoryBusy => '请先停止当前任务或等待结束，再切换会话。';
+
+  @override
+  String get aiAgentHistoryLocalNotice => '会话文字保存在本地，可能含敏感信息；不保存原始工具输出。';
 
   @override
   String get aiAgentWelcome => '有什么想一起解决的？';
@@ -2450,15 +2482,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigPosix => '已选 SSH 终端使用 Linux / POSIX shell';
 
   @override
-  String get aiConfigPosixHint =>
-      '请自行确认输入环境；进入 su、tmux 或嵌套 SSH 时关闭提示，客户端无法确认内层身份。';
+  String get aiConfigPosixHint => '请自行确认输入环境；进入 su、tmux 或嵌套 SSH 时关闭提示，客户端无法确认内层身份。';
 
   @override
   String get aiConfigCompletionHistory => '使用当前会话近期命令';
 
   @override
-  String get aiConfigCompletionHint =>
-      '停顿后自动发送符合条件的草稿；历史单独授权，仅限本次连接最多 8 条相关命令。';
+  String get aiConfigCompletionHint => '停顿后自动发送符合条件的草稿；历史单独授权，仅限本次连接最多 8 条相关命令。';
 
   @override
   String get aiAgentErrorHostTrust => '请先正常连接这台主机并核对主机密钥，再使用远程工具。';
@@ -2488,7 +2518,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get terminalAiChanged => '终端上下文已变化，重新打开后可发起新请求。';
 
   @override
-  String get terminalAiClarify => '请补充需求；多步骤任务可交给 Agent。';
+  String get terminalAiClarify => '请补充需求；多步骤任务可交给 Airy。';
 
   @override
   String get terminalAiClearPrompt => '清空终端输入后可填入此命令。';
@@ -2497,5 +2527,40 @@ class AppLocalizationsZh extends AppLocalizations {
   String get terminalAiInsert => '填入命令';
 
   @override
-  String get terminalAiOpenAgent => '打开 Agent';
+  String get terminalAiOpenAgent => '打开 Airy';
+
+  @override
+  String get aiModelSearch => '搜索模型';
+
+  @override
+  String get aiModelsLoadFailed => '无法获取模型列表，可重试或输入模型名称。';
+
+  @override
+  String aiModelCustom(String model) {
+    return '使用 $model';
+  }
+
+  @override
+  String get aiModelsEmpty => '未找到模型';
+
+  @override
+  String get aiModelsRefresh => '刷新模型';
+
+  @override
+  String get aiAgentContextCompacted => '较早上下文已自动压缩，以保持在模型限制内。';
+
+  @override
+  String get aiConfigAgentModel => '默认 Airy 模型';
+
+  @override
+  String get aiConfigInlineModel => '行内生成模型';
+
+  @override
+  String get aiConfigCompletionModel => '补全模型';
+
+  @override
+  String get aiConfigContextCustom => '自定义';
+
+  @override
+  String get aiConfigApiKeyOptional => 'API Key（可选）';
 }

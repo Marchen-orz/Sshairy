@@ -11,6 +11,10 @@ import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/design/scrolling.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/ai/api.dart';
+import 'package:sshairy/features/ai/application/model_catalog.dart';
+import 'package:sshairy/features/ai/domain/model_catalog.dart';
+import 'package:sshairy/features/ai/presentation/model_picker.dart';
+import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/settings/api.dart';
@@ -39,6 +43,33 @@ class _AiCredentials implements AiCredentials {
   Future<void> clear(String identity) async => throw StateError('unexpected credential deletion');
 }
 
+class _Catalog implements ModelCatalog {
+  @override
+  Future<List<String>> list({
+    required ModelProtocol protocol,
+    required String endpoint,
+    required CancellationToken cancel,
+    String? credentialIdentity,
+    Secret? draftKey,
+  }) async => const ['example-model'];
+  @override
+  void cancelAll() {}
+  @override
+  void close() {}
+}
+
+Future<void> _chooseModel(WidgetTester tester, String model) async {
+  final picker = find.byKey(const ValueKey('ai-config-model'));
+  await tester.ensureVisible(picker);
+  await tester.pumpAndSettle();
+  await tester.tap(find.descendant(of: picker, matching: find.byType(OutlinedButton)));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(const ValueKey('ai-model-search')), model);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(ValueKey('ai-model-option-$model')));
+  await tester.pumpAndSettle();
+}
+
 class _Credentials implements TranslationCredentials {
   @override
   Future<bool> has(String identity) async => false;
@@ -65,6 +96,7 @@ void main() {
         dataDirProvider.overrideWithValue(dir.path),
         systemFontsProvider.overrideWith((_) async => []),
         aiCredentialsProvider.overrideWithValue(aiCredentials ?? _AiCredentials()),
+        aiModelCatalogProvider.overrideWithValue(_Catalog()),
         settingsSectionsProvider.overrideWithValue([
           if (withAi)
             SettingsSection(
@@ -255,6 +287,7 @@ void main() {
     expect(selected(tester, 5), isTrue);
     await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://example.com/v1');
     await tester.pumpAndSettle();
+    await _chooseModel(tester, 'pending-model');
     final form = tester.state(find.byType(AiSettings));
     final reopened = showSettingsDialog(env.context, section: SettingsSectionId.translation);
     expect(identical(first, reopened), isTrue);
@@ -262,10 +295,7 @@ void main() {
     expect(find.byType(AppDialog), findsOneWidget);
     expect(selected(tester, 6), isTrue);
     expect(tester.state(find.byType(AiSettings)), same(form));
-    expect(
-      tester.widget<TextFormField>(find.byKey(const ValueKey('ai-config-endpoint'))).controller!.text,
-      'https://example.com/v1',
-    );
+    expect(tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-model'))).value, 'pending-model');
     showSettingsDialog(env.context);
     await tester.pumpAndSettle();
     expect(selected(tester, 6), isTrue, reason: 'the general entry does not reset an already open dialog');
@@ -286,8 +316,8 @@ void main() {
     await tester.tap(tab(5));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://example.com/v1');
-    await tester.enterText(find.byKey(const ValueKey('ai-config-model')), 'example-model');
     await tester.pumpAndSettle();
+    await _chooseModel(tester, 'example-model');
     expect(save, findsOneWidget);
     expect(find.byKey(const ValueKey('ai-config-save')), findsNothing);
     final footer = tester.getRect(save);
@@ -332,8 +362,8 @@ void main() {
     await tester.tap(tab(5));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://example.com/v1');
-    await tester.enterText(find.byKey(const ValueKey('ai-config-model')), 'example-model');
     await tester.pumpAndSettle();
+    await _chooseModel(tester, 'example-model');
     final key = find.byKey(const ValueKey('ai-config-key'));
     await tester.ensureVisible(key);
     await tester.pumpAndSettle();

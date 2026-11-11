@@ -719,7 +719,7 @@
   "cmdTmuxHas": "检查会话是否存在",
   "cmdTmuxSource": "加载配置文件",
   "cmdTmuxBind": "绑定按键",
-  "aiAgentTitle": "Agent",
+  "aiAgentTitle": "Airy",
   "aiAgentClear": "清空对话",
   "aiAgentConfigure": "在设置中配置模型并开启 AI 后即可开始。",
   "aiAgentConfigurationFailed": "AI 配置读取失败，请在设置中检查。",
@@ -753,7 +753,7 @@
   "aiAgentKeepLocal": "仅保留本地",
   "aiAgentShare": "发送这些文字",
   "cmdTmuxBreak": "将窗格移入独立窗口",
-  "aiAgentNewTask": "新任务",
+  "aiAgentNewTask": "新会话",
   "aiAgentWelcome": "有什么想一起解决的？",
   "aiAgentWelcomeHint": "直接描述任务，需要远程工具时选择主机。",
   "aiAgentSetupTitle": "你的 SSH 助手",
@@ -798,8 +798,50 @@
   "terminalAiInstruction": "描述你想完成的操作",
   "terminalAiFailed": "未能生成命令，请重试。",
   "terminalAiChanged": "终端上下文已变化，重新打开后可发起新请求。",
-  "terminalAiClarify": "请补充需求；多步骤任务可交给 Agent。",
+  "terminalAiClarify": "请补充需求；多步骤任务可交给 Airy。",
   "terminalAiClearPrompt": "清空终端输入后可填入此命令。",
   "terminalAiInsert": "填入命令",
-  "terminalAiOpenAgent": "打开 Agent"
+  "terminalAiOpenAgent": "打开 Airy",
+  "aiAgentHistory": "历史会话",
+  "aiAgentHistoryEmpty": "暂无历史会话",
+  "aiAgentContinueConversation": "继续会话",
+  "aiAgentHistoryContinueNotice": "继续时，将向 {destination} 重新发送本会话保留的有限历史；当前主机：{host}。",
+  "@aiAgentHistoryContinueNotice": {
+    "placeholders": {
+      "destination": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAgentHistoryTargetChanged": "主机或模型目的地已变化，请新建会话。",
+  "aiAgentHistoryLoadFailed": "无法读取会话历史，请重试。",
+  "aiAgentHistorySaveFailed": "会话历史未能保存，当前内容仍保留在内存中。",
+  "aiAgentHistoryRetry": "重试",
+  "aiAgentHistoryTruncated": "部分会话记录已按容量限制裁剪。",
+  "aiAgentHistoryOutputUnavailable": "原始工具输出未保存在历史中。",
+  "aiAgentHistoryDelete": "删除会话",
+  "aiAgentHistoryDeleteConfirm": "删除此会话及其本地历史记录？",
+  "aiAgentHistoryBusy": "请先停止当前任务或等待结束，再切换会话。",
+  "aiAgentHistoryLocalNotice": "会话文字保存在本地，可能含敏感信息；不保存原始工具输出。",
+  "aiModelSearch": "搜索模型",
+  "aiModelsLoadFailed": "无法获取模型列表，可重试或输入模型名称。",
+  "aiModelCustom": "使用 {model}",
+  "aiModelsEmpty": "未找到模型",
+  "aiModelsRefresh": "刷新模型",
+  "aiAgentContextCompacted": "较早上下文已自动压缩，以保持在模型限制内。",
+  "@aiModelCustom": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiConfigAgentModel": "默认 Airy 模型",
+  "aiConfigInlineModel": "行内生成模型",
+  "aiConfigCompletionModel": "补全模型",
+  "aiConfigContextCustom": "自定义",
+  "aiConfigApiKeyOptional": "API Key（可选）"
 }

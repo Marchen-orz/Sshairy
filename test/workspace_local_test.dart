@@ -163,7 +163,7 @@ void main() {
     expect(find.byType(AgentPanel), findsOneWidget);
     final agentDock = find.ancestor(of: find.byType(AgentPanel), matching: find.byType(DockPanel)).first;
     expect(tester.widget<DockPanel>(agentDock).showHeader, isFalse);
-    expect(find.descendant(of: find.byType(AgentPanel), matching: find.text('Agent')), findsOneWidget);
+    expect(find.descendant(of: find.byType(AgentPanel), matching: find.text('Airy')), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Keep this draft');
     await tester.pump();
     await agentShortcut(LogicalKeyboardKey.controlLeft);

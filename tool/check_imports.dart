@@ -17,6 +17,7 @@ const adapters = {
   'xterm2': ['lib/features/terminal/adapters/'],
   'flutter_pty': ['lib/features/terminal/adapters/'],
   'flutter_svg': ['lib/features/hosts/adapters/import_source_icon.dart'],
+  'flutter_markdown_plus': ['lib/features/ai/adapters/markdown_view.dart'],
   'flutter_secure_storage': ['lib/features/credentials/adapters/'],
   'desktop_drop': ['lib/features/files/adapters/'],
   'file_selector': [

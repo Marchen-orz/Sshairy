@@ -5,18 +5,27 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/design/brand.dart';
+import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/ai/application/composer.dart';
 import 'package:sshairy/features/ai/application/configuration.dart';
+import 'package:sshairy/features/ai/application/conversations.dart';
 import 'package:sshairy/features/ai/application/output_store.dart';
+import 'package:sshairy/features/ai/application/model_catalog.dart';
+import 'package:sshairy/features/ai/application/model_selection.dart';
 import 'package:sshairy/features/ai/application/providers.dart';
 import 'package:sshairy/features/ai/application/runtime.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
+import 'package:sshairy/features/ai/domain/conversation.dart';
+import 'package:sshairy/features/ai/domain/model_catalog.dart';
 import 'package:sshairy/features/ai/presentation/agent_panel.dart';
 import 'package:sshairy/features/capabilities/api.dart';
+import 'package:sshairy/features/settings/api.dart';
+import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/ids.dart';
+import 'package:sshairy/foundation/secret.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
 
 final _profile = ModelProfile(
@@ -34,7 +43,9 @@ class _Configuration extends AiConfigurationController {
     enabled: enabled,
     profile: tools
         ? _profile
-        : ModelProfile(protocol: _profile.protocol, endpoint: _profile.endpoint, model: _profile.model),
+        : ModelProfile(protocol: _profile.protocol, endpoint: _profile.endpoint, model: _profile.model, tools: false),
+    inlineModel: 'inline-model',
+    completionModel: 'completion-model',
   );
 }
 
@@ -61,6 +72,53 @@ class _Model implements ModelProvider {
   void close() {}
 }
 
+class _Catalog implements ModelCatalog {
+  @override
+  Future<List<String>> list({
+    required ModelProtocol protocol,
+    required String endpoint,
+    required CancellationToken cancel,
+    String? credentialIdentity,
+    Secret? draftKey,
+  }) async => const ['alternate-model', 'other-model'];
+  @override
+  void cancelAll() {}
+  @override
+  void close() {}
+}
+
+class _ConversationStore implements ConversationStore {
+  _ConversationStore([Iterable<AgentConversationRecord> initial = const []]) : records = [...initial];
+  List<AgentConversationRecord> records;
+
+  @override
+  Future<List<AgentConversationRecord>> load() async => [...records];
+  @override
+  Future<void> save(List<AgentConversationRecord> value) async {
+    records = [...value];
+  }
+
+  @override
+  Future<void> get saved async {}
+}
+
+class _Settings extends SettingsNotifier {
+  @override
+  Settings build() => const Settings();
+}
+
+AgentConversationRecord _conversation(String id, {String? destination, List<ConversationEntry>? entries}) {
+  final now = DateTime.now().toUtc();
+  return AgentConversationRecord(
+    id: id,
+    title: 'Conversation $id',
+    createdAt: now,
+    updatedAt: now,
+    destination: destination ?? _profile.identity,
+    entries: entries ?? [ConversationEntry(kind: ConversationEntryKind.user, text: 'Previous $id')],
+  );
+}
+
 class _Runtime extends AgentRuntime {
   _Runtime()
     : super(
@@ -76,12 +134,30 @@ class _Runtime extends AgentRuntime {
   bool? approved;
   bool dataAnswered = false;
   String? shared;
+  List<ConversationEntry> sentHistory = const [];
   final entries = <AgentTimelineEntry>[];
   void refresh() => notifyListeners();
   @override
   bool get busy => active;
   @override
   List<AgentTimelineEntry> get timeline => List.unmodifiable(entries);
+  @override
+  Future<void> startConversation(String goal, AgentScope scope, List<ConversationEntry> history) {
+    sentHistory = List.unmodifiable(history);
+    restoreConversation(history);
+    return super.startConversation(goal, scope, history);
+  }
+
+  @override
+  void restoreConversation(List<ConversationEntry> history) {
+    if (active) return;
+    super.restoreConversation(history);
+    entries
+      ..clear()
+      ..addAll(super.timeline);
+    notifyListeners();
+  }
+
   @override
   Future<void> start(String value, AgentScope scope) async {
     goal = value;
@@ -156,6 +232,7 @@ Future<ProviderContainer> _panel(
   bool tools = true,
   Size size = const Size(440, 1000),
   double textScale = 1,
+  _ConversationStore? store,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -165,7 +242,23 @@ Future<ProviderContainer> _panel(
     overrides: [
       aiConfigurationProvider.overrideWith(() => _Configuration(enabled, tools)),
       agentBackendProvider.overrideWithValue(_Backend()),
+      aiModelCatalogProvider.overrideWithValue(_Catalog()),
       agentRuntimeProvider.overrideWithValue(runtime),
+      agentConversationStoreProvider.overrideWithValue(store ?? _ConversationStore()),
+      agentConversationRoutesProvider.overrideWithValue(() => const {HostId('web'): '0123456789abcdef'}),
+      settingsProvider.overrideWith(_Settings.new),
+      dataDirProvider.overrideWithValue('memory-only-ai-panel-tests'),
+      systemFontsProvider.overrideWith((_) async => []),
+      settingsSectionsProvider.overrideWithValue([
+        SettingsSection(
+          (l) => l.aiConfigTitle,
+          (_) => const SizedBox(
+            height: 600,
+            child: Text('AI settings destination', key: ValueKey('ai-settings-destination')),
+          ),
+          id: SettingsSectionId.ai,
+        ),
+      ]),
     ],
   );
   addTearDown(() async {
@@ -217,7 +310,7 @@ void main() {
     final runtime = _Runtime();
     final container = await _panel(tester, runtime);
     await _chooseHost(tester);
-    expect(find.text('Fixed diagnostics allowed · commands ask first'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-agent-scope-details')), findsOneWidget);
     expect(find.textContaining('Fixed Linux diagnostics may send'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('ai-agent-scope-details')));
     await tester.pump();
@@ -292,17 +385,19 @@ void main() {
       AgentChatEntry('assistant', 'The disk still has space.'),
     ]);
     await _panel(tester, runtime);
+    await tester.tap(find.byTooltip('Show local output'));
+    await tester.pumpAndSettle();
     expect(
       tester.getTopLeft(find.text('Check storage')).dy,
-      lessThan(tester.getTopLeft(find.text('I will collect disk capacity.')).dy),
+      lessThan(tester.getTopLeft(find.text('I will collect disk capacity.', findRichText: true)).dy),
     );
     expect(
-      tester.getTopLeft(find.text('I will collect disk capacity.')).dy,
+      tester.getTopLeft(find.text('I will collect disk capacity.', findRichText: true)).dy,
       lessThan(tester.getTopLeft(find.text('user@web.example')).dy),
     );
     expect(
       tester.getTopLeft(find.text('user@web.example')).dy,
-      lessThan(tester.getTopLeft(find.text('The disk still has space.')).dy),
+      lessThan(tester.getTopLeft(find.text('The disk still has space.', findRichText: true)).dy),
     );
     expect(tester.takeException(), isNull);
   });
@@ -364,19 +459,261 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('text-only models hide remote controls and errors use a safe actionable message', (tester) async {
+  testWidgets('legacy tools-off profiles retain the server picker and errors use a safe actionable message', (
+    tester,
+  ) async {
     final runtime = _Runtime()..error = 'scopeChanged';
     await _panel(tester, runtime, tools: false);
-    expect(find.text('Text only'), findsOneWidget);
-    expect(find.byKey(const ValueKey('ai-agent-host')), findsNothing);
+    expect(find.text('Text only'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-host')), findsOneWidget);
     expect(find.textContaining('Start a new task to authorize the current target.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('chat model selection changes only this window and leaves defaults and lightweight models intact', (
+    tester,
+  ) async {
+    final runtime = _Runtime();
+    final container = await _panel(tester, runtime);
+    final initial = container.read(aiConfigurationProvider);
+    await tester.tap(
+      find.descendant(of: find.byKey(const ValueKey('ai-agent-model')), matching: find.byType(TextButton)),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('ai-model-search')), 'alternate');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-model-option-alternate-model')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-model-option-other-model')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('ai-model-option-alternate-model')));
+    await tester.pumpAndSettle();
+    expect(container.read(selectedAgentModelProvider), 'alternate-model');
+    expect(container.read(effectiveAgentProfileProvider)!.model, 'alternate-model');
+    final saved = container.read(aiConfigurationProvider);
+    expect(saved, same(initial));
+    expect(saved.profile!.model, _profile.model);
+    expect(saved.profileForInline!.model, 'inline-model');
+    expect(saved.profileForCompletion!.model, 'completion-model');
+    expect(runtime.goal, isNull);
+    await tester.pumpWidget(_app(container, visible: false));
+    await tester.pump();
+    await tester.pumpWidget(_app(container));
+    await tester.pump();
+    expect(container.read(effectiveAgentProfileProvider)!.model, 'alternate-model');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('history switches conversations and preserves each local draft and server choice', (tester) async {
+    final runtime = _Runtime();
+    final store = _ConversationStore([_conversation('a'), _conversation('b')]);
+    final container = await _panel(tester, runtime, store: store);
+    final conversations = container.read(agentConversationsProvider);
+    final goal = find.byKey(const ValueKey('ai-agent-goal'));
+
+    Future<void> select(String id) async {
+      await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey('ai-conversation-$id')));
+      await tester.pumpAndSettle();
+    }
+
+    await select('a');
+    expect(find.text('Previous a'), findsOneWidget);
+    await _chooseHost(tester);
+    await tester.enterText(goal, 'Only draft A');
+    await select('b');
+    expect(find.text('Previous a'), findsNothing);
+    expect(find.text('Previous b'), findsOneWidget);
+    expect(tester.widget<TextField>(goal).controller!.text, isEmpty);
+    expect(container.read(agentComposerProvider).host, isNull);
+    await tester.enterText(goal, 'Only draft B');
+    await select('a');
+    expect(conversations.selectedId, 'a');
+    expect(tester.widget<TextField>(goal).controller!.text, 'Only draft A');
+    expect(container.read(agentComposerProvider).host, const HostId('web'));
+    await select('b');
+    expect(tester.widget<TextField>(goal).controller!.text, 'Only draft B');
+    expect(container.read(agentComposerProvider).host, isNull);
+    await conversations.saved;
+    expect(
+      store.records.expand((record) => record.entries).map((entry) => entry.text),
+      isNot(anyElement(contains('Only draft'))),
+    );
+    expect(runtime.goal, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('busy history stays visible while switching, deletion and new conversation are disabled', (tester) async {
+    final runtime = _Runtime();
+    final container = await _panel(tester, runtime, store: _ConversationStore([_conversation('a')]));
+    await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Current task');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
+    await tester.pump();
+    expect(runtime.busy, isTrue);
+    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-new-task'))).onPressed, isNull);
+    final selected = container.read(agentConversationsProvider).selectedId;
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    expect(find.text('Stop the current task or wait for it to finish before switching conversations.'), findsOneWidget);
+    expect(tester.widget<PopupRow>(find.byKey(const ValueKey('ai-conversation-a'))).onTap, isNull);
+    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-conversation-delete-a'))).onPressed, isNull);
+    expect(container.read(agentConversationsProvider).selectedId, selected);
+    expect(runtime.busy, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-agent-stop')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-stop')));
+    await tester.pump();
+    expect(runtime.busy, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('restored history sends only after explicit Continue confirmation', (tester) async {
+    final runtime = _Runtime();
+    await _panel(tester, runtime, store: _ConversationStore([_conversation('a')]));
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-conversation-a')));
+    await tester.pumpAndSettle();
+    expect(find.text('Previous a'), findsOneWidget);
+    expect(runtime.goal, isNull);
+    final goal = find.byKey(const ValueKey('ai-agent-goal'));
+    await tester.enterText(goal, 'Follow up');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
+    await tester.pumpAndSettle();
+    expect(find.text('Continue conversation'), findsOneWidget);
+    expect(find.textContaining('Continuing resends this conversation'), findsOneWidget);
+    expect(runtime.goal, isNull);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(runtime.goal, isNull);
+    expect(tester.widget<TextField>(goal).controller!.text, 'Follow up');
+    await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue conversation'));
+    await tester.pumpAndSettle();
+    expect(runtime.goal, 'Follow up');
+    expect(runtime.sentHistory.map((entry) => entry.text), ['Previous a']);
+    expect(runtime.sentScope!.hosts, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('changed destination starts a new conversation without resending prior history', (tester) async {
+    final runtime = _Runtime();
+    final container = await _panel(
+      tester,
+      runtime,
+      store: _ConversationStore([_conversation('a', destination: 'previous-model-destination')]),
+    );
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-conversation-a')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Fresh question');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
+    await tester.pumpAndSettle();
+    expect(find.text('The server or model destination changed. Start a new conversation.'), findsOneWidget);
+    expect(runtime.goal, isNull);
+    await tester.tap(find.widgetWithText(FilledButton, 'New conversation'));
+    await tester.pumpAndSettle();
+    expect(runtime.goal, 'Fresh question');
+    expect(runtime.sentHistory, isEmpty);
+    expect(container.read(agentConversationsProvider).selectedId, isNot('a'));
+    expect(find.text('Previous a'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('restored executions show shared text without command, raw output or old approvals', (tester) async {
+    final runtime = _Runtime();
+    final store = _ConversationStore([
+      _conversation(
+        'a',
+        entries: const [
+          ConversationEntry(kind: ConversationEntryKind.user, text: 'Prior task'),
+          ConversationEntry(
+            kind: ConversationEntryKind.execution,
+            capability: 'agent.execute',
+            state: 'completed',
+            exitCode: 0,
+            text: 'Only approved shared output',
+          ),
+        ],
+      ),
+    ]);
+    await _panel(tester, runtime, store: store);
+    runtime.approval = AgentApproval(
+      'old-user@old.example',
+      'printf old-secret-command',
+      '/private/old',
+      'agent.execute',
+    );
+    final rawStore = OutputStore();
+    final raw = rawStore.create('old-owner', const HostId('web'), _profile.identity, 0);
+    rawStore.append(raw, false, Uint8List.fromList([82, 65, 87]));
+    runtime.dataRequest = AgentDataRequest(raw);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-conversation-a')));
+    await tester.pumpAndSettle();
+    expect(runtime.approval, isNull);
+    expect(runtime.dataRequest, isNull);
+    final execution = runtime.timeline.whereType<AgentExecution>().single;
+    expect(execution.archived, isTrue);
+    expect(execution.command, isEmpty);
+    expect(execution.cwd, isEmpty);
+    expect(execution.target, isEmpty);
+    expect(execution.output, isNull);
+    await tester.tap(find.byTooltip('Show local output'));
+    await tester.pumpAndSettle();
+    expect(find.text('Only approved shared output'), findsOneWidget);
+    expect(find.text('Raw tool output is not saved in history.'), findsOneWidget);
+    expect(find.text('printf old-secret-command'), findsNothing);
+    expect(find.text('old-user@old.example'), findsNothing);
+    expect(find.text('/private/old'), findsNothing);
+    expect(find.text('RAW'), findsNothing);
+    expect(find.text('Approve once'), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-share-output')), findsNothing);
+    expect(runtime.goal, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final welcome in [false, true]) {
+    testWidgets('${welcome ? 'welcome' : 'toolbar'} configuration opens the AI settings category', (tester) async {
+      await _panel(tester, _Runtime(), enabled: !welcome, size: const Size(1200, 1000));
+      await tester.tap(welcome ? find.widgetWithText(FilledButton, 'Configure AI') : find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsPanel), findsOneWidget);
+      final marker = find.byKey(const ValueKey('ai-settings-destination'));
+      expect(marker, findsOneWidget);
+      final content = tester.getRect(find.byKey(const ValueKey('settings-content')));
+      final target = tester.getRect(marker);
+      expect(target.top, inInclusiveRange(content.top - 1, content.bottom - 1));
+      expect(tester.widget<SettingsPanel>(find.byType(SettingsPanel)).initialSection, SettingsSectionId.ai);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final width in [300.0, 560.0]) {
     testWidgets('Agent remains usable at width $width with a short scaled viewport', (tester) async {
       final runtime = _Runtime();
-      await _panel(tester, runtime, size: Size(width, 420), textScale: 1.5);
+      await _panel(
+        tester,
+        runtime,
+        size: Size(width, 420),
+        textScale: 1.5,
+        store: _ConversationStore([_conversation('a'), _conversation('b')]),
+      );
+      await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ai-conversation-a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('ai-conversation-b')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const ValueKey('ai-conversation-a')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ai-agent-new-task')));
+      await tester.pumpAndSettle();
       await _chooseHost(tester);
       await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'A short task');
       await tester.pump();
