@@ -160,6 +160,20 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('a cursor inside a wide character cannot be treated as an editable line end', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ 查看内存');
+    final expected = session.readAiContext();
+    expect(expected.ready, isTrue);
+    await _feed(tester, shell.echo, '\x1b[D');
+    expect(session.readAiContext().ready, isFalse);
+    expect(await session.acceptAiDraft(expected, 'free -h'), InsertResult.stale);
+    expect(shell.writes, isEmpty);
+    await _feed(tester, shell.echo, '\x1b[C');
+    expect(session.readAiContext().draft, '查看内存');
+    expect(session.readAiContext().ready, isTrue);
+  });
+
   testWidgets('complete generated draft inserts into an exact empty prompt and sends no Enter', (tester) async {
     final shell = await connect(tester);
     await _feed(tester, shell.echo, 'u@box:~\$ ');

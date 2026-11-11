@@ -38,6 +38,7 @@ extension _CommandAssistance on TerminalSession {
     final row = buffer.absoluteCursorY, column = buffer.cursorX;
     if (row < 0 || row >= buffer.lines.length) return null;
     final line = buffer.lines[row];
+    if (column > 0 && line.getWidth(column) == 0 && line.getWidth(column - 1) == 2) return null;
     if (identical(line, _submittedLine)) return null;
     if (line.isWrapped || (row + 1 < buffer.lines.length && buffer.lines[row + 1].isWrapped)) return null;
     final tail = _rowText(row, column, line.length);
