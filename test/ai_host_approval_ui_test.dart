@@ -20,6 +20,8 @@ final _profile = ModelProfile(protocol: ModelProtocol.openai, endpoint: 'https:/
 class _Configuration extends AiConfigurationController {
   @override
   AiConfiguration build() => AiConfiguration(enabled: true, profile: _profile);
+
+  void disable() => state = AiConfiguration(enabled: false, profile: _profile);
 }
 
 class _Backend implements AgentBackend {
@@ -80,9 +82,11 @@ class _Runtime extends AgentRuntime {
 }
 
 void main() {
+  late ProviderContainer container;
+
   Future<_Runtime> mount(WidgetTester tester) async {
     final runtime = _Runtime();
-    final container = ProviderContainer(
+    container = ProviderContainer(
       overrides: [
         agentRuntimeProvider.overrideWithValue(runtime),
         aiConfigurationProvider.overrideWith(_Configuration.new),
@@ -157,6 +161,41 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ai-host-allow')));
     await tester.pumpAndSettle();
     expect(runtime.decisions.single, (next, true));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('replacing the runtime dismisses its modal and presents only the new request', (tester) async {
+    final previous = await mount(tester);
+    final old = AgentHostApproval(const HostId('a'), 'Old runtime', 'conversation');
+    previous.request(old);
+    await tester.pumpAndSettle();
+    final next = _Runtime();
+    addTearDown(next.dispose);
+    final pending = AgentHostApproval(const HostId('b'), 'New runtime', 'conversation');
+    next.request(pending);
+    container.updateOverrides([
+      agentRuntimeProvider.overrideWithValue(next),
+      aiConfigurationProvider.overrideWith(_Configuration.new),
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Old runtime'), findsNothing);
+    expect(previous.decisions.single, (old, false));
+    expect(find.textContaining('New runtime'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('ai-host-allow')));
+    await tester.pumpAndSettle();
+    expect(next.decisions.single, (pending, true));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('disabling AI removes and denies a pending host confirmation', (tester) async {
+    final runtime = await mount(tester);
+    final pending = AgentHostApproval(const HostId('a'), 'Pending host', 'conversation');
+    runtime.request(pending);
+    await tester.pumpAndSettle();
+    (container.read(aiConfigurationProvider.notifier) as _Configuration).disable();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-host-approval')), findsNothing);
+    expect(runtime.decisions.single, (pending, false));
     expect(tester.takeException(), isNull);
   });
 

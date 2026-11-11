@@ -62,6 +62,39 @@ void main() {
     expect(initial, isNot(contains('user')));
   });
 
+  test('route generations keep alias changes stable and never revive removed or restored routes', () {
+    final hosts = _Hosts();
+    final container = ProviderContainer(
+      overrides: [
+        ...appOverrides(),
+        hostsProvider.overrideWith(() => hosts),
+        hostTrustProvider.overrideWithValue(_Trust()),
+        connectionCredentialsProvider.overrideWithValue(_Credentials()),
+      ],
+    );
+    addTearDown(container.dispose);
+    final routes = container.read(agentConversationRoutesProvider);
+    final original = [_host('web', jump: 'jump'), _host('jump'), _host('unrelated')];
+    hosts.replace(original);
+    final initial = routes();
+
+    hosts.replace([_host('web', label: 'Renamed', jump: 'jump'), _host('jump'), _host('unrelated')]);
+    expect(routes(), initial);
+
+    hosts.replace([_host('web', jump: 'jump'), _host('jump', address: 'changed.test'), _host('unrelated')]);
+    hosts.replace(original);
+    final restored = routes();
+    expect(restored[const HostId('web')], isNot(initial[const HostId('web')]));
+    expect(restored[const HostId('jump')], isNot(initial[const HostId('jump')]));
+    expect(restored[const HostId('unrelated')], initial[const HostId('unrelated')]);
+
+    hosts.replace([_host('jump'), _host('unrelated')]);
+    hosts.replace(original);
+    expect(routes()[const HostId('web')], isNot(restored[const HostId('web')]));
+    expect(routes()[const HostId('jump')], restored[const HostId('jump')]);
+    expect(routes()[const HostId('unrelated')], initial[const HostId('unrelated')]);
+  });
+
   test('cached route callback reads current hosts and nonreactive security revisions', () {
     final trust = _Trust();
     final credentials = _Credentials();

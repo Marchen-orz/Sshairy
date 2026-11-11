@@ -33,18 +33,27 @@ List<Override> appOverrides() => [
     return host == null || host.transient ? null : host.id;
   }),
   agentConversationRoutesProvider.overrideWith((ref) {
-    // Security revisions reset at startup, so server history requires a new conversation after restart.
-    final securitySession = newId();
+    var bindings = <HostId, ({String signature, String session})>{};
+    // Observe every saved snapshot so changing a route back cannot revive an old grant.
+    ref.listen(hostsProvider, (_, hosts) {
+      bindings = {
+        for (final host in aiTerminalHosts(hosts))
+          host.id: (
+            signature: host.signature,
+            session: bindings[host.id]?.signature == host.signature ? bindings[host.id]!.session : newId(),
+          ),
+      };
+    }, fireImmediately: true);
     return () {
       final trustRevision = ref.read(hostTrustProvider).revision;
       final credentialRevision = ref.read(connectionCredentialsProvider).revision;
       return {
-        for (final host in aiTerminalHosts(ref.read(hostsProvider)))
-          host.id: conversationRouteFingerprint(
-            host.signature,
+        for (final entry in bindings.entries)
+          entry.key: conversationRouteFingerprint(
+            entry.value.signature,
             trustRevision: trustRevision,
             credentialRevision: credentialRevision,
-            securitySession: securitySession,
+            securitySession: entry.value.session,
           ),
       };
     };

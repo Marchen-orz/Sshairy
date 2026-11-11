@@ -20,12 +20,21 @@ class AgentHostApprovalPrompts extends ConsumerStatefulWidget {
 }
 
 class _AgentHostApprovalPromptsState extends ConsumerState<AgentHostApprovalPrompts> {
+  AgentRuntime? _runtime;
   AgentHostApproval? _shown;
   DialogRoute<bool>? _route;
   NavigatorState? _navigator;
 
+  void _dismiss() {
+    final route = _route, navigator = _navigator;
+    if (route != null && route.isActive && navigator != null && navigator.mounted) {
+      navigator.removeRoute(route, false);
+    }
+  }
+
   Future<void> _show(AgentRuntime runtime, AgentHostApproval approval) async {
-    if (!mounted || !identical(runtime.hostApproval, approval)) {
+    if (!mounted || !identical(_runtime, runtime) || !identical(runtime.hostApproval, approval)) {
+      if (identical(runtime.hostApproval, approval)) runtime.decideHost(approval, false);
       _shown = null;
       if (mounted) setState(() {});
       return;
@@ -67,7 +76,9 @@ class _AgentHostApprovalPromptsState extends ConsumerState<AgentHostApprovalProm
     runtime.addListener(changed);
     try {
       final allowed = await navigator.push(route) ?? false;
-      if (identical(runtime.hostApproval, approval)) runtime.decideHost(approval, allowed);
+      if (identical(runtime.hostApproval, approval)) {
+        runtime.decideHost(approval, allowed && identical(_runtime, runtime));
+      }
     } finally {
       runtime.removeListener(changed);
       _shown = null;
@@ -79,17 +90,19 @@ class _AgentHostApprovalPromptsState extends ConsumerState<AgentHostApprovalProm
 
   @override
   void dispose() {
-    final route = _route, navigator = _navigator;
-    if (route != null && route.isActive && navigator != null && navigator.mounted) {
-      navigator.removeRoute(route, false);
-    }
+    _runtime = null;
+    _dismiss();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!ref.watch(aiConfigurationProvider).enabled) return widget.child;
-    final runtime = ref.watch(agentRuntimeProvider);
+    final runtime = ref.watch(aiConfigurationProvider).enabled ? ref.watch(agentRuntimeProvider) : null;
+    if (!identical(_runtime, runtime)) {
+      _runtime = runtime;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _dismiss());
+    }
+    if (runtime == null) return widget.child;
     return ListenableBuilder(
       listenable: runtime,
       child: widget.child,

@@ -3,7 +3,13 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/features/ai/application/context.dart';
+import 'package:sshairy/features/ai/application/providers.dart' show agentConversationRoutesProvider;
+import 'package:sshairy/features/connections/api.dart' show HostTrustService, hostTrustProvider;
+import 'package:sshairy/features/credentials/api.dart' show ConnectionCredentials, connectionCredentialsProvider;
+import 'package:sshairy/features/hosts/api.dart' show Host, HostsNotifier, hostsProvider;
 import 'package:sshairy/features/ai/application/output_store.dart';
 import 'package:sshairy/features/ai/application/runtime.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
@@ -144,7 +150,8 @@ Map<String, Object?> _schema(Map<String, Object?> properties, List<String> requi
 };
 
 class _Harness {
-  _Harness(_Script script, {bool tools = true, OutputStore? outputs}) : model = _Model(script) {
+  _Harness(_Script script, {bool tools = true, OutputStore? outputs, Map<HostId, String> Function()? hostRoutes})
+    : model = _Model(script) {
     profile = ModelProfile(
       protocol: ModelProtocol.openai,
       endpoint: 'https://model.example.invalid/v1',
@@ -210,7 +217,7 @@ class _Harness {
       journal: journal,
       dispatcher: dispatcher,
       outputs: outputs,
-      hostRoutes: () => routes,
+      hostRoutes: hostRoutes ?? () => routes,
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
   }
@@ -232,6 +239,30 @@ class _Harness {
     await runtime.settled.timeout(const Duration(seconds: 2));
     runtime.dispose();
   }
+}
+
+class _RouteHosts extends HostsNotifier {
+  static Host hostProfile(HostId id, {String address = 'example.invalid', String label = ''}) =>
+      Host(id: id, label: label, address: address, username: 'tester');
+
+  @override
+  List<Host> build() => [hostProfile(_host), hostProfile(_other)];
+
+  void replace(List<Host> hosts) => state = hosts;
+}
+
+class _RouteTrust implements HostTrustService {
+  @override
+  int get revision => 0;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError('unexpected trust call');
+}
+
+class _RouteCredentials implements ConnectionCredentials {
+  @override
+  int get revision => 0;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError('unexpected credential call');
 }
 
 ModelMessage _call(String name, Map<String, Object?> args, [String id = 'call-a']) =>
@@ -525,6 +556,81 @@ void main() {
       h.runtime.decideHost(h.runtime.hostApproval!, false);
       await next;
       expect(h.backend.prepared, [_other]);
+    });
+  }
+
+  for (final target in [_host, _other]) {
+    test('composition route round-trip permanently revokes consent for ${target.value}', () async {
+      final hosts = _RouteHosts();
+      final container = ProviderContainer(
+        overrides: [
+          ...appOverrides(),
+          hostsProvider.overrideWith(() => hosts),
+          hostTrustProvider.overrideWithValue(_RouteTrust()),
+          connectionCredentialsProvider.overrideWithValue(_RouteCredentials()),
+        ],
+      );
+      addTearDown(container.dispose);
+      final routes = container.read(agentConversationRoutesProvider);
+      final initial = routes();
+      final h = _Harness((request, _, _) async* {
+        if (_results(request).isEmpty) {
+          yield ModelMessageComplete(
+            ModelMessage(
+              ModelRole.assistant,
+              calls: [
+                ModelCall('list', 'host_list', {}),
+                ModelCall('diagnose', 'diagnostics_collect', {'hostId': target.value, 'template': 'systemSummary'}),
+              ],
+            ),
+          );
+        } else {
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+        }
+      }, hostRoutes: routes);
+      addTearDown(h.close);
+      h.backend.target.stdout = _systemOutput;
+      AgentScope scope(String id) => AgentScope(
+        hosts: const [_host],
+        conversationId: id,
+        defaultHost: _host,
+        defaultHostRoute: initial[_host],
+        permissionMode: AgentPermissionMode.observe,
+      );
+      final first = h.runtime.start('inspect target', scope('original'));
+      if (target == _other) {
+        await _until(() => h.runtime.hostApproval != null);
+        h.runtime.decideHost(h.runtime.hostApproval!, true);
+      }
+      await first;
+      expect(h.backend.prepared, [target]);
+
+      // No request or fingerprint read sees the intermediate route.
+      hosts.replace([
+        for (final id in [_host, _other])
+          _RouteHosts.hostProfile(id, address: id == target ? 'changed.invalid' : 'example.invalid'),
+      ]);
+      hosts.replace([_RouteHosts.hostProfile(_host), _RouteHosts.hostProfile(_other)]);
+      expect(routes()[target], isNot(initial[target]));
+      final unchanged = target == _host ? _other : _host;
+      expect(routes()[unchanged], initial[unchanged]);
+
+      final retry = h.runtime.start('inspect target again', scope('original'));
+      await _until(() => h.runtime.hostApproval != null);
+      expect(h.runtime.hostApproval!.hostId, target);
+      expect(h.backend.prepared, [target]);
+      h.runtime.decideHost(h.runtime.hostApproval!, false);
+      await retry;
+
+      if (target == _host) {
+        h.runtime.forgetConversation('original');
+        final restored = h.runtime.start('restore original default', scope('original'));
+        await _until(() => h.runtime.hostApproval != null);
+        expect(h.runtime.hostApproval!.hostId, _host);
+        expect(h.backend.prepared, [_host]);
+        h.runtime.decideHost(h.runtime.hostApproval!, false);
+        await restored;
+      }
     });
   }
 
