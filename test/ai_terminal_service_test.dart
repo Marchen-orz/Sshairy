@@ -49,7 +49,8 @@ TerminalAiContext _context({
 AiConfiguration _configuration({
   bool inline = true,
   bool completion = true,
-  bool history = false,
+  Set<HostId> inlineExcludedHosts = const {},
+  Set<HostId> completionExcludedHosts = const {},
   int revision = 1,
   String? inlineModel,
   String? completionModel,
@@ -58,10 +59,8 @@ AiConfiguration _configuration({
   profile: _profile,
   inlineEnabled: inline,
   completionEnabled: completion,
-  completionPosix: true,
-  completionHosts: const {HostId('web'): 'route-v1'},
-  completionHistory: history,
-  terminalDestination: terminalModelDestination(_profile, inlineModel, completionModel),
+  inlineExcludedHosts: inlineExcludedHosts,
+  completionExcludedHosts: completionExcludedHosts,
   inlineModel: inlineModel,
   completionModel: completionModel,
   revision: revision,
@@ -82,18 +81,40 @@ void main() {
   });
   tearDown(() => service.dispose());
 
-  test('disabled policy is inert; inline and completion need independent grants', () async {
-    config = AiConfiguration(enabled: true, profile: _profile);
+  test('master AI is off by default; enabled AI supplies both terminal features without grants', () async {
+    config = const AiConfiguration();
+    expect(config.inlineEnabled, isTrue);
+    expect(config.completionEnabled, isTrue);
     expect(service.canGenerate(_context()), isFalse);
     expect(service.canComplete(_context()), isFalse);
     expect(await service.complete(_context(), const [], CancellationToken()), isNull);
     expect(model.requests, isEmpty);
+    config = AiConfiguration(enabled: true, profile: _profile);
+    expect(service.canGenerate(_context()), isTrue);
+    expect(service.canComplete(_context()), isTrue);
     config = _configuration(completion: false);
     expect(service.canGenerate(_context()), isTrue);
     expect(service.canComplete(_context()), isFalse);
-    hosts = [const AiTerminalHost(HostId('web'), 'Web alias', 'route-v2')];
+  });
+
+  test('host exclusions are independent filters and include new or changed routes by default', () {
+    config = _configuration(inlineExcludedHosts: const {HostId('web')});
     expect(service.canGenerate(_context()), isFalse);
+    expect(service.canComplete(_context()), isTrue);
+    config = _configuration(completionExcludedHosts: const {HostId('web')});
+    expect(service.canGenerate(_context()), isTrue);
     expect(service.canComplete(_context()), isFalse);
+    hosts = [
+      const AiTerminalHost(HostId('web'), 'Web alias', 'route-v2'),
+      const AiTerminalHost(HostId('new'), 'New server', 'new-route'),
+    ];
+    expect(service.canGenerate(_context()), isTrue);
+    final added = _context(target: const SshTerminalAiTarget(HostId('new')));
+    expect(service.canGenerate(added), isTrue);
+    expect(service.canComplete(added), isTrue);
+    hosts = [];
+    expect(service.canGenerate(added), isFalse);
+    expect(service.canComplete(added), isFalse);
   });
 
   test('inline and completion send their separately selected models without tools', () async {
@@ -111,19 +132,13 @@ void main() {
       enabled: true,
       profile: _profile,
       inlineEnabled: true,
-      inlineModel: 'unapproved-change',
-      terminalDestination: _profile.identity,
+      inlineModel: 'changed-inline-model',
     );
-    expect(service.canGenerate(_context(target: const LocalTerminalAiTarget(LocalShellKind.pwsh))), isFalse);
+    expect(service.canGenerate(_context(target: const LocalTerminalAiTarget(LocalShellKind.pwsh))), isTrue);
   });
 
   test('local inline uses its actual shell kind without SSH grant or executable', () async {
-    config = AiConfiguration(
-      enabled: true,
-      profile: _profile,
-      inlineEnabled: true,
-      terminalDestination: _profile.identity,
-    );
+    config = AiConfiguration(enabled: true, profile: _profile, inlineEnabled: true);
     final context = _context(target: const LocalTerminalAiTarget(LocalShellKind.pwsh), directory: r'C:\work');
     model.json({'status': 'command', 'command': 'Get-ChildItem'});
     final result = await service.generate(context, 'List files', CancellationToken());
@@ -164,7 +179,7 @@ void main() {
     );
   });
 
-  test('completion abstains locally for ambiguous input, secret markers, nested shells and unknown cwd', () async {
+  test('completion abstains locally for ambiguous input, secret markers and nested shells', () async {
     for (final draft in [
       'g',
       'git ',
@@ -178,8 +193,19 @@ void main() {
       expect(service.canComplete(_context(draft: draft)), isFalse, reason: draft);
       expect(await service.complete(_context(draft: draft), const [], CancellationToken()), isNull);
     }
-    expect(service.canComplete(_context(directory: null)), isFalse);
     expect(model.requests, isEmpty);
+  });
+
+  test('unknown cwd does not block terminal AI and is omitted without probing', () async {
+    final context = _context(directory: null);
+    expect(service.canComplete(context), isTrue);
+    expect(service.canGenerate(context), isTrue);
+    model.json({'status': 'suggest', 'command': 'git status'});
+    expect(await service.complete(context, const [], CancellationToken()), 'git status');
+    expect(jsonDecode(model.requests.single.messages.single.text), isNot(contains('cwd')));
+    model.json({'status': 'command', 'command': 'pwd'});
+    expect((await service.generate(context, 'Show the directory', CancellationToken())).command, 'pwd');
+    expect(jsonDecode(model.requests.last.messages.single.text), isNot(contains('cwd')));
   });
 
   test('completion is a pure prefix and known static words can extend it', () async {
@@ -195,7 +221,7 @@ void main() {
     expect(await service.complete(_context(revision: 3), const [], CancellationToken()), isNull);
   });
 
-  test('ungrounded entities are withheld and current-generation history is separately authorized', () async {
+  test('completion always uses bounded safe current-generation history and rejects ungrounded entities', () async {
     final context = _context(draft: 'docker logs --tail 100 ');
     final records = [
       TerminalAiHistoryEntry(
@@ -215,9 +241,8 @@ void main() {
       ),
     ];
     model.json({'status': 'suggest', 'command': 'docker logs --tail 100 api'});
-    expect(await service.complete(context, records, CancellationToken()), isNull);
+    expect(await service.complete(context, const [], CancellationToken()), isNull);
     expect(model.requests.single.messages.single.text, isNot(contains('"history"')));
-    config = _configuration(history: true, revision: 2);
     now = now.add(const Duration(seconds: 2));
     service.invalidate();
     expect(await service.complete(context, records, CancellationToken()), 'docker logs --tail 100 api');
@@ -225,6 +250,47 @@ void main() {
     expect(payload['history'], hasLength(1));
     expect(jsonEncode(payload), isNot(contains('synthetic-private')));
     expect(jsonEncode(payload), isNot(contains('old')));
+  });
+
+  test('inline generation includes bounded safe history from the current shell without a permission toggle', () async {
+    final context = _context(draft: '', directory: null);
+    final records = [
+      for (var i = 0; i < 12; i++)
+        TerminalAiHistoryEntry(
+          text: 'echo $i',
+          at: now.subtract(Duration(seconds: 20 - i)),
+          generation: 1,
+        ),
+      TerminalAiHistoryEntry(text: 'git status', at: now.subtract(const Duration(seconds: 1)), generation: 0),
+      TerminalAiHistoryEntry(text: 'echo future', at: now.add(const Duration(minutes: 1)), generation: 1),
+      TerminalAiHistoryEntry(text: 'echo secret=synthetic-private', at: now, generation: 1),
+      TerminalAiHistoryEntry(text: ' echo hidden', at: now, generation: 1),
+      TerminalAiHistoryEntry(text: 'echo unsafe\nnext', at: now, generation: 1),
+    ];
+    model.json({'status': 'command', 'command': 'pwd'});
+    expect((await service.generate(context, 'Where am I?', CancellationToken(), history: records)).command, 'pwd');
+    final payload = jsonDecode(model.requests.single.messages.single.text) as Map;
+    final projected = payload['history'] as List;
+    expect(projected.map((entry) => (entry as Map)['text']), [for (var i = 4; i < 12; i++) 'echo $i']);
+    expect(jsonEncode(projected), isNot(contains('synthetic-private')));
+    expect(payload, isNot(contains('cwd')));
+    expect(model.requests.single.tools, isEmpty);
+    expect(model.requests.single.profile.tools, isFalse);
+    final longRecords = [
+      for (var i = 0; i < 8; i++)
+        TerminalAiHistoryEntry(
+          text: 'echo $i ${'x' * 1500}',
+          at: now.subtract(Duration(seconds: 8 - i)),
+          generation: 1,
+        ),
+    ];
+    await service.generate(context, 'Show directory', CancellationToken(), history: longRecords);
+    final limited = (jsonDecode(model.requests.last.messages.single.text) as Map)['history'] as List;
+    expect(limited, hasLength(2));
+    expect(
+      limited.fold<int>(0, (bytes, entry) => bytes + utf8.encode((entry as Map)['text'] as String).length),
+      lessThanOrEqualTo(4096),
+    );
   });
 
   test('global rate limit prevents duplicate, too frequent and eleventh minute requests', () async {

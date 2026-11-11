@@ -107,7 +107,13 @@ class _Ai implements TerminalAiService {
   }
 
   @override
-  Future<TerminalAiGeneration> generate(TerminalAiContext context, String instruction, CancellationToken cancel) {
+  Future<TerminalAiGeneration> generate(
+    TerminalAiContext context,
+    String instruction,
+    CancellationToken cancel, {
+    List<TerminalAiHistoryEntry> history = const [],
+  }) {
+    this.history.add(history);
     generationTokens.add(cancel);
     final result = Completer<TerminalAiGeneration>();
     generations.add(result);
@@ -259,6 +265,22 @@ void main() {
     await tester.pump(const Duration(milliseconds: 850));
     await view(tester, active: false);
     expect(ai.completionTokens.last.isCancelled, isTrue);
+  });
+
+  testWidgets('inline generation passes same-session history without directory probes', (tester) async {
+    await mount(tester, 'git status');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await feed(tester, '\r\nOn branch main\r\nu@box:~\$ ');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const ValueKey('terminal-ai-instruction')), 'Show recent changes');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-generate')));
+    await tester.pump();
+    expect(ai.generations, hasLength(1));
+    expect(ai.history.last.map((entry) => entry.text), contains('git status'));
+    expect(transport.queries, 0);
   });
 
   testWidgets('inline local editor previews and inserts only into an empty prompt without executing', (tester) async {

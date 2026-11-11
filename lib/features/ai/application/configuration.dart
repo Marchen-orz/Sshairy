@@ -12,7 +12,7 @@ class AiTerminalHost {
   final String label, signature;
 }
 
-/// The app supplies effective nonsecret connection identities; editing a route invalidates its grant.
+/// The app supplies effective nonsecret hosts; changes cancel affected terminal requests.
 final aiTerminalHostsProvider = Provider<List<AiTerminalHost>>((_) => const []);
 
 class AiConfiguration {
@@ -21,12 +21,10 @@ class AiConfiguration {
     this.profile,
     this.revision = 0,
     this.loadFailed = false,
-    this.inlineEnabled = false,
-    this.completionEnabled = false,
-    this.completionHistory = false,
-    this.completionPosix = false,
-    this.completionHosts = const {},
-    this.terminalDestination,
+    this.inlineEnabled = true,
+    this.completionEnabled = true,
+    this.inlineExcludedHosts = const {},
+    this.completionExcludedHosts = const {},
     this.inlineModel,
     this.completionModel,
   });
@@ -34,14 +32,12 @@ class AiConfiguration {
   final bool enabled, loadFailed;
   final ModelProfile? profile;
   final int revision;
-  final bool inlineEnabled, completionEnabled, completionHistory, completionPosix;
-  final Map<HostId, String> completionHosts;
-  final String? terminalDestination;
+  final bool inlineEnabled, completionEnabled;
+  final Set<HostId> inlineExcludedHosts, completionExcludedHosts;
   final String? inlineModel, completionModel;
 
   ModelProfile? get profileForInline => profile?.withModel(inlineModel ?? profile!.model, tools: false);
   ModelProfile? get profileForCompletion => profile?.withModel(completionModel ?? profile!.model, tools: false);
-  String? get terminalIdentity => terminalModelDestination(profile, inlineModel, completionModel);
 }
 
 final aiConfigurationProvider = NotifierProvider<AiConfigurationController, AiConfiguration>(
@@ -66,10 +62,8 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
         revision: value.revision,
         inlineEnabled: value.inlineEnabled,
         completionEnabled: value.completionEnabled,
-        completionHistory: value.completionHistory,
-        completionPosix: value.completionPosix,
-        completionHosts: value.completionHosts,
-        terminalDestination: value.terminalDestination,
+        inlineExcludedHosts: value.inlineExcludedHosts,
+        completionExcludedHosts: value.completionExcludedHosts,
         inlineModel: value.inlineModel,
         completionModel: value.completionModel,
       );
@@ -89,13 +83,15 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
     int? expectedRevision,
     bool? inlineEnabled,
     bool? completionEnabled,
-    bool? completionHistory,
-    bool? completionPosix,
-    Map<HostId, String>? completionHosts,
+    Set<HostId>? inlineExcludedHosts,
+    Set<HostId>? completionExcludedHosts,
     String? inlineModel,
     String? completionModel,
   }) {
-    final selectedHosts = completionHosts == null ? null : Map<HostId, String>.unmodifiable(completionHosts);
+    final inlineExcluded = inlineExcludedHosts == null ? null : Set<HostId>.unmodifiable(inlineExcludedHosts);
+    final completionExcluded = completionExcludedHosts == null
+        ? null
+        : Set<HostId>.unmodifiable(completionExcludedHosts);
     final next = _pending.then((_) async {
       if (_loadError case final error?) throw error;
       if (enabled && profile == null) throw ArgumentError('AI profile required');
@@ -107,23 +103,14 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
       final selectedCompletion = checked == null
           ? null
           : completionModel ?? (sameProvider ? state.completionModel : null) ?? checked.model;
-      final terminalDestination = terminalModelDestination(checked, selectedInline, selectedCompletion);
-      final changed = terminalDestination != state.terminalIdentity;
-      final hosts = selectedHosts ?? (changed ? <HostId, String>{} : state.completionHosts);
-      final known = {for (final host in ref.read(aiTerminalHostsProvider)) host.id: host.signature};
-      if (selectedHosts != null && hosts.entries.any((entry) => known[entry.key] != entry.value)) {
-        throw ArgumentError('AI host selection changed');
-      }
       await _store.write(
         enabled: enabled,
         profile: checked,
         expectedRevision: expectedRevision ?? state.revision,
-        inlineEnabled: inlineEnabled ?? (!changed && state.inlineEnabled),
-        completionEnabled: completionEnabled ?? (!changed && state.completionEnabled),
-        completionHistory: completionHistory ?? (!changed && state.completionHistory),
-        completionPosix: completionPosix ?? (!changed && state.completionPosix),
-        completionHosts: hosts,
-        terminalDestination: terminalDestination,
+        inlineEnabled: inlineEnabled ?? state.inlineEnabled,
+        completionEnabled: completionEnabled ?? state.completionEnabled,
+        inlineExcludedHosts: inlineExcluded ?? state.inlineExcludedHosts,
+        completionExcludedHosts: completionExcluded ?? state.completionExcludedHosts,
         inlineModel: selectedInline,
         completionModel: selectedCompletion,
       );

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,11 +30,11 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   final _contextWindow = TextEditingController(), _maxOutput = TextEditingController();
   final _form = GlobalKey<FormState>();
   late AiConfiguration _initial;
-  late bool _enabled, _inlineEnabled, _completionEnabled, _completionHistory, _completionPosix;
+  late bool _enabled, _inlineEnabled, _completionEnabled;
   String _inlineModel = '', _completionModel = '';
-  var _customContext = false;
+  var _customContext = false, _inlineAdvanced = false, _completionAdvanced = false;
   String? _providerIdentity;
-  final _completionHosts = <HostId, String>{};
+  final _inlineExcludedHosts = <HostId>{}, _completionExcludedHosts = <HostId>{};
   late ModelProtocol _protocol;
   Timer? _checkTimer;
   var _generation = 0;
@@ -100,14 +101,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
 
   String? get _catalogCredential => _removeKey ? null : _identity;
 
-  void _revokeTerminal() {
-    _inlineEnabled = _completionEnabled = _completionHistory = _completionPosix = false;
-    _completionHosts.clear();
-  }
-
   void _selectModel(String value, {bool inline = false, bool completion = false}) {
     setState(() {
-      _revokeTerminal();
       if (inline) {
         _inlineModel = value;
       } else if (completion) {
@@ -128,12 +123,10 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       _enabled != _initial.enabled ||
       _inlineEnabled != _initial.inlineEnabled ||
       _completionEnabled != _initial.completionEnabled ||
-      _completionHistory != _initial.completionHistory ||
-      _completionPosix != _initial.completionPosix ||
+      !setEquals(_inlineExcludedHosts, _initial.inlineExcludedHosts) ||
+      !setEquals(_completionExcludedHosts, _initial.completionExcludedHosts) ||
       _inlineModel != (_initial.inlineModel ?? _initial.profile?.model ?? '') ||
       _completionModel != (_initial.completionModel ?? _initial.profile?.model ?? '') ||
-      jsonEncode({for (final e in _completionHosts.entries) e.key.value: e.value}) !=
-          jsonEncode({for (final e in _initial.completionHosts.entries) e.key.value: e.value}) ||
       jsonEncode(_profile?.toJson()) != jsonEncode(_initial.profile?.toJson()) ||
       _key.text.isNotEmpty ||
       _removeKey ||
@@ -153,11 +146,12 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _enabled = config.enabled;
     _inlineEnabled = config.inlineEnabled;
     _completionEnabled = config.completionEnabled;
-    _completionHistory = config.completionHistory;
-    _completionPosix = config.completionPosix;
-    _completionHosts
+    _inlineExcludedHosts
       ..clear()
-      ..addAll(config.completionHosts);
+      ..addAll(config.inlineExcludedHosts);
+    _completionExcludedHosts
+      ..clear()
+      ..addAll(config.completionExcludedHosts);
     _protocol = config.profile?.protocol ?? ModelProtocol.openai;
     _endpoint.text = config.profile?.endpoint ?? '';
     _model.text = config.profile?.model ?? '';
@@ -192,7 +186,6 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       _generation++;
       _providerIdentity = nextProvider;
       _identity = _draftIdentity;
-      _revokeTerminal();
       _key.clear();
       _hasKey = _keyError = _removeKey = false;
       _checking = _identity != null;
@@ -299,9 +292,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         expectedRevision: revision,
         inlineEnabled: _inlineEnabled,
         completionEnabled: _completionEnabled,
-        completionHistory: _completionHistory,
-        completionPosix: _completionPosix,
-        completionHosts: _completionHosts,
+        inlineExcludedHosts: _inlineExcludedHosts,
+        completionExcludedHosts: _completionExcludedHosts,
         inlineModel: _inlineModel.isEmpty ? profile?.model : _inlineModel,
         completionModel: _completionModel.isEmpty ? profile?.model : _completionModel,
       );
@@ -317,6 +309,54 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     } finally {
       if (mounted) setState(() => _working = false);
     }
+  }
+
+  Widget _hostFilter({
+    required String feature,
+    required bool expanded,
+    required Set<HostId> excluded,
+    required bool blocked,
+    required ValueChanged<bool> onExpanded,
+  }) {
+    final l = AppLocalizations.of(context);
+    final hosts = ref.watch(aiTerminalHostsProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Semantics(
+            expanded: expanded,
+            child: TextButton.icon(
+              key: ValueKey('ai-config-$feature-advanced'),
+              onPressed: () => onExpanded(!expanded),
+              icon: Icon(expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 18),
+              label: Text(l.aiConfigFeatureAdvanced),
+            ),
+          ),
+        ),
+        if (expanded) ...[
+          Text(l.aiConfigAvailableHosts, style: Theme.of(context).textTheme.bodySmall),
+          for (final host in hosts)
+            AppToggleRow(
+              key: ValueKey('ai-config-$feature-host-${host.id.value}'),
+              title: host.label,
+              value: !excluded.contains(host.id),
+              checkbox: true,
+              onChanged: blocked
+                  ? null
+                  : (selected) => setState(() {
+                      if (selected) {
+                        excluded.remove(host.id);
+                      } else {
+                        excluded.add(host.id);
+                      }
+                    }),
+            ),
+          if (hosts.isEmpty) Text(l.aiConfigFeatureNoHosts, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ],
+    );
   }
 
   @override
@@ -519,12 +559,27 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
             onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, inline: true),
           ),
+          if (_inlineEnabled) ...[
+            const SizedBox(height: Space.xs),
+            _hostFilter(
+              feature: 'inline',
+              expanded: _inlineAdvanced,
+              excluded: _inlineExcludedHosts,
+              blocked: blocked,
+              onExpanded: (value) => setState(() => _inlineAdvanced = value),
+            ),
+          ],
           gap,
           AppToggleRow(
             key: const ValueKey('ai-config-completion'),
             title: l.aiConfigCompletion,
             value: _completionEnabled,
             onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _completionEnabled = v),
+          ),
+          const SizedBox(height: Space.xs),
+          Text(
+            l.aiConfigCompletionHint,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: Space.sm),
           AiModelPicker(
@@ -537,54 +592,14 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
             onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, completion: true),
           ),
-          if (_inlineEnabled || _completionEnabled) ...[
-            gap,
-            Text(l.aiConfigTerminalScope, style: theme.textTheme.bodySmall),
-            const SizedBox(height: Space.sm),
-            for (final host in ref.watch(aiTerminalHostsProvider))
-              AppToggleRow(
-                key: ValueKey('ai-config-host-${host.id.value}'),
-                title: host.label,
-                value: _completionHosts[host.id] == host.signature,
-                checkbox: true,
-                onChanged: blocked
-                    ? null
-                    : (v) => setState(() {
-                        if (v) {
-                          _completionHosts[host.id] = host.signature;
-                        } else {
-                          _completionHosts.remove(host.id);
-                        }
-                      }),
-              ),
-            if (ref.watch(aiTerminalHostsProvider).isEmpty)
-              Text(l.aiConfigTerminalNoHosts, style: theme.textTheme.bodySmall),
-            const SizedBox(height: Space.sm),
-            AppToggleRow(
-              key: const ValueKey('ai-config-posix'),
-              title: l.aiConfigPosix,
-              value: _completionPosix,
-              checkbox: true,
-              onChanged: blocked ? null : (v) => setState(() => _completionPosix = v),
-            ),
-            const SizedBox(height: Space.xs),
-            Text(
-              l.aiConfigPosixHint,
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ],
           if (_completionEnabled) ...[
-            gap,
-            AppToggleRow(
-              key: const ValueKey('ai-config-history'),
-              title: l.aiConfigCompletionHistory,
-              value: _completionHistory,
-              onChanged: blocked ? null : (v) => setState(() => _completionHistory = v),
-            ),
             const SizedBox(height: Space.xs),
-            Text(
-              l.aiConfigCompletionHint,
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            _hostFilter(
+              feature: 'completion',
+              expanded: _completionAdvanced,
+              excluded: _completionExcludedHosts,
+              blocked: blocked,
+              onExpanded: (value) => setState(() => _completionAdvanced = value),
             ),
           ],
           if (_error != null || _conflict) ...[

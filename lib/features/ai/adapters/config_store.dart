@@ -9,24 +9,27 @@ class AiConfigStore {
   final String path;
   JsonFile _file;
 
-  static JsonFile _open(String path) => JsonFile(path, backups: true, validate: _validate);
+  static JsonFile _open(String path) =>
+      JsonFile(path, backups: true, schemaVersion: 2, migrations: {1: _migrate}, validate: _validate);
 
-  static void _validate(Map<String, dynamic> json) {
-    const keys = {
-      'schemaVersion',
-      'revision',
-      'enabled',
-      'profile',
-      'inlineEnabled',
-      'completionEnabled',
-      'completionHistory',
-      'completionPosix',
-      'completionHosts',
-      'terminalDestination',
-      'inlineModel',
-      'completionModel',
-    };
-    if (!json.keys.every(keys.contains) || json['enabled'] is! bool || !json.containsKey('profile')) {
+  static const _keys = {
+    'schemaVersion',
+    'revision',
+    'enabled',
+    'profile',
+    'inlineEnabled',
+    'completionEnabled',
+    'inlineModel',
+    'completionModel',
+  };
+  static const _legacyKeys = {'completionHistory', 'completionPosix', 'completionHosts', 'terminalDestination'};
+  static final _hostControls = RegExp(r'[\x00-\x20\x7f-\x9f]');
+
+  static bool _validHost(Object? id) =>
+      id is String && id.isNotEmpty && id.length <= 128 && !_hostControls.hasMatch(id);
+
+  static ModelProfile? _validateProfile(Map<String, dynamic> json) {
+    if (json['enabled'] is! bool || !json.containsKey('profile')) {
       throw const FormatException('invalid AI configuration');
     }
     final raw = json['profile'];
@@ -37,8 +40,8 @@ class AiConfigStore {
     } else if (json['enabled'] == true) {
       throw const FormatException('AI profile required');
     }
-    for (final key in ['inlineEnabled', 'completionEnabled', 'completionHistory', 'completionPosix']) {
-      if (json.containsKey(key) && json[key] is! bool) throw const FormatException('invalid AI terminal policy');
+    for (final key in ['inlineEnabled', 'completionEnabled']) {
+      if (json.containsKey(key) && json[key] is! bool) throw const FormatException('invalid AI terminal setting');
     }
     for (final key in ['inlineModel', 'completionModel']) {
       final model = json[key];
@@ -46,6 +49,17 @@ class AiConfigStore {
         if (model is! String || profile == null) throw const FormatException('invalid AI role model');
         profile.withModel(model);
       }
+    }
+    return profile;
+  }
+
+  static Map<String, dynamic> _migrate(Map<String, dynamic> json) {
+    if (!json.keys.every({..._keys, ..._legacyKeys}.contains)) {
+      throw const FormatException('invalid legacy AI configuration');
+    }
+    final profile = _validateProfile(json);
+    for (final key in ['completionHistory', 'completionPosix']) {
+      if (json.containsKey(key) && json[key] is! bool) throw const FormatException('invalid AI terminal policy');
     }
     final expectedDestination = terminalModelDestination(
       profile,
@@ -62,9 +76,7 @@ class AiConfigStore {
         throw const FormatException('invalid AI host grants');
       }
       for (final entry in hosts.entries) {
-        if (entry.key.isEmpty ||
-            entry.key.length > 128 ||
-            RegExp(r'[\x00-\x20\x7f-\x9f]').hasMatch(entry.key) ||
+        if (!_validHost(entry.key) ||
             entry.value is! String ||
             (entry.value as String).isEmpty ||
             (entry.value as String).length > 32768 ||
@@ -77,6 +89,28 @@ class AiConfigStore {
         (profile == null || destination != expectedDestination)) {
       throw const FormatException('AI terminal destination required');
     }
+    return {
+      for (final entry in json.entries)
+        if (!_legacyKeys.contains(entry.key)) entry.key: entry.value,
+      'inlineEnabled': true,
+      'completionEnabled': true,
+      'inlineExcludedHosts': <String>[],
+      'completionExcludedHosts': <String>[],
+    };
+  }
+
+  static void _validate(Map<String, dynamic> json) {
+    if (!json.keys.every({..._keys, 'inlineExcludedHosts', 'completionExcludedHosts'}.contains)) {
+      throw const FormatException('invalid AI configuration');
+    }
+    _validateProfile(json);
+    for (final key in ['inlineExcludedHosts', 'completionExcludedHosts']) {
+      if (!json.containsKey(key)) continue;
+      final hosts = json[key];
+      if (hosts is! List || hosts.length > 10000 || !hosts.every(_validHost) || hosts.toSet().length != hosts.length) {
+        throw const FormatException('invalid AI host exclusions');
+      }
+    }
   }
 
   ({
@@ -85,10 +119,8 @@ class AiConfigStore {
     int revision,
     bool inlineEnabled,
     bool completionEnabled,
-    bool completionHistory,
-    bool completionPosix,
-    Map<HostId, String> completionHosts,
-    String? terminalDestination,
+    Set<HostId> inlineExcludedHosts,
+    Set<HostId> completionExcludedHosts,
     String? inlineModel,
     String? completionModel,
   })
@@ -100,15 +132,14 @@ class AiConfigStore {
       enabled: json?['enabled'] as bool? ?? false,
       profile: profile,
       revision: _file.revision,
-      inlineEnabled: json?['inlineEnabled'] as bool? ?? false,
-      completionEnabled: json?['completionEnabled'] as bool? ?? false,
-      completionHistory: json?['completionHistory'] as bool? ?? false,
-      completionPosix: json?['completionPosix'] as bool? ?? false,
-      completionHosts: Map<HostId, String>.unmodifiable({
-        for (final entry in (json?['completionHosts'] as Map<String, dynamic>? ?? const {}).entries)
-          HostId(entry.key): entry.value as String,
+      inlineEnabled: json?['inlineEnabled'] as bool? ?? true,
+      completionEnabled: json?['completionEnabled'] as bool? ?? true,
+      inlineExcludedHosts: Set<HostId>.unmodifiable({
+        for (final id in json?['inlineExcludedHosts'] as List? ?? const []) HostId(id as String),
       }),
-      terminalDestination: json?['terminalDestination'] as String?,
+      completionExcludedHosts: Set<HostId>.unmodifiable({
+        for (final id in json?['completionExcludedHosts'] as List? ?? const []) HostId(id as String),
+      }),
       inlineModel: json?['inlineModel'] as String? ?? profile?.model,
       completionModel: json?['completionModel'] as String? ?? profile?.model,
     );
@@ -118,24 +149,20 @@ class AiConfigStore {
     required bool enabled,
     required ModelProfile? profile,
     required int expectedRevision,
-    bool inlineEnabled = false,
-    bool completionEnabled = false,
-    bool completionHistory = false,
-    bool completionPosix = false,
-    Map<HostId, String> completionHosts = const {},
-    String? terminalDestination,
+    bool inlineEnabled = true,
+    bool completionEnabled = true,
+    Set<HostId> inlineExcludedHosts = const {},
+    Set<HostId> completionExcludedHosts = const {},
     String? inlineModel,
     String? completionModel,
   }) => _file.write({
-    'schemaVersion': 1,
+    'schemaVersion': 2,
     'enabled': enabled,
     'profile': profile?.toJson(),
     'inlineEnabled': inlineEnabled,
     'completionEnabled': completionEnabled,
-    'completionHistory': completionHistory,
-    'completionPosix': completionPosix,
-    'completionHosts': {for (final entry in completionHosts.entries) entry.key.value: entry.value},
-    'terminalDestination': terminalDestination,
+    'inlineExcludedHosts': [for (final id in inlineExcludedHosts) id.value]..sort(),
+    'completionExcludedHosts': [for (final id in completionExcludedHosts) id.value]..sort(),
     'inlineModel': inlineModel,
     'completionModel': completionModel,
   }, expectedRevision: expectedRevision);

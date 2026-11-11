@@ -2345,7 +2345,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentWelcome => '有什么想一起解决的？';
 
   @override
-  String get aiAgentWelcomeHint => '直接描述任务，需要远程工具时选择主机。';
+  String get aiAgentWelcomeHint => '直接描述任务，Airy 会使用聚焦主机，或询问操作目标。';
 
   @override
   String get aiAgentSetupTitle => '你的 SSH 助手';
@@ -2423,7 +2423,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigInline => '行内命令生成';
 
   @override
-  String get aiConfigInlineHint => '点击终端 AI 按钮或快捷键才发送需求，检查生成命令后再填入。';
+  String get aiConfigInlineHint => '点击终端 AI 按钮或按 Ctrl/Cmd+Shift+G，使用需求、已知环境及本会话近期命令生成；检查后再填入。';
 
   @override
   String get aiConfigCompletion => 'AI 提示补全';
@@ -2444,7 +2444,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigCompletionHistory => '使用当前会话近期命令';
 
   @override
-  String get aiConfigCompletionHint => '停顿后自动发送符合条件的草稿；历史单独授权，仅限本次连接最多 8 条相关命令。';
+  String get aiConfigCompletionHint => '输入 git st 等明确命令后停顿 800 毫秒触发，自动使用本会话最多 8 条相关命令。';
 
   @override
   String get aiAgentErrorHostTrust => '请先正常连接这台主机并核对主机密钥，再使用远程工具。';
@@ -2563,4 +2563,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiConfigApiKeyOptional => 'API Key（可选）';
+
+  @override
+  String get aiConfigFeatureAdvanced => '高级设置';
+
+  @override
+  String get aiConfigAvailableHosts => '可用主机';
+
+  @override
+  String get aiConfigFeatureNoHosts => '新增 SSH 主机将自动启用。';
+
+  @override
+  String get aiAgentAutoTarget => '自动选择';
 }

@@ -4547,7 +4547,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentWelcomeHint.
   ///
   /// In en, this message translates to:
-  /// **'Describe a task. Choose a server when you need remote tools.'**
+  /// **'Describe a task. Airy uses the focused server or asks which one you mean.'**
   String get aiAgentWelcomeHint;
 
   /// No description provided for @aiAgentSetupTitle.
@@ -4703,7 +4703,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigInlineHint.
   ///
   /// In en, this message translates to:
-  /// **'Send only when you click the terminal AI button or press its shortcut. Review the command before filling it in.'**
+  /// **'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment and recent session commands. Review before filling in.'**
   String get aiConfigInlineHint;
 
   /// No description provided for @aiConfigCompletion.
@@ -4745,7 +4745,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigCompletionHint.
   ///
   /// In en, this message translates to:
-  /// **'Automatically sends eligible drafts after a pause. History is separate: up to 8 relevant commands from this connection only.'**
+  /// **'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands from this session.'**
   String get aiConfigCompletionHint;
 
   /// No description provided for @aiAgentErrorHostTrust.
@@ -4975,6 +4975,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'API key (optional)'**
   String get aiConfigApiKeyOptional;
+
+  /// No description provided for @aiConfigFeatureAdvanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced'**
+  String get aiConfigFeatureAdvanced;
+
+  /// No description provided for @aiConfigAvailableHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Available hosts'**
+  String get aiConfigAvailableHosts;
+
+  /// No description provided for @aiConfigFeatureNoHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'New SSH hosts will be enabled automatically.'**
+  String get aiConfigFeatureNoHosts;
+
+  /// No description provided for @aiAgentAutoTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get aiAgentAutoTarget;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

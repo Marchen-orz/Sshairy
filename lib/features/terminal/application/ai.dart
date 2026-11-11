@@ -17,8 +17,9 @@ class _DisabledTerminalAi implements TerminalAiService {
   Future<TerminalAiGeneration> generate(
     TerminalAiContext context,
     String instruction,
-    CancellationToken cancel,
-  ) async => const TerminalAiGeneration(TerminalAiGenerationKind.clarify);
+    CancellationToken cancel, {
+    List<TerminalAiHistoryEntry> history = const [],
+  }) async => const TerminalAiGeneration(TerminalAiGenerationKind.clarify);
   @override
   Future<String?> complete(
     TerminalAiContext context,

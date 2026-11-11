@@ -313,7 +313,12 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
       _failed = false;
     });
     try {
-      final result = await widget.service.generate(_captured, _instruction.text.trim(), token);
+      final result = await widget.service.generate(
+        _captured,
+        _instruction.text.trim(),
+        token,
+        history: widget.session.readAiHistory(_captured),
+      );
       if (!mounted || token.isCancelled || !sameTerminalAiContext(_captured, widget.session.readAiContext())) return;
       if (result.kind == TerminalAiGenerationKind.command && !validTerminalAiCommand(result.command ?? '')) {
         throw const FormatException('command');

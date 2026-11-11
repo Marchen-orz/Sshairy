@@ -84,7 +84,12 @@ abstract interface class TerminalAiService {
   bool canGenerate(TerminalAiContext context);
   bool canComplete(TerminalAiContext context);
   Stream<void> get changes;
-  Future<TerminalAiGeneration> generate(TerminalAiContext context, String instruction, CancellationToken cancel);
+  Future<TerminalAiGeneration> generate(
+    TerminalAiContext context,
+    String instruction,
+    CancellationToken cancel, {
+    List<TerminalAiHistoryEntry> history = const [],
+  });
   Future<String?> complete(TerminalAiContext context, List<TerminalAiHistoryEntry> history, CancellationToken cancel);
 }
 

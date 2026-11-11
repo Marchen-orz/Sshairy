@@ -33,27 +33,20 @@ class AiTerminalService implements TerminalAiService {
   @override
   Stream<void> get changes => _changes.stream;
 
-  bool _enabled(AiConfiguration config) =>
-      !_closed &&
-      config.enabled &&
-      !config.loadFailed &&
-      config.profile != null &&
-      config.terminalDestination == config.terminalIdentity;
+  bool _enabled(AiConfiguration config) => !_closed && config.enabled && !config.loadFailed && config.profile != null;
 
-  bool _granted(TerminalAiContext context, AiConfiguration config) {
-    final target = context.target;
-    if (target is! SshTerminalAiTarget || !config.completionPosix) return false;
-    final signature = config.completionHosts[target.hostId];
-    return signature != null && hosts().any((host) => host.id == target.hostId && host.signature == signature);
-  }
+  bool _available(TerminalAiContext context, AiConfiguration config, {required bool inline}) =>
+      switch (context.target) {
+        SshTerminalAiTarget(:final hostId) =>
+          !(inline ? config.inlineExcludedHosts : config.completionExcludedHosts).contains(hostId) &&
+              hosts().any((host) => host.id == hostId),
+        LocalTerminalAiTarget() => inline,
+      };
 
   @override
   bool canGenerate(TerminalAiContext context) {
     final config = configuration();
-    return _enabled(config) &&
-        config.inlineEnabled &&
-        context.ready &&
-        (context.target is LocalTerminalAiTarget || _granted(context, config));
+    return _enabled(config) && config.inlineEnabled && context.ready && _available(context, config, inline: true);
   }
 
   @override
@@ -62,9 +55,8 @@ class AiTerminalService implements TerminalAiService {
     final draft = context.draft;
     return _enabled(config) &&
         config.completionEnabled &&
-        _granted(context, config) &&
+        _available(context, config, inline: false) &&
         context.ready &&
-        context.directory?.startsWith('/') == true &&
         draft != null &&
         _eligible(draft);
   }
@@ -110,7 +102,12 @@ class AiTerminalService implements TerminalAiService {
   }
 
   @override
-  Future<TerminalAiGeneration> generate(TerminalAiContext context, String instruction, CancellationToken cancel) async {
+  Future<TerminalAiGeneration> generate(
+    TerminalAiContext context,
+    String instruction,
+    CancellationToken cancel, {
+    List<TerminalAiHistoryEntry> history = const [],
+  }) async {
     if (!canGenerate(context) ||
         cancel.isCancelled ||
         instruction.trim().isEmpty ||
@@ -129,10 +126,11 @@ class AiTerminalService implements TerminalAiService {
       if (intent != _generationIntent || cancel.isCancelled || revision != _revision || !canGenerate(context)) {
         throw const ModelFailure('cancelled');
       }
+      final selected = _history(context, history, matchingCommand: false);
       final result = await _request(
         config.profileForInline!,
         _generateSystem,
-        {'instruction': instruction, ..._environment(context)},
+        {'instruction': instruction, ..._environment(context), ..._historyInput(selected)},
         cancel,
         inline: true,
         revision: revision,
@@ -194,7 +192,7 @@ class AiTerminalService implements TerminalAiService {
       config.revision,
     ]);
     if (key == _lastCompletion) return null;
-    final selected = _history(context, config.completionHistory ? history : const []);
+    final selected = _history(context, history);
     final roots = catalogCommandNames();
     final first = context.draft!.split(' ').first;
     if (!roots.contains(first) && !selected.any((entry) => entry.text.split(' ').first == first)) return null;
@@ -205,14 +203,7 @@ class AiTerminalService implements TerminalAiService {
       final result = await _request(
         config.profileForCompletion!,
         _completeSystem,
-        {
-          'draft': context.draft,
-          ..._environment(context),
-          if (selected.isNotEmpty)
-            'history': [
-              for (final entry in selected) {'text': entry.text, 'at': entry.at.toUtc().toIso8601String()},
-            ],
-        },
+        {'draft': context.draft, ..._environment(context), ..._historyInput(selected)},
         cancel,
         inline: false,
         revision: revision,
@@ -244,7 +235,11 @@ class AiTerminalService implements TerminalAiService {
     }
   }
 
-  List<TerminalAiHistoryEntry> _history(TerminalAiContext context, List<TerminalAiHistoryEntry> history) {
+  List<TerminalAiHistoryEntry> _history(
+    TerminalAiContext context,
+    List<TerminalAiHistoryEntry> history, {
+    bool matchingCommand = true,
+  }) {
     final command = context.draft!.trim().split(' ').first;
     final result = <TerminalAiHistoryEntry>[];
     var bytes = 0;
@@ -257,7 +252,7 @@ class AiTerminalService implements TerminalAiService {
                   validTerminalAiCommand(entry.text) &&
                   !entry.text.startsWith(' ') &&
                   !_sensitive.hasMatch(entry.text) &&
-                  entry.text.trim().split(' ').first == command,
+                  (!matchingCommand || entry.text.trim().split(' ').first == command),
             )
             .toList()
           ..sort((a, b) => b.at.compareTo(a.at));
@@ -270,10 +265,17 @@ class AiTerminalService implements TerminalAiService {
     return result.reversed.toList(growable: false);
   }
 
+  static Map<String, Object?> _historyInput(List<TerminalAiHistoryEntry> history) => {
+    if (history.isNotEmpty)
+      'history': [
+        for (final entry in history) {'text': entry.text, 'at': entry.at.toUtc().toIso8601String()},
+      ],
+  };
+
   static Map<String, Object?> _environment(TerminalAiContext context) => {
     'shell': switch (context.target) {
       LocalTerminalAiTarget(:final kind) => kind.name,
-      _ => 'POSIX (explicitly confirmed by user; nested identity is not verified)',
+      _ => 'POSIX-compatible prompt (heuristic; nested identity is not verified)',
     },
     if (context.directory != null && utf8.encode(context.directory!).length <= 2048) 'cwd': context.directory,
   };

@@ -109,6 +109,10 @@ void main() {
     expect(state.profile, isNull);
     expect(state.revision, 0);
     expect(state.loadFailed, isFalse);
+    expect(state.inlineEnabled, isTrue);
+    expect(state.completionEnabled, isTrue);
+    expect(state.inlineExcludedHosts, isEmpty);
+    expect(state.completionExcludedHosts, isEmpty);
     expect(dir.listSync(), isEmpty);
     expect(store.reads, isEmpty);
   });
@@ -162,61 +166,102 @@ void main() {
     expect(container.read(aiConfigurationProvider).revision, 3);
   });
 
-  test('terminal policies are opt-in, bound to destination and exact effective host route', () async {
-    const host = AiTerminalHost(HostId('web'), 'Web', 'effective-route-v1');
-    final scope = ProviderContainer(
-      overrides: [
-        dataDirProvider.overrideWithValue(dir.path),
-        aiTerminalHostsProvider.overrideWithValue([host]),
-      ],
-    );
-    addTearDown(scope.dispose);
-    final notifier = scope.read(aiConfigurationProvider.notifier);
+  test('terminal features default on and preserve independent exclusions across model and service changes', () async {
+    final notifier = container.read(aiConfigurationProvider.notifier);
     await notifier.save(enabled: true, profile: _profile());
-    expect(scope.read(aiConfigurationProvider).inlineEnabled, isFalse);
+    final initial = container.read(aiConfigurationProvider);
+    expect(initial.inlineEnabled, isTrue);
+    expect(initial.completionEnabled, isTrue);
+    expect(initial.inlineExcludedHosts, isEmpty);
+    expect(initial.completionExcludedHosts, isEmpty);
     await notifier.save(
       enabled: true,
       profile: _profile(),
-      inlineEnabled: true,
-      completionEnabled: true,
-      completionHistory: true,
-      completionPosix: true,
-      completionHosts: {host.id: host.signature},
+      inlineEnabled: false,
+      inlineExcludedHosts: {const HostId('web')},
+      completionExcludedHosts: {const HostId('db')},
     );
-    final policy = scope.read(aiConfigurationProvider);
-    expect(policy.inlineEnabled, isTrue);
-    expect(policy.completionEnabled, isTrue);
-    expect(policy.completionHistory, isTrue);
-    expect(policy.completionHosts, {host.id: host.signature});
-    expect(policy.terminalDestination, _profile().identity);
     final restart = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
-    expect(restart.read(aiConfigurationProvider).completionHosts, {host.id: host.signature});
-    restart.dispose();
-    await notifier.save(enabled: true, profile: _profile('https://new.example/v1'));
-    final changed = scope.read(aiConfigurationProvider);
-    expect(changed.inlineEnabled, isFalse);
-    expect(changed.completionEnabled, isFalse);
-    expect(changed.completionHistory, isFalse);
-    expect(changed.completionPosix, isFalse);
-    expect(changed.completionHosts, isEmpty);
+    try {
+      final state = restart.read(aiConfigurationProvider);
+      expect(state.inlineEnabled, isFalse);
+      expect(state.completionEnabled, isTrue);
+      expect(state.inlineExcludedHosts, {const HostId('web')});
+      expect(state.completionExcludedHosts, {const HostId('db')});
+    } finally {
+      restart.dispose();
+    }
     await notifier.save(
       enabled: true,
-      profile: _profile('https://explicit.example/v1'),
-      inlineEnabled: true,
-      completionEnabled: true,
-      completionHistory: true,
-      completionPosix: true,
-      completionHosts: {host.id: host.signature},
+      profile: _profile('https://new.example/v1'),
+      inlineModel: 'new-inline',
+      completionModel: 'new-completion',
     );
-    final authorized = scope.read(aiConfigurationProvider);
-    expect(authorized.inlineEnabled, isTrue);
-    expect(authorized.completionEnabled, isTrue);
-    expect(authorized.completionHosts, {host.id: host.signature});
-    expect(authorized.terminalDestination, authorized.profile!.identity);
-    await expectLater(
-      notifier.save(enabled: true, profile: changed.profile, completionHosts: {host.id: 'stale-route'}),
-      throwsArgumentError,
-    );
+    final changed = container.read(aiConfigurationProvider);
+    expect(changed.inlineEnabled, isFalse);
+    expect(changed.completionEnabled, isTrue);
+    expect(changed.inlineExcludedHosts, {const HostId('web')});
+    expect(changed.completionExcludedHosts, {const HostId('db')});
+    final json = jsonDecode(File('${dir.path}/ai.json').readAsStringSync()) as Map;
+    expect(json['schemaVersion'], 2);
+    for (final old in ['completionHistory', 'completionPosix', 'completionHosts', 'terminalDestination']) {
+      expect(json.containsKey(old), isFalse);
+    }
+  });
+
+  test('migration rejects malformed legacy policies and leaves their files untouched', () async {
+    final file = File('${dir.path}/ai.json');
+    final legacy = {'schemaVersion': 1, 'revision': 4, 'enabled': true, 'profile': _profile().toJson()};
+    for (final invalid in [
+      {...legacy, 'unknownPolicy': true},
+      {...legacy, 'completionHosts': []},
+      {
+        ...legacy,
+        'completionHosts': {'bad host': 'route'},
+      },
+      {
+        ...legacy,
+        'completionHosts': {'web': 12},
+      },
+      {...legacy, 'completionHistory': 'yes'},
+      {...legacy, 'terminalDestination': 'another-destination'},
+    ]) {
+      final content = jsonEncode(invalid);
+      file.writeAsStringSync(content);
+      container.invalidate(aiConfigurationProvider);
+      expect(container.read(aiConfigurationProvider).loadFailed, isTrue);
+      await expectLater(
+        container.read(aiConfigurationProvider.notifier).save(enabled: false, profile: null),
+        throwsA(isA<JsonFileError>().having((error) => error.kind, 'kind', JsonFileFailure.migrationFailed)),
+      );
+      expect(file.readAsStringSync(), content);
+    }
+  });
+
+  test('schema two rejects malformed host exclusions without overwriting the file', () async {
+    final file = File('${dir.path}/ai.json');
+    for (final excluded in [
+      null,
+      ['web', 'web'],
+      [12],
+      ['bad host'],
+      {'web': true},
+    ]) {
+      final content = jsonEncode({
+        'schemaVersion': 2,
+        'enabled': true,
+        'profile': _profile().toJson(),
+        'inlineExcludedHosts': excluded,
+      });
+      file.writeAsStringSync(content);
+      container.invalidate(aiConfigurationProvider);
+      expect(container.read(aiConfigurationProvider).loadFailed, isTrue);
+      await expectLater(
+        container.read(aiConfigurationProvider.notifier).save(enabled: false, profile: null),
+        throwsA(isA<JsonFileError>()),
+      );
+      expect(file.readAsStringSync(), content);
+    }
   });
 
   test('new model defaults enable Agent tools and use one million context tokens', () {
@@ -231,7 +276,7 @@ void main() {
     expect(inline.contextWindow, profile.contextWindow);
   });
 
-  test('legacy role models migrate to the default without losing destination grants', () {
+  test('legacy policy migrates to default models with both terminal features enabled', () {
     final profile = _profile();
     File('${dir.path}/ai.json').writeAsStringSync(
       jsonEncode({
@@ -239,7 +284,11 @@ void main() {
         'revision': 4,
         'enabled': true,
         'profile': profile.toJson(),
-        'inlineEnabled': true,
+        'inlineEnabled': false,
+        'completionEnabled': false,
+        'completionHistory': false,
+        'completionPosix': false,
+        'completionHosts': {'web': 'old-route'},
         'terminalDestination': profile.identity,
       }),
     );
@@ -248,27 +297,28 @@ void main() {
     expect(state.inlineModel, profile.model);
     expect(state.completionModel, profile.model);
     expect(state.profileForInline!.tools, isFalse);
-    expect(state.terminalIdentity, profile.identity);
+    expect(state.inlineEnabled, isTrue);
+    expect(state.completionEnabled, isTrue);
+    expect(state.inlineExcludedHosts, isEmpty);
+    expect(state.completionExcludedHosts, isEmpty);
   });
 
-  test('independent role models persist and changes revoke implicit terminal grants', () async {
+  test('independent role models persist without resetting feature choices', () async {
     final notifier = container.read(aiConfigurationProvider.notifier);
     await notifier.save(
       enabled: true,
       profile: _profile(),
       inlineModel: 'inline-fast',
       completionModel: 'complete-fast',
-      inlineEnabled: true,
+      inlineEnabled: false,
       completionEnabled: true,
-      completionPosix: true,
+      inlineExcludedHosts: {const HostId('web')},
     );
     final before = container.read(aiConfigurationProvider);
     expect(before.profileForInline!.model, 'inline-fast');
     expect(before.profileForCompletion!.model, 'complete-fast');
     expect(before.profileForInline!.tools, isFalse);
     expect(before.profileForCompletion!.tools, isFalse);
-    expect(before.terminalDestination, before.terminalIdentity);
-    expect(before.terminalDestination, isNot(before.profile!.identity));
     final restarted = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
     expect(restarted.read(aiConfigurationProvider).inlineModel, 'inline-fast');
     expect(restarted.read(aiConfigurationProvider).completionModel, 'complete-fast');
@@ -276,24 +326,23 @@ void main() {
     await notifier.save(enabled: true, profile: _profile(), inlineModel: 'another-inline');
     final changed = container.read(aiConfigurationProvider);
     expect(changed.inlineEnabled, isFalse);
-    expect(changed.completionEnabled, isFalse);
-    expect(changed.completionPosix, isFalse);
+    expect(changed.completionEnabled, isTrue);
+    expect(changed.inlineExcludedHosts, {const HostId('web')});
     expect(changed.completionModel, 'complete-fast');
-    expect(changed.terminalDestination, changed.terminalIdentity);
   });
 
-  test('invalid role model and stale selected model destination protect the file', () async {
+  test('invalid role model and malformed host exclusions protect the file', () async {
     final notifier = container.read(aiConfigurationProvider.notifier);
     await notifier.save(enabled: true, profile: _profile());
     final file = File('${dir.path}/ai.json');
     final original = file.readAsBytesSync();
     await expectLater(
       notifier.save(enabled: true, profile: _profile(), inlineModel: 'bad model'),
-      throwsFormatException,
+      throwsA(isA<JsonFileError>().having((error) => error.kind, 'kind', JsonFileFailure.corrupt)),
     );
     expect(file.readAsBytesSync(), original);
     final invalid = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-    invalid['inlineModel'] = 'different-inline';
+    invalid['inlineExcludedHosts'] = ['bad host id'];
     file.writeAsStringSync(jsonEncode(invalid));
     container.invalidate(aiConfigurationProvider);
     expect(container.read(aiConfigurationProvider).loadFailed, isTrue);
@@ -434,17 +483,26 @@ void main() {
     expect(failure, isNull);
   }
 
-  Future<_UiCredentials> showSettings(WidgetTester tester, {bool configured = true}) async {
+  Future<_UiCredentials> showSettings(
+    WidgetTester tester, {
+    bool configured = true,
+    bool enabled = false,
+    List<AiTerminalHost> hosts = const [],
+  }) async {
     final credentials = _UiCredentials();
     final profile = _profile();
     if (configured) {
       File('${dir.path}/ai.json').writeAsStringSync(
-        jsonEncode({'schemaVersion': 1, 'revision': 1, 'enabled': false, 'profile': profile.toJson()}),
+        jsonEncode({'schemaVersion': 2, 'revision': 1, 'enabled': enabled, 'profile': profile.toJson()}),
       );
       credentials.values[profile.identity] = const Secret('synthetic-existing-key');
     }
     final scope = ProviderContainer(
-      overrides: [dataDirProvider.overrideWithValue(dir.path), aiCredentialsProvider.overrideWithValue(credentials)],
+      overrides: [
+        dataDirProvider.overrideWithValue(dir.path),
+        aiCredentialsProvider.overrideWithValue(credentials),
+        aiTerminalHostsProvider.overrideWithValue(hosts),
+      ],
     );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -489,6 +547,94 @@ void main() {
     expect(tester.widget<TextFormField>(find.byKey(const ValueKey('ai-config-max-output'))).controller!.text, '4096');
     expect(find.byKey(const ValueKey('ai-config-advanced')), findsNothing);
     expect(find.text('Provide model tools'), findsNothing);
+    expect(tester.widget<AppToggleRow>(find.byKey(const ValueKey('ai-config-inline'))).value, isTrue);
+    expect(tester.widget<AppToggleRow>(find.byKey(const ValueKey('ai-config-completion'))).value, isTrue);
+    expect(find.byKey(const ValueKey('ai-config-inline-advanced')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-config-completion-advanced')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-config-posix')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-config-history')), findsNothing);
+  });
+
+  testWidgets('feature host filters start collapsed and exclude hosts independently', (tester) async {
+    const web = HostId('web'), db = HostId('db');
+    await showSettings(
+      tester,
+      enabled: true,
+      hosts: [const AiTerminalHost(web, 'Web', 'route-web'), const AiTerminalHost(db, 'DB', 'route-db')],
+    );
+    final inlineAdvanced = find.byKey(const ValueKey('ai-config-inline-advanced'));
+    final completionAdvanced = find.byKey(const ValueKey('ai-config-completion-advanced'));
+    final inlineWeb = find.byKey(const ValueKey('ai-config-inline-host-web'));
+    final inlineDb = find.byKey(const ValueKey('ai-config-inline-host-db'));
+    final completionWeb = find.byKey(const ValueKey('ai-config-completion-host-web'));
+    final completionDb = find.byKey(const ValueKey('ai-config-completion-host-db'));
+    expect(inlineWeb, findsNothing);
+    expect(completionWeb, findsNothing);
+    await tester.ensureVisible(inlineAdvanced);
+    await tester.tap(inlineAdvanced);
+    await tester.pumpAndSettle();
+    expect(tester.widget<AppToggleRow>(inlineWeb).value, isTrue);
+    expect(tester.widget<AppToggleRow>(inlineDb).value, isTrue);
+    tester.widget<AppToggleRow>(inlineWeb).onChanged!(false);
+    await tester.pump();
+    await tester.ensureVisible(completionAdvanced);
+    await tester.tap(completionAdvanced);
+    await tester.pumpAndSettle();
+    expect(tester.widget<AppToggleRow>(completionWeb).value, isTrue);
+    expect(tester.widget<AppToggleRow>(completionDb).value, isTrue);
+    tester.widget<AppToggleRow>(completionDb).onChanged!(false);
+    await tester.pump();
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-inline-model'))).onChanged!('inline-new');
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-completion-model'))).onChanged!('completion-new');
+    await tester.pump();
+    expect(tester.widget<AppToggleRow>(find.byKey(const ValueKey('ai-config-inline'))).value, isTrue);
+    expect(tester.widget<AppToggleRow>(find.byKey(const ValueKey('ai-config-completion'))).value, isTrue);
+    expect(tester.widget<AppToggleRow>(inlineWeb).value, isFalse);
+    expect(tester.widget<AppToggleRow>(completionDb).value, isFalse);
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-endpoint')));
+    await tester.enterText(find.byKey(const ValueKey('ai-config-endpoint')), 'https://different.example/v1');
+    await tester.pumpAndSettle();
+    expect(tester.widget<AppToggleRow>(inlineWeb).value, isFalse);
+    expect(tester.widget<AppToggleRow>(completionDb).value, isFalse);
+    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
+    await tester.tap(find.byKey(const ValueKey('ai-config-save')));
+    await tester.pump();
+    await drainConfiguration(tester, scope);
+    await tester.pumpAndSettle();
+    final state = scope.read(aiConfigurationProvider);
+    expect(state.inlineExcludedHosts, {web});
+    expect(state.completionExcludedHosts, {db});
+    expect(state.inlineEnabled, isTrue);
+    expect(state.completionEnabled, isTrue);
+    tester.widget<AppToggleRow>(find.byKey(const ValueKey('ai-config-inline'))).onChanged!(false);
+    await tester.pump();
+    expect(inlineAdvanced, findsNothing);
+    expect(completionAdvanced, findsOneWidget);
+  });
+
+  testWidgets('switching global AI off and on preserves independently disabled features', (tester) async {
+    await showSettings(tester, enabled: true);
+    final inline = find.byKey(const ValueKey('ai-config-inline'));
+    final completion = find.byKey(const ValueKey('ai-config-completion'));
+    tester.widget<AppToggleRow>(inline).onChanged!(false);
+    tester.widget<AppToggleRow>(completion).onChanged!(false);
+    await tester.pump();
+    final enabled = tester.widget<AppToggleRow>(find.byType(AppToggleRow).first);
+    enabled.onChanged!(false);
+    await tester.pump();
+    tester.widget<AppToggleRow>(find.byType(AppToggleRow).first).onChanged!(true);
+    await tester.pump();
+    expect(tester.widget<AppToggleRow>(inline).value, isFalse);
+    expect(tester.widget<AppToggleRow>(completion).value, isFalse);
+    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
+    await tester.tap(find.byKey(const ValueKey('ai-config-save')));
+    await tester.pump();
+    await drainConfiguration(tester, scope);
+    await tester.pumpAndSettle();
+    expect(scope.read(aiConfigurationProvider).inlineEnabled, isFalse);
+    expect(scope.read(aiConfigurationProvider).completionEnabled, isFalse);
   });
 
   testWidgets('model changes retain a typed key and save independent model selections', (tester) async {

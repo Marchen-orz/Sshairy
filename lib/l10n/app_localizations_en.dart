@@ -2386,7 +2386,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentWelcome => 'What would you like to work on?';
 
   @override
-  String get aiAgentWelcomeHint => 'Describe a task. Choose a server when you need remote tools.';
+  String get aiAgentWelcomeHint => 'Describe a task. Airy uses the focused server or asks which one you mean.';
 
   @override
   String get aiAgentSetupTitle => 'Your SSH assistant';
@@ -2469,7 +2469,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigInlineHint =>
-      'Send only when you click the terminal AI button or press its shortcut. Review the command before filling it in.';
+      'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment and recent session commands. Review before filling in.';
 
   @override
   String get aiConfigCompletion => 'AI suggestions';
@@ -2493,7 +2493,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigCompletionHint =>
-      'Automatically sends eligible drafts after a pause. History is separate: up to 8 relevant commands from this connection only.';
+      'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands from this session.';
 
   @override
   String get aiAgentErrorHostTrust =>
@@ -2619,4 +2619,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigApiKeyOptional => 'API key (optional)';
+
+  @override
+  String get aiConfigFeatureAdvanced => 'Advanced';
+
+  @override
+  String get aiConfigAvailableHosts => 'Available hosts';
+
+  @override
+  String get aiConfigFeatureNoHosts => 'New SSH hosts will be enabled automatically.';
+
+  @override
+  String get aiAgentAutoTarget => 'Auto';
 }
