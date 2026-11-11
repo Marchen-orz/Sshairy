@@ -50,7 +50,9 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | 文件 watcher / 临时副本 | ExternalEditManager | 用户结束编辑或退出处理完成；失败稿保留 |
 | Auth/host-key challenge | ConnectionAttempt | 完成、取消、超时或 generation 过期时失效 |
 | Agent stream / tool jobs | AgentRuntime | 单 turn 终态后清理；长 job 的所有者/期限/输出有界，Stop 不与独立轻量请求串错 |
-| 行内生成 / AI 补全（M4） | 当前会话输入控制器持短请求 token，共用 AI 网络调度 | 草稿/焦点/代次/上下文/授权/目的地变化取消，迟到结果不回填；关闭总 AI/退出全部收束，本地 loading 不写远端 |
+| Agent 额外主机确认与会话许可 | AgentRuntime 持按 conversationId/HostId 及模型目的地/路由/安全修订绑定的内存许可；应用级 presenter 显示弹窗 | 确认前不得 prepare/探测/执行；拒绝/Stop/过期回调不能授予许可；删会话/退出清理，路由或授权变化撤销对应许可，历史恢复不复活 |
+| 行内生成（M4） | TerminalSession 的行内输入控制器持请求 token 与最近一次内存结果，共用 AI 网络调度 | 关闭弹窗/切换焦点仅隐藏；同输入与上下文重开复用，输入变化立即取消且只待手动重发；代次/上下文/授权/目的地变化、手动停止、关闭会话/AI 或退出取消并失效结果，边界见 AI §4.2 |
+| AI 补全（M4） | 当前 pane 输入控制器持短请求 token，共用 AI 网络调度 | 草稿/焦点/代次/上下文/授权/目的地变化取消，迟到结果不回填；关闭总 AI/退出全部收束，本地 loading 不写远端 |
 
 关闭标签只关闭其中 shell；传输、隧道可继续持有 transport。断开主机是另一动作，需列出受影响任务。一个 acquire 等待者取消不得撤销其他等待者的共享拨号。
 

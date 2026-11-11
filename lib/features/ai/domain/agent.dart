@@ -33,8 +33,14 @@ class AgentScope {
     this.revision = 0,
     this.discoverHosts = false,
     this.permissionMode = AgentPermissionMode.confirm,
+    this.conversationId,
+    this.defaultHost,
+    this.defaultHostRoute,
   }) : hosts = Set.unmodifiable(hosts);
   final Set<HostId> hosts;
+  final String? conversationId;
+  final HostId? defaultHost;
+  final String? defaultHostRoute;
   final int revision;
   final bool discoverHosts;
   final AgentPermissionMode permissionMode;

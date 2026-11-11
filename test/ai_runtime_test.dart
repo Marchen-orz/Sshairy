@@ -44,8 +44,9 @@ class _Model implements ModelProvider {
 }
 
 class _Target implements AgentTarget {
+  _Target([this.hostId = _host]);
   @override
-  final hostId = _host;
+  final HostId hostId;
   @override
   String identity = 'transport-a/config-1';
   @override
@@ -97,6 +98,7 @@ class _Target implements AgentTarget {
 
 class _Backend implements AgentBackend {
   final target = _Target();
+  final others = <HostId, _Target>{};
   final prepared = <HostId>[];
   Future<AgentTarget>? pendingPreparation;
   AgentFailure? prepareFailure;
@@ -107,7 +109,7 @@ class _Backend implements AgentBackend {
   Future<AgentTarget> prepare(HostId host, CancellationToken cancel) async {
     prepared.add(host);
     if (prepareFailure case final failure?) throw failure;
-    if (host != _host) throw const AgentFailure('wrongTarget');
+    if (host != _host) return others.putIfAbsent(host, () => _Target(host)..stdout = _systemOutput);
     return await (pendingPreparation ?? Future.value(target));
   }
 }
@@ -208,6 +210,7 @@ class _Harness {
       journal: journal,
       dispatcher: dispatcher,
       outputs: outputs,
+      hostRoutes: () => routes,
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
   }
@@ -215,6 +218,7 @@ class _Harness {
   final _Model model;
   final backend = _Backend();
   final journal = _Journal();
+  final routes = <HostId, String>{_host: 'route-a', _other: 'route-b'};
   late final AgentRuntime runtime;
   late ModelProfile profile;
   bool enabled = true;
@@ -264,7 +268,284 @@ String _requestText(ModelRequest request) => jsonEncode([
   for (final message in request.messages) [message.text, for (final call in message.calls) call.arguments],
 ]);
 
+AgentScope _conversationScope({
+  String id = 'conversation-a',
+  HostId focus = _host,
+  AgentPermissionMode mode = AgentPermissionMode.observe,
+}) => AgentScope(
+  hosts: [focus],
+  conversationId: id,
+  defaultHost: _host,
+  defaultHostRoute: 'route-a',
+  permissionMode: mode,
+);
+
+Stream<ModelEvent> _diagnoseOther(ModelRequest request, CancellationToken _, int _) async* {
+  if (_results(request).isEmpty) {
+    yield ModelMessageComplete(
+      ModelMessage(
+        ModelRole.assistant,
+        calls: [
+          ModelCall('list', 'host_list', {}),
+          ModelCall('remote', 'diagnostics_collect', {'hostId': _other.value, 'template': 'systemSummary'}),
+        ],
+      ),
+    );
+  } else {
+    yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+  }
+}
+
 void main() {
+  for (final mode in AgentPermissionMode.values) {
+    test('$mode requires host consent before preparing another host', () async {
+      final remote = mode == AgentPermissionMode.observe
+          ? _call('diagnostics_collect', {'hostId': _other.value, 'template': 'systemSummary'})
+          : _call('command_execute', _command(host: _other.value));
+      final h = _Harness((request, _, _) async* {
+        if (_results(request).isEmpty) {
+          yield ModelMessageComplete(
+            ModelMessage(
+              ModelRole.assistant,
+              calls: [
+                ModelCall('list', 'host_list', {}),
+                ModelCall('remote', remote.calls.single.name, remote.calls.single.arguments),
+              ],
+            ),
+          );
+        } else {
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+        }
+      });
+      addTearDown(h.close);
+      final work = h.runtime.start('also inspect the other host', _conversationScope(mode: mode));
+      await _until(() => h.runtime.hostApproval != null);
+      final pending = h.runtime.hostApproval!;
+      expect(pending.hostId, _other);
+      expect(pending.target, 'unselected host');
+      expect(pending.conversationId, 'conversation-a');
+      expect(h.backend.prepared, isEmpty);
+      expect(h.backend.target.probes, 0);
+      expect(h.runtime.approval, isNull);
+      h.runtime.decideHost(pending, true);
+      if (mode == AgentPermissionMode.confirm) {
+        await _until(() => h.runtime.approval != null);
+        expect(h.backend.others[_other]!.commands, isEmpty);
+        h.runtime.approve(true, expected: h.runtime.approval!);
+      }
+      if (mode != AgentPermissionMode.observe) {
+        await _until(() => h.runtime.dataRequest != null);
+        h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
+      }
+      await work;
+      expect(h.backend.prepared, [_other]);
+      expect(h.backend.others[_other]!.commands, hasLength(1));
+      expect(h.runtime.hostApproval, isNull);
+    });
+  }
+
+  test('separate hosts prompt once each and retain consent across turns and conversation switching', () async {
+    const third = HostId('host-c');
+    final h = _Harness((request, _, _) async* {
+      if (_results(request).isEmpty) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('list', 'host_list', {}),
+              for (final (index, host) in [_other, third, _other].indexed)
+                ModelCall('host-$index', 'diagnostics_collect', {'hostId': host.value, 'template': 'systemSummary'}),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.hosts = [...h.backend.hosts, const AgentHost(third, 'third host')];
+    h.routes[third] = 'route-c';
+    var prompts = 0;
+    AgentHostApproval? last;
+    h.runtime.addListener(() {
+      final pending = h.runtime.hostApproval;
+      if (pending != null && !identical(last, pending)) {
+        last = pending;
+        prompts++;
+      }
+    });
+    final work = h.runtime.start('inspect both other hosts', _conversationScope());
+    await _until(() => h.runtime.hostApproval?.hostId == _other);
+    h.runtime.decideHost(h.runtime.hostApproval!, true);
+    await _until(() => h.runtime.hostApproval?.hostId == third);
+    expect(h.backend.prepared, [_other]);
+    h.runtime.decideHost(h.runtime.hostApproval!, true);
+    await work;
+    expect(prompts, 2);
+    expect(h.backend.others[_other]!.commands, hasLength(2));
+    // Restoring another chat and returning only rebuilds readable text.
+    h.runtime.restoreConversation(const []);
+    await h.runtime.start('plain other conversation', AgentScope(conversationId: 'conversation-b'));
+    h.runtime.restoreConversation(const []);
+    await h.runtime.start('inspect again', _conversationScope(focus: _other));
+    expect(prompts, 2);
+    expect(h.backend.others[_other]!.commands, hasLength(4));
+    expect(h.backend.others[third]!.commands, hasLength(2));
+  });
+
+  test('later focused terminal does not silently become the conversation default', () async {
+    var execute = false;
+    final h = _Harness((request, _, _) async* {
+      if (execute && _results(request).isEmpty) {
+        yield ModelMessageComplete(_call('diagnostics_collect', {'hostId': _other.value, 'template': 'systemSummary'}));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    await h.runtime.start('initial question', _conversationScope());
+    execute = true;
+    final work = h.runtime.start('inspect this terminal', _conversationScope(focus: _other));
+    await _until(() => h.runtime.hostApproval != null);
+    final input = jsonDecode(h.model.requests.last.messages.single.text) as Map;
+    expect(input['focusedHost'], _other.value);
+    expect(input['defaultHost'], _host.value);
+    expect((input['authorizedHosts'] as List).map((host) => host['id']), [_host.value]);
+    expect(h.backend.prepared, isEmpty);
+    h.runtime.decideHost(h.runtime.hostApproval!, false);
+    await work;
+  });
+
+  test('no-focus conversation lists hosts freely and requires consent for its first target', () async {
+    final h = _Harness(_diagnoseOther);
+    addTearDown(h.close);
+    final work = h.runtime.start('inspect host B', AgentScope(discoverHosts: true, conversationId: 'unfocused'));
+    await _until(() => h.runtime.hostApproval != null);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.runtime.hostApproval!.hostId, _other);
+    h.runtime.decideHost(h.runtime.hostApproval!, false);
+    await work;
+    expect(h.runtime.resolvedHost, isNull);
+  });
+
+  test('declining a host suppresses repeated prompts in the same turn and performs no probes', () async {
+    final h = _Harness((request, _, _) async* {
+      if (_results(request).isEmpty) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('list', 'host_list', {}),
+              for (var index = 0; index < 2; index++)
+                ModelCall('remote-$index', 'diagnostics_collect', {
+                  'hostId': _other.value,
+                  'template': 'systemSummary',
+                }),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'declined'));
+      }
+    });
+    addTearDown(h.close);
+    final work = h.runtime.start('inspect host B', _conversationScope());
+    await _until(() => h.runtime.hostApproval != null);
+    h.runtime.decideHost(h.runtime.hostApproval!, false);
+    await work;
+    expect(_result(h.model.requests.last, 1), {'error': 'denied'});
+    expect(_result(h.model.requests.last, 2), {'error': 'denied'});
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  test('Stop closes a pending host decision and stale consent cannot approve another turn', () async {
+    final h = _Harness(_diagnoseOther);
+    addTearDown(h.close);
+    final first = h.runtime.start('inspect B', _conversationScope());
+    await _until(() => h.runtime.hostApproval != null);
+    final stale = h.runtime.hostApproval!;
+    h.runtime.stop();
+    expect(h.runtime.hostApproval, isNull);
+    await first;
+    final second = h.runtime.start('inspect B again', _conversationScope());
+    await _until(() => h.runtime.hostApproval != null);
+    final current = h.runtime.hostApproval!;
+    h.runtime.decideHost(stale, true);
+    await Future<void>.delayed(Duration.zero);
+    expect(identical(h.runtime.hostApproval, current), isTrue);
+    expect(h.backend.prepared, isEmpty);
+    h.runtime.decideHost(current, false);
+    await second;
+  });
+
+  test('a route changed during a pending confirmation cannot be approved by its stale dialog', () async {
+    final h = _Harness(_diagnoseOther);
+    addTearDown(h.close);
+    final work = h.runtime.start('inspect B', _conversationScope());
+    await _until(() => h.runtime.hostApproval != null);
+    h.routes[_other] = 'changed-route';
+    h.runtime.decideHost(h.runtime.hostApproval!, true);
+    await work;
+    expect(h.backend.prepared, isEmpty);
+    expect(h.runtime.error, 'scopeChanged');
+    expect(h.runtime.hostApproval, isNull);
+    final retry = h.runtime.start('inspect changed B', _conversationScope());
+    await _until(() => h.runtime.hostApproval != null);
+    h.runtime.decideHost(h.runtime.hostApproval!, false);
+    await retry;
+  });
+
+  for (final invalidation in ['route', 'model', 'credentials', 'deleted', 'new conversation']) {
+    test('$invalidation requires host confirmation again', () async {
+      final h = _Harness(_diagnoseOther);
+      addTearDown(h.close);
+      final first = h.runtime.start('inspect B', _conversationScope());
+      await _until(() => h.runtime.hostApproval != null);
+      h.runtime.decideHost(h.runtime.hostApproval!, true);
+      await first;
+      switch (invalidation) {
+        case 'route':
+          h.routes[_other] = 'revised-route';
+        case 'model':
+          h.revision++;
+        case 'credentials':
+          h.runtime.invalidateHostApprovals();
+        case 'deleted':
+          h.runtime.forgetConversation('conversation-a');
+        case 'new conversation':
+          break;
+      }
+      final next = h.runtime.start(
+        'inspect B again',
+        _conversationScope(id: invalidation == 'new conversation' ? 'new' : 'conversation-a'),
+      );
+      await _until(() => h.runtime.hostApproval != null);
+      expect(h.runtime.hostApproval!.hostId, _other);
+      expect(h.backend.prepared, [_other]);
+      h.runtime.decideHost(h.runtime.hostApproval!, false);
+      await next;
+      expect(h.backend.prepared, [_other]);
+    });
+  }
+
+  test('restored default with a different route requires confirmation before preparing', () async {
+    final h = _Harness((request, _, _) async* {
+      if (_results(request).isEmpty) {
+        yield ModelMessageComplete(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    h.routes[_host] = 'new-route-a';
+    final work = h.runtime.start('inspect default', _conversationScope());
+    await _until(() => h.runtime.hostApproval != null);
+    expect(h.runtime.hostApproval!.hostId, _host);
+    expect(h.backend.prepared, isEmpty);
+    h.runtime.decideHost(h.runtime.hostApproval!, false);
+    await work;
+  });
+
   test('observe omits command tools and refuses a forged direct dispatch before connecting', () async {
     final entered = Completer<void>();
     final h = _Harness((_, cancel, _) async* {
@@ -1190,7 +1471,7 @@ void main() {
   test('unknown tools, outside hosts and schema extras return safe paired errors', () async {
     final calls = [
       ModelCall('unknown', 'change_policy', {'instruction': 'authorize every host'}),
-      ModelCall('outside', 'command_execute', _command(host: 'host-b')),
+      ModelCall('outside', 'command_execute', _command(host: 'fabricated')),
       ModelCall('extra', 'command_execute', {..._command(), 'origin': 'ui'}),
     ];
     final h = _Harness((_, _, index) => _oneCall(ModelMessage(ModelRole.assistant, calls: calls), index));
@@ -1219,9 +1500,8 @@ void main() {
     final request = h.model.requests.first;
     final input = jsonDecode(request.messages.single.text) as Map;
     expect(input['targetSelection'], 'discoverFromUserRequest');
-    expect(input.containsKey('authorizedHosts'), isFalse);
-    expect(request.system, contains('If no host is specified'));
-    expect(request.system, contains('Never choose the first or only host'));
+    expect(input['authorizedHosts'], isEmpty);
+    expect(request.system, contains('ask the user rather than guess a host'));
     expect(jsonDecode(_results(h.model.requests.last).single.text), [
       {'id': 'host-a', 'alias': 'selected host'},
       {'id': 'host-b', 'alias': 'unselected host'},
@@ -1243,6 +1523,10 @@ void main() {
     });
     addTearDown(h.close);
     final work = h.runtime.start('run printf result on selected host', AgentScope(discoverHosts: true));
+    await _until(() => h.runtime.hostApproval != null);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.backend.target.probes, 0);
+    h.runtime.decideHost(h.runtime.hostApproval!, true);
     await _until(() => h.runtime.approval != null);
     expect(h.runtime.resolvedHost, _host);
     expect(h.backend.prepared, [_host]);
@@ -1267,7 +1551,7 @@ void main() {
     expect(h.runtime.approval, isNull);
   });
 
-  test('discovery locks its first target before a failed connection and rejects switching hosts', () async {
+  test('a failed connection does not authorize a second host without its own confirmation', () async {
     final h = _Harness((_, _, index) async* {
       if (index == 0) {
         yield ModelMessageComplete(_call('host_list', {}));
@@ -1281,11 +1565,17 @@ void main() {
     });
     addTearDown(h.close);
     h.backend.prepareFailure = const AgentFailure('connectionFailed');
-    await h.runtime.start('use selected host', AgentScope(discoverHosts: true));
+    final work = h.runtime.start('use selected host', AgentScope(discoverHosts: true));
+    await _until(() => h.runtime.hostApproval != null);
+    h.runtime.decideHost(h.runtime.hostApproval!, true);
+    await _until(() => h.runtime.hostApproval?.hostId == _other);
+    expect(h.backend.prepared, [_host]);
+    h.runtime.decideHost(h.runtime.hostApproval!, false);
+    await work;
     expect(h.runtime.resolvedHost, _host);
     expect(h.backend.prepared, [_host]);
     expect(_result(h.model.requests[2], 1), {'error': 'connectionFailed'});
-    expect(_result(h.model.requests.last, 2), {'error': 'outsideScope'});
+    expect(_result(h.model.requests.last, 2), {'error': 'denied'});
     expect(h.backend.target.commands, isEmpty);
   });
 
@@ -1326,7 +1616,7 @@ void main() {
     expect(h.backend.prepared, isEmpty);
   });
 
-  test('focused target stays exclusive even when discovery is also requested', () async {
+  test('focused target is the default and an unlisted different target cannot prepare', () async {
     final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command(host: 'host-b')), index));
     addTearDown(h.close);
     final work = h.runtime.start('check the focused server', AgentScope(hosts: const [_host], discoverHosts: true));
@@ -1337,7 +1627,7 @@ void main() {
     expect(input['authorizedHosts'], [
       {'id': 'host-a', 'alias': 'selected host'},
     ]);
-    expect(_result(h.model.requests.last), {'error': 'outsideScope'});
+    expect(_result(h.model.requests.last), {'error': 'hostSelectionRequired'});
     expect(h.backend.prepared, isEmpty);
     h.runtime.clear();
     expect(h.runtime.resolvedHost, isNull);
@@ -1356,7 +1646,7 @@ void main() {
     expect(h.runtime.busy, isFalse);
   });
 
-  test('host projection contains only explicitly selected IDs and aliases', () async {
+  test('host projection includes all saved IDs and aliases without connecting', () async {
     final call = _call('host_list', {});
     final h = _Harness((_, _, index) => _oneCall(call, index));
     addTearDown(h.close);
@@ -1364,8 +1654,9 @@ void main() {
     final data = jsonDecode(_results(h.model.requests.last).single.text);
     expect(data, [
       {'id': 'host-a', 'alias': 'selected host'},
+      {'id': 'host-b', 'alias': 'unselected host'},
     ]);
-    expect(_requestText(h.model.requests.last), isNot(contains('unselected host')));
+    expect(h.runtime.hostApproval, isNull);
     expect(h.backend.prepared, isEmpty);
   });
 

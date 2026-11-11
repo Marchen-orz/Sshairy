@@ -12,11 +12,11 @@
 
 | 入口 | 当前实现 | 用户如何控制 |
 |---|---|---|
-| 侧栏 Airy | 单一 Agent，自行决定直接回答、固定诊断或提出命令；支持同一任务内多步工具调用及本地会话切换 | 发送时冻结聚焦 SSH 主机；无聚焦时先查主机、按用户对话明确目标或追问；权限默认确认，可选观察/自动，输出另选发送，历史续传先确认 |
+| 侧栏 Airy | 单一 Agent，自行决定直接回答、固定诊断或提出命令；支持同一任务内多步工具调用及本地会话切换 | 以聚焦 SSH 主机为默认目标，列表可查全部已保存主机；首次访问其他主机逐台弹窗确认并按本会话记忆；权限默认确认，可选观察/自动，输出另选发送 |
 | 行内命令生成 | 本地识别意图、显式打开本地输入层、生成/澄清/转 Agent、可编辑预览 | 配置并启用 AI 后默认开启，可独立关闭或在高级设置排除主机；点击/快捷键才发模型，接受只填文字，不发 Enter |
 | AI 提示补全 | SSH 中输入足够明确时延迟请求；最多一个可纯追加的候选，置于候选框前列 | 配置并启用 AI 后默认开启，可独立关闭或排除主机；包含有限同会话历史，迟到候选不抢选中对象，Tab/点击只追加后缀 |
 
-侧栏没有“解释/诊断/执行”模式选择，也没有 Agent 工具开关。有效 Agent profile 始终启用工具协议，旧配置中的 `tools: false` 也会归一；聚焦与发现模式均提供受审工具目录，工具仍经本地范围校验与重验，命令执行由本 turn 冻结的权限模式控制：观察拒绝任意 shell、确认逐次批准、自动免逐次批准。目录不证明服务实际支持工具，不支持时请求明确失败。顶部标题与工具按钮之间以淡化文字只读显示目标，不另占一行，不再下拉选主机；输入区有模型/估算上下文占用/权限模式和右下的小圆角方形发送按钮，历史在标题下原位展开。当前侧栏每 turn 仍只操作一台 SSH 主机，候选主机快照不代表多机工作流已完成。
+侧栏没有“解释/诊断/执行”模式选择，也没有 Agent 工具开关。有效 Agent profile 始终启用工具协议，旧配置中的 `tools: false` 也会归一；聚焦与发现模式均提供受审工具目录，工具仍经本地范围校验与重验，命令执行由本 turn 冻结的权限模式控制：观察拒绝任意 shell、确认逐次批准、自动免逐次批准。目录不证明服务实际支持工具，不支持时请求明确失败。顶部标题与工具按钮之间以淡化文字只读显示目标，不另占一行，不再下拉选主机；输入区有模型/估算上下文占用/权限模式和右下的小圆角方形发送按钮，历史在标题下原位展开。同一 turn/会话可跨已保存主机操作，但额外主机的会话许可独立于三种命令权限模式；尚不代表多机证据比较与完整业务工具已完成。
 
 权限选择通过 [permission_mode.dart](../lib/features/ai/application/permission_mode.dart) 的窗口内 typed 用例更新，忙时拒绝改变；发送时复制到 AgentScope，runtime 在工具目录、authorize 和执行入口判断，模式不是模型可改的参数。历史不会恢复旧权限。底部圆环读取 runtime 的 contextUsedTokens/contextWindow，按现有字节预算启发式估算 token，包含 system、工具、上下文与当次回复；整理后更新、清空/恢复时归零，tooltip 明示估算，不代表供应商计费 usage。
 
@@ -123,7 +123,7 @@ Agent 不要求向量数据库、MCP、多 Agent、复杂编排框架或长记�
 
 这份记忆只保留用户/助手文本、执行状态和已经允许发送的输出投影。执行卡中的 command、target、cwd、raw 双流、批准对象和输出 handle 不进存储；但用户/助手文字仍可能自行包含命令、地址或敏感业务内容。常见 Bearer、秘密赋值和私钥块过滤只是辅助措施，既不扫描凭据库，也不能识别任意未知秘密。未发送草稿只存在内存，不能把“关闭后保留”理解为“重启后恢复”。
 
-继续前比较模型目的地、HostId 与完整有效路由/当前安全修订的 SHA256 指纹，并明确展示将重发有限历史。当前安全修订是进程内计数，指纹还含本次运行 nonce；因此重启后的主机会话可查看，再发送需新建会话。无主机文字会话在目的地相同并确认后可继续；无聚焦的发现模式不自动携带已绑定其他主机的历史。本次会话在首次实际确定主机后，绑定该主机及发送开始时的路由指纹。指纹是数据发送绑定，不是可授予命令执行的凭证，新 turn 仍须经过当前信任与审批。
+继续前仍比较模型目的地，主机切换不要求新建会话。runtime 按 conversationId 维护仅内存的逐主机许可：初始聚焦主机作为默认范围，其他主机在拨号前弹窗确认；同会话许可绑定当前模型目的地、有效路由与安全修订，未变时跨 turn 复用。路由/信任/凭据变化失效后重新确认，删除/新建/重启不恢复旧许可。许可只允许访问主机，不能代替具体命令审批、HostTrustService 或输出发送选择。
 
 代码中的历史上限与续传上限不同：磁盘保留多个有界会话，模型只取最近最多 32 项/16 KiB 数据块，超出范围标记截断。存储按完整旧 turn 裁剪；最新 turn 单独超限会报保存失败，保留内存而不截短文字。读取/保存失败可重试，坏档/未来版本不当空库覆盖，删除会话不保留历史备份。正式容量、保留期限及恢复契约集中在 [AI §4.1/9/10](AI.md)。
 
@@ -155,9 +155,9 @@ flowchart TD
 |---|---|
 | [agent.dart](../lib/features/ai/domain/agent.dart) | scope、phase、AgentBackend/AgentTarget 窄端口与 operation 等领域对象 |
 | [model.dart](../lib/features/ai/domain/model.dart) | 模型请求、消息、事件与纯接口 |
-| [runtime.dart](../lib/features/ai/application/runtime.dart) | start/startConversation、候选快照、首目标锁定与 resolvedHost、模型循环、授权、执行、发送选择、Stop |
+| [runtime.dart](../lib/features/ai/application/runtime.dart) | start/startConversation、候选快照、逐主机会话许可与 resolvedHost、模型循环、授权、执行、发送选择、Stop |
 | [target.dart](../lib/features/ai/application/target.dart) | app 投影当前聚焦 SSH 主机，UI 在发送时冻结目标，不直接读取 workspace 内部对象 |
-| [conversations.dart](../lib/features/ai/application/conversations.dart) | 可读会话、草稿切换、安全历史投影、继续前的目的地与路由重验 |
+| [conversations.dart](../lib/features/ai/application/conversations.dart) | 可读会话、草稿切换、安全历史投影、继续前的模型目的地校验与会话许可身份 |
 | [context.dart](../lib/features/ai/application/context.dart) | 请求前预算、完整工具组、本地摘录与 opaque 协议重建 |
 | [model_selection.dart](../lib/features/ai/application/model_selection.dart) | 默认模型与窗口当前模型的分离，Agent 工具协议归一 |
 | [capability.dart](../lib/features/capabilities/domain/capability.dart) | Capability、RequestContext、AgentAuthority |
@@ -175,7 +175,7 @@ flowchart TD
 
 | 模型工具名 → 内部 ID | 参数 | 实际结果与限制 |
 |---|---|---|
-| `host_list` → `agent.hosts` | 空对象 `{}` | 返回发送时冻结的候选 ID/别名；发现模式为已保存主机快照，聚焦模式仅当前主机；不返回账号、地址和认证配置 |
+| `host_list` → `agent.hosts` | 空对象 `{}` | 返回发送时全部已保存主机的候选 ID/别名，有聚焦主机时也不缩减列表；可见不等于可访问，其他主机须先确认；不返回账号、地址和认证配置 |
 | `diagnostics_collect` → `agent.diagnose` | `hostId`、`template` | template 只能是 `systemSummary` 或 `storageCapacity`；固定采集/纯解析后返回结构化投影与状态 |
 | `command_execute` → `agent.execute` | `hostId`、绝对 `cwd`、`command`、可选 `timeoutSeconds` | 默认 60 秒，允许 1–300 秒；按用户权限模式执行，返回退出状态/截断等，输出文本另获发送权 |
 | `output_read` → `agent.output` | `hostId`、`handle` | 只返回此前获准共享的文本；不读取任意文件，不扩大到原始未共享输出，也不重新执行命令 |
@@ -200,7 +200,7 @@ flowchart TD
 
 以下路径用于理解循环，不代表模型一定选择相同顺序：
 
-1. 用户在聚焦 host-A 的工作区输入目标并发送。应用固定 profile、该主机的 scope、配置修订、turn owner 和期限。
+1. 用户在聚焦 host-A 的工作区输入目标并发送。应用固定 profile、全部主机候选快照、默认主机、配置修订、conversationId、turn owner 和期限。
 2. 模型获得目标、范围内主机的有限信息和当前四项工具定义。
 3. 模型提出 `diagnostics_collect`，参数为 host-A 与 `storageCapacity`。
 4. 应用等完整消息结束，校验 schema 和范围，经既有信任/连接机制准备目标，执行固定采集。
@@ -209,9 +209,9 @@ flowchart TD
 7. 用户批准后，应用再次核对连接和修订，先持久化 intent，再启动该租约上的独立 exec。
 8. stdout/stderr 进入本地存储。执行完成后，用户可编辑发送文本，或选择保留本地。
 9. 只有获准的投影进入下次模型请求。模型据此回答或继续提出工具；拒绝发送时只收到输出被保留的状态。
-10. 模型给出最终回答，或系统因预算、Stop、错误、目标变化而结束。
+10. 模型给出最终回答，或系统因预算、Stop、错误而结束。任务需要 host-B 时可继续，但在准备 host-B 前等待本会话首次访问确认；确认后仍按权限模式处理该主机上的命令。
 
-没有聚焦 SSH 主机时，[AgentScope](../lib/features/ai/domain/agent.dart) 的 discoverHosts 标记启用发现模式。runtime 冻结发送时的已保存主机快照，模型须先用 host_list 获取 ID/别名，再依据用户明确提到的目标选择；没有指明或别名有歧义时应反问。提示词负责指导这项对话行为，代码负责快照范围、先列表后准备目标和首次有效 HostId 的锁定：锁定发生在拨号前，因此连接失败也不能换一台猜。resolvedHost 供只读 UI 和历史绑定使用。程序直接 start(goal, AgentScope()) 的默认空 scope 仍是纯文本调用，不能与 UI 的发现模式混淆；正式范围和容量规则见 AI §7.2。
+[AgentScope](../lib/features/ai/domain/agent.dart) 带 conversationId 与默认主机信息，runtime 冻结发送时全部已保存主机的快照。host_list 可查看完整 ID/别名；没有明确目标或别名有歧义时反问，不能按列表顺序猜测。主机确认不是 prompt 判断：代码在 backend.prepare 之前挂起新的额外目标，应用层弹窗返回确定性答复后才建立本会话许可，无论观察/确认/自动均不可跳过。没有初始聚焦主机的会话，对第一台实际目标也须确认。resolvedHost 表示当前工具目标供只读 UI 使用，不把整个对话锁到一台机器。程序直接 start(goal, AgentScope()) 的默认空 scope 仍是纯文本调用；正式范围和容量规则见 AI §7.2。
 
 如果主机密钥未知或需要交互认证，当前 AI backend 不自动回答挑战；用户先通过正常连接流程处理，再发起任务。
 
@@ -258,7 +258,7 @@ while 尚未停止且预算允许:
 | 工具暴露 | Capability 是否明确 `agentExposed`，是否属于安全管理能力 | 不能因为 UI 有功能就让 Agent 自动获得它 |
 | 参数 schema | 类型、必填、枚举、长度、范围、未知字段与整体复杂度 | 拒绝幻觉参数、伪造字段、巨大或非 JSON 输入 |
 | 调用来源 | RequestContext 是否由应用建立，authority 是否为当前 runtime | 模型不能自称 UI 或伪造授权对象 |
-| 主机范围 | 目标 HostId 是否在发送快照内、是否满足发现顺序及已锁定目标 | 模型不能添加候选或在拨号失败后换机猜测 |
+| 主机范围 | 目标 HostId 是否在发送快照内、是否满足发现顺序及本会话逐主机许可 | 模型不能添加候选、跳过额外主机确认或在拨号失败后换机猜测 |
 | 实际连接 | 取得哪个租约、transport、完整路由与安全修订 | 同 HostId 改地址/跳板或重连后不能沿用旧批准 |
 | 人工批准 | 用户是否批准这项精确 shell 动作 | 确定目标不等于批准所有命令 |
 | 执行前重验 | 参数、范围、配置、目标、取消与期限是否仍相符 | 防止等待审批期间发生变化 |
@@ -438,7 +438,8 @@ turn 的取消 token 传播到模型 HTTP、等待审批、等待发送选择、
 | 收起 Airy 侧栏 / Esc 关闭侧栏 | 只收起视图，任务继续，当前草稿保留 |
 | 切换历史会话 | 空闲时恢复可读投影/该会话草稿，不执行、不续传；忙时只可查看列表 |
 | Agent Stop | 取消本 turn；不串停用户独立的行内请求 |
-| 行内取消 / Esc | 取消本次行内生成；不停止侧栏 Agent |
+| 行内关闭 / 点外 / Esc | 只隐藏，原输入与上下文未变时重开复用请求或结果 |
+| 行内停止 / 输入变化 | 取消旧请求并拒绝迟到结果，等待下次手动生成；不停止侧栏 Agent |
 | 修改 AI 配置/Key 或关闭总 AI | 取消/失效受影响的三入口工作 |
 | 退出应用 | ShutdownCoordinator 先收束 Agent/轻量请求，再等待会话历史、配置/日志写入与连接资源；保存失败进入退出失败处理 |
 
@@ -578,7 +579,7 @@ flutter test --no-pub test/ai_authorization_test.dart test/ai_output_store_test.
 
 1. **确定产品动作。** 输入是一个明确 HostId 和有限服务标识，输出只需 active/sub/result 等固定字段；不默认发送整段日志、环境变量或进程参数。
 2. **先设计 typed 用例。** 定义输入、输出、unsupported、权限不足、取消与超时；固定采集与纯解析分开，保持 domain 纯 Dart。
-3. **确定真实权限。** 限于本次冻结并锁定的目标主机，经过 HostTrustService；明确哪些字段随已有授权发送，哪些需新预览。若模板新增字段或能力，应重新审阅授权。
+3. **确定真实权限。** 限于本轮冻结候选内且已获本会话访问许可的目标主机，经过 HostTrustService；明确哪些字段随已有授权发送，哪些需新预览。若模板新增字段或能力，应重新审阅授权。
 4. **定义 schema 与目标解析。** 拒绝未知字段；服务名不能不经专门处理直接拼 shell；绑定实际租约、完整路由和版本。
 5. **接入 dispatcher。** 复用来源、scope、取消、期限与执行前重验；工具只有完成这些契约后才显式开放。
 6. **限制结果和生命周期。** 大小上限、缺字段、截断、退出状态如实表达；只释放自有资源；失败不静默改成重启服务。

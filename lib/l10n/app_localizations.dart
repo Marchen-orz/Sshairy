@@ -4898,6 +4898,24 @@ abstract class AppLocalizations {
   /// **'The command could not be completed. Review its local output and exit status before trying again.'**
   String get aiAgentErrorExecution;
 
+  /// No description provided for @aiAgentHostAccessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow access to another host'**
+  String get aiAgentHostAccessTitle;
+
+  /// No description provided for @aiAgentHostAccessPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow this conversation to access {host}? Commands will still follow the selected permission mode.'**
+  String aiAgentHostAccessPrompt(String host);
+
+  /// No description provided for @aiAgentHostAccessAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow access'**
+  String get aiAgentHostAccessAllow;
+
   /// No description provided for @terminalAiGenerate.
   ///
   /// In en, this message translates to:
@@ -4997,7 +5015,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentHistoryTargetChanged.
   ///
   /// In en, this message translates to:
-  /// **'The server or model destination changed. Start a new conversation.'**
+  /// **'The model destination changed. Start a new conversation.'**
   String get aiAgentHistoryTargetChanged;
 
   /// No description provided for @aiAgentHistoryLoadFailed.

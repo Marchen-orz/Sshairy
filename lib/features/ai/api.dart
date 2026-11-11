@@ -11,4 +11,5 @@ export 'application/configuration.dart';
 export 'application/terminal_service.dart';
 export 'application/output_store.dart';
 export 'presentation/agent_panel.dart';
+export 'presentation/host_approval.dart';
 export 'presentation/ai_settings.dart';

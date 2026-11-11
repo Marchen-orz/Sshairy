@@ -813,6 +813,9 @@
   "aiAgentErrorHostUnavailable": "这台主机已不可用，请为新任务重新选择已保存的主机。",
   "aiAgentErrorConnection": "SSH 连接失败，请先通过正常连接检查主机后重试。",
   "aiAgentErrorExecution": "命令未能完成，请核对本地输出和退出状态后再试。",
+  "aiAgentHostAccessTitle": "确认访问其他主机",
+  "aiAgentHostAccessPrompt": "允许本会话访问“{host}”？后续命令仍遵循所选权限模式。",
+  "aiAgentHostAccessAllow": "允许访问",
   "terminalAiGenerate": "生成命令",
   "terminalAiInstruction": "描述你想完成的操作",
   "terminalAiFailed": "未能生成命令，请重试。",
@@ -839,7 +842,7 @@
       }
     }
   },
-  "aiAgentHistoryTargetChanged": "主机或模型目的地已变化，请新建会话。",
+  "aiAgentHistoryTargetChanged": "模型目的地已变化，请新建会话。",
   "aiAgentHistoryLoadFailed": "无法读取会话历史，请重试。",
   "aiAgentHistorySaveFailed": "会话历史未能保存，当前内容仍保留在内存中。",
   "aiAgentHistoryRetry": "重试",

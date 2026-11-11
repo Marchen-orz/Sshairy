@@ -10,6 +10,7 @@ import 'app/composition.dart';
 import 'app/configuration.dart';
 import 'app/image_cache_budget.dart';
 import 'features/capabilities/api.dart';
+import 'features/ai/api.dart' show AgentHostApprovalPrompts;
 import 'platform/desktop_window.dart';
 import 'app/shutdown.dart';
 import 'app/window_brand_icon.dart';
@@ -103,7 +104,7 @@ class SshairyApp extends ConsumerWidget {
       home: problem == null
           ? ShutdownGuard(
               window: window,
-              child: WorkspacePage(openPalette: showCommandPalette),
+              child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
             )
           : ConfigurationErrorPage(problem),
     );

@@ -2536,6 +2536,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentErrorExecution => '命令未能完成，请核对本地输出和退出状态后再试。';
 
   @override
+  String get aiAgentHostAccessTitle => '确认访问其他主机';
+
+  @override
+  String aiAgentHostAccessPrompt(String host) {
+    return '允许本会话访问“$host”？后续命令仍遵循所选权限模式。';
+  }
+
+  @override
+  String get aiAgentHostAccessAllow => '允许访问';
+
+  @override
   String get terminalAiGenerate => '生成命令';
 
   @override
@@ -2588,7 +2599,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get aiAgentHistoryTargetChanged => '主机或模型目的地已变化，请新建会话。';
+  String get aiAgentHistoryTargetChanged => '模型目的地已变化，请新建会话。';
 
   @override
   String get aiAgentHistoryLoadFailed => '无法读取会话历史，请重试。';

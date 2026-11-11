@@ -854,6 +854,10 @@
   "aiAgentErrorHostUnavailable": "This server is no longer available. Select a saved server for the next task.",
   "aiAgentErrorConnection": "The SSH connection failed. Check the server with a normal connection before trying again.",
   "aiAgentErrorExecution": "The command could not be completed. Review its local output and exit status before trying again.",
+  "aiAgentHostAccessTitle": "Allow access to another host",
+  "aiAgentHostAccessPrompt": "Allow this conversation to access {host}? Commands will still follow the selected permission mode.",
+  "@aiAgentHostAccessPrompt": {"placeholders": {"host": {"type": "String"}}},
+  "aiAgentHostAccessAllow": "Allow access",
   "terminalAiGenerate": "Generate command",
   "terminalAiInstruction": "Describe what you want to do",
   "terminalAiFailed": "Could not generate a command. Try again.",
@@ -881,7 +885,7 @@
       }
     }
   },
-  "aiAgentHistoryTargetChanged": "The server or model destination changed. Start a new conversation.",
+  "aiAgentHistoryTargetChanged": "The model destination changed. Start a new conversation.",
   "aiAgentHistoryLoadFailed": "Could not load conversation history. Try again.",
   "aiAgentHistorySaveFailed": "Conversation history could not be saved. The current content is still in memory.",
   "aiAgentHistoryRetry": "Retry",

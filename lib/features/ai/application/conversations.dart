@@ -14,11 +14,8 @@ import 'model_selection.dart';
 import 'permission_mode.dart';
 import 'runtime.dart';
 
-/// The app supplies opaque route fingerprints without connecting or exposing connection configuration.
-final agentConversationRoutesProvider = Provider<Map<HostId, String> Function()>(
-  (_) =>
-      () => const {},
-);
+export 'providers.dart' show agentConversationRoutesProvider;
+
 final agentConversationStoreProvider = Provider<ConversationStore>(
   (ref) => JsonConversationStore(ref.read(dataDirProvider)),
 );
@@ -74,7 +71,6 @@ class AgentConversations extends ChangeNotifier {
   late final Future<void> ready;
   int _saveGeneration = 0;
   String? _turnConversation;
-  Map<HostId, String> _turnRoutes = const {};
 
   String get selectedId => _selected;
   AgentConversationRecord? get current => _records.where((entry) => entry.id == _selected).firstOrNull;
@@ -125,11 +121,7 @@ class AgentConversations extends ChangeNotifier {
   bool canContinue(HostId? host) {
     final record = current;
     if (record == null) return false;
-    final signature = host == null ? null : routes()[host];
-    return record.destination == destination() &&
-        record.host == host &&
-        record.routeSignature == signature &&
-        (host == null || signature != null);
+    return record.destination == destination();
   }
 
   List<ConversationEntry> _snapshot() => [
@@ -178,9 +170,7 @@ class AgentConversations extends ChangeNotifier {
       return;
     }
     final entries = _snapshot();
-    final host = _turnConversation == record.id ? runtime.resolvedHost ?? record.host : record.host;
-    final signature = host == record.host ? record.routeSignature : _turnRoutes[host];
-    if (entries.isEmpty || _sameEntries(record.entries, entries) && host == record.host) return;
+    if (entries.isEmpty || _sameEntries(record.entries, entries)) return;
     final index = _records.indexOf(record);
     _records[index] = AgentConversationRecord(
       id: record.id,
@@ -188,8 +178,8 @@ class AgentConversations extends ChangeNotifier {
       createdAt: record.createdAt,
       updatedAt: DateTime.now().toUtc(),
       destination: record.destination,
-      host: host,
-      routeSignature: signature,
+      host: record.host,
+      routeSignature: record.routeSignature,
       entries: entries,
       historyTruncated: record.historyTruncated,
     );
@@ -215,6 +205,7 @@ class AgentConversations extends ChangeNotifier {
       snapshot = _records.where((entry) => entry.entries.isNotEmpty).toList();
       final kept = _records.map((entry) => entry.id).toSet();
       _drafts.removeWhere((id, _) => !kept.contains(id) && id != _selected);
+      runtime.retainConversations({...kept, _selected});
     } on Object {
       saveFailed = true;
       _emit();
@@ -297,6 +288,7 @@ class AgentConversations extends ChangeNotifier {
     if (runtime.busy || loading) return;
     _records.removeWhere((entry) => entry.id == id);
     _drafts.remove(id);
+    runtime.forgetConversation(id);
     if (_selected == id) {
       _changing = true;
       _selected = newId();
@@ -314,7 +306,7 @@ class AgentConversations extends ChangeNotifier {
     final matches = hasHistory && canContinue(host);
     final continuing = matches && continueHistory;
     if (hasHistory && !continuing) {
-      // Never resend prior history to a different destination, host or route.
+      // Sending history to another model destination remains an explicit boundary.
       if (continueHistory) return;
       newConversation(keepDraft: true);
     }
@@ -325,11 +317,17 @@ class AgentConversations extends ChangeNotifier {
     }
     final sendingId = _selected;
     _turnConversation = sendingId;
-    _turnRoutes = Map.unmodifiable(routes());
     composer.setGoal('');
     final work = runtime.startConversation(
       goal,
-      AgentScope(hosts: [?host], discoverHosts: host == null && toolsEnabled(), permissionMode: permissionMode()),
+      AgentScope(
+        hosts: [?host],
+        discoverHosts: host == null && toolsEnabled(),
+        permissionMode: permissionMode(),
+        conversationId: sendingId,
+        defaultHost: current!.host,
+        defaultHostRoute: current!.routeSignature,
+      ),
       history,
     );
     _wasBusy = runtime.busy;
@@ -411,10 +409,16 @@ class AgentConversations extends ChangeNotifier {
     runtime.discardLastAnswer();
     final sendingId = record.id;
     _turnConversation = sendingId;
-    _turnRoutes = Map.unmodifiable(routes());
     final work = runtime.startConversation(
       _regenerateGoal,
-      AgentScope(hosts: [?host], discoverHosts: false, permissionMode: permissionMode()),
+      AgentScope(
+        hosts: [?host],
+        discoverHosts: false,
+        permissionMode: permissionMode(),
+        conversationId: sendingId,
+        defaultHost: record.host,
+        defaultHostRoute: record.routeSignature,
+      ),
       previous.sublist(0, assistant),
       answerOnly: true,
       appendGoal: false,

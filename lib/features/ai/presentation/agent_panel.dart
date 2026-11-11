@@ -399,7 +399,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                       ),
                                       icon: const Icon(Icons.arrow_upward_rounded, size: 16),
                                     );
-                              if (toolbar.maxWidth < 360 * MediaQuery.textScalerOf(context).scale(1)) {
+                              if (toolbar.maxWidth < 280 * MediaQuery.textScalerOf(context).scale(1)) {
                                 return Column(
                                   children: [
                                     Row(
@@ -576,7 +576,7 @@ class _PermissionPicker extends StatelessWidget {
                 final picked = await showAnchoredPopup<AgentPermissionMode>(
                   context: context,
                   anchor: anchorOf(anchorContext),
-                  width: 180,
+                  width: WorkspaceSize.toolPanelMin,
                   builder: (context) => PopupSurface(
                     padding: const EdgeInsets.symmetric(vertical: Space.xs),
                     child: PopupKeys(
@@ -598,8 +598,22 @@ class _PermissionPicker extends StatelessWidget {
                                   children: [
                                     Icon(_permissionIcon(option), size: 16),
                                     const SizedBox(width: Space.sm),
-                                    Expanded(child: Text(_permissionLabel(l, option))),
-                                    if (option == mode) const Icon(Icons.check_rounded, size: 16),
+                                    Text(_permissionLabel(l, option)),
+                                    const SizedBox(width: Space.sm),
+                                    Expanded(
+                                      child: Text(
+                                        _permissionHint(l, option),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context).textTheme.bodySmall
+                                            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                      ),
+                                    ),
+                                    const SizedBox(width: Space.sm),
+                                    SizedBox(
+                                      width: 16,
+                                      child: option == mode ? const Icon(Icons.check_rounded, size: 16) : null,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -623,16 +637,6 @@ class _PermissionPicker extends StatelessWidget {
             const SizedBox(width: Space.xs),
             Text(_permissionLabel(l, mode)),
             const SizedBox(width: Space.xs),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: 88 / MediaQuery.textScalerOf(context).scale(1)),
-              child: Text(
-                _permissionHint(l, mode),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ),
             const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
           ],
         ),

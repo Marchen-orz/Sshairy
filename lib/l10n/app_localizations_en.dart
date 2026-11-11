@@ -2635,6 +2635,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'The command could not be completed. Review its local output and exit status before trying again.';
 
   @override
+  String get aiAgentHostAccessTitle => 'Allow access to another host';
+
+  @override
+  String aiAgentHostAccessPrompt(String host) {
+    return 'Allow this conversation to access $host? Commands will still follow the selected permission mode.';
+  }
+
+  @override
+  String get aiAgentHostAccessAllow => 'Allow access';
+
+  @override
   String get terminalAiGenerate => 'Generate command';
 
   @override
@@ -2693,7 +2704,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentHistoryTargetChanged =>
-      'The server or model destination changed. Start a new conversation.';
+      'The model destination changed. Start a new conversation.';
 
   @override
   String get aiAgentHistoryLoadFailed =>

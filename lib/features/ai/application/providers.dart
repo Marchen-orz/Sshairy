@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/data_dir.dart';
+import '../../../foundation/ids.dart';
 import '../../capabilities/api.dart';
 import '../../credentials/api.dart';
 import '../adapters/model_provider.dart';
@@ -27,6 +28,12 @@ final aiTerminalServiceProvider = Provider<AiTerminalService>((ref) {
   ref.onDispose(service.dispose);
   return service;
 });
+
+/// The app supplies opaque route/security fingerprints without connecting or exposing configuration.
+final agentConversationRoutesProvider = Provider<Map<HostId, String> Function()>(
+  (_) =>
+      () => const {},
+);
 
 final agentBackendProvider = Provider<AgentBackend>((_) => throw StateError('Agent backend not installed'));
 final aiModelProvider = Provider<ModelProvider>((ref) {
@@ -58,14 +65,15 @@ final agentRuntimeProvider = Provider<AgentRuntime>((ref) {
     backend: ref.read(agentBackendProvider),
     journal: ref.read(aiJournalProvider),
     dispatcher: ref.read(capabilityDispatcherProvider),
+    hostRoutes: () => ref.read(agentConversationRoutesProvider)(),
     configuration: () {
       final value = ref.read(aiConfigurationProvider);
       return (enabled: value.enabled, profile: ref.read(effectiveAgentProfileProvider), revision: value.revision);
     },
   );
-  ref.listen(aiConfigurationProvider, (_, _) => runtime.stop());
-  ref.listen(effectiveAgentProfileProvider, (_, _) => runtime.stop());
-  final keys = ref.read(aiCredentialsProvider).changes.listen((_) => runtime.stop());
+  ref.listen(aiConfigurationProvider, (_, _) => runtime.invalidateHostApprovals());
+  ref.listen(effectiveAgentProfileProvider, (_, _) => runtime.invalidateHostApprovals());
+  final keys = ref.read(aiCredentialsProvider).changes.listen((_) => runtime.invalidateHostApprovals());
   ref.onDispose(keys.cancel);
   ref.onDispose(runtime.dispose);
   return runtime;

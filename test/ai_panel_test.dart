@@ -514,7 +514,7 @@ void main() {
 
   testWidgets('host shares the title row and composer controls align with a small square send button', (tester) async {
     final runtime = _Runtime();
-    await _panel(tester, runtime, focusedHost: const HostId('web'), size: const Size(480, 800));
+    await _panel(tester, runtime, focusedHost: const HostId('web'), size: const Size(360, 800));
     final host = tester.getRect(find.byKey(const ValueKey('ai-agent-target')));
     final title = tester.getRect(find.text('Airy'));
     final history = tester.getRect(find.byKey(const ValueKey('ai-agent-history')));
@@ -546,6 +546,39 @@ void main() {
     expect(usage.message, 'Estimated context: 25% · 32000 / 128000 tokens');
     expect(tester.takeException(), isNull);
   });
+
+  for (final width in [300.0, 560.0]) {
+    testWidgets('permission descriptions stay in the dropdown at width $width', (tester) async {
+      await _panel(tester, _Runtime(), size: Size(width, 420), textScale: 1.5);
+      final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+      final hints = [l.aiAgentPermissionAutoHint, l.aiAgentPermissionConfirmHint, l.aiAgentPermissionObserveHint];
+      for (final hint in hints) {
+        expect(find.text(hint), findsNothing);
+      }
+      final permission = find.byKey(const ValueKey('ai-agent-permission'));
+      final before = tester.getSize(permission);
+      await tester.tap(permission);
+      await tester.pumpAndSettle();
+      for (final (index, mode) in [
+        AgentPermissionMode.auto,
+        AgentPermissionMode.confirm,
+        AgentPermissionMode.observe,
+      ].indexed) {
+        final row = find.byKey(ValueKey('ai-agent-permission-${mode.name}'));
+        final hint = find.descendant(of: row, matching: find.text(hints[index]));
+        expect(hint, findsOneWidget);
+        expect(tester.widget<Text>(hint).maxLines, 1);
+        expect(tester.getRect(hint).center.dy, closeTo(tester.getRect(row).center.dy, 1));
+      }
+      await tester.tap(find.byKey(const ValueKey('ai-agent-permission-auto')));
+      await tester.pumpAndSettle();
+      for (final hint in hints) {
+        expect(find.text(hint), findsNothing);
+      }
+      expect(tester.getSize(permission).height, before.height);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('permission selection applies to send and is disabled during a turn', (tester) async {
     final runtime = _Runtime();
@@ -703,7 +736,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
     await tester.pump();
-    expect(find.text('The server or model destination changed. Start a new conversation.'), findsOneWidget);
+    expect(find.text('The model destination changed. Start a new conversation.'), findsOneWidget);
     expect(runtime.goal, isNull);
     expect(tester.widget<TextField>(goal).controller!.text, 'Fresh question');
     await tester.tap(find.byKey(const ValueKey('ai-agent-new-target')));
