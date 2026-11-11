@@ -1,6 +1,6 @@
 # 测试
 
-更新：2026-11-10。以作者的真实环境为准（ADR-10），不提供兼容性和可用性保障。测试范围可缩小，SECURITY 的安全与数据保护要求照常执行。
+更新：2026-11-11。以作者的真实环境为准（ADR-10），不提供兼容性和可用性保障。测试范围可缩小，SECURITY 的安全与数据保护要求照常执行。
 
 ## 1. 环境与方式
 
@@ -110,6 +110,12 @@
 2026-11-10 统一 Agent、行内生成与 AI 补全已完成本轮自动验证。模型协议/配置、确定性授权、流式 exec 适配、持久 intent 与输出发送选择继续保留。未使用真实模型 Key、未调用付费模型，未在 Ubuntu 上执行新的 Agent 闭环；不将本轮自动测试记作完整 M4 或实网验收。
 
 ### 自动与真实 SSH/SFTP
+
+2026-11-11 Airy、模型选择与设置直达最终回归：明确列入 26 份测试（ai_authorization、ai_journal、ai_diagnostics、ai_backend、ai_output_store、ai_terminal_hosts、ai_protocol、ai_config、ai_http、ai_terminal_service、ai_conversation_route、ai_conversation_store、ai_conversations、ai_markdown、ai_model_catalog、ai_model_picker、ai_model_selection、ai_runtime、ai_panel、settings_dialog、translation_settings、interface_settings、workspace_local、terminal_assistance、terminal_ai_ui、terminal_ai_ports），331 项、59 秒、退出码 0。覆盖安全历史 DTO/容量/过期/损坏及写入冲突、整 turn 裁剪/超限拒存、保存失败与代次、草稿隔离/busy 保护/明确续传/目的地及路由变更、恢复不执行和旧输出句柄失效；OpenAI 默认/可选 Key/同服务复制与跨服务隔离、目录有界分页/取消/禁重定向、搜索/自定义/IME、三角色模型与许可失效、窗口当前模型和唯一 runtime；Markdown 图片不联网/安全外链/宽代码、紧凑执行卡与 300/560×420 的 150% 布局、设置 typed 定位/复用弹窗与草稿、历史关闭间距相关终端回归。上下文覆盖完整工具组整理、opaque 重建普通数据、保留目标/范围、超限安全拒绝和不重放工具；配置窗口是声明与保守估算，不等于实测供应商 1M token 能力。
+
+本轮静态分析覆盖 lib、tool、integration_test、test_driver 及 model_selection/model_catalog/model_picker/markdown/conversations/panel/config/runtime 八份改动测试，无问题；imports、47 份改动 Dart 格式检查和 git diff --check 通过。文档复核分别检查 README 与 11 份专题的 53 处本地链接，以及 README/DESIGN/导读/ROADMAP/TESTING 的 115 处本地链接、17 节编号和代码围栏配对，通过。测试使用临时配置、内存凭据和本机协议服务器，没有读取作者真实配置/系统安全存储、调用真实模型或连接 Ubuntu；原 zz_probe 未读取/修改/分析/运行。新历史文字可能包含未知敏感信息，测试不证明通用脱敏；实际模型目录/生成/SSH Agent 闭环、原生观感/输入法和跨屏 DPI 未验。本轮中间编译或测试自身异步处理失败已修，以上只记最终完整运行。
+
+2026-11-11 设置分隔线调整：settings_dialog、interface_settings、brand_theme 三份明确测试共 14 项、12 秒、退出码 0，覆盖分类联动、统一保存及关闭保护、960×640 的 150% 缩放和窄预览/最大字号中文。改动仅为居中 75% 宽细线；两个改动 Dart 文件静态分析、格式检查、imports、52 处文档本地链接与 git diff --check 通过。本轮未新增机械样式测试，未做原生观感/DPI 验收，未访问真实应用数据、模型或服务器。
 
 2026-11-11 Agent 学习导读仅修改文档：按当前代码只读核对运行时/工具权限/模型协议和轻量入口，README、DESIGN、AI_AGENT_GUIDE、ROADMAP、TESTING 共 5 份文档的 101 个本地链接、17 节连续编号、代码围栏配对与 git diff --check 通过；未重跑应用测试、构建或实网，沿用既有代码/包验证范围。
 
