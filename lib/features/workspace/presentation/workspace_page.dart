@@ -303,10 +303,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   void _toggleAgent() => setState(() => _agentOpen = !_agentOpen);
 
   /// Open or closed for every tab, and for the next start, like the monitor.
-  void _setSideFiles(bool open) {
-    if (open && _agentOpen) setState(() => _agentOpen = false);
-    ref.read(settingsProvider.notifier).set(SettingKeys.showFiles, open);
-  }
+  void _setSideFiles(bool open) => ref.read(settingsProvider.notifier).set(SettingKeys.showFiles, open);
 
   List<Widget> _fileToolbar(FilesDock dock) {
     final l = AppLocalizations.of(context);
@@ -366,7 +363,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     _filesBuilt |= state.files;
     final wide = MediaQuery.sizeOf(context).width >= WorkspaceSize.wideBreakpoint;
     final showMonitor = settings.get(SettingKeys.showMonitor);
-    final showFiles = settings.get(SettingKeys.showFiles) && !_agentOpen;
+    final showFiles = settings.get(SettingKeys.showFiles);
     final dock = settings.get(SettingKeys.filesDock);
     final settingsNotifier = ref.read(settingsProvider.notifier);
     ref.listen(settingsProvider, (before, now) {

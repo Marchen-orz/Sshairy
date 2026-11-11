@@ -14,7 +14,9 @@ import 'package:sshairy/design/icon_rail.dart';
 import 'package:sshairy/design/dock_panel.dart';
 import 'package:sshairy/design/popup.dart';
 import 'package:sshairy/design/dialog.dart';
+import 'package:sshairy/features/ai/api.dart';
 import 'package:sshairy/features/connections/api.dart';
+import 'package:sshairy/features/credentials/application/credential_access.dart' show secretStoreProvider;
 import 'package:sshairy/features/files/api.dart' show SideFilesPanel;
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/monitor/api.dart';
@@ -28,6 +30,7 @@ import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/l10n/app_localizations.dart';
 
 import 'connection_manager_test.dart' show FakeTransport;
+import 'keys_test.dart' show MemorySecrets;
 
 const _hosts = [
   Host(id: HostId('web'), label: 'web-1', address: 'web.example', username: 'u', group: 'Prod/Web'),
@@ -130,6 +133,7 @@ Future<ProviderContainer> _mountWorkspace(
   Directory dir,
   List<String> dials, {
   Set<String> refused = const {},
+  bool withAgent = false,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(1400, 800);
@@ -142,9 +146,11 @@ Future<ProviderContainer> _mountWorkspace(
   addTearDown(manager.closeAll);
   final container = ProviderContainer(
     overrides: [
+      if (withAgent) ...appOverrides(),
       dataDirProvider.overrideWithValue(dir.path),
       hostsProvider.overrideWith(_Hosts.new),
       connectionManagerProvider.overrideWithValue(manager),
+      secretStoreProvider.overrideWithValue(MemorySecrets()),
     ],
   );
   addTearDown(container.dispose);
@@ -610,6 +616,129 @@ void main() {
     await _flush(tester, container);
     expect(tester.takeException(), isNull);
   });
+
+  for (final side in FilesDock.values) {
+    testWidgets('monitor, ${side.name} files and Agent stay independent within their layout columns', (tester) async {
+      final dir = Directory.systemTemp.createTempSync('sshairy-panels-');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File('${dir.path}/settings.json')
+          .writeAsStringSync(jsonEncode({'schemaVersion': 1, 'showFiles': true, 'filesDock': side.name}));
+      File('${dir.path}/workspace.json').writeAsStringSync(
+        jsonEncode({
+          'schemaVersion': 1,
+          'tabs': [_savedTab('p1', 's1', 'web')],
+          'active': 0,
+        }),
+      );
+      final dials = <String>[];
+      final container = await _mountWorkspace(tester, dir, dials, withAgent: true);
+      tester.view.physicalSize = const Size(1800, 800);
+      await _frames(tester);
+      await tester.tap(find.descendant(of: find.byType(TerminalPane), matching: find.text('Connect')));
+      await _frames(tester);
+      final terminal = tester.state(find.byType(TerminalPane));
+      final files = tester.state(find.byType(SideFilesPanel));
+      final monitor = tester.state(find.byType(MonitorPanel));
+      final agentToggle = find.descendant(of: find.byType(IconRail), matching: find.byTooltip('Airy'));
+      await tester.tap(agentToggle);
+      await _frames(tester);
+      expect(find.byType(AgentPanel), findsOneWidget);
+      expect(find.byType(SideFilesPanel), findsOneWidget, reason: 'opening Agent keeps files open');
+      final agent = tester.state(find.byType(AgentPanel));
+      container.read(agentComposerProvider.notifier).setGoal('Keep this draft');
+      await _frames(tester);
+
+      void expectLayout() {
+        final monitor = tester.getRect(find.byType(MonitorPanel));
+        final terminal = tester.getRect(find.byType(TerminalPane));
+        final files = tester.getRect(find.byType(SideFilesPanel));
+        final agent = tester.getRect(find.byType(AgentPanel));
+        final content = tester.getRect(find.byKey(const ValueKey('workspace-content')));
+        expect(monitor.top, content.top);
+        expect(monitor.bottom, content.bottom);
+        expect(agent.top, content.top);
+        expect(agent.bottom, content.bottom);
+        expect(agent.right, content.right);
+        expect(terminal.left, greaterThan(monitor.right));
+        expect(terminal.right, lessThan(agent.left));
+        expect(files.left, greaterThan(monitor.right));
+        expect(files.right, lessThan(agent.left));
+        if (side == FilesDock.bottom) {
+          expect(files.left, terminal.left);
+          expect(files.right, terminal.right);
+          expect(files.top, terminal.bottom + WorkspaceSize.divider);
+          expect(files.bottom, content.bottom);
+        } else {
+          expect(files.top, content.top);
+          expect(files.bottom, content.bottom);
+          expect(terminal.width, greaterThanOrEqualTo(WorkspaceSize.terminalMin));
+          if (side == FilesDock.left) {
+            expect(files.right + WorkspaceSize.divider, terminal.left);
+          } else {
+            expect(files.left, terminal.right + WorkspaceSize.divider);
+          }
+        }
+      }
+
+      void expectKept() {
+        expect(identical(tester.state(find.byType(TerminalPane)), terminal), isTrue);
+        expect(identical(tester.state(find.byType(SideFilesPanel)), files), isTrue);
+        expect(identical(tester.state(find.byType(MonitorPanel)), monitor), isTrue);
+      }
+
+      expectLayout();
+      expectKept();
+      tester.view.physicalSize = const Size(1400, 800);
+      await _frames(tester);
+      expectKept();
+      final scrims = find.descendant(of: find.byType(DockPanel), matching: find.byType(ModalBarrier));
+      if (side == FilesDock.bottom) {
+        expect(scrims, findsNothing);
+        expectLayout();
+      } else {
+        expect(scrims, findsOneWidget);
+        expect(
+          tester.getRect(scrims),
+          tester.getRect(find.byType(TerminalPane)),
+          reason: 'the files overlay only covers the terminal',
+        );
+        final monitor = tester.getRect(find.byType(MonitorPanel));
+        final files = tester.getRect(find.byType(SideFilesPanel));
+        final agent = tester.getRect(find.byType(AgentPanel));
+        expect(files.left, greaterThan(monitor.right));
+        expect(files.right, lessThan(agent.left));
+      }
+      tester.view.physicalSize = const Size(1800, 800);
+      await _frames(tester);
+      expectLayout();
+      expectKept();
+
+      await tester.tap(find.descendant(of: find.byType(SideFilesPanel), matching: find.byTooltip('Close pane')));
+      await _settled(tester, container, (settings) => !settings.get(SettingKeys.showFiles));
+      await _frames(tester);
+      expect(find.byType(SideFilesPanel), findsNothing);
+      expect(identical(tester.state(find.byType(AgentPanel)), agent), isTrue);
+      await tester.tap(find.byTooltip('Files'));
+      await _settled(tester, container, (settings) => settings.get(SettingKeys.showFiles));
+      await _frames(tester);
+      expect(identical(tester.state(find.byType(AgentPanel)), agent), isTrue, reason: 'opening files keeps Agent open');
+      expectLayout();
+
+      await tester.tap(agentToggle);
+      await _frames(tester);
+      expect(find.byType(AgentPanel), findsNothing);
+      expect(find.byType(SideFilesPanel), findsOneWidget);
+      expect(container.read(settingsProvider).get(SettingKeys.filesDock), side);
+      await tester.tap(agentToggle);
+      await _frames(tester);
+      expect(find.byType(SideFilesPanel), findsOneWidget);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('ai-agent-goal'))).controller!.text, 'Keep this draft');
+      expectLayout();
+      expect(dials, ['web.example'], reason: 'panel changes reuse the terminal connection');
+      await _flush(tester, container);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('a tab opened later shows the files panel as it was left, open or closed', (tester) async {
     final dir = Directory.systemTemp.createTempSync('sshairy-files-switch-');
