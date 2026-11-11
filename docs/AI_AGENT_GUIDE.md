@@ -12,11 +12,13 @@
 
 | 入口 | 当前实现 | 用户如何控制 |
 |---|---|---|
-| 侧栏 Airy | 单一 Agent，自行决定直接回答、固定诊断或提出命令；支持同一任务内多步工具调用及本地会话切换 | 发送时冻结聚焦 SSH 主机；无聚焦时先查主机、按用户对话明确目标或追问；任意命令逐次批准，输出另选发送，历史续传先确认 |
+| 侧栏 Airy | 单一 Agent，自行决定直接回答、固定诊断或提出命令；支持同一任务内多步工具调用及本地会话切换 | 发送时冻结聚焦 SSH 主机；无聚焦时先查主机、按用户对话明确目标或追问；权限默认确认，可选观察/自动，输出另选发送，历史续传先确认 |
 | 行内命令生成 | 本地识别意图、显式打开本地输入层、生成/澄清/转 Agent、可编辑预览 | 配置并启用 AI 后默认开启，可独立关闭或在高级设置排除主机；点击/快捷键才发模型，接受只填文字，不发 Enter |
 | AI 提示补全 | SSH 中输入足够明确时延迟请求；最多一个可纯追加的候选，置于候选框前列 | 配置并启用 AI 后默认开启，可独立关闭或排除主机；包含有限同会话历史，迟到候选不抢选中对象，Tab/点击只追加后缀 |
 
-侧栏没有“解释/诊断/执行”模式选择，也没有 Agent 工具开关。有效 Agent profile 始终启用工具协议，旧配置中的 `tools: false` 也会归一；聚焦与发现模式均提供受审工具目录，工具仍经本地范围校验与重验，任意命令须逐次审批。目录不证明服务实际支持工具，不支持时请求明确失败。输入区只读显示目标，不再下拉选主机；当前侧栏每 turn 仍只操作一台 SSH 主机，候选主机快照不代表多机工作流已完成。
+侧栏没有“解释/诊断/执行”模式选择，也没有 Agent 工具开关。有效 Agent profile 始终启用工具协议，旧配置中的 `tools: false` 也会归一；聚焦与发现模式均提供受审工具目录，工具仍经本地范围校验与重验，命令执行由本 turn 冻结的权限模式控制：观察拒绝任意 shell、确认逐次批准、自动免逐次批准。目录不证明服务实际支持工具，不支持时请求明确失败。顶部淡化文字只读显示目标，不再下拉选主机；输入区有模型/估算上下文占用/权限模式和右下发送，历史在标题下原位展开。当前侧栏每 turn 仍只操作一台 SSH 主机，候选主机快照不代表多机工作流已完成。
+
+权限选择通过 [permission_mode.dart](../lib/features/ai/application/permission_mode.dart) 的窗口内 typed 用例更新，忙时拒绝改变；发送时复制到 AgentScope，runtime 在工具目录、authorize 和执行入口判断，模式不是模型可改的参数。历史不会恢复旧权限。底部圆环读取 runtime 的 contextUsedTokens/contextWindow，按现有字节预算启发式估算 token，包含 system、工具、上下文与当次回复；整理后更新、清空/恢复时归零，tooltip 明示估算，不代表供应商计费 usage。
 
 ### 1.2 已有的系统底座
 
@@ -175,7 +177,7 @@ flowchart TD
 |---|---|---|
 | `host_list` → `agent.hosts` | 空对象 `{}` | 返回发送时冻结的候选 ID/别名；发现模式为已保存主机快照，聚焦模式仅当前主机；不返回账号、地址和认证配置 |
 | `diagnostics_collect` → `agent.diagnose` | `hostId`、`template` | template 只能是 `systemSummary` 或 `storageCapacity`；固定采集/纯解析后返回结构化投影与状态 |
-| `command_execute` → `agent.execute` | `hostId`、绝对 `cwd`、`command`、可选 `timeoutSeconds` | 默认 60 秒，允许 1–300 秒；逐次批准，返回退出状态/截断等，输出文本另获发送权 |
+| `command_execute` → `agent.execute` | `hostId`、绝对 `cwd`、`command`、可选 `timeoutSeconds` | 默认 60 秒，允许 1–300 秒；按用户权限模式执行，返回退出状态/截断等，输出文本另获发送权 |
 | `output_read` → `agent.output` | `hostId`、`handle` | 只返回此前获准共享的文本；不读取任意文件，不扩大到原始未共享输出，也不重新执行命令 |
 
 这些 schema 都拒绝未知字段，并有长度/范围限制。`command` 另限 UTF-8 4 KiB，`cwd` 必须是绝对路径且不含控制字符；schema 通过后仍可能被业务校验拒绝。模型工具调用示例：
@@ -392,7 +394,7 @@ Anthropic thinking/signature 等私有块可能需要原样带回同一次协议
 
 当前 Agent 经 backend 取得自有 exec 租约，再在独立 channel 执行。cwd 经 POSIX 引用后只影响这一次命令，不改变用户交互 shell 的目录，也不继承其交互式 `export`/alias 状态。任意命令执行目前适配 Linux/POSIX，不能据此推断本地 PowerShell Agent 执行已开放。
 
-连接准备可能执行固定 Linux/sh 支持探针；“任意命令逐次批准”并不表示批准前完全没有代码固定的前置检查。
+连接准备可能执行固定 Linux/sh 支持探针；默认确认模式的逐次批准并不表示批准前完全没有代码固定的前置检查。
 
 ### 11.2 先写 intent，再发动作
 
@@ -477,7 +479,7 @@ turn 的取消 token 传播到模型 HTTP、等待审批、等待发送选择、
 | 工具 | 四项受控工具 | 无 | 无 |
 | 触发 | 用户发送目标 | 用户显式点击/快捷键 | 功能开启且符合条件的输入停顿 |
 | 默认数据 | 本次目标、聚焦主机或候选快照，明确继续后的有限历史 | 需求、已知环境与有限同会话命令历史 | 当前前缀、已知环境与有限同会话命令历史 |
-| 执行 | 命令逐次批准后由 exec 执行 | 接受只填文字 | 接受只追加后缀 |
+| 执行 | 观察禁任意命令；确认逐次批准；自动免逐次批准，由 exec 执行 | 接受只填文字 | 接受只追加后缀 |
 | 当前本地 shell 支持 | 不开放本机执行工具 | 有已知 shell 类型的生成入口 | 当前自动补全仅 SSH |
 
 terminal 定义 [TerminalAiService 与 DTO](../lib/features/terminal/domain/ai_terminal.dart)，app 注入 [AiTerminalService](../lib/features/ai/application/terminal_service.dart)。terminal 不反向 import ai；轻量服务也没有 dispatcher/backend/executor 依赖，请求强制不带工具。即使模型返回工具调用，也不能转成业务执行。
