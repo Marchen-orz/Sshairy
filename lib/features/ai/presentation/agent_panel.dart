@@ -184,22 +184,6 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 0),
-                  child: Tooltip(
-                    message: targetLabel,
-                    child: Text(
-                      targetLabel,
-                      key: const ValueKey('ai-agent-target'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: .55),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
                   padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.sm, Space.sm),
                   child: Row(
                     children: [
@@ -208,15 +192,33 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                       Text(l.aiAgentTitle, style: theme.textTheme.titleSmall),
                       const SizedBox(width: Space.sm),
                       Expanded(
-                        child: runtime.phase == AgentPhase.idle
-                            ? const SizedBox.shrink()
-                            : Text(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Tooltip(
+                              message: targetLabel,
+                              child: Text(
+                                targetLabel,
+                                key: const ValueKey('ai-agent-target'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: .55),
+                                ),
+                              ),
+                            ),
+                            if (runtime.phase != AgentPhase.idle)
+                              Text(
                                 _phase(l, runtime.phase),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                               ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: Space.sm),
                       Semantics(
                         expanded: _historyExpanded,
                         child: IconButton(
@@ -367,51 +369,42 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                 ),
                               ),
                               const SizedBox(height: Space.sm),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Expanded(
-                                    child: Wrap(
-                                      crossAxisAlignment: WrapCrossAlignment.center,
-                                      spacing: Space.xs,
-                                      runSpacing: Space.xs,
-                                      children: [
-                                        SizedBox(
-                                          width: max(72, min(180, constraints.maxWidth - 264)),
-                                          child: profile == null
-                                              ? Text(l.aiAgentConfigureAction, style: theme.textTheme.bodySmall)
-                                              : AiModelPicker(
-                                                  key: const ValueKey('ai-agent-model'),
-                                                  value: profile.model,
-                                                  protocol: profile.protocol,
-                                                  endpoint: profile.endpoint,
-                                                  credentialIdentity: configuration.profile?.identity,
-                                                  compact: true,
-                                                  onChanged: runtime.busy
-                                                      ? null
-                                                      : ref.read(selectedAgentModelProvider.notifier).select,
-                                                ),
-                                        ),
-                                        _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0),
-                                        _PermissionPicker(
-                                          mode: runtime.busy ? runtime.permissionMode : permissionMode,
-                                          onChanged: !enabled || runtime.busy
+                              LayoutBuilder(
+                                builder: (context, toolbar) {
+                                  final model = profile == null
+                                      ? Text(l.aiAgentConfigureAction, style: theme.textTheme.bodySmall)
+                                      : AiModelPicker(
+                                          key: const ValueKey('ai-agent-model'),
+                                          value: profile.model,
+                                          protocol: profile.protocol,
+                                          endpoint: profile.endpoint,
+                                          credentialIdentity: configuration.profile?.identity,
+                                          compact: true,
+                                          onChanged: runtime.busy
                                               ? null
-                                              : ref.read(selectedAgentPermissionModeProvider.notifier).select,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: Space.sm),
-                                  runtime.busy
+                                              : ref.read(selectedAgentModelProvider.notifier).select,
+                                        );
+                                  final usage = _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0);
+                                  final permission = _PermissionPicker(
+                                    mode: runtime.busy ? runtime.permissionMode : permissionMode,
+                                    onChanged: !enabled || runtime.busy
+                                        ? null
+                                        : ref.read(selectedAgentPermissionModeProvider.notifier).select,
+                                  );
+                                  final actionStyle = IconButton.styleFrom(
+                                    minimumSize: const Size.square(WorkspaceSize.tabHeight),
+                                    fixedSize: const Size.square(WorkspaceSize.tabHeight),
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.standard,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
+                                  );
+                                  final action = runtime.busy
                                       ? IconButton.filledTonal(
                                           key: const ValueKey('ai-agent-stop'),
                                           tooltip: l.stop,
                                           onPressed: runtime.stop,
-                                          style: IconButton.styleFrom(
-                                            fixedSize: const Size(WorkspaceSize.titleBar, WorkspaceSize.titleBar),
-                                          ),
-                                          icon: const Icon(Icons.stop_rounded, size: 18),
+                                          style: actionStyle,
+                                          icon: const Icon(Icons.stop_rounded, size: 16),
                                         )
                                       : IconButton.filled(
                                           key: const ValueKey('ai-agent-send'),
@@ -419,12 +412,38 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                           onPressed: !enabled || conversations.loading || draft.goal.trim().isEmpty
                                               ? null
                                               : () => _send(runtime, selectedHost),
-                                          style: IconButton.styleFrom(
-                                            fixedSize: const Size(WorkspaceSize.titleBar, WorkspaceSize.titleBar),
+                                          style: actionStyle.merge(
+                                            IconButton.styleFrom(foregroundColor: theme.colorScheme.onPrimary),
                                           ),
-                                          icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+                                          icon: const Icon(Icons.arrow_upward_rounded, size: 16),
+                                        );
+                                  if (toolbar.maxWidth < 280 * MediaQuery.textScalerOf(context).scale(1)) {
+                                    return Column(
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(child: model),
+                                            const SizedBox(width: Space.sm),
+                                            usage,
+                                          ],
                                         ),
-                                ],
+                                        const SizedBox(height: Space.sm),
+                                        Row(children: [permission, const Spacer(), action]),
+                                      ],
+                                    );
+                                  }
+                                  return Row(
+                                    children: [
+                                      Expanded(child: model),
+                                      const SizedBox(width: Space.sm),
+                                      usage,
+                                      const SizedBox(width: Space.sm),
+                                      permission,
+                                      const SizedBox(width: Space.sm),
+                                      action,
+                                    ],
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -518,8 +537,8 @@ class _ContextUsage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 18,
-              height: 18,
+              width: 16,
+              height: 16,
               child: CircularProgressIndicator(
                 value: ratio,
                 strokeWidth: 2,
@@ -606,7 +625,11 @@ class _PermissionPicker extends StatelessWidget {
                 );
                 if (picked != null) onChanged?.call(picked);
               },
-        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.xs)),
+        style: TextButton.styleFrom(
+          minimumSize: const Size(0, WorkspaceSize.tabHeight),
+          padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+          foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

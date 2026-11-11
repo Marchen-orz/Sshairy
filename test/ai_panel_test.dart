@@ -504,18 +504,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('composer shows mode, model and estimated context with host above and send at bottom right', (
-    tester,
-  ) async {
+  testWidgets('host shares the title row and composer controls align with a small square send button', (tester) async {
     final runtime = _Runtime();
-    await _panel(tester, runtime, focusedHost: const HostId('web'));
+    await _panel(tester, runtime, focusedHost: const HostId('web'), size: const Size(360, 800));
     final host = tester.getRect(find.byKey(const ValueKey('ai-agent-target')));
-    final goal = tester.getRect(find.byKey(const ValueKey('ai-agent-goal')));
+    final title = tester.getRect(find.text('Airy'));
+    final history = tester.getRect(find.byKey(const ValueKey('ai-agent-history')));
     final send = tester.getRect(find.byKey(const ValueKey('ai-agent-send')));
     final model = tester.getRect(find.byKey(const ValueKey('ai-agent-model')));
-    expect(host.bottom, lessThan(goal.top));
-    expect(send.right, greaterThan(model.right));
-    expect(send.bottom, greaterThanOrEqualTo(model.bottom));
+    final context = tester.getRect(find.byKey(const ValueKey('ai-agent-context-usage')));
+    final permission = tester.getRect(find.byKey(const ValueKey('ai-agent-permission')));
+    expect(host.center.dy, closeTo(title.center.dy, 1));
+    expect(host.left, greaterThan(title.right));
+    expect(host.right, lessThan(history.left));
+    expect(send.size, const Size.square(WorkspaceSize.tabHeight));
+    final button = tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-send')));
+    expect(button.style!.shape!.resolve({}), isA<RoundedRectangleBorder>());
+    expect(context.center.dy, closeTo(model.center.dy, 1));
+    expect(permission.center.dy, closeTo(model.center.dy, 1));
+    expect(send.center.dy, closeTo(model.center.dy, 1));
+    expect(context.left - model.right, closeTo(Space.sm, 1));
+    expect(permission.left - context.right, closeTo(Space.sm, 1));
+    expect(send.left - permission.right, closeTo(Space.sm, 1));
     expect(find.text('0%'), findsOneWidget);
     runtime.estimatedUsed = 32000;
     runtime.estimatedWindow = 128000;

@@ -95,14 +95,10 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
     final enabled = widget.onChanged != null && widget.endpoint.trim().isNotEmpty;
     final label = widget.value.isEmpty ? l.aiConfigModel : widget.value;
     final content = Row(
-      mainAxisSize: widget.compact ? MainAxisSize.min : MainAxisSize.max,
       children: [
         const Icon(Icons.auto_awesome_outlined, size: 14),
         const SizedBox(width: Space.xs),
-        if (widget.compact)
-          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis))
-        else
-          Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
         const SizedBox(width: Space.xs),
         const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
       ],
@@ -113,7 +109,9 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
             style: TextButton.styleFrom(
               minimumSize: const Size(0, WorkspaceSize.tabHeight),
               padding: const EdgeInsets.symmetric(horizontal: Space.xs),
-              visualDensity: VisualDensity.compact,
+              visualDensity: VisualDensity.standard,
+              alignment: Alignment.centerLeft,
+              foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             onPressed: enabled ? _show : null,
