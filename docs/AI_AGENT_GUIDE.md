@@ -121,7 +121,7 @@ Agent 不要求向量数据库、MCP、多 Agent、复杂编排框架或长记�
 
 [conversations.dart](../lib/features/ai/application/conversations.dart) 管选中会话、每会话草稿、保存与发送前绑定检查；[conversation.dart](../lib/features/ai/domain/conversation.dart) 定义可读投影；[conversation_store.dart](../lib/features/ai/adapters/conversation_store.dart) 负责有界 JSON 与坏档保护。应用始终保留同一个 AgentRuntime 作为工具授权身份，切换会话只在空闲时恢复展示，运行时可看历史列表但不能新建、切换或删除。关闭侧栏不销毁任务，也不丢草稿。
 
-这份记忆只保留用户/助手文本、执行状态和已经允许发送的输出投影。执行卡中的 command、target、cwd、raw 双流、批准对象和输出 handle 不进存储；但用户/助手文字仍可能自行包含命令、地址或敏感业务内容。常见 Bearer、秘密赋值和私钥块过滤只是辅助措施，既不扫描凭据库，也不能识别任意未知秘密。未发送草稿只存在内存，不能把“关闭后保留”理解为“重启后恢复”。
+这份记忆只保留用户/助手文本、工具能力 ID/状态和已经允许发送的输出投影。工具原始参数/结果、执行卡中的 command、target、cwd、raw 双流、批准对象和输出 handle 不进存储；但用户/助手文字仍可能自行包含命令、地址或敏感业务内容。常见 Bearer、秘密赋值和私钥块过滤只是辅助措施，既不扫描凭据库，也不能识别任意未知秘密。未发送草稿只存在内存，不能把“关闭后保留”理解为“重启后恢复”。
 
 继续前仍比较模型目的地，主机切换不要求新建会话。runtime 按 conversationId 维护仅内存的逐主机许可：初始聚焦主机作为默认范围，其他主机在拨号前弹窗确认；同会话许可绑定当前模型目的地、有效路由与安全修订，未变时跨 turn 复用。路由/信任/凭据变化失效后重新确认，删除/新建/重启不恢复旧许可。许可只允许访问主机，不能代替具体命令审批、HostTrustService 或输出发送选择。
 
@@ -179,6 +179,8 @@ flowchart TD
 | `diagnostics_collect` → `agent.diagnose` | `hostId`、`template` | template 只能是 `systemSummary` 或 `storageCapacity`；固定采集/纯解析后返回结构化投影与状态 |
 | `command_execute` → `agent.execute` | `hostId`、绝对 `cwd`、`command`、可选 `timeoutSeconds` | 默认 60 秒，允许 1–300 秒；按用户权限模式执行，返回退出状态/截断等，输出文本另获发送权 |
 | `output_read` → `agent.output` | `hostId`、`handle` | 只返回此前获准共享的文本；不读取任意文件，不扩大到原始未共享输出，也不重新执行命令 |
+
+对话按模型完整请求的顺序记录工具卡：`host_list` 和 `output_read` 显示紧凑的工具名与状态，`diagnostics_collect` 和 `command_execute` 复用执行卡。被拒绝、参数错误或取消也有终态；名称来自本地目录，未知工具不回显模型自填名称。历史只恢复这些可读记录，不重新执行工具；未结束的普通读取显示中断，未结束的远端执行仍视为结果未知。
 
 这些 schema 都拒绝未知字段，并有长度/范围限制。`command` 另限 UTF-8 4 KiB，`cwd` 必须是绝对路径且不含控制字符；schema 通过后仍可能被业务校验拒绝。模型工具调用示例：
 
