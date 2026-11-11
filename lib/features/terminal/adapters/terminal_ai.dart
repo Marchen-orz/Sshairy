@@ -104,7 +104,6 @@ extension _TerminalAiPane on _TerminalPaneState {
       context.ready &&
       _terminalCompositionReady &&
       !identical(_dismissedCandidateRequest, _session.commandAssistance.value.request) &&
-      terminalInputIntent(context.draft ?? '') != TerminalInputIntent.naturalLanguage &&
       (_aiService?.canComplete(context) ?? false);
 
   void _syncAi() {
@@ -277,7 +276,14 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
     widget.session.addListener(_changed);
     _instruction.addListener(_edited);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+      if (!mounted) return;
+      _focus.requestFocus();
+      // Opening from an existing prompt asks the model straight away; the result stays editable.
+      if (_result == null && _captured.draft!.trim().isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _editorFocus.hasFocus) unawaited(_generate());
+        });
+      }
     });
   }
 

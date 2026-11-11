@@ -228,13 +228,10 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     final keys = HardwareKeyboard.instance;
-    final modifier = defaultTargetPlatform == TargetPlatform.macOS ? keys.isMetaPressed : keys.isControlPressed;
+    final shortcuts = ref.read(settingsProvider).shortcuts;
     if (event is KeyDownEvent &&
-        modifier &&
-        keys.isShiftPressed &&
-        !keys.isAltPressed &&
-        event.logicalKey == LogicalKeyboardKey.keyG &&
-        _canOpenInlineAi) {
+        _canOpenInlineAi &&
+        AppShortcuts.matches(shortcuts, AppShortcutAction.inlineGenerate, event)) {
       _showInlineAi();
       return KeyEventResult.handled;
     }
@@ -244,13 +241,17 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     }
     final assistance = _assistanceKey(event);
     if (assistance != null) return assistance;
-    if (event is KeyDownEvent && keys.isControlPressed && keys.isShiftPressed && !keys.isAltPressed) {
-      if (event.logicalKey == LogicalKeyboardKey.keyF) {
+    if (event is KeyDownEvent) {
+      if (AppShortcuts.matches(shortcuts, AppShortcutAction.terminalSearch, event)) {
         setState(() => _searching = true);
         return KeyEventResult.handled;
       }
-      if (event.logicalKey == LogicalKeyboardKey.keyC) {
+      if (AppShortcuts.matches(shortcuts, AppShortcutAction.terminalCopy, event)) {
         _copy();
+        return KeyEventResult.handled;
+      }
+      if (AppShortcuts.matches(shortcuts, AppShortcutAction.terminalPaste, event)) {
+        unawaited(_paste());
         return KeyEventResult.handled;
       }
     }

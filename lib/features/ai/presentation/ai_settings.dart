@@ -27,36 +27,24 @@ class AiSettings extends ConsumerStatefulWidget {
 }
 
 class _AiSettingsState extends ConsumerState<AiSettings> {
-  final _endpoint = TextEditingController(),
-      _model = TextEditingController(),
-      _key = TextEditingController();
-  final _contextWindow = TextEditingController(),
-      _maxOutput = TextEditingController();
+  final _endpoint = TextEditingController(), _model = TextEditingController(), _key = TextEditingController();
+  final _contextWindow = TextEditingController(), _maxOutput = TextEditingController();
   final _form = GlobalKey<FormState>();
   late AiConfiguration _initial;
   late bool _enabled, _inlineEnabled, _completionEnabled;
   String _inlineModel = '', _completionModel = '';
-  var _customContext = false,
-      _inlineAdvanced = false,
-      _completionAdvanced = false;
+  var _customContext = false, _inlineAdvanced = false, _completionAdvanced = false;
   String? _providerIdentity;
-  final _inlineExcludedHosts = <HostId>{},
-      _completionExcludedHosts = <HostId>{};
+  final _inlineExcludedHosts = <HostId>{}, _completionExcludedHosts = <HostId>{};
   late ModelProtocol _protocol;
   Timer? _checkTimer;
   var _generation = 0;
-  var _working = false,
-      _checking = false,
-      _hasKey = false,
-      _keyError = false,
-      _removeKey = false,
-      _conflict = false;
+  var _working = false, _checking = false, _hasKey = false, _keyError = false, _removeKey = false, _conflict = false;
   String? _identity, _error;
   FormSaveController? _saveController;
   late final _saveEntry = FormSaveEntry(
     dirty: () => _dirty,
-    canSave: () =>
-        !_working && !_initial.loadFailed && !_credentialBlocked && !_conflict,
+    canSave: () => !_working && !_initial.loadFailed && !_credentialBlocked && !_conflict,
     save: () async {
       await _save();
       return mounted && !_dirty && _error == null && !_conflict;
@@ -96,11 +84,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
 
   String? get _draftIdentity {
     try {
-      return ModelProfile(
-        protocol: _protocol,
-        endpoint: _endpoint.text.trim(),
-        model: _model.text.trim(),
-      ).identity;
+      return ModelProfile(protocol: _protocol, endpoint: _endpoint.text.trim(), model: _model.text.trim()).identity;
     } on FormatException {
       return null;
     } on ArgumentError {
@@ -110,10 +94,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
 
   String? get _draftProvider {
     try {
-      return jsonEncode([
-        _protocol.name,
-        ModelProfile.normalizeEndpoint(_endpoint.text.trim()),
-      ]);
+      return jsonEncode([_protocol.name, ModelProfile.normalizeEndpoint(_endpoint.text.trim())]);
     } on FormatException {
       return null;
     }
@@ -121,11 +102,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
 
   String? get _catalogCredential => _removeKey ? null : _identity;
 
-  void _selectModel(
-    String value, {
-    bool inline = false,
-    bool completion = false,
-  }) {
+  void _selectModel(String value, {bool inline = false, bool completion = false}) {
     setState(() {
       if (inline) {
         _inlineModel = value;
@@ -141,11 +118,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     });
   }
 
-  bool get _emptyProfile =>
-      _endpoint.text.trim().isEmpty && _model.text.trim().isEmpty;
-  bool get _credentialBlocked =>
-      (_checking || _keyError) &&
-      (_enabled || _key.text.isNotEmpty || _removeKey);
+  bool get _emptyProfile => _endpoint.text.trim().isEmpty && _model.text.trim().isEmpty;
+  bool get _credentialBlocked => (_checking || _keyError) && (_enabled || _key.text.isNotEmpty || _removeKey);
   bool get _dirty =>
       _enabled != _initial.enabled ||
       _inlineEnabled != _initial.inlineEnabled ||
@@ -153,10 +127,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       !setEquals(_inlineExcludedHosts, _initial.inlineExcludedHosts) ||
       !setEquals(_completionExcludedHosts, _initial.completionExcludedHosts) ||
       _inlineModel != (_initial.inlineModel ?? _initial.profile?.model ?? '') ||
-      _completionModel !=
-          (_initial.completionModel ?? _initial.profile?.model ?? '') ||
-      jsonEncode(_profile?.toJson()) !=
-          jsonEncode(_initial.profile?.toJson()) ||
+      _completionModel != (_initial.completionModel ?? _initial.profile?.model ?? '') ||
+      jsonEncode(_profile?.toJson()) != jsonEncode(_initial.profile?.toJson()) ||
       _key.text.isNotEmpty ||
       _removeKey ||
       (!_emptyProfile && _profile == null);
@@ -187,10 +159,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _inlineModel = config.inlineModel ?? config.profile?.model ?? '';
     _completionModel = config.completionModel ?? config.profile?.model ?? '';
     _contextWindow.text = '${config.profile?.contextWindow ?? 1000000}';
-    _customContext = !{
-      1000000,
-      256000,
-    }.contains(int.tryParse(_contextWindow.text));
+    _customContext = !{1000000, 256000}.contains(int.tryParse(_contextWindow.text));
     _maxOutput.text = '${config.profile?.maxOutputTokens ?? 4096}';
     _key.clear();
     _identity = _draftIdentity;
@@ -205,13 +174,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _saveController?.unregister(_saveEntry);
     _checkTimer?.cancel();
     _generation++;
-    for (final controller in [
-      _endpoint,
-      _model,
-      _key,
-      _contextWindow,
-      _maxOutput,
-    ]) {
+    for (final controller in [_endpoint, _model, _key, _contextWindow, _maxOutput]) {
       controller.dispose();
     }
     super.dispose();
@@ -227,8 +190,9 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       _key.clear();
       _hasKey = _keyError = _removeKey = false;
       _checking = _identity != null;
-      if (_identity != null)
+      if (_identity != null) {
         _checkTimer = Timer(const Duration(milliseconds: 250), _checkKey);
+      }
     }
     setState(() => _error = null);
   }
@@ -267,10 +231,9 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   }
 
   void _configurationChanged(AiConfiguration? before, AiConfiguration next) {
-    if (_working ||
-        (next.revision == _initial.revision &&
-            next.loadFailed == _initial.loadFailed))
+    if (_working || (next.revision == _initial.revision && next.loadFailed == _initial.loadFailed)) {
       return;
+    }
     if (_dirty) {
       setState(() => _conflict = true);
     } else {
@@ -280,11 +243,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   }
 
   Future<void> _save() async {
-    if (_working ||
-        _credentialBlocked ||
-        _conflict ||
-        _initial.loadFailed ||
-        !_form.currentState!.validate()) {
+    if (_working || _credentialBlocked || _conflict || _initial.loadFailed || !_form.currentState!.validate()) {
       return;
     }
     final l = AppLocalizations.of(context);
@@ -293,10 +252,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       setState(() => _error = l.aiConfigInvalid);
       return;
     }
-    final enabled = _enabled,
-        remove = _removeKey,
-        key = _key.text,
-        identity = profile?.identity;
+    final enabled = _enabled, remove = _removeKey, key = _key.text, identity = profile?.identity;
     final revision = _initial.revision;
     final notifier = ref.read(aiConfigurationProvider.notifier);
     var credentialChanged = false;
@@ -313,8 +269,9 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         credentialChanged = true;
         if (remove) {
           await _credentials.clear(identity);
-          if (_identity != null && _identity != identity)
+          if (_identity != null && _identity != identity) {
             await _credentials.clear(_identity!);
+          }
         } else {
           await _credentials.save(identity, Secret(key));
         }
@@ -345,9 +302,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         inlineExcludedHosts: _inlineExcludedHosts,
         completionExcludedHosts: _completionExcludedHosts,
         inlineModel: _inlineModel.isEmpty ? profile?.model : _inlineModel,
-        completionModel: _completionModel.isEmpty
-            ? profile?.model
-            : _completionModel,
+        completionModel: _completionModel.isEmpty ? profile?.model : _completionModel,
       );
       if (!mounted) return;
       setState(() => _load(ref.read(aiConfigurationProvider)));
@@ -355,9 +310,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     } on Object {
       if (!mounted) return;
       setState(() {
-        _error = credentialChanged
-            ? l.aiConfigPartialSave
-            : l.aiConfigSaveFailed;
+        _error = credentialChanged ? l.aiConfigPartialSave : l.aiConfigSaveFailed;
         _conflict = ref.read(aiConfigurationProvider).revision != revision;
       });
     } finally {
@@ -384,21 +337,13 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             child: TextButton.icon(
               key: ValueKey('ai-config-$feature-advanced'),
               onPressed: () => onExpanded(!expanded),
-              icon: Icon(
-                expanded
-                    ? Icons.expand_less_rounded
-                    : Icons.chevron_right_rounded,
-                size: 18,
-              ),
+              icon: Icon(expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 18),
               label: Text(l.aiConfigFeatureAdvanced),
             ),
           ),
         ),
         if (expanded) ...[
-          Text(
-            l.aiConfigAvailableHosts,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          Text(l.aiConfigAvailableHosts, style: Theme.of(context).textTheme.bodySmall),
           for (final host in hosts)
             AppToggleRow(
               key: ValueKey('ai-config-$feature-host-${host.id.value}'),
@@ -415,11 +360,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                       }
                     }),
             ),
-          if (hosts.isEmpty)
-            Text(
-              l.aiConfigFeatureNoHosts,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+          if (hosts.isEmpty) Text(l.aiConfigFeatureNoHosts, style: Theme.of(context).textTheme.bodySmall),
         ],
       ],
     );
@@ -432,8 +373,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     _saveController?.changed();
-    final blocked =
-        _working || config.loadFailed || (_saveController?.busy ?? false);
+    final blocked = _working || config.loadFailed || (_saveController?.busy ?? false);
     const gap = SizedBox(height: Space.md);
     return Form(
       key: _form,
@@ -441,10 +381,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (config.loadFailed) ...[
-            Text(
-              l.aiConfigLoadFailed,
-              style: TextStyle(color: theme.colorScheme.error),
-            ),
+            Text(l.aiConfigLoadFailed, style: TextStyle(color: theme.colorScheme.error)),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
@@ -489,9 +426,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               keyboardType: TextInputType.url,
               autocorrect: false,
               decoration: AppFormField.decoration(context),
-              validator: (_) => _emptyProfile && !_enabled || _profile != null
-                  ? null
-                  : l.aiConfigInvalid,
+              validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
               onChanged: (_) => _changed(identity: true),
             ),
           ),
@@ -501,11 +436,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             child: TextField(
               key: const ValueKey('ai-config-key'),
               controller: _key,
-              enabled:
-                  !blocked &&
-                  !_checking &&
-                  !_keyError &&
-                  _draftProvider != null,
+              enabled: !blocked && !_checking && !_keyError && _draftProvider != null,
               obscureText: true,
               autocorrect: false,
               enableSuggestions: false,
@@ -527,17 +458,12 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                 : _hasKey
                 ? l.aiConfigKeySaved
                 : l.aiConfigKeyMissing,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: _keyError ? theme.colorScheme.error : null,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: _keyError ? theme.colorScheme.error : null),
           ),
           if (_keyError)
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: blocked ? null : _checkKey,
-                child: Text(l.retryAction),
-              ),
+              child: TextButton(onPressed: blocked ? null : _checkKey, child: Text(l.retryAction)),
             ),
           if (_hasKey && !_removeKey)
             Align(
@@ -569,12 +495,11 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
           const SizedBox(height: Space.sm),
           LayoutBuilder(
             builder: (context, constraints) {
-              final columns =
-                  ((constraints.maxWidth + Space.md) / (210 + Space.md))
-                      .floor()
-                      .clamp(1, _customContext ? 3 : 2);
-              final width =
-                  (constraints.maxWidth - Space.md * (columns - 1)) / columns;
+              final columns = ((constraints.maxWidth + Space.md) / (210 + Space.md)).floor().clamp(
+                1,
+                _customContext ? 3 : 2,
+              );
+              final width = (constraints.maxWidth - Space.md * (columns - 1)) / columns;
               return Wrap(
                 spacing: Space.md,
                 runSpacing: Space.md,
@@ -585,9 +510,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                       label: l.aiConfigContextWindow,
                       child: AppSelect<int>(
                         key: const ValueKey('ai-config-context-preset'),
-                        value: _customContext
-                            ? -1
-                            : int.parse(_contextWindow.text),
+                        value: _customContext ? -1 : int.parse(_contextWindow.text),
                         options: [
                           const AppOption(1000000, '1M'),
                           const AppOption(256000, '256K'),
@@ -597,8 +520,9 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                             ? null
                             : (value) => setState(() {
                                 _customContext = value == -1;
-                                if (!_customContext)
+                                if (!_customContext) {
                                   _contextWindow.text = '$value';
+                                }
                                 _error = null;
                               }),
                       ),
@@ -615,8 +539,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                           enabled: !blocked,
                           keyboardType: TextInputType.number,
                           decoration: AppFormField.decoration(context),
-                          validator: (_) =>
-                              _profile == null ? l.aiConfigInvalid : null,
+                          validator: (_) => _profile == null ? l.aiConfigInvalid : null,
                           onChanged: (_) => _changed(),
                         ),
                       ),
@@ -631,10 +554,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                         enabled: !blocked,
                         keyboardType: TextInputType.number,
                         decoration: AppFormField.decoration(context),
-                        validator: (_) =>
-                            _emptyProfile && !_enabled || _profile != null
-                            ? null
-                            : l.aiConfigInvalid,
+                        validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
                         onChanged: (_) => _changed(),
                       ),
                     ),
@@ -650,16 +570,12 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             key: const ValueKey('ai-config-inline'),
             title: l.aiConfigInline,
             value: _inlineEnabled,
-            onChanged: blocked || !_enabled || _profile == null
-                ? null
-                : (v) => setState(() => _inlineEnabled = v),
+            onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _inlineEnabled = v),
           ),
           const SizedBox(height: Space.xs),
           Text(
             l.aiConfigInlineHint,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           gap,
           AiModelPicker(
@@ -670,9 +586,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             endpoint: _endpoint.text.trim(),
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: blocked || _draftProvider == null
-                ? null
-                : (value) => _selectModel(value, inline: true),
+            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, inline: true),
           ),
           if (_inlineEnabled) ...[
             const SizedBox(height: Space.xs),
@@ -689,16 +603,12 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             key: const ValueKey('ai-config-completion'),
             title: l.aiConfigCompletion,
             value: _completionEnabled,
-            onChanged: blocked || !_enabled || _profile == null
-                ? null
-                : (v) => setState(() => _completionEnabled = v),
+            onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _completionEnabled = v),
           ),
           const SizedBox(height: Space.xs),
           Text(
             l.aiConfigCompletionHint,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: Space.sm),
           AiModelPicker(
@@ -709,9 +619,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             endpoint: _endpoint.text.trim(),
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: blocked || _draftProvider == null
-                ? null
-                : (value) => _selectModel(value, completion: true),
+            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, completion: true),
           ),
           if (_completionEnabled) ...[
             const SizedBox(height: Space.xs),
@@ -720,33 +628,23 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               expanded: _completionAdvanced,
               excluded: _completionExcludedHosts,
               blocked: blocked,
-              onExpanded: (value) =>
-                  setState(() => _completionAdvanced = value),
+              onExpanded: (value) => setState(() => _completionAdvanced = value),
             ),
           ],
           if (_error != null || _conflict) ...[
             const SizedBox(height: Space.sm),
-            Text(
-              _error ?? l.aiConfigConflict,
-              style: TextStyle(color: theme.colorScheme.error),
-            ),
+            Text(_error ?? l.aiConfigConflict, style: TextStyle(color: theme.colorScheme.error)),
           ],
           if (_saveController == null) ...[
             const SizedBox(height: Space.sm),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
-                  onPressed: _working ? null : _reset,
-                  child: Text(l.cancel),
-                ),
+                TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
                 const SizedBox(width: Space.sm),
                 FilledButton(
                   key: const ValueKey('ai-config-save'),
-                  onPressed:
-                      blocked || _credentialBlocked || _conflict || !_dirty
-                      ? null
-                      : _save,
+                  onPressed: blocked || _credentialBlocked || _conflict || !_dirty ? null : _save,
                   child: Text(l.save),
                 ),
               ],

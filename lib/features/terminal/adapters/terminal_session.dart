@@ -16,6 +16,7 @@ import '../../../design/terminal_palette.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/cancellation.dart';
+import '../../../foundation/shortcuts.dart';
 import '../../../foundation/open_external.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';

@@ -1643,6 +1643,65 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workspaceSection => 'Workspace';
 
   @override
+  String get shortcuts => 'Keyboard shortcuts';
+
+  @override
+  String get shortcutPress => 'Press keys…';
+
+  @override
+  String get shortcutUnset => 'Unset';
+
+  @override
+  String get shortcutReset => 'Reset to default';
+
+  @override
+  String shortcutConflict(Object action) {
+    return 'Already used by $action';
+  }
+
+  @override
+  String get shortcutCommandPalette => 'Command palette';
+
+  @override
+  String get shortcutNewConnection => 'New connection';
+
+  @override
+  String get shortcutCloseTab => 'Close tab';
+
+  @override
+  String get shortcutSettings => 'Open settings';
+
+  @override
+  String get shortcutToggleAgent => 'Toggle Agent panel';
+
+  @override
+  String get shortcutInlineGenerate => 'Generate command inline';
+
+  @override
+  String get shortcutTerminalCopy => 'Terminal copy';
+
+  @override
+  String get shortcutTerminalPaste => 'Terminal paste';
+
+  @override
+  String get shortcutTerminalSearch => 'Terminal search';
+
+  @override
+  String get shortcutCommandHistory => 'Command history';
+
+  @override
+  String get shortcutPreviousPane => 'Previous pane';
+
+  @override
+  String get shortcutNextPane => 'Next pane';
+
+  @override
+  String get shortcutPreviousTab => 'Previous tab';
+
+  @override
+  String get shortcutNextTab => 'Next tab';
+
+  @override
   String get filesDock => 'Files panel';
 
   @override
@@ -2472,7 +2531,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentTextOnly => 'Text only';
 
   @override
-  String get aiAgentSendShortcut => 'Send · Ctrl/Cmd+Enter';
+  String get aiAgentSendShortcut => 'Send · Enter';
 
   @override
   String get aiAgentApproveTitle => 'Approve command';

@@ -16,15 +16,28 @@ import '../../../design/theme.dart';
 import '../../../design/theme_names.dart';
 import '../../../foundation/data_dir.dart';
 import '../../../foundation/open_external.dart';
+import '../../../foundation/shortcuts.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../platform/system_fonts.dart';
 import '../settings.dart';
 import '../domain/background.dart';
 import 'background_image.dart';
+import 'shortcut_field.dart';
 
 const appVersion = '0.1.0';
 
-enum SettingsSectionId { appearance, terminal, workspace, connection, files, ai, translation, security, about }
+enum SettingsSectionId {
+  appearance,
+  terminal,
+  workspace,
+  shortcuts,
+  connection,
+  files,
+  ai,
+  translation,
+  security,
+  about,
+}
 
 /// A section another feature adds to the panel, such as trust records from connections; settings cannot import
 /// those features without a cycle, so the app wires them in.
@@ -120,6 +133,14 @@ class _SettingsDialogState extends State<_SettingsDialog> {
       ),
     ),
   );
+}
+
+/// Resetting into a default another action now uses would store a duplicate map and fail.
+bool _canResetShortcut(Map<String, String> overrides, AppShortcutAction action) {
+  final fallback = AppShortcuts.resolve(const {}, action);
+  return overrides.containsKey(action.name) &&
+      fallback != null &&
+      AppShortcuts.conflict(AppShortcuts.withoutBinding(overrides, action), action, fallback) == null;
 }
 
 class SettingsPanel extends ConsumerStatefulWidget {
@@ -424,6 +445,44 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           }),
         ),
         _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
+      ]),
+      _Section(SettingsSectionId.shortcuts, l.shortcuts, Icons.keyboard_outlined, [
+        for (final action in AppShortcutAction.values)
+          _Field(
+            shortcutActionLabel(l, action),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 240,
+                  child: ShortcutField(
+                    key: ValueKey('shortcut-${action.name}'),
+                    action: action,
+                    overrides: settings.shortcuts,
+                    onChanged: (binding) => notifier.set(
+                      SettingKeys.shortcuts,
+                      AppShortcuts.withBinding(settings.shortcuts, action, binding),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: Space.xs),
+                IconButton(
+                  tooltip: l.shortcutReset,
+                  onPressed: _canResetShortcut(settings.shortcuts, action)
+                      ? () =>
+                            notifier.set(SettingKeys.shortcuts, AppShortcuts.withoutBinding(settings.shortcuts, action))
+                      : null,
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size.square(WorkspaceSize.tabHeight),
+                    fixedSize: const Size.square(WorkspaceSize.tabHeight),
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.standard,
+                  ),
+                  icon: const Icon(Icons.restore_rounded, size: 16),
+                ),
+              ],
+            ),
+          ),
       ]),
       _Section(SettingsSectionId.connection, l.connection, Icons.dns_outlined, [
         _Field(

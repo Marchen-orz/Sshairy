@@ -301,6 +301,28 @@ void main() {
     expect(find.byKey(const ValueKey('terminal-ai-composer')), findsNothing);
   });
 
+  testWidgets('the inline generation shortcut opens the composer on a draft and starts generation', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('terminal-ai-composer')), findsOneWidget);
+    expect(ai.generations, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('opening inline AI from the button generates from the existing draft', (tester) async {
+    await mount(tester, 'show disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('terminal-ai-composer')), findsOneWidget);
+    expect(ai.generations, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('inline with remote text cannot replace it and retained preview can be accepted after clearing', (
     tester,
   ) async {

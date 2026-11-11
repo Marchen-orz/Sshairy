@@ -34,9 +34,7 @@ class AgentPanel extends ConsumerStatefulWidget {
 }
 
 class _AgentPanelState extends ConsumerState<AgentPanel> {
-  late final _goal = TextEditingController(
-    text: ref.read(agentComposerProvider).goal,
-  );
+  late final _goal = TextEditingController(text: ref.read(agentComposerProvider).goal);
   bool _startFailed = false, _historyExpanded = false;
 
   void _resetConversationUi() => setState(() {
@@ -53,14 +51,8 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
         builder: (context) => AppDialog(
           content: Text(l.aiAgentHistoryDeleteConfirm),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(l.cancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(l.aiAgentHistoryDelete),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: Text(l.aiAgentHistoryDelete)),
           ],
         ),
       );
@@ -79,8 +71,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     super.dispose();
   }
 
-  void _goalChanged() =>
-      ref.read(agentComposerProvider.notifier).setGoal(_goal.text);
+  void _goalChanged() => ref.read(agentComposerProvider.notifier).setGoal(_goal.text);
 
   void _replaceGoal(String value) {
     _goal.value = TextEditingValue(
@@ -93,10 +84,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
   Future<void> _send(AgentRuntime runtime, HostId? host) async {
     final goal = _goal.text.trim();
     final conversations = ref.read(agentConversationsProvider);
-    if (runtime.busy ||
-        conversations.loading ||
-        goal.isEmpty ||
-        !_goal.value.composing.isCollapsed) {
+    if (runtime.busy || conversations.loading || goal.isEmpty || !_goal.value.composing.isCollapsed) {
       return;
     }
     if (conversations.hasHistory && !conversations.canContinue(host)) return;
@@ -137,16 +125,11 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
       );
     }
     final hosts = ref.watch(agentBackendProvider).hosts;
-    final enabled =
-        configuration.enabled &&
-        configuration.profile != null &&
-        !configuration.loadFailed;
+    final enabled = configuration.enabled && configuration.profile != null && !configuration.loadFailed;
     final profile = ref.watch(effectiveAgentProfileProvider);
     final tools = profile?.tools ?? false;
     final focusedHost = ref.watch(agentFocusedHostProvider);
-    final selectedHost = tools && hosts.any((host) => host.id == focusedHost)
-        ? focusedHost
-        : null;
+    final selectedHost = tools && hosts.any((host) => host.id == focusedHost) ? focusedHost : null;
     final theme = Theme.of(context);
 
     return ListenableBuilder(
@@ -155,19 +138,12 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
         builder: (context, constraints) {
           final compact = constraints.maxHeight < 440;
           final targetHost = runtime.busy ? runtime.resolvedHost : selectedHost;
-          final targetLabel =
-              hosts.where((host) => host.id == targetHost).firstOrNull?.label ??
-              l.aiAgentAutoTarget;
-          final changedBinding =
-              conversations.hasHistory &&
-              !conversations.canContinue(selectedHost);
+          final targetLabel = hosts.where((host) => host.id == targetHost).firstOrNull?.label ?? l.aiAgentAutoTarget;
+          final changedBinding = conversations.hasHistory && !conversations.canContinue(selectedHost);
           return IconButtonTheme(
             data: IconButtonThemeData(
               style: IconButton.styleFrom(
-                minimumSize: const Size(
-                  WorkspaceSize.control,
-                  WorkspaceSize.control,
-                ),
+                minimumSize: const Size(WorkspaceSize.control, WorkspaceSize.control),
                 padding: const EdgeInsets.all(Space.xs),
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -177,19 +153,10 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    Space.md,
-                    Space.sm,
-                    Space.sm,
-                    Space.sm,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.sm, Space.sm),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.auto_awesome_outlined,
-                        size: 18,
-                        color: theme.colorScheme.primary,
-                      ),
+                      Icon(Icons.auto_awesome_outlined, size: 18, color: theme.colorScheme.primary),
                       const SizedBox(width: Space.xs),
                       Text(l.aiAgentTitle, style: theme.textTheme.titleSmall),
                       const SizedBox(width: Space.sm),
@@ -203,9 +170,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(
-                                alpha: .55,
-                              ),
+                              color: theme.colorScheme.onSurface.withValues(alpha: .55),
                             ),
                           ),
                         ),
@@ -216,9 +181,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                         child: IconButton(
                           key: const ValueKey('ai-agent-history'),
                           tooltip: l.aiAgentHistory,
-                          onPressed: () => setState(
-                            () => _historyExpanded = !_historyExpanded,
-                          ),
+                          onPressed: () => setState(() => _historyExpanded = !_historyExpanded),
                           icon: const Icon(Icons.history_rounded, size: 17),
                         ),
                       ),
@@ -236,10 +199,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                       ),
                       IconButton(
                         tooltip: l.settings,
-                        onPressed: () => showSettingsDialog(
-                          context,
-                          section: SettingsSectionId.ai,
-                        ),
+                        onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
                         icon: const Icon(Icons.tune_outlined, size: 17),
                       ),
                       if (widget.onClose != null)
@@ -255,13 +215,8 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                 if (_historyExpanded)
                   ConstrainedBox(
                     key: const ValueKey('ai-agent-history-list'),
-                    constraints: BoxConstraints(
-                      maxHeight: min(240, constraints.maxHeight * .32),
-                    ),
-                    child: _History(
-                      conversations: conversations,
-                      onChoice: _history,
-                    ),
+                    constraints: BoxConstraints(maxHeight: min(240, constraints.maxHeight * .32)),
+                    child: _History(conversations: conversations, onChoice: _history),
                   ),
                 Expanded(
                   child: runtime.timeline.isEmpty && !runtime.busy
@@ -275,10 +230,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                           key: ValueKey(conversations.selectedId),
                           runtime: runtime,
                           conversationId: conversations.selectedId,
-                          canRegenerate:
-                              enabled &&
-                              !changedBinding &&
-                              conversations.canRegenerate,
+                          canRegenerate: enabled && !changedBinding && conversations.canRegenerate,
                           canWithdraw: conversations.canWithdraw,
                           onRegenerate: () => _regenerate(selectedHost),
                           onWithdraw: () {
@@ -290,50 +242,28 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                 ),
                 if (runtime.error != null || _startFailed)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      Space.md,
-                      Space.xs,
-                      Space.md,
-                      0,
-                    ),
+                    padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.md, 0),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          size: 16,
-                          color: theme.colorScheme.error,
-                        ),
+                        Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.error),
                         const SizedBox(width: Space.sm),
                         Expanded(
                           child: Text(
                             _error(l, runtime.error),
                             maxLines: compact ? 2 : 4,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.error,
-                            ),
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
                           ),
                         ),
                       ],
                     ),
                   ),
-                const Divider(
-                  key: ValueKey('ai-agent-composer-divider'),
-                  height: 1,
-                ),
+                const Divider(key: ValueKey('ai-agent-composer-divider'), height: 1),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Space.md,
-                    vertical: Space.sm,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: max(
-                        112,
-                        constraints.maxHeight * (compact ? .58 : .46),
-                      ),
-                    ),
+                    constraints: BoxConstraints(maxHeight: max(112, constraints.maxHeight * (compact ? .58 : .46))),
                     child: SingleChildScrollView(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -342,20 +272,14 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                           if (changedBinding && !runtime.busy)
                             Row(
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    l.aiAgentHistoryTargetChanged,
-                                    style: theme.textTheme.bodySmall,
-                                  ),
-                                ),
+                                Expanded(child: Text(l.aiAgentHistoryTargetChanged, style: theme.textTheme.bodySmall)),
                                 TextButton(
                                   key: const ValueKey('ai-agent-new-target'),
                                   onPressed: conversations.loading
                                       ? null
                                       : () {
                                           final goal = _goal.text;
-                                          if (!conversations
-                                              .newConversation()) {
+                                          if (!conversations.newConversation()) {
                                             return;
                                           }
                                           _replaceGoal(goal);
@@ -365,56 +289,42 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                 ),
                               ],
                             ),
-                          if (conversations.loadFailed ||
-                              conversations.saveFailed)
+                          if (conversations.loadFailed || conversations.saveFailed)
                             Row(
                               children: [
                                 Expanded(
                                   child: Text(
-                                    conversations.loadFailed
-                                        ? l.aiAgentHistoryLoadFailed
-                                        : l.aiAgentHistorySaveFailed,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.error,
-                                    ),
+                                    conversations.loadFailed ? l.aiAgentHistoryLoadFailed : l.aiAgentHistorySaveFailed,
+                                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
                                   ),
                                 ),
                                 TextButton(
-                                  onPressed: () => conversations.loadFailed
-                                      ? conversations.reload()
-                                      : conversations.retrySave(),
+                                  onPressed: () =>
+                                      conversations.loadFailed ? conversations.reload() : conversations.retrySave(),
                                   child: Text(l.aiAgentHistoryRetry),
                                 ),
                               ],
                             ),
                           if (conversations.current?.historyTruncated ?? false)
-                            Text(
-                              l.aiAgentHistoryTruncated,
-                              style: theme.textTheme.bodySmall,
-                            ),
+                            Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
                           if (runtime.contextCompacted)
-                            Text(
-                              l.aiAgentContextCompacted,
-                              style: theme.textTheme.bodySmall,
-                            ),
+                            Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
                           Focus(
                             onKeyEvent: (_, event) {
+                              final keys = HardwareKeyboard.instance;
+                              final enter =
+                                  event.logicalKey == LogicalKeyboardKey.enter ||
+                                  event.logicalKey == LogicalKeyboardKey.numpadEnter;
                               if (event is! KeyDownEvent ||
-                                  event.logicalKey !=
-                                      LogicalKeyboardKey.enter ||
-                                  !(HardwareKeyboard
-                                          .instance
-                                          .isControlPressed ||
-                                      HardwareKeyboard
-                                          .instance
-                                          .isMetaPressed) ||
+                                  !enter ||
+                                  keys.isShiftPressed ||
+                                  keys.isControlPressed ||
+                                  keys.isAltPressed ||
+                                  keys.isMetaPressed ||
                                   !_goal.value.composing.isCollapsed) {
                                 return KeyEventResult.ignored;
                               }
-                              if (enabled &&
-                                  !runtime.busy &&
-                                  !conversations.loading &&
-                                  _goal.text.trim().isNotEmpty) {
+                              if (enabled && !runtime.busy && !conversations.loading && _goal.text.trim().isNotEmpty) {
                                 unawaited(_send(runtime, selectedHost));
                               }
                               return KeyEventResult.handled;
@@ -435,10 +345,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                 disabledBorder: InputBorder.none,
                                 filled: false,
                                 isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: Space.sm,
-                                  horizontal: Space.xs,
-                                ),
+                                contentPadding: const EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.xs),
                               ),
                               onChanged: (_) => _goalChanged(),
                             ),
@@ -447,58 +354,31 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                           LayoutBuilder(
                             builder: (context, toolbar) {
                               final model = profile == null
-                                  ? Text(
-                                      l.aiAgentConfigureAction,
-                                      style: theme.textTheme.bodySmall,
-                                    )
+                                  ? Text(l.aiAgentConfigureAction, style: theme.textTheme.bodySmall)
                                   : AiModelPicker(
                                       key: const ValueKey('ai-agent-model'),
                                       value: profile.model,
                                       protocol: profile.protocol,
                                       endpoint: profile.endpoint,
-                                      credentialIdentity:
-                                          configuration.profile?.identity,
+                                      credentialIdentity: configuration.profile?.identity,
                                       compact: true,
                                       onChanged: runtime.busy
                                           ? null
-                                          : ref
-                                                .read(
-                                                  selectedAgentModelProvider
-                                                      .notifier,
-                                                )
-                                                .select,
+                                          : ref.read(selectedAgentModelProvider.notifier).select,
                                     );
-                              final usage = _ContextUsage(
-                                runtime: runtime,
-                                window: profile?.contextWindow ?? 0,
-                              );
+                              final usage = _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0);
                               final permission = _PermissionPicker(
-                                mode: runtime.busy
-                                    ? runtime.permissionMode
-                                    : permissionMode,
+                                mode: runtime.busy ? runtime.permissionMode : permissionMode,
                                 onChanged: !enabled || runtime.busy
                                     ? null
-                                    : ref
-                                          .read(
-                                            selectedAgentPermissionModeProvider
-                                                .notifier,
-                                          )
-                                          .select,
+                                    : ref.read(selectedAgentPermissionModeProvider.notifier).select,
                               );
                               final actionStyle = IconButton.styleFrom(
-                                minimumSize: const Size.square(
-                                  WorkspaceSize.tabHeight,
-                                ),
-                                fixedSize: const Size.square(
-                                  WorkspaceSize.tabHeight,
-                                ),
+                                minimumSize: const Size.square(WorkspaceSize.tabHeight),
+                                fixedSize: const Size.square(WorkspaceSize.tabHeight),
                                 padding: EdgeInsets.zero,
                                 visualDensity: VisualDensity.standard,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    Radii.control,
-                                  ),
-                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
                               );
                               final action = runtime.busy
                                   ? IconButton.filledTonal(
@@ -506,35 +386,20 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                       tooltip: l.stop,
                                       onPressed: runtime.stop,
                                       style: actionStyle,
-                                      icon: const Icon(
-                                        Icons.stop_rounded,
-                                        size: 16,
-                                      ),
+                                      icon: const Icon(Icons.stop_rounded, size: 16),
                                     )
                                   : IconButton.filled(
                                       key: const ValueKey('ai-agent-send'),
                                       tooltip: l.aiAgentSendShortcut,
-                                      onPressed:
-                                          !enabled ||
-                                              conversations.loading ||
-                                              draft.goal.trim().isEmpty
+                                      onPressed: !enabled || conversations.loading || draft.goal.trim().isEmpty
                                           ? null
                                           : () => _send(runtime, selectedHost),
                                       style: actionStyle.merge(
-                                        IconButton.styleFrom(
-                                          foregroundColor:
-                                              theme.colorScheme.onPrimary,
-                                        ),
+                                        IconButton.styleFrom(foregroundColor: theme.colorScheme.onPrimary),
                                       ),
-                                      icon: const Icon(
-                                        Icons.arrow_upward_rounded,
-                                        size: 16,
-                                      ),
+                                      icon: const Icon(Icons.arrow_upward_rounded, size: 16),
                                     );
-                              if (toolbar.maxWidth <
-                                  280 *
-                                      MediaQuery.textScalerOf(context)
-                                          .scale(1)) {
+                              if (toolbar.maxWidth < 360 * MediaQuery.textScalerOf(context).scale(1)) {
                                 return Column(
                                   children: [
                                     Row(
@@ -547,8 +412,9 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                     const SizedBox(height: Space.sm),
                                     Row(
                                       children: [
-                                        permission,
-                                        const Spacer(),
+                                        Expanded(
+                                          child: Align(alignment: Alignment.centerLeft, child: permission),
+                                        ),
                                         action,
                                       ],
                                     ),
@@ -603,43 +469,28 @@ class _History extends StatelessWidget {
         if (conversations.loading) const LinearProgressIndicator(),
         Flexible(
           child: conversations.records.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(Space.md),
-                  child: Text(l.aiAgentHistoryEmpty),
-                )
+              ? Padding(padding: const EdgeInsets.all(Space.md), child: Text(l.aiAgentHistoryEmpty))
               : ListView.builder(
                   shrinkWrap: true,
                   itemCount: conversations.records.length,
                   itemBuilder: (context, index) {
                     final record = conversations.records[index];
-                    final enabled =
-                        !conversations.runtime.busy && !conversations.loading;
+                    final enabled = !conversations.runtime.busy && !conversations.loading;
                     return Row(
                       children: [
                         Expanded(
                           child: PopupRow(
                             key: ValueKey('ai-conversation-${record.id}'),
                             selected: record.id == conversations.selectedId,
-                            onTap: enabled
-                                ? () => onChoice(record.id, false)
-                                : null,
-                            child: Text(
-                              record.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            onTap: enabled ? () => onChoice(record.id, false) : null,
+                            child: Text(record.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                           ),
                         ),
                         IconButton(
                           key: ValueKey('ai-conversation-delete-${record.id}'),
                           tooltip: l.aiAgentHistoryDelete,
-                          onPressed: enabled
-                              ? () => onChoice(record.id, true)
-                              : null,
-                          icon: const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 17,
-                          ),
+                          onPressed: enabled ? () => onChoice(record.id, true) : null,
+                          icon: const Icon(Icons.delete_outline_rounded, size: 17),
                         ),
                       ],
                     );
@@ -696,12 +547,17 @@ IconData _permissionIcon(AgentPermissionMode mode) => switch (mode) {
   AgentPermissionMode.observe => Icons.visibility_outlined,
 };
 
-String _permissionLabel(AppLocalizations l, AgentPermissionMode mode) =>
-    switch (mode) {
-      AgentPermissionMode.auto => l.aiAgentPermissionAuto,
-      AgentPermissionMode.confirm => l.aiAgentPermissionConfirm,
-      AgentPermissionMode.observe => l.aiAgentPermissionObserve,
-    };
+String _permissionLabel(AppLocalizations l, AgentPermissionMode mode) => switch (mode) {
+  AgentPermissionMode.auto => l.aiAgentPermissionAuto,
+  AgentPermissionMode.confirm => l.aiAgentPermissionConfirm,
+  AgentPermissionMode.observe => l.aiAgentPermissionObserve,
+};
+
+String _permissionHint(AppLocalizations l, AgentPermissionMode mode) => switch (mode) {
+  AgentPermissionMode.auto => l.aiAgentPermissionAutoHint,
+  AgentPermissionMode.confirm => l.aiAgentPermissionConfirmHint,
+  AgentPermissionMode.observe => l.aiAgentPermissionObserveHint,
+};
 
 class _PermissionPicker extends StatelessWidget {
   const _PermissionPicker({required this.mode, required this.onChanged});
@@ -733,29 +589,17 @@ class _PermissionPicker extends StatelessWidget {
                             AgentPermissionMode.observe,
                           ])
                             PopupRow(
-                              key: ValueKey(
-                                'ai-agent-permission-${option.name}',
-                              ),
+                              key: ValueKey('ai-agent-permission-${option.name}'),
                               selected: option == mode,
                               onTap: () => Navigator.pop(context, option),
                               child: Tooltip(
-                                message: switch (option) {
-                                  AgentPermissionMode.auto =>
-                                    l.aiAgentPermissionAutoHint,
-                                  AgentPermissionMode.confirm =>
-                                    l.aiAgentPermissionConfirmHint,
-                                  AgentPermissionMode.observe =>
-                                    l.aiAgentPermissionObserveHint,
-                                },
+                                message: _permissionHint(l, option),
                                 child: Row(
                                   children: [
                                     Icon(_permissionIcon(option), size: 16),
                                     const SizedBox(width: Space.sm),
-                                    Expanded(
-                                      child: Text(_permissionLabel(l, option)),
-                                    ),
-                                    if (option == mode)
-                                      const Icon(Icons.check_rounded, size: 16),
+                                    Expanded(child: Text(_permissionLabel(l, option))),
+                                    if (option == mode) const Icon(Icons.check_rounded, size: 16),
                                   ],
                                 ),
                               ),
@@ -778,6 +622,17 @@ class _PermissionPicker extends StatelessWidget {
             Icon(_permissionIcon(mode), size: 16),
             const SizedBox(width: Space.xs),
             Text(_permissionLabel(l, mode)),
+            const SizedBox(width: Space.xs),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 88 / MediaQuery.textScalerOf(context).scale(1)),
+              child: Text(
+                _permissionHint(l, mode),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ),
             const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
           ],
         ),
@@ -787,12 +642,7 @@ class _PermissionPicker extends StatelessWidget {
 }
 
 class _Welcome extends StatelessWidget {
-  const _Welcome({
-    required this.enabled,
-    required this.failed,
-    required this.compact,
-    required this.onExample,
-  });
+  const _Welcome({required this.enabled, required this.failed, required this.compact, required this.onExample});
   final bool enabled, failed, compact;
   final ValueChanged<String> onExample;
 
@@ -806,10 +656,7 @@ class _Welcome extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            BrandIllustration(
-              pose: BrandPose.thinkingAi,
-              size: compact ? 96 : 144,
-            ),
+            BrandIllustration(pose: BrandPose.thinkingAi, size: compact ? 96 : 144),
             const SizedBox(height: Space.md),
             Text(
               enabled ? l.aiAgentWelcome : l.aiAgentSetupTitle,
@@ -823,16 +670,13 @@ class _Welcome extends StatelessWidget {
                   : enabled
                   ? l.aiAgentWelcomeHint
                   : l.aiAgentConfigure,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: Space.lg),
             if (!enabled)
               FilledButton.tonal(
-                onPressed: () =>
-                    showSettingsDialog(context, section: SettingsSectionId.ai),
+                onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
                 child: Text(l.aiAgentConfigureAction),
               )
             else
@@ -884,11 +728,7 @@ class _ConversationState extends State<_Conversation> {
   int _navigation = 0, _revealVersion = 0;
 
   List<AgentTimelineEntry> get _entries => widget.runtime.timeline
-      .where(
-        (entry) =>
-            entry is! AgentChatEntry ||
-            (!entry.retracted && entry.text.isNotEmpty),
-      )
+      .where((entry) => entry is! AgentChatEntry || (!entry.retracted && entry.text.isNotEmpty))
       .toList();
 
   @override
@@ -906,15 +746,9 @@ class _ConversationState extends State<_Conversation> {
       _revealVersion++;
     });
     await WidgetsBinding.instance.endOfFrame;
-    for (
-      var attempt = 0;
-      mounted && navigation == _navigation && attempt < 64;
-      attempt++
-    ) {
+    for (var attempt = 0; mounted && navigation == _navigation && attempt < 64; attempt++) {
       final entries = _entries;
-      final index = entries.indexWhere(
-        (entry) => entry is AgentExecution && entry.id == id,
-      );
+      final index = entries.indexWhere((entry) => entry is AgentExecution && entry.id == id);
       if (index < 0 || !_scroll.hasClients) return;
       final target = _keys[entries[index]]?.currentContext;
       if (target != null) {
@@ -929,19 +763,14 @@ class _ConversationState extends State<_Conversation> {
       final position = _scroll.position;
       double offset;
       if (attempt == 0) {
-        offset =
-            position.maxScrollExtent *
-            (entries.length - index - 1) /
-            max(1, entries.length - 1);
+        offset = position.maxScrollExtent * (entries.length - index - 1) / max(1, entries.length - 1);
       } else {
         final visible = [
           for (var i = 0; i < entries.length; i++)
             if (_keys[entries[i]]?.currentContext != null) i,
         ];
         if (visible.isEmpty) return;
-        offset =
-            position.pixels +
-            (index < visible.first ? 1 : -1) * position.viewportDimension * .8;
+        offset = position.pixels + (index < visible.first ? 1 : -1) * position.viewportDimension * .8;
       }
       offset = offset.clamp(0, position.maxScrollExtent);
       if (attempt > 0 && (offset - position.pixels).abs() < 1) return;
@@ -1005,10 +834,7 @@ class _ConversationState extends State<_Conversation> {
     final references = <String, String>{};
     final ambiguous = <String>{};
     for (final execution in entries.whereType<AgentExecution>()) {
-      for (final id in [
-        execution.id,
-        if (execution.output != null) execution.output!.id,
-      ]) {
+      for (final id in [execution.id, if (execution.output != null) execution.output!.id]) {
         if (ambiguous.contains(id)) continue;
         if (references.containsKey(id) && references[id] != execution.id) {
           references.remove(id);
@@ -1018,28 +844,17 @@ class _ConversationState extends State<_Conversation> {
         }
       }
     }
-    final lastUser = entries.lastIndexWhere(
-      (entry) => entry is AgentChatEntry && entry.role == 'user',
-    );
-    final lastAssistant = entries.lastIndexWhere(
-      (entry) => entry is AgentChatEntry && entry.role == 'assistant',
-    );
+    final lastUser = entries.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'user');
+    final lastAssistant = entries.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'assistant');
     final approval = widget.runtime.approval;
     final data = widget.runtime.dataRequest;
     final thinking = widget.runtime.busy && approval == null && data == null;
-    final count =
-        entries.length +
-        (approval == null ? 0 : 1) +
-        (data == null ? 0 : 1) +
-        (thinking ? 1 : 0);
+    final count = entries.length + (approval == null ? 0 : 1) + (data == null ? 0 : 1) + (thinking ? 1 : 0);
     return SelectionArea(
       child: ListView.builder(
         key: PageStorageKey('ai-agent-conversation-${widget.conversationId}'),
         controller: _scroll,
-        padding: const EdgeInsets.symmetric(
-          horizontal: Space.md,
-          vertical: Space.sm,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
         reverse: true,
         itemCount: count,
         itemBuilder: (context, index) {
@@ -1060,9 +875,7 @@ class _ConversationState extends State<_Conversation> {
               row = Padding(
                 padding: const EdgeInsets.only(bottom: Space.sm),
                 child: Column(
-                  crossAxisAlignment: user
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
+                  crossAxisAlignment: user ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                   children: [
                     if (user)
                       LayoutBuilder(
@@ -1070,48 +883,24 @@ class _ConversationState extends State<_Conversation> {
                           alignment: Alignment.centerRight,
                           child: Container(
                             key: const ValueKey('ai-agent-user-message'),
-                            constraints: BoxConstraints(
-                              maxWidth: constraints.maxWidth * .94,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: Space.md,
-                              vertical: Space.sm,
-                            ),
+                            constraints: BoxConstraints(maxWidth: constraints.maxWidth * .94),
+                            padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
                             decoration: BoxDecoration(
-                              border: Border.all(
-                                color: theme.colorScheme.outlineVariant,
-                              ),
-                              borderRadius: BorderRadius.circular(
-                                Radii.control,
-                              ),
+                              border: Border.all(color: theme.colorScheme.outlineVariant),
+                              borderRadius: BorderRadius.circular(Radii.control),
                             ),
-                            child: Text(
-                              message.text,
-                              style: theme.textTheme.bodyMedium,
-                            ),
+                            child: Text(message.text, style: theme.textTheme.bodyMedium),
                           ),
                         ),
                       )
                     else ...[
-                      AiMarkdown(
-                        data: message.text,
-                        executionReferences: references,
-                        onExecution: _reveal,
-                      ),
-                      _actions(
-                        message,
-                        index,
-                        latest: index == lastAssistant && index > lastUser,
-                      ),
+                      AiMarkdown(data: message.text, executionReferences: references, onExecution: _reveal),
+                      _actions(message, index, latest: index == lastAssistant && index > lastUser),
                     ],
-                    if (user &&
-                        index == lastUser &&
-                        lastAssistant < lastUser &&
-                        widget.canWithdraw)
+                    if (user && index == lastUser && lastAssistant < lastUser && widget.canWithdraw)
                       IconButton(
                         key: const ValueKey('ai-agent-withdraw'),
-                        tooltip: AppLocalizations.of(context)
-                            .aiAgentWithdrawHint,
+                        tooltip: AppLocalizations.of(context).aiAgentWithdrawHint,
                         onPressed: widget.onWithdraw,
                         icon: const Icon(Icons.undo_rounded, size: 16),
                       ),
@@ -1119,31 +908,22 @@ class _ConversationState extends State<_Conversation> {
                 ),
               );
             }
-            return KeyedSubtree(
-              key: _keys.putIfAbsent(entry, GlobalKey.new),
-              child: row,
-            );
+            return KeyedSubtree(key: _keys.putIfAbsent(entry, GlobalKey.new), child: row);
           }
           index -= entries.length;
           if (approval != null) {
             if (index == 0) {
               return _ApprovalCard(
                 approval: approval,
-                onApprove: () =>
-                    widget.runtime.approve(true, expected: approval),
-                onReject: () =>
-                    widget.runtime.approve(false, expected: approval),
+                onApprove: () => widget.runtime.approve(true, expected: approval),
+                onReject: () => widget.runtime.approve(false, expected: approval),
               );
             }
             index--;
           }
           if (data != null) {
             if (index == 0) {
-              return _OutputApproval(
-                key: ObjectKey(data),
-                request: data,
-                runtime: widget.runtime,
-              );
+              return _OutputApproval(key: ObjectKey(data), request: data, runtime: widget.runtime);
             }
             index--;
           }
@@ -1170,10 +950,7 @@ class _ThinkingDotsState extends State<_ThinkingDots> {
     super.didChangeDependencies();
     _timer?.cancel();
     if (!MediaQuery.disableAnimationsOf(context)) {
-      _timer = Timer.periodic(
-        const Duration(milliseconds: 400),
-        (_) => setState(() => _step = (_step + 1) % 3),
-      );
+      _timer = Timer.periodic(const Duration(milliseconds: 400), (_) => setState(() => _step = (_step + 1) % 3));
     }
   }
 
@@ -1196,9 +973,7 @@ class _ThinkingDotsState extends State<_ThinkingDots> {
               padding: const EdgeInsets.only(right: Space.xs),
               child: AnimatedOpacity(
                 opacity: _timer == null || i == _step ? .9 : .3,
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : Motion.quick,
+                duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : Motion.quick,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1215,11 +990,7 @@ class _ThinkingDotsState extends State<_ThinkingDots> {
 }
 
 class _ExecutionCard extends StatefulWidget {
-  const _ExecutionCard({
-    super.key,
-    required this.execution,
-    this.revealVersion = 0,
-  });
+  const _ExecutionCard({super.key, required this.execution, this.revealVersion = 0});
   final AgentExecution execution;
   final int revealVersion;
 
@@ -1233,8 +1004,7 @@ class _ExecutionCardState extends State<_ExecutionCard> {
   @override
   void didUpdateWidget(_ExecutionCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.revealVersion != 0 &&
-        widget.revealVersion != oldWidget.revealVersion) {
+    if (widget.revealVersion != 0 && widget.revealVersion != oldWidget.revealVersion) {
       _expanded = true;
     }
   }
@@ -1245,9 +1015,7 @@ class _ExecutionCardState extends State<_ExecutionCard> {
     final theme = Theme.of(context);
     final execution = widget.execution;
     final output = execution.output;
-    final failed =
-        execution.state == 'failed' ||
-        (execution.exitCode != null && execution.exitCode != 0);
+    final failed = execution.state == 'failed' || (execution.exitCode != null && execution.exitCode != 0);
     final unknown = execution.state == 'outcomeUnknown';
     final running = execution.state == 'running';
     return Padding(
@@ -1260,23 +1028,14 @@ class _ExecutionCardState extends State<_ExecutionCard> {
               children: [
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  tooltip: _expanded
-                      ? l.aiAgentHideOutput
-                      : l.aiAgentShowOutput,
+                  tooltip: _expanded ? l.aiAgentHideOutput : l.aiAgentShowOutput,
                   onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.chevron_right_rounded,
-                    size: 17,
-                  ),
+                  icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 17),
                 ),
                 Expanded(
                   child: Text(
                     execution.archived
-                        ? (execution.capability == 'agent.diagnose'
-                              ? l.aiAgentDiagnostics
-                              : l.aiAgentHistory)
+                        ? (execution.capability == 'agent.diagnose' ? l.aiAgentDiagnostics : l.aiAgentHistory)
                         : execution.capability == 'agent.diagnose'
                         ? l.aiAgentDiagnostics
                         : execution.command,
@@ -1297,9 +1056,7 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                         ? Icons.more_horiz_rounded
                         : Icons.check_circle_outline_rounded,
                     size: 16,
-                    color: failed || unknown
-                        ? theme.colorScheme.error
-                        : theme.colorScheme.onSurfaceVariant,
+                    color: failed || unknown ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -1313,52 +1070,32 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                 runSpacing: Space.xs,
                 children: [
                   Text(
-                    failed
-                        ? l.aiAgentExecutionFailed
-                        : _executionState(l, execution.state),
+                    failed ? l.aiAgentExecutionFailed : _executionState(l, execution.state),
                     style: theme.textTheme.bodySmall,
                   ),
                   if (execution.exitCode case final code?)
-                    Text(
-                      l.aiAgentExitCode(code),
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  if (execution.historyTruncated ||
-                      (output?.truncated ?? false))
+                    Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
+                  if (execution.historyTruncated || (output?.truncated ?? false))
                     Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
                 ],
               ),
               if (execution.archived) ...[
                 const SizedBox(height: Space.sm),
-                Text(
-                  l.aiAgentHistoryOutputUnavailable,
-                  style: theme.textTheme.bodySmall,
-                ),
+                Text(l.aiAgentHistoryOutputUnavailable, style: theme.textTheme.bodySmall),
                 if (execution.sharedText?.isNotEmpty ?? false) ...[
                   const SizedBox(height: Space.sm),
-                  Text(
-                    execution.sharedText!,
-                    style: mono(context, theme.textTheme.bodySmall),
-                  ),
+                  Text(execution.sharedText!, style: mono(context, theme.textTheme.bodySmall)),
                 ],
               ],
               if (!execution.archived && execution.cwd.isNotEmpty) ...[
                 const SizedBox(height: Space.sm),
-                Text(
-                  execution.cwd,
-                  style: mono(context, theme.textTheme.bodySmall),
-                ),
+                Text(execution.cwd, style: mono(context, theme.textTheme.bodySmall)),
               ],
-              if (!execution.archived &&
-                  output != null &&
-                  output.length > 0) ...[
+              if (!execution.archived && output != null && output.length > 0) ...[
                 const SizedBox(height: Space.sm),
                 const Divider(height: 1),
                 const SizedBox(height: Space.sm),
-                Text(
-                  output.excerpt,
-                  style: mono(context, theme.textTheme.bodySmall),
-                ),
+                Text(output.excerpt, style: mono(context, theme.textTheme.bodySmall)),
               ],
             ],
           ],
@@ -1369,11 +1106,7 @@ class _ExecutionCardState extends State<_ExecutionCard> {
 }
 
 class _ApprovalCard extends StatelessWidget {
-  const _ApprovalCard({
-    required this.approval,
-    required this.onApprove,
-    required this.onReject,
-  });
+  const _ApprovalCard({required this.approval, required this.onApprove, required this.onReject});
   final AgentApproval approval;
   final VoidCallback onApprove, onReject;
 
@@ -1388,19 +1121,13 @@ class _ApprovalCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _CardTitle(
-              icon: Icons.terminal_rounded,
-              label: l.aiAgentApproveTitle,
-            ),
+            _CardTitle(icon: Icons.terminal_rounded, label: l.aiAgentApproveTitle),
             const SizedBox(height: Space.md),
             Text(approval.target, style: theme.textTheme.labelLarge),
             const SizedBox(height: Space.xs),
             Text(approval.cwd, style: mono(context, theme.textTheme.bodySmall)),
             const SizedBox(height: Space.md),
-            Text(
-              approval.command,
-              style: mono(context, theme.textTheme.bodyMedium),
-            ),
+            Text(approval.command, style: mono(context, theme.textTheme.bodyMedium)),
             const SizedBox(height: Space.md),
             Text(l.aiAgentShellPermission, style: theme.textTheme.bodySmall),
             const SizedBox(height: Space.md),
@@ -1410,10 +1137,7 @@ class _ApprovalCard extends StatelessWidget {
               runSpacing: Space.sm,
               children: [
                 TextButton(onPressed: onReject, child: Text(l.aiAgentReject)),
-                FilledButton.tonal(
-                  onPressed: onApprove,
-                  child: Text(l.aiAgentApprove),
-                ),
+                FilledButton.tonal(onPressed: onApprove, child: Text(l.aiAgentApprove)),
               ],
             ),
           ],
@@ -1424,11 +1148,7 @@ class _ApprovalCard extends StatelessWidget {
 }
 
 class _OutputApproval extends ConsumerStatefulWidget {
-  const _OutputApproval({
-    super.key,
-    required this.request,
-    required this.runtime,
-  });
+  const _OutputApproval({super.key, required this.request, required this.runtime});
   final AgentDataRequest request;
   final AgentRuntime runtime;
 
@@ -1437,9 +1157,7 @@ class _OutputApproval extends ConsumerStatefulWidget {
 }
 
 class _OutputApprovalState extends ConsumerState<_OutputApproval> {
-  late final _text = TextEditingController(
-    text: ref.read(agentComposerProvider).outputText(widget.request),
-  );
+  late final _text = TextEditingController(text: ref.read(agentComposerProvider).outputText(widget.request));
 
   @override
   void dispose() {
@@ -1465,10 +1183,7 @@ class _OutputApprovalState extends ConsumerState<_OutputApproval> {
           children: [
             _CardTitle(icon: Icons.outbox_outlined, label: l.aiAgentShareTitle),
             const SizedBox(height: Space.md),
-            Text(
-              l.aiAgentSharePreview,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            Text(l.aiAgentSharePreview, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: Space.sm),
             TextField(
               key: const ValueKey('ai-agent-output-projection'),
@@ -1477,23 +1192,15 @@ class _OutputApprovalState extends ConsumerState<_OutputApproval> {
               maxLines: 8,
               maxLength: 8192,
               style: mono(context, Theme.of(context).textTheme.bodySmall),
-              decoration: InputDecoration(
-                errorText: valid ? null : l.aiAgentProjectionTooLarge,
-                counterText: '',
-              ),
+              decoration: InputDecoration(errorText: valid ? null : l.aiAgentProjectionTooLarge, counterText: ''),
               onChanged: (value) {
-                ref
-                    .read(agentComposerProvider.notifier)
-                    .editOutput(widget.request, value);
+                ref.read(agentComposerProvider.notifier).editOutput(widget.request, value);
                 setState(() {});
               },
             ),
             if (widget.request.output.truncated) ...[
               const SizedBox(height: Space.sm),
-              Text(
-                l.aiAgentTruncated,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text(l.aiAgentTruncated, style: Theme.of(context).textTheme.bodySmall),
             ],
             const SizedBox(height: Space.md),
             Wrap(
@@ -1501,10 +1208,7 @@ class _OutputApprovalState extends ConsumerState<_OutputApproval> {
               spacing: Space.sm,
               runSpacing: Space.sm,
               children: [
-                TextButton(
-                  onPressed: () => _share(null),
-                  child: Text(l.aiAgentKeepLocal),
-                ),
+                TextButton(onPressed: () => _share(null), child: Text(l.aiAgentKeepLocal)),
                 FilledButton.tonal(
                   key: const ValueKey('ai-agent-share-output'),
                   onPressed: valid ? () => _share(_text.text) : null,
@@ -1529,9 +1233,7 @@ class _CardTitle extends StatelessWidget {
     children: [
       Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
       const SizedBox(width: Space.sm),
-      Expanded(
-        child: Text(label, style: Theme.of(context).textTheme.labelLarge),
-      ),
+      Expanded(child: Text(label, style: Theme.of(context).textTheme.labelLarge)),
     ],
   );
 }
@@ -1549,11 +1251,7 @@ class _AgentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(Radii.card),
-        border: Border.all(
-          color: emphasized
-              ? scheme.primary.withValues(alpha: .45)
-              : scheme.outlineVariant,
-        ),
+        border: Border.all(color: emphasized ? scheme.primary.withValues(alpha: .45) : scheme.outlineVariant),
       ),
       child: child,
     );
@@ -1571,13 +1269,9 @@ String _executionState(AppLocalizations l, String state) => switch (state) {
 };
 
 String _error(AppLocalizations l, String? code) => switch (code) {
-  'notConfigured' ||
-  'invalidModelKey' ||
-  'invalidModelRequest' => l.aiAgentErrorConfiguration,
+  'notConfigured' || 'invalidModelKey' || 'invalidModelRequest' => l.aiAgentErrorConfiguration,
   'modelNetworkError' => l.aiAgentErrorNetwork,
-  'modelHttpError' ||
-  'modelStreamError' ||
-  'modelRefused' => l.aiAgentErrorHttp,
+  'modelHttpError' || 'modelStreamError' || 'modelRefused' => l.aiAgentErrorHttp,
   'deadline' || 'modelTimedOut' => l.aiAgentErrorTimeout,
   'contextLimit' ||
   'scopeLimit' ||
@@ -1596,10 +1290,7 @@ String _error(AppLocalizations l, String? code) => switch (code) {
   'hostUnavailable' => l.aiAgentErrorHostUnavailable,
   'connectionFailed' => l.aiAgentErrorConnection,
   'executionFailed' => l.aiAgentErrorExecution,
-  'journalFailed' ||
-  'operationConflict' ||
-  'operationMissingIntent' ||
-  'operationCapacity' => l.aiAgentErrorJournal,
+  'journalFailed' || 'operationConflict' || 'operationMissingIntent' || 'operationCapacity' => l.aiAgentErrorJournal,
   'outcomeUnknown' => l.aiAgentOutcomeUnknown,
   'cancelled' => l.aiAgentCancelled,
   'unsupported' => l.aiAgentErrorUnsupported,

@@ -1,19 +1,42 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../settings/api.dart';
 import '../domain/model_profile.dart';
 import 'configuration.dart';
 
-/// A window-local choice leaves the saved default and terminal suggestions alone.
+/// The panel remembers the last model for the same protocol and endpoint; other destinations use their default.
 final selectedAgentModelProvider = NotifierProvider<SelectedAgentModel, String?>(SelectedAgentModel.new);
 
 class SelectedAgentModel extends Notifier<String?> {
+  /// Keeps the pick while the saved write is in flight, so a configuration revision cannot revert it.
+  String? _chosen;
+  String? _chosenDestination;
+
   @override
   String? build() {
-    ref.listen(aiConfigurationProvider.select((value) => value.profile), (_, _) => state = null);
-    return null;
+    final profile = ref.watch(aiConfigurationProvider).profile;
+    if (profile == null) return null;
+    final destination = destinationOf(profile);
+    if (_chosenDestination == destination) return _chosen;
+    final settings = ref.read(settingsProvider);
+    final model = settings.get(SettingKeys.agentModel);
+    if (model == null || model.isEmpty) return null;
+    return settings.get(SettingKeys.agentModelEndpoint) == destination ? model : null;
   }
 
-  void select(String model) => state = model;
+  void select(String model) {
+    _chosen = model;
+    state = model;
+    final profile = ref.read(aiConfigurationProvider).profile;
+    if (profile == null) return;
+    _chosenDestination = destinationOf(profile);
+    ref.read(settingsProvider.notifier).patch({
+      SettingKeys.agentModel.key: model,
+      SettingKeys.agentModelEndpoint.key: _chosenDestination!,
+    }).ignore();
+  }
+
+  static String destinationOf(ModelProfile profile) => '${profile.protocol.name} ${profile.endpoint}';
 }
 
 final effectiveAgentProfileProvider = Provider<ModelProfile?>((ref) {

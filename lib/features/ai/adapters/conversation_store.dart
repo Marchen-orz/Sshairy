@@ -11,33 +11,21 @@ const maxConversationTextBytes = 1 << 20;
 const maxConversationHistoryBytes = 50 << 20;
 const conversationHistoryAge = Duration(days: 30);
 
-final _bearer = RegExp(
-  r'\bBearer[ \t]+[A-Za-z0-9._~+/=\-]+',
-  caseSensitive: false,
-);
+final _bearer = RegExp(r'\bBearer[ \t]+[A-Za-z0-9._~+/=\-]+', caseSensitive: false);
 final _assignments = RegExp(
   r'''(\b[A-Za-z_][A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\b|\b(?:key|token|secret|password|passwd)\b)(["']?[ \t]*[:=][ \t]*)(?:\[redacted\]|"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]]+)''',
   caseSensitive: false,
 );
-final _privateKey = RegExp(
-  r'-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)',
-);
+final _privateKey = RegExp(r'-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]*?(?:-----END \1-----|$)');
 
 /// Auxiliary filtering only: unknown secrets and business-sensitive text can still remain.
 String sanitizeConversationText(String text) => text
     .replaceAll(_privateKey, '[redacted private key]')
     .replaceAll(_bearer, 'Bearer [redacted]')
-    .replaceAllMapped(
-      _assignments,
-      (match) => '${match[1]}${match[2]}[redacted]',
-    );
+    .replaceAllMapped(_assignments, (match) => '${match[1]}${match[2]}[redacted]');
 
 int _textBytes(AgentConversationRecord record) =>
-    utf8.encode(record.title).length +
-    record.entries.fold(
-      0,
-      (size, entry) => size + utf8.encode(entry.text).length,
-    );
+    utf8.encode(record.title).length + record.entries.fold(0, (size, entry) => size + utf8.encode(entry.text).length);
 
 AgentConversationRecord _copy(
   AgentConversationRecord record,
@@ -56,19 +44,15 @@ AgentConversationRecord _copy(
 );
 
 /// Drops old whole turns and old conversations; the newest turn is never silently shortened.
-List<AgentConversationRecord> boundedConversationRecords(
-  Iterable<AgentConversationRecord> records, {
-  DateTime? now,
-}) {
-  final cutoff = (now ?? DateTime.now()).toUtc().subtract(
-    conversationHistoryAge,
-  );
+List<AgentConversationRecord> boundedConversationRecords(Iterable<AgentConversationRecord> records, {DateTime? now}) {
+  final cutoff = (now ?? DateTime.now()).toUtc().subtract(conversationHistoryAge);
   final normalized = <AgentConversationRecord>[];
   final ids = <String>{};
   for (final record in records) {
     _validateRecord(_encode(record), bounded: false);
-    if (!ids.add(record.id))
+    if (!ids.add(record.id)) {
       throw const FormatException('duplicate conversation');
+    }
     if (record.updatedAt.isBefore(cutoff)) continue;
     var entries = [
       for (final entry in record.entries)
@@ -84,16 +68,11 @@ List<AgentConversationRecord> boundedConversationRecords(
         ),
     ];
     var next = _copy(record, entries, truncated: record.historyTruncated);
-    while (entries.length > maxConversationEntries ||
-        _textBytes(next) > maxConversationTextBytes) {
-      final nextTurn = entries.indexWhere(
-        (entry) => entry.kind == ConversationEntryKind.user,
-        1,
-      );
-      if (nextTurn < 0)
-        throw const FormatException(
-          'latest conversation turn exceeds history capacity',
-        );
+    while (entries.length > maxConversationEntries || _textBytes(next) > maxConversationTextBytes) {
+      final nextTurn = entries.indexWhere((entry) => entry.kind == ConversationEntryKind.user, 1);
+      if (nextTurn < 0) {
+        throw const FormatException('latest conversation turn exceeds history capacity');
+      }
       entries = entries.sublist(nextTurn);
       next = _copy(record, entries, truncated: true);
     }
@@ -108,9 +87,9 @@ List<AgentConversationRecord> boundedConversationRecords(
   var bytes = 0;
   for (final record in normalized) {
     final size = _textBytes(record);
-    if (kept.length >= maxAgentConversations ||
-        bytes + size > maxConversationHistoryBytes)
+    if (kept.length >= maxAgentConversations || bytes + size > maxConversationHistoryBytes) {
       break;
+    }
     kept.add(record);
     bytes += size;
   }
@@ -121,10 +100,7 @@ List<AgentConversationRecord> boundedConversationRecords(
 class JsonConversationStore implements ConversationStore {
   JsonConversationStore(String directory)
     : path = '$directory/ai_conversations.json',
-      _file = JsonFile(
-        '$directory/ai_conversations.json',
-        validate: _validateDocument,
-      );
+      _file = JsonFile('$directory/ai_conversations.json', validate: _validateDocument);
 
   static const maxFileBytes = 64 << 20;
   final String path;
@@ -158,9 +134,7 @@ class JsonConversationStore implements ConversationStore {
         _decode((value as Map).cast<String, dynamic>()),
     ];
     final next = boundedConversationRecords(decoded);
-    if (document != null &&
-        jsonEncode(decoded.map(_encode).toList()) !=
-            jsonEncode(next.map(_encode).toList())) {
+    if (document != null && jsonEncode(decoded.map(_encode).toList()) != jsonEncode(next.map(_encode).toList())) {
       await _write(next);
     }
     _records = next;
@@ -189,8 +163,7 @@ class JsonConversationStore implements ConversationStore {
       'schemaVersion': 1,
       'conversations': [for (final record in records) _encode(record)],
     };
-    final encoded = const JsonEncoder.withIndent('  ')
-        .convert({...document, 'revision': _file.revision + 1});
+    final encoded = const JsonEncoder.withIndent('  ').convert({...document, 'revision': _file.revision + 1});
     if (utf8.encode(encoded).length > maxFileBytes) {
       throw const FormatException('conversation document exceeds capacity');
     }
@@ -201,52 +174,37 @@ class JsonConversationStore implements ConversationStore {
 final _id = RegExp(r'^[A-Za-z0-9_.:\-]{1,128}$');
 final _signature = RegExp(r'^[A-Za-z0-9_\-]{16,128}$');
 final _capability = RegExp(r'^[A-Za-z][A-Za-z0-9_.]{0,95}$');
-const _executionStates = {
-  'pending',
-  'running',
-  'completed',
-  'failed',
-  'cancelled',
-  'interrupted',
-  'outcomeUnknown',
-};
+const _executionStates = {'pending', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'outcomeUnknown'};
 
 void _validateDocument(Map<String, dynamic> document) {
-  if (document.keys.any(
-    (key) =>
-        !const {'schemaVersion', 'revision', 'conversations'}.contains(key),
-  )) {
+  if (document.keys.any((key) => !const {'schemaVersion', 'revision', 'conversations'}.contains(key))) {
     throw const FormatException('conversation document fields');
   }
   final records = document['conversations'];
-  if (records is! List || records.length > maxAgentConversations)
+  if (records is! List || records.length > maxAgentConversations) {
     throw const FormatException('conversations');
+  }
   final ids = <String>{};
   var bytes = 0;
   for (final record in records) {
-    if (record is! Map<String, dynamic>)
+    if (record is! Map<String, dynamic>) {
       throw const FormatException('conversation');
+    }
     _validateRecord(record);
-    if (!ids.add(record['id'] as String))
+    if (!ids.add(record['id'] as String)) {
       throw const FormatException('duplicate conversation');
+    }
     bytes += _textBytes(_decode(record));
   }
-  if (bytes > maxConversationHistoryBytes)
+  if (bytes > maxConversationHistoryBytes) {
     throw const FormatException('conversation history exceeds capacity');
+  }
 }
 
 void _validateRecord(Map<String, dynamic> record, {bool bounded = true}) {
-  const required = {
-    'id',
-    'title',
-    'createdAt',
-    'updatedAt',
-    'destination',
-    'entries',
-  };
+  const required = {'id', 'title', 'createdAt', 'updatedAt', 'destination', 'entries'};
   const allowed = {...required, 'hostId', 'routeSignature', 'historyTruncated'};
-  if (!record.keys.toSet().containsAll(required) ||
-      record.keys.any((key) => !allowed.contains(key))) {
+  if (!record.keys.toSet().containsAll(required) || record.keys.any((key) => !allowed.contains(key))) {
     throw const FormatException('conversation fields');
   }
   if (record['id'] is! String || !_id.hasMatch(record['id'] as String)) {
@@ -264,39 +222,32 @@ void _validateRecord(Map<String, dynamic> record, {bool bounded = true}) {
     throw const FormatException('conversation identity');
   }
   final created = record['createdAt'], updated = record['updatedAt'];
-  if (created is! String ||
-      updated is! String ||
-      created.length > 40 ||
-      updated.length > 40) {
+  if (created is! String || updated is! String || created.length > 40 || updated.length > 40) {
     throw const FormatException('conversation dates');
   }
-  final createdAt = DateTime.tryParse(created),
-      updatedAt = DateTime.tryParse(updated);
+  final createdAt = DateTime.tryParse(created), updatedAt = DateTime.tryParse(updated);
   if (createdAt == null || updatedAt == null || updatedAt.isBefore(createdAt)) {
     throw const FormatException('conversation dates');
   }
   final host = record['hostId'], signature = record['routeSignature'];
-  if (host != null && (host is! String || !_id.hasMatch(host)))
+  if (host != null && (host is! String || !_id.hasMatch(host))) {
     throw const FormatException('conversation host');
-  if (signature != null &&
-      (signature is! String ||
-          !_signature.hasMatch(signature) ||
-          host == null)) {
+  }
+  if (signature != null && (signature is! String || !_signature.hasMatch(signature) || host == null)) {
     throw const FormatException('conversation route signature');
   }
-  if (record.containsKey('historyTruncated') &&
-      record['historyTruncated'] is! bool) {
+  if (record.containsKey('historyTruncated') && record['historyTruncated'] is! bool) {
     throw const FormatException('conversation truncation');
   }
   final entries = record['entries'];
-  if (entries is! List ||
-      (bounded && entries.length > maxConversationEntries)) {
+  if (entries is! List || (bounded && entries.length > maxConversationEntries)) {
     throw const FormatException('conversation entries');
   }
   final executionIds = <String>{};
   for (final entry in entries) {
-    if (entry is! Map<String, dynamic>)
+    if (entry is! Map<String, dynamic>) {
       throw const FormatException('conversation entry');
+    }
     _validateEntry(entry);
     final executionId = entry['executionId'] as String?;
     if (executionId != null && !executionIds.add(executionId)) {
@@ -309,18 +260,8 @@ void _validateRecord(Map<String, dynamic> record, {bool bounded = true}) {
 }
 
 void _validateEntry(Map<String, dynamic> entry) {
-  const allowed = {
-    'kind',
-    'text',
-    'capability',
-    'state',
-    'exitCode',
-    'truncated',
-    'retracted',
-    'executionId',
-  };
-  if (!entry.keys.toSet().containsAll(const {'kind', 'text'}) ||
-      entry.keys.any((key) => !allowed.contains(key))) {
+  const allowed = {'kind', 'text', 'capability', 'state', 'exitCode', 'truncated', 'retracted', 'executionId'};
+  if (!entry.keys.toSet().containsAll(const {'kind', 'text'}) || entry.keys.any((key) => !allowed.contains(key))) {
     throw const FormatException('conversation entry fields');
   }
   if (!ConversationEntryKind.values.any((kind) => kind.name == entry['kind']) ||
@@ -330,24 +271,16 @@ void _validateEntry(Map<String, dynamic> entry) {
       (entry.containsKey('retracted') && entry['retracted'] is! bool)) {
     throw const FormatException('conversation entry value');
   }
-  final capability = entry['capability'],
-      state = entry['state'],
-      exitCode = entry['exitCode'];
+  final capability = entry['capability'], state = entry['state'], exitCode = entry['exitCode'];
   final executionId = entry['executionId'];
-  if (capability != null &&
-          (capability is! String || !_capability.hasMatch(capability)) ||
-      state != null &&
-          (state is! String || !_executionStates.contains(state)) ||
+  if (capability != null && (capability is! String || !_capability.hasMatch(capability)) ||
+      state != null && (state is! String || !_executionStates.contains(state)) ||
       exitCode != null && exitCode is! int ||
-      executionId != null &&
-          (executionId is! String || !_id.hasMatch(executionId))) {
+      executionId != null && (executionId is! String || !_id.hasMatch(executionId))) {
     throw const FormatException('conversation execution metadata');
   }
   if (entry['kind'] != ConversationEntryKind.execution.name &&
-      (capability != null ||
-          state != null ||
-          exitCode != null ||
-          executionId != null)) {
+      (capability != null || state != null || exitCode != null || executionId != null)) {
     throw const FormatException('conversation text metadata');
   }
 }
@@ -376,29 +309,26 @@ Map<String, dynamic> _encode(AgentConversationRecord record) => {
   ],
 };
 
-AgentConversationRecord _decode(Map<String, dynamic> record) =>
-    AgentConversationRecord(
-      id: record['id'] as String,
-      title: record['title'] as String,
-      createdAt: DateTime.parse(record['createdAt'] as String).toUtc(),
-      updatedAt: DateTime.parse(record['updatedAt'] as String).toUtc(),
-      destination: record['destination'] as String,
-      host: record['hostId'] == null
-          ? null
-          : HostId(record['hostId'] as String),
-      routeSignature: record['routeSignature'] as String?,
-      historyTruncated: record['historyTruncated'] as bool? ?? false,
-      entries: [
-        for (final entry in record['entries'] as List)
-          ConversationEntry(
-            kind: ConversationEntryKind.values.byName(entry['kind'] as String),
-            text: entry['text'] as String,
-            capability: entry['capability'] as String?,
-            state: entry['state'] as String?,
-            exitCode: entry['exitCode'] as int?,
-            truncated: entry['truncated'] as bool? ?? false,
-            retracted: entry['retracted'] as bool? ?? false,
-            executionId: entry['executionId'] as String?,
-          ),
-      ],
-    );
+AgentConversationRecord _decode(Map<String, dynamic> record) => AgentConversationRecord(
+  id: record['id'] as String,
+  title: record['title'] as String,
+  createdAt: DateTime.parse(record['createdAt'] as String).toUtc(),
+  updatedAt: DateTime.parse(record['updatedAt'] as String).toUtc(),
+  destination: record['destination'] as String,
+  host: record['hostId'] == null ? null : HostId(record['hostId'] as String),
+  routeSignature: record['routeSignature'] as String?,
+  historyTruncated: record['historyTruncated'] as bool? ?? false,
+  entries: [
+    for (final entry in record['entries'] as List)
+      ConversationEntry(
+        kind: ConversationEntryKind.values.byName(entry['kind'] as String),
+        text: entry['text'] as String,
+        capability: entry['capability'] as String?,
+        state: entry['state'] as String?,
+        exitCode: entry['exitCode'] as int?,
+        truncated: entry['truncated'] as bool? ?? false,
+        retracted: entry['retracted'] as bool? ?? false,
+        executionId: entry['executionId'] as String?,
+      ),
+  ],
+);

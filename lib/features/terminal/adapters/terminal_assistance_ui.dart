@@ -19,7 +19,7 @@ extension _AssistancePane on _TerminalPaneState {
     if (!_terminalCompositionReady) return null;
     final keys = HardwareKeyboard.instance;
     final modifier = defaultTargetPlatform == TargetPlatform.macOS ? keys.isMetaPressed : keys.isControlPressed;
-    if (modifier && keys.isShiftPressed && event.logicalKey == LogicalKeyboardKey.keyH) {
+    if (AppShortcuts.matches(ref.read(settingsProvider).shortcuts, AppShortcutAction.commandHistory, event)) {
       _showHistory();
       return KeyEventResult.handled;
     }

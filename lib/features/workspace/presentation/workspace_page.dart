@@ -20,6 +20,7 @@ import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
 import '../../../design/window_chrome.dart';
 import '../../../foundation/ids.dart';
+import '../../../foundation/shortcuts.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../ai/api.dart';
 import '../../connections/api.dart';
@@ -193,25 +194,23 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     }
   }
 
-  late final _bindings = <SingleActivator, VoidCallback>{
-    const SingleActivator(LogicalKeyboardKey.keyN, control: true, shift: true): () => _workspace.showVault(),
-    const SingleActivator(LogicalKeyboardKey.keyW, control: true, shift: true): () => _workspace.closeFocused(),
-    const SingleActivator(LogicalKeyboardKey.keyP, control: true, shift: true): _openPalette,
-    const SingleActivator(LogicalKeyboardKey.keyA, control: true, shift: true): _toggleAgent,
-    const SingleActivator(LogicalKeyboardKey.keyA, meta: true, shift: true): _toggleAgent,
-    const SingleActivator(LogicalKeyboardKey.comma, control: true): _openSettings,
-    const SingleActivator(LogicalKeyboardKey.tab, control: true): () => _workspace.cycle(1),
-    const SingleActivator(LogicalKeyboardKey.tab, control: true, shift: true): () => _workspace.cycle(-1),
-    const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () => _workspace.cyclePane(-1),
-    const SingleActivator(LogicalKeyboardKey.arrowUp, alt: true): () => _workspace.cyclePane(-1),
-    const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () => _workspace.cyclePane(1),
-    const SingleActivator(LogicalKeyboardKey.arrowDown, alt: true): () => _workspace.cyclePane(1),
+  Map<AppShortcutAction, VoidCallback> get _shortcutActions => {
+    AppShortcutAction.newConnection: () => _workspace.showVault(),
+    AppShortcutAction.closeTab: () => _workspace.closeFocused(),
+    AppShortcutAction.commandPalette: _openPalette,
+    AppShortcutAction.toggleAgent: _toggleAgent,
+    AppShortcutAction.settings: _openSettings,
+    AppShortcutAction.nextTab: () => _workspace.cycle(1),
+    AppShortcutAction.previousTab: () => _workspace.cycle(-1),
+    AppShortcutAction.previousPane: () => _workspace.cyclePane(-1),
+    AppShortcutAction.nextPane: () => _workspace.cyclePane(1),
   };
 
   KeyEventResult _onKey(FocusNode _, KeyEvent event) {
-    for (final e in _bindings.entries) {
-      if (e.key.accepts(event, HardwareKeyboard.instance)) {
-        e.value();
+    final shortcuts = ref.read(settingsProvider).shortcuts;
+    for (final entry in _shortcutActions.entries) {
+      if (AppShortcuts.matches(shortcuts, entry.key, event)) {
+        entry.value();
         return KeyEventResult.handled;
       }
     }

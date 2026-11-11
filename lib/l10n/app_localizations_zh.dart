@@ -1576,6 +1576,65 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workspaceSection => '工作区';
 
   @override
+  String get shortcuts => '快捷键';
+
+  @override
+  String get shortcutPress => '按下快捷键…';
+
+  @override
+  String get shortcutUnset => '未设置';
+
+  @override
+  String get shortcutReset => '恢复默认';
+
+  @override
+  String shortcutConflict(Object action) {
+    return '已被“$action”使用';
+  }
+
+  @override
+  String get shortcutCommandPalette => '命令面板';
+
+  @override
+  String get shortcutNewConnection => '新建连接';
+
+  @override
+  String get shortcutCloseTab => '关闭标签';
+
+  @override
+  String get shortcutSettings => '打开设置';
+
+  @override
+  String get shortcutToggleAgent => '开合 Agent 侧栏';
+
+  @override
+  String get shortcutInlineGenerate => '行内生成命令';
+
+  @override
+  String get shortcutTerminalCopy => '终端复制';
+
+  @override
+  String get shortcutTerminalPaste => '终端粘贴';
+
+  @override
+  String get shortcutTerminalSearch => '终端搜索';
+
+  @override
+  String get shortcutCommandHistory => '命令历史';
+
+  @override
+  String get shortcutPreviousPane => '上一个面板';
+
+  @override
+  String get shortcutNextPane => '下一个面板';
+
+  @override
+  String get shortcutPreviousTab => '上一个标签';
+
+  @override
+  String get shortcutNextTab => '下一个标签';
+
+  @override
   String get filesDock => '文件面板位置';
 
   @override
@@ -2390,7 +2449,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentTextOnly => '仅文本';
 
   @override
-  String get aiAgentSendShortcut => '发送 · Ctrl/Cmd+Enter';
+  String get aiAgentSendShortcut => '发送 · Enter';
 
   @override
   String get aiAgentApproveTitle => '确认执行命令';

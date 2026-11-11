@@ -3032,6 +3032,120 @@ abstract class AppLocalizations {
   /// **'Workspace'**
   String get workspaceSection;
 
+  /// No description provided for @shortcuts.
+  ///
+  /// In en, this message translates to:
+  /// **'Keyboard shortcuts'**
+  String get shortcuts;
+
+  /// No description provided for @shortcutPress.
+  ///
+  /// In en, this message translates to:
+  /// **'Press keys…'**
+  String get shortcutPress;
+
+  /// No description provided for @shortcutUnset.
+  ///
+  /// In en, this message translates to:
+  /// **'Unset'**
+  String get shortcutUnset;
+
+  /// No description provided for @shortcutReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to default'**
+  String get shortcutReset;
+
+  /// No description provided for @shortcutConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Already used by {action}'**
+  String shortcutConflict(Object action);
+
+  /// No description provided for @shortcutCommandPalette.
+  ///
+  /// In en, this message translates to:
+  /// **'Command palette'**
+  String get shortcutCommandPalette;
+
+  /// No description provided for @shortcutNewConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'New connection'**
+  String get shortcutNewConnection;
+
+  /// No description provided for @shortcutCloseTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Close tab'**
+  String get shortcutCloseTab;
+
+  /// No description provided for @shortcutSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get shortcutSettings;
+
+  /// No description provided for @shortcutToggleAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle Agent panel'**
+  String get shortcutToggleAgent;
+
+  /// No description provided for @shortcutInlineGenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate command inline'**
+  String get shortcutInlineGenerate;
+
+  /// No description provided for @shortcutTerminalCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal copy'**
+  String get shortcutTerminalCopy;
+
+  /// No description provided for @shortcutTerminalPaste.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal paste'**
+  String get shortcutTerminalPaste;
+
+  /// No description provided for @shortcutTerminalSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal search'**
+  String get shortcutTerminalSearch;
+
+  /// No description provided for @shortcutCommandHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Command history'**
+  String get shortcutCommandHistory;
+
+  /// No description provided for @shortcutPreviousPane.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous pane'**
+  String get shortcutPreviousPane;
+
+  /// No description provided for @shortcutNextPane.
+  ///
+  /// In en, this message translates to:
+  /// **'Next pane'**
+  String get shortcutNextPane;
+
+  /// No description provided for @shortcutPreviousTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous tab'**
+  String get shortcutPreviousTab;
+
+  /// No description provided for @shortcutNextTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Next tab'**
+  String get shortcutNextTab;
+
   /// No description provided for @filesDock.
   ///
   /// In en, this message translates to:
@@ -4619,7 +4733,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentSendShortcut.
   ///
   /// In en, this message translates to:
-  /// **'Send · Ctrl/Cmd+Enter'**
+  /// **'Send · Enter'**
   String get aiAgentSendShortcut;
 
   /// No description provided for @aiAgentApproveTitle.

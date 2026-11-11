@@ -15,4 +15,9 @@ class SelectedAgentPermissionMode extends Notifier<AgentPermissionMode> {
   void select(AgentPermissionMode mode) {
     if (!ref.read(agentRuntimeProvider).busy) state = mode;
   }
+
+  /// Every new conversation starts from the safe default.
+  void reset() {
+    if (!ref.read(agentRuntimeProvider).busy) state = AgentPermissionMode.confirm;
+  }
 }

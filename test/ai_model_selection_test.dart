@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +13,9 @@ import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/features/credentials/api.dart';
+import 'package:sshairy/features/settings/settings.dart' show SettingKeys, settingsProvider;
 import 'package:sshairy/foundation/cancellation.dart';
+import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/foundation/secret.dart';
 
@@ -86,11 +89,25 @@ class _BlockingModel implements ModelProvider {
   void close() {}
 }
 
-ProviderContainer _container(AiConfiguration initial, {_Credentials? credentials}) {
+/// A fresh data directory stands for a restarted app; pass the same path to simulate the next launch.
+String _dataDir() {
+  final dir = Directory.systemTemp.createTempSync('sshairy-model-selection-');
+  addTearDown(() {
+    try {
+      dir.deleteSync(recursive: true);
+    } on FileSystemException {
+      // A settings lock can outlive the test on Windows; the temp directory is disposable.
+    }
+  });
+  return dir.path;
+}
+
+ProviderContainer _container(AiConfiguration initial, {_Credentials? credentials, String? dataDir}) {
   final container = ProviderContainer(
     overrides: [
       aiConfigurationProvider.overrideWith(() => _Configuration(initial)),
       aiCredentialsProvider.overrideWithValue(credentials ?? _Credentials()),
+      dataDirProvider.overrideWithValue(dataDir ?? _dataDir()),
     ],
   );
   addTearDown(container.dispose);
@@ -112,7 +129,7 @@ void main() {
     expect(credentials.reads, isEmpty);
   });
 
-  test('window-local choice preserves default and independent inline/completion models', () {
+  test('model choice persists for the next launch and preserves inline/completion models', () async {
     final profile = _profile();
     final config = AiConfiguration(
       enabled: true,
@@ -120,8 +137,12 @@ void main() {
       inlineModel: 'inline-model',
       completionModel: 'completion-model',
     );
-    final container = _container(config);
+    final dataDir = _dataDir();
+    final container = _container(config, dataDir: dataDir);
     container.read(selectedAgentModelProvider.notifier).select('airy-selected-model');
+    await container.read(settingsProvider.notifier).saved;
+    expect(container.read(settingsProvider).get(SettingKeys.agentModel), 'airy-selected-model');
+    expect(File('$dataDir/settings.json').existsSync(), isTrue);
     final effective = container.read(effectiveAgentProfileProvider)!;
     expect(effective.model, 'airy-selected-model');
     expect(effective.protocol, profile.protocol);
@@ -137,9 +158,12 @@ void main() {
     expect(unchanged.profileForCompletion!.model, 'completion-model');
     expect(unchanged.profileForInline!.tools, isFalse);
     expect(unchanged.profileForCompletion!.tools, isFalse);
-    final separateWindow = _container(config);
-    expect(separateWindow.read(selectedAgentModelProvider), isNull);
-    expect(separateWindow.read(effectiveAgentProfileProvider)!.model, 'default-model');
+    final relaunched = _container(config, dataDir: dataDir);
+    expect(relaunched.read(selectedAgentModelProvider), 'airy-selected-model');
+    expect(relaunched.read(effectiveAgentProfileProvider)!.model, 'airy-selected-model');
+    final otherDestination = _container(config, dataDir: _dataDir());
+    expect(otherDestination.read(selectedAgentModelProvider), isNull);
+    expect(otherDestination.read(effectiveAgentProfileProvider)!.model, 'default-model');
   });
 
   test('legacy tools false is normalized for Airy while terminal lanes stay without tools', () {
@@ -199,6 +223,7 @@ void main() {
         agentBackendProvider.overrideWithValue(_Backend()),
         aiJournalProvider.overrideWithValue(_Journal()),
         capabilityDispatcherProvider.overrideWithValue(CapabilityDispatcher([])),
+        dataDirProvider.overrideWithValue(_dataDir()),
       ],
     );
     addTearDown(() async {
@@ -238,6 +263,7 @@ void main() {
         agentBackendProvider.overrideWithValue(_Backend()),
         aiJournalProvider.overrideWithValue(_Journal()),
         capabilityDispatcherProvider.overrideWithValue(CapabilityDispatcher([])),
+        dataDirProvider.overrideWithValue(_dataDir()),
       ],
     );
     addTearDown(() async {

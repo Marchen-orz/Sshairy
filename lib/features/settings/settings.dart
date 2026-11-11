@@ -5,6 +5,7 @@ import '../../design/theme.dart';
 import '../../foundation/data_dir.dart';
 import '../../foundation/json_file.dart';
 import '../../foundation/result.dart';
+import '../../foundation/shortcuts.dart';
 import 'domain/background.dart';
 import 'domain/translation_config.dart';
 
@@ -174,6 +175,55 @@ class BackgroundGallerySetting extends SettingDef<List<String>> {
   };
 }
 
+/// A saved model or destination name; null means no explicit choice.
+class OptionalStringSetting extends SettingDef<String?> {
+  const OptionalStringSetting(String key, {this.maxLength = 256, super.agentExposed}) : super(key, null);
+
+  final int maxLength;
+  static final _control = RegExp(r'[\x00-\x1f\x7f]');
+
+  @override
+  bool accepts(Object? raw) =>
+      raw == null || (raw is String && raw.trim().isNotEmpty && raw.length <= maxLength && !_control.hasMatch(raw));
+  @override
+  String? decode(Object? raw) => raw as String?;
+  @override
+  Map<String, Object?> get schema => {
+    'type': ['string', 'null'],
+    'maxLength': maxLength,
+  };
+}
+
+/// User-chosen keys, keyed by [AppShortcutAction]; missing actions keep their platform default.
+class ShortcutSetting extends SettingDef<Map<String, String>> {
+  const ShortcutSetting(String key) : super(key, const {}, agentExposed: false);
+
+  @override
+  bool accepts(Object? raw) {
+    if (raw is! Map || raw.length > AppShortcutAction.values.length) return false;
+    final seen = <String>{};
+    for (final entry in raw.entries) {
+      if (entry.key is! String || entry.value is! String) return false;
+      if (!AppShortcutAction.values.asNameMap().containsKey(entry.key)) return false;
+      final binding = ShortcutBinding.parse(entry.value as String);
+      if (binding == null || !seen.add(binding.encode())) return false;
+    }
+    return true;
+  }
+
+  @override
+  Map<String, String> decode(Object? raw) => Map.unmodifiable({
+    for (final entry in (raw as Map).entries)
+      entry.key as String: ShortcutBinding.parse(entry.value as String)!.encode(),
+  });
+  @override
+  Map<String, Object?> get schema => {
+    'type': 'object',
+    'maxProperties': AppShortcutAction.values.length,
+    'additionalProperties': {'type': 'string'},
+  };
+}
+
 class TranslationConfigSetting extends SettingDef<TranslationConfig> {
   const TranslationConfigSetting(String key) : super(key, const TranslationConfig(), agentExposed: false);
 
@@ -298,6 +348,13 @@ abstract final class SettingKeys {
   static const importOffered = BoolSetting('importOffered', false, agentExposed: false);
   static const transferConcurrency = IntSetting('transferConcurrency', 3, 1, 8);
 
+  /// The last Agent model chosen in the panel; kept only for the same protocol and endpoint.
+  static const agentModel = OptionalStringSetting('agentModel', maxLength: 256, agentExposed: false);
+  static const agentModelEndpoint = OptionalStringSetting('agentModelEndpoint', maxLength: 4096, agentExposed: false);
+
+  /// User overrides; actions not present use their platform default.
+  static const shortcuts = ShortcutSetting('shortcuts');
+
   static const List<SettingDef<Object?>> all = [
     themeMode,
     accent,
@@ -338,6 +395,9 @@ abstract final class SettingKeys {
     showHidden,
     importOffered,
     transferConcurrency,
+    agentModel,
+    agentModelEndpoint,
+    shortcuts,
   ];
 
   static SettingDef<Object?>? byKey(String key) => all.where((d) => d.key == key).firstOrNull;
@@ -360,6 +420,7 @@ class Settings {
   double get uiFontSize => get(SettingKeys.uiFontSize);
   double get uiScale => get(SettingKeys.uiScale);
   String? get terminalFontFamily => get(SettingKeys.terminalFontFamily);
+  Map<String, String> get shortcuts => get(SettingKeys.shortcuts);
 
   Settings copyWith(Map<String, Object?> decoded) => Settings({..._values, ...decoded});
 
