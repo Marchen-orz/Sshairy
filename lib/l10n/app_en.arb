@@ -868,7 +868,7 @@
   "terminalAiFailedInvalid": "The model returned an invalid command. Try rephrasing.",
   "terminalAiChanged": "The terminal context changed. Reopen to start a new request.",
   "terminalAiClarify": "Add more detail, or use Airy for a task with several steps.",
-  "terminalAiClearPrompt": "Clear the terminal input before inserting this command.",
+  "terminalAiInsertFailed": "Could not replace the terminal input. Reopen the editor to try again.",
   "terminalAiInsert": "Insert command",
   "terminalAiOpenAgent": "Open Airy",
   "aiAgentHistory": "Conversation history",

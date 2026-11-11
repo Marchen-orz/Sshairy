@@ -287,6 +287,7 @@ extension _TerminalAiPane on _TerminalPaneState {
                   key: ObjectKey(_session._inlineAi.context),
                   session: _session,
                   service: _aiService!,
+                  isActive: () => mounted && widget.active && widget.visible && _applicationActive && _inlineAiOpen,
                   onClose: _closeInlineAi,
                   onDrag: (delta) => _update(() => _inlineAiOffset = constrain((_inlineAiOffset ?? offset) + delta)),
                   onAskAgent: widget.onAskAgent,
@@ -305,12 +306,14 @@ class _InlineAiComposer extends StatefulWidget {
     super.key,
     required this.session,
     required this.service,
+    required this.isActive,
     required this.onClose,
     required this.onDrag,
     this.onAskAgent,
   });
   final TerminalSession session;
   final TerminalAiService service;
+  final bool Function() isActive;
   final VoidCallback onClose;
   final ValueChanged<Offset> onDrag;
   final ValueChanged<String>? onAskAgent;
@@ -333,7 +336,10 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
   late final _command = TextEditingController(text: _inline.command);
   final _editorFocus = FocusNode();
   final _focus = FocusNode();
-  TerminalAiGeneration? get _result => _inline.result;
+  CancellationToken? _acceptCancel;
+  bool _insertFailed = false;
+  TerminalAiGeneration? _acceptedPreview;
+  TerminalAiGeneration? get _result => _acceptedPreview ?? _inline.result;
   TerminalAiFailure? get _failure => _inline.failure;
   bool get _stale => _inline.stale;
 
@@ -351,13 +357,16 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
   }
 
   void _edited() {
+    _acceptCancel?.cancel();
+    _insertFailed = false;
+    _acceptedPreview = null;
     _inline.editInstruction(_instruction.text);
     if (!_instruction.value.composing.isCollapsed) _inline.stop();
     if (mounted) setState(() {});
   }
 
   void _changed() {
-    if (_command.text != _inline.command) _command.text = _inline.command;
+    if (_acceptedPreview == null && _command.text != _inline.command) _command.text = _inline.command;
     if (mounted) setState(() {});
   }
 
@@ -369,13 +378,15 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
   bool get _canAccept {
     final current = widget.session.readAiContext();
     return !_stale &&
+        widget.isActive() &&
         _editorFocus.hasFocus &&
         _result?.kind == TerminalAiGenerationKind.command &&
         !_inline.busy &&
+        _acceptCancel == null &&
         _command.value.composing.isCollapsed &&
         current.ready &&
-        current.draft!.isEmpty &&
-        sameTerminalAiContext(_captured, current, draft: false) &&
+        (sameTerminalAiContext(_captured, current) ||
+            current.draft!.isEmpty && sameTerminalAiContext(_captured, current, draft: false)) &&
         validTerminalAiCommand(_command.text) &&
         widget.service.canGenerate(current);
   }
@@ -383,10 +394,33 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
   Future<void> _accept() async {
     if (!_canAccept) return;
     final current = widget.session.readAiContext();
-    final sent = await widget.session.acceptAiDraft(current, _command.text);
-    if (mounted && sent == InsertResult.sent) {
-      _inline.clear();
-      widget.onClose();
+    _acceptedPreview = _result;
+    final cancel = _acceptCancel = CancellationToken();
+    setState(() => _insertFailed = false);
+    try {
+      final sent = await widget.session.acceptAiDraft(
+        current,
+        _command.text,
+        cancel: cancel,
+        isCurrent: () =>
+            mounted &&
+            widget.isActive() &&
+            _editorFocus.hasFocus &&
+            _instruction.value.composing.isCollapsed &&
+            _command.value.composing.isCollapsed &&
+            widget.service.canGenerate(_captured),
+      );
+      if (!mounted) return;
+      if (sent == InsertResult.sent) {
+        _inline.clear();
+        widget.onClose();
+      } else if (sent != InsertResult.cancelled) {
+        setState(() => _insertFailed = true);
+      }
+    } finally {
+      cancel.cancel();
+      _acceptCancel = null;
+      if (mounted) setState(() {});
     }
   }
 
@@ -412,6 +446,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
 
   @override
   void dispose() {
+    _acceptCancel?.cancel();
     _inline.removeListener(_changed);
     widget.session.commandAssistance.removeListener(_changed);
     widget.session._directory.changes.removeListener(_changed);
@@ -432,6 +467,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
       child: Focus(
         focusNode: _editorFocus,
         onFocusChange: (focused) {
+          if (!focused) _acceptCancel?.cancel();
           if (mounted) setState(() {});
         },
         onKeyEvent: _onKey,
@@ -479,7 +515,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                   maxLength: 2048,
                   decoration: InputDecoration(isDense: true, hintText: l.terminalAiInstruction, counterText: ''),
                 ),
-                if (_inline.busy)
+                if (_inline.busy || _acceptCancel != null)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: Space.sm),
                     child: LinearProgressIndicator(minHeight: 2),
@@ -489,7 +525,12 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                     padding: const EdgeInsets.only(top: Space.sm),
                     child: Text(_failureText(l, failure), style: TextStyle(color: theme.colorScheme.error)),
                   ),
-                if (_stale)
+                if (_insertFailed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.sm),
+                    child: Text(l.terminalAiInsertFailed, style: TextStyle(color: theme.colorScheme.error)),
+                  )
+                else if (_stale && _acceptCancel == null)
                   Padding(
                     padding: const EdgeInsets.only(top: Space.sm),
                     child: Text(l.terminalAiChanged, style: theme.textTheme.bodySmall),
@@ -504,6 +545,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                       maxLines: 3,
                       style: mono(context),
                       onChanged: (value) {
+                        _acceptCancel?.cancel();
                         _inline.command = value;
                         setState(() {});
                       },
@@ -515,11 +557,6 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                     Padding(
                       padding: const EdgeInsets.only(top: Space.sm),
                       child: Text(result.message!, style: theme.textTheme.bodySmall),
-                    ),
-                  if (!_canAccept && result.kind == TerminalAiGenerationKind.command)
-                    Padding(
-                      padding: const EdgeInsets.only(top: Space.sm),
-                      child: Text(l.terminalAiClearPrompt, style: theme.textTheme.bodySmall),
                     ),
                 ],
                 const SizedBox(height: Space.sm),

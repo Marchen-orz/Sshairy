@@ -493,7 +493,7 @@ AI 总开关默认关闭；配置并启用 AI 后，行内生成与自动补全�
 
 当前检查 SessionId、generation、草稿 revision、cwd、实际回显、行尾、提示符、IME、焦点与当前功能/主机可用性。完整生成命令只写入重新确认的空行；补全必须严格以捕获的已回显前缀开头，只写入后缀，不发回车。
 
-如果需求已经被实时发到远端编辑行，AI 不会用 Ctrl-U、退格或 Ctrl-C 替用户清掉；保留命令草稿，用户可关闭生成层、自行清空远端原行，再打开并核对原目标后接受。输入变化会使当前生成层过期，不能在同一已过期层里直接继续回填。
+需求已在远端编辑行时，用户点击“填入命令”会受控替换仍精确匹配的原文：经现有终端退格键通路擦除，等实际回显证明同一输入行已空，再粘贴结果，不发回车。等待期间新输入、另一提示符、焦点/可见性/授权变化、断线或超时都会阻止粘贴；失败保留预览，不要求用户预先手动清空。原文已改变则旧结果过期，不能覆盖新输入。
 
 ### 13.2 建议质量与授权是两回事
 
@@ -562,7 +562,7 @@ AI 总开关默认关闭；配置并启用 AI 后，行内生成与自动补全�
 | [ai_http_test](../test/ai_http_test.dart) | 认证目的地、重定向拒绝、等待 Key 时取消、未提供的工具 |
 | [ai_config_test](../test/ai_config_test.dart) | 总开关默认关闭/两功能默认开启、配置迁移、独立主机筛选、坏配置保护与 Key 隔离 |
 | [ai_terminal_service_test](../test/ai_terminal_service_test.dart) | 无工具、功能/主机筛选、有限历史、未知 cwd、严格 JSON、abstain、限频、行内优先 |
-| [terminal_ai_ports_test](../test/terminal_ai_ports_test.dart) | 空行/精确后缀、真实回显、generation、历史来源、不发 Enter |
+| [terminal_ai_ports_test](../test/terminal_ai_ports_test.dart) | 空行/精确原文替换/后缀、实际空行回显、替换取消/超时、generation、历史来源、不发 Enter |
 | [ai_panel_test](../test/ai_panel_test.dart) | UI 状态、草稿、审批和输出编辑保留 |
 
 可以从少量明确文件运行本地自动测试，例如：

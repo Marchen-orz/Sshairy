@@ -2679,8 +2679,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Add more detail, or use Airy for a task with several steps.';
 
   @override
-  String get terminalAiClearPrompt =>
-      'Clear the terminal input before inserting this command.';
+  String get terminalAiInsertFailed =>
+      'Could not replace the terminal input. Reopen the editor to try again.';
 
   @override
   String get terminalAiInsert => 'Insert command';

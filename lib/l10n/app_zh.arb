@@ -825,7 +825,7 @@
   "terminalAiFailedInvalid": "模型返回的命令无效，请换个说法重试。",
   "terminalAiChanged": "终端上下文已变化，重新打开后可发起新请求。",
   "terminalAiClarify": "请补充需求；多步骤任务可交给 Airy。",
-  "terminalAiClearPrompt": "清空终端输入后可填入此命令。",
+  "terminalAiInsertFailed": "未能替换终端输入，请重新打开编辑器后重试。",
   "terminalAiInsert": "填入命令",
   "terminalAiOpenAgent": "打开 Airy",
   "aiAgentHistory": "历史会话",

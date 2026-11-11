@@ -167,7 +167,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   final _assistance = ValueNotifier<CommandAssistanceState>(const CommandAssistanceState());
   Timer? _completionTimer;
   CancellationToken? _completionCancel;
-  var _shellGeneration = 0, _draftRevision = 0;
+  var _shellGeneration = 0, _draftRevision = 0, _inputSequence = 0;
   var _semanticSeen = false, _semanticInput = false;
   int? _promptRow, _promptColumn;
   BufferLine? _submittedLine;
@@ -235,15 +235,31 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   }
 
   @override
-  Future<InsertResult> acceptAiDraft(TerminalAiContext expected, String text, {bool suffix = false}) {
-    if (!canInsert) return Future.value(InsertResult.unavailable);
+  Future<InsertResult> acceptAiDraft(
+    TerminalAiContext expected,
+    String text, {
+    bool suffix = false,
+    CancellationToken? cancel,
+    bool Function()? isCurrent,
+  }) async {
+    if ((cancel?.isCancelled ?? false) || isCurrent?.call() == false) return InsertResult.cancelled;
+    if (!canInsert) return InsertResult.unavailable;
     if (!validTerminalAiCommand(text) || (suffix && utf8.encode(text).length > 2048)) {
-      return Future.value(InsertResult.rejected);
+      return InsertResult.rejected;
     }
-    if (!_aiContextCurrent(expected)) return Future.value(InsertResult.stale);
-    if (!suffix && expected.draft!.isNotEmpty) return Future.value(InsertResult.rejected);
+    if (!_aiContextCurrent(expected)) return InsertResult.stale;
     final command = suffix ? '${expected.draft}$text' : text;
-    if (!validTerminalAiCommand(command)) return Future.value(InsertResult.rejected);
+    if (!validTerminalAiCommand(command)) return InsertResult.rejected;
+    if (!command.startsWith(expected.draft!)) {
+      final erased = await _eraseAiDraft(expected, cancel, isCurrent);
+      if (erased != InsertResult.sent) return erased;
+      if ((cancel?.isCancelled ?? false) || isCurrent?.call() == false) return InsertResult.cancelled;
+      final current = readAiContext();
+      if (!current.ready || current.draft!.isNotEmpty || !sameTerminalAiEnvironment(expected, current)) {
+        return InsertResult.stale;
+      }
+      expected = current;
+    }
     return _acceptCommand(
       CommandCompletionRequest(
         text: expected.draft!,
@@ -253,6 +269,59 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       ),
       command,
     );
+  }
+
+  Future<InsertResult> _eraseAiDraft(
+    TerminalAiContext expected,
+    CancellationToken? cancel,
+    bool Function()? isCurrent,
+  ) async {
+    final stopped = CancellationToken();
+    final result = Completer<InsertResult>();
+    final buffer = _terminal.buffer;
+    final line = buffer.lines[buffer.absoluteCursorY];
+    _insertions.add(stopped);
+    void finish(InsertResult value) {
+      if (!result.isCompleted) result.complete(value);
+    }
+
+    int? sequence;
+    void check() {
+      if (sequence == null) return;
+      final current = readAiContext();
+      final row = _terminal.buffer.absoluteCursorY;
+      final currentLine = row >= 0 && row < _terminal.buffer.lines.length ? _terminal.buffer.lines[row] : null;
+      if (isCurrent?.call() == false) {
+        finish(InsertResult.cancelled);
+      } else if (!canInsert ||
+          sequence != _inputSequence ||
+          !identical(currentLine, line) ||
+          !sameTerminalAiEnvironment(expected, current)) {
+        finish(InsertResult.stale);
+      } else if (current.ready && current.draft!.isEmpty) {
+        finish(InsertResult.sent);
+      }
+    }
+
+    _assistance.addListener(check);
+    _directory.changes.addListener(check);
+    addListener(check);
+    unawaited(Future.any([stopped.whenCancelled, ?cancel?.whenCancelled]).then((_) => finish(InsertResult.cancelled)));
+    try {
+      // Use the same erase key as terminal input; only a confirmed empty echo permits the following paste.
+      for (final _ in expected.draft!.runes) {
+        if (!_terminal.keyInput(TerminalKey.backspace)) return InsertResult.rejected;
+      }
+      sequence = _inputSequence;
+      check();
+      return await result.future.timeout(const Duration(seconds: 2), onTimeout: () => InsertResult.rejected);
+    } finally {
+      _assistance.removeListener(check);
+      _directory.changes.removeListener(check);
+      removeListener(check);
+      _insertions.remove(stopped);
+      stopped.cancel();
+    }
   }
 
   @override
@@ -476,6 +545,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
             (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b')) {
           _historyBrowsing = false;
         }
+        _inputSequence++;
         _inputPending = true;
         _invalidateCommandDraft();
         shell.write(utf8.encode(data));
@@ -573,6 +643,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
             (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b')) {
           _historyBrowsing = false;
         }
+        _inputSequence++;
         _inputPending = true;
         _invalidateCommandDraft();
         pty.write(utf8.encode(data));

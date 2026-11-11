@@ -160,19 +160,107 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('complete generated draft needs the exact empty prompt and sends no Enter', (tester) async {
+  testWidgets('complete generated draft inserts into an exact empty prompt and sends no Enter', (tester) async {
     final shell = await connect(tester);
     await _feed(tester, shell.echo, 'u@box:~\$ ');
     final empty = session.readAiContext();
     expect(await session.acceptAiDraft(empty, 'printf hello'), InsertResult.sent);
     expect(shell.writes, ['printf hello']);
     expect(await session.acceptAiDraft(empty, 'printf again'), InsertResult.stale);
-    await _feed(tester, shell.echo, 'printf hello');
-    expect(await session.acceptAiDraft(session.readAiContext(), 'echo replacement'), InsertResult.rejected);
     expect(shell.writes, ['printf hello']);
     session.close();
     manager.closeAll();
     await tester.pump();
+  });
+
+  for (final original in ['show disk usage', '请查看磁盘', 'echo café😀']) {
+    testWidgets('full command replaces $original only after an empty echo and sends no Enter', (tester) async {
+      final shell = await connect(tester);
+      await _feed(tester, shell.echo, 'u@box:~\$ $original');
+      final work = session.acceptAiDraft(session.readAiContext(), 'df -h');
+      await tester.pump();
+      expect(shell.writes, List.filled(original.runes.length, '\x7f'));
+      await _feed(tester, shell.echo, '\r\x1b[2Ku@box:~\$ ');
+      expect(await work, InsertResult.sent);
+      expect(shell.writes.last, 'df -h');
+      expect(shell.writes.join(), isNot(contains('\r')));
+      expect(shell.writes.join(), isNot(contains('\n')));
+    });
+  }
+
+  testWidgets('replacement preserves the terminal erase mode and bracketed paste', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, '\x1b[?67h\x1b[?2004hu@box:~\$ old');
+    final work = session.acceptAiDraft(session.readAiContext(), 'df -h');
+    await tester.pump();
+    expect(shell.writes, ['\b', '\b', '\b']);
+    await _feed(tester, shell.echo, '\r\x1b[2Ku@box:~\$ ');
+    expect(await work, InsertResult.sent);
+    expect(shell.writes.last, '\x1b[200~df -h\x1b[201~');
+  });
+
+  testWidgets('new input during replacement cannot receive the generated command', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ old');
+    final work = session.acceptAiDraft(session.readAiContext(), 'df -h');
+    await tester.pump();
+    await session.insert('x');
+    await _feed(tester, shell.echo, '\r\x1b[2Ku@box:~\$ ');
+    expect(await work, InsertResult.stale);
+    expect(shell.writes, ['\x7f', '\x7f', '\x7f', 'x']);
+  });
+
+  testWidgets('cancelled replacement never pastes after a late empty echo', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ old');
+    final cancel = CancellationToken();
+    final work = session.acceptAiDraft(session.readAiContext(), 'df -h', cancel: cancel);
+    cancel.cancel();
+    await tester.pump();
+    expect(await work, InsertResult.cancelled);
+    await _feed(tester, shell.echo, '\r\x1b[2Ku@box:~\$ ');
+    expect(shell.writes, ['\x7f', '\x7f', '\x7f']);
+  });
+
+  testWidgets('replacement rechecks caller authorization before the final paste', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ old');
+    var current = true;
+    final work = session.acceptAiDraft(session.readAiContext(), 'df -h', isCurrent: () => current);
+    current = false;
+    await _feed(tester, shell.echo, '\r\x1b[2Ku@box:~\$ ');
+    expect(await work, InsertResult.cancelled);
+    expect(shell.writes, ['\x7f', '\x7f', '\x7f']);
+  });
+
+  testWidgets('a new prompt during replacement cannot receive the generated command', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ old');
+    final work = session.acceptAiDraft(session.readAiContext(), 'df -h');
+    await _feed(tester, shell.echo, '\r\nbackground output\r\nu@box:~\$ ');
+    expect(await work, InsertResult.stale);
+    expect(shell.writes, ['\x7f', '\x7f', '\x7f']);
+  });
+
+  testWidgets('replacement times out without a confirmed empty prompt', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ old');
+    final work = session.acceptAiDraft(session.readAiContext(), 'df -h');
+    await tester.pump(const Duration(seconds: 3));
+    expect(await work, InsertResult.rejected);
+    expect(shell.writes, ['\x7f', '\x7f', '\x7f']);
+  });
+
+  testWidgets('closing the shell cancels a replacement waiting for echo', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ old');
+    final work = session.acceptAiDraft(session.readAiContext(), 'df -h');
+    session.close();
+    manager.closeAll();
+    await tester.pump();
+    expect(await work, InsertResult.cancelled);
+    expect(shell.writes, ['\x7f', '\x7f', '\x7f']);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('suffix accepts only the captured echoed prefix and rejects a changed draft', (tester) async {

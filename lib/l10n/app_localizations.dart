@@ -4970,11 +4970,11 @@ abstract class AppLocalizations {
   /// **'Add more detail, or use Airy for a task with several steps.'**
   String get terminalAiClarify;
 
-  /// No description provided for @terminalAiClearPrompt.
+  /// No description provided for @terminalAiInsertFailed.
   ///
   /// In en, this message translates to:
-  /// **'Clear the terminal input before inserting this command.'**
-  String get terminalAiClearPrompt;
+  /// **'Could not replace the terminal input. Reopen the editor to try again.'**
+  String get terminalAiInsertFailed;
 
   /// No description provided for @terminalAiInsert.
   ///

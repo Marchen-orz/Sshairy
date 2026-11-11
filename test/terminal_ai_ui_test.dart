@@ -518,16 +518,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('inline with remote text cannot replace it and retained preview can be accepted after clearing', (
-    tester,
-  ) async {
+  testWidgets('retained inline preview can still be accepted after the user clears the original', (tester) async {
     await mount(tester, '请查看磁盘');
     await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
     await tester.pump();
     expect(ai.generations, hasLength(1));
     ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
     await tester.pump();
-    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('terminal-ai-accept'))).onPressed, isNull);
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('terminal-ai-accept'))).onPressed, isNotNull);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
     await feed(tester, '\r\x1b[2Ku@box:~\$ ');
@@ -538,6 +536,72 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('terminal-ai-accept')));
     await tester.pump();
     expect(transport.shell.writes, ['df -h']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('accepting inline generation replaces the original input without manual clearing or Enter', (
+    tester,
+  ) async {
+    await mount(tester, '请查看磁盘');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-accept')));
+    await tester.pump();
+    expect(transport.shell.writes, List.filled('请查看磁盘'.runes.length, '\x7f'));
+    expect(find.byKey(const ValueKey('terminal-ai-composer')), findsOneWidget);
+    await feed(tester, '\r\x1b[2Ku@box:~\$ 请查');
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('terminal-ai-command'))).controller!.text, 'df -h');
+    expect(transport.shell.writes.last, '\x7f');
+    await feed(tester, '\r\x1b[2Ku@box:~\$ ');
+    expect(transport.shell.writes.last, 'df -h');
+    expect(transport.shell.writes.join(), isNot(contains('\r')));
+    expect(transport.shell.writes.join(), isNot(contains('\n')));
+    expect(find.byKey(const ValueKey('terminal-ai-composer')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('closing the inline editor during replacement prevents the later paste', (tester) async {
+    await mount(tester, 'show disk');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-accept')));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await feed(tester, '\r\x1b[2Ku@box:~\$ ');
+    expect(transport.shell.writes, List.filled('show disk'.length, '\x7f'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an inactive window cannot finish a pending inline replacement', (tester) async {
+    await mount(tester, 'show disk');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-accept')));
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    addTearDown(() => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
+    await feed(tester, '\r\x1b[2Ku@box:~\$ ');
+    expect(transport.shell.writes, List.filled('show disk'.length, '\x7f'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('replacement timeout shows an actionable inline failure', (tester) async {
+    await mount(tester, 'show disk');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    ai.generations.single.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-accept')));
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('Could not replace the terminal input. Reopen the editor to try again.'), findsOneWidget);
+    expect(transport.shell.writes, List.filled('show disk'.length, '\x7f'));
     expect(tester.takeException(), isNull);
   });
 

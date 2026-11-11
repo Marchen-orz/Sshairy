@@ -2576,7 +2576,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get terminalAiClarify => '请补充需求；多步骤任务可交给 Airy。';
 
   @override
-  String get terminalAiClearPrompt => '清空终端输入后可填入此命令。';
+  String get terminalAiInsertFailed => '未能替换终端输入，请重新打开编辑器后重试。';
 
   @override
   String get terminalAiInsert => '填入命令';

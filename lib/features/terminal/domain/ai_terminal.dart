@@ -118,9 +118,15 @@ bool sameTerminalAiEnvironment(TerminalAiContext a, TerminalAiContext b) =>
     };
 
 abstract interface class TerminalDraftAcceptor {
-  /// Full commands require an empty prompt. A suffix is appended to the exact captured echoed draft.
-  /// Neither path deletes input, sends Enter, executes a command, or claims focus/IME authorization.
-  Future<InsertResult> acceptAiDraft(TerminalAiContext expected, String text, {bool suffix = false});
+  /// Full commands replace the exact echoed draft, verifying an empty echo before paste; suffixes only append.
+  /// Never sends Enter or executes. The caller owns focus/IME authorization and cancels if it changes.
+  Future<InsertResult> acceptAiDraft(
+    TerminalAiContext expected,
+    String text, {
+    bool suffix = false,
+    CancellationToken? cancel,
+    bool Function()? isCurrent,
+  });
 }
 
 bool validTerminalAiCommand(String text) =>
