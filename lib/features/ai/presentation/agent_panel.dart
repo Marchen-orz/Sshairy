@@ -1020,8 +1020,16 @@ class _ExecutionCardState extends State<_ExecutionCard> {
     final execution = widget.execution;
     final output = execution.output;
     final failed = execution.state == 'failed' || (execution.exitCode != null && execution.exitCode != 0);
-    final unknown = execution.state == 'outcomeUnknown';
-    final running = execution.state == 'running';
+    final unknown = execution.state == 'outcomeUnknown' || execution.state == 'interrupted';
+    final running = execution.state == 'running' || execution.state == 'pending';
+    final compact = execution.capability != 'agent.execute' && execution.capability != 'agent.diagnose';
+    final title = execution.toolName ?? l.aiAgentExecutionRecord;
+    final status = failed
+        ? compact || execution.command.isEmpty
+              ? l.aiAgentFailed
+              : l.aiAgentExecutionFailed
+        : _executionState(l, execution.state);
+    final failure = execution.failure == null ? null : _error(l, execution.failure);
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.md),
       child: _AgentCard(
@@ -1038,11 +1046,9 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                 ),
                 Expanded(
                   child: Text(
-                    execution.archived
-                        ? (execution.capability == 'agent.diagnose' ? l.aiAgentDiagnostics : l.aiAgentHistory)
-                        : execution.capability == 'agent.diagnose'
-                        ? l.aiAgentDiagnostics
-                        : execution.command,
+                    !compact && !execution.archived && execution.command.isNotEmpty
+                        ? '$title · ${execution.capability == 'agent.diagnose' ? l.aiAgentDiagnostics : execution.command}'
+                        : title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: mono(context, theme.textTheme.bodySmall),
@@ -1058,6 +1064,8 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                         ? Icons.error_outline_rounded
                         : running
                         ? Icons.more_horiz_rounded
+                        : execution.state == 'cancelled'
+                        ? Icons.stop_circle_outlined
                         : Icons.check_circle_outline_rounded,
                     size: 16,
                     color: failed || unknown ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
@@ -1073,17 +1081,15 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                 spacing: Space.md,
                 runSpacing: Space.xs,
                 children: [
-                  Text(
-                    failed ? l.aiAgentExecutionFailed : _executionState(l, execution.state),
-                    style: theme.textTheme.bodySmall,
-                  ),
+                  Text(status, style: theme.textTheme.bodySmall),
+                  if (failure != null && failure != status) Text(failure, style: theme.textTheme.bodySmall),
                   if (execution.exitCode case final code?)
                     Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
                   if (execution.historyTruncated || (output?.truncated ?? false))
                     Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
                 ],
               ),
-              if (execution.archived) ...[
+              if (execution.archived && !compact) ...[
                 const SizedBox(height: Space.sm),
                 Text(l.aiAgentHistoryOutputUnavailable, style: theme.textTheme.bodySmall),
                 if (execution.sharedText?.isNotEmpty ?? false) ...[
@@ -1268,6 +1274,7 @@ String _executionState(AppLocalizations l, String state) => switch (state) {
   'completed' => l.aiAgentCompleted,
   'failed' => l.aiAgentFailed,
   'cancelled' => l.aiAgentCancelled,
+  'interrupted' => l.tsInterrupted,
   'outcomeUnknown' || 'unknown' => l.aiAgentOutcomeUnknown,
   _ => l.aiAgentPreparing,
 };

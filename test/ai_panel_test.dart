@@ -411,6 +411,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('all tool kinds use one ordered card with safe names and explicit stopped status', (tester) async {
+    final runtime = _Runtime();
+    runtime.entries.addAll([
+      AgentChatEntry('user', 'Check tools'),
+      AgentExecution('list', 'agent.hosts', '', '', '')..state = 'completed',
+      AgentExecution('diagnose', 'agent.diagnose', 'target', 'fixed diagnostic', '/')..state = 'completed',
+      AgentExecution('execute', 'agent.execute', 'target', 'printf checked', '/')..state = 'failed',
+      AgentExecution('read', 'agent.output', '', '', '')..state = 'cancelled',
+      AgentExecution('unknown', 'agent.unknown', '', '', '')..state = 'failed',
+    ]);
+    await _panel(tester, runtime);
+    expect(find.text('host_list'), findsOneWidget);
+    expect(find.textContaining('diagnostics_collect'), findsOneWidget);
+    expect(find.textContaining('command_execute'), findsOneWidget);
+    expect(find.text('output_read'), findsOneWidget);
+    expect(find.text('Execution record'), findsOneWidget);
+    expect(find.byTooltip('Stopped'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('host_list')).dy,
+      lessThan(tester.getTopLeft(find.textContaining('diagnostics_collect')).dy),
+    );
+    expect(find.byTooltip('Show local output'), findsNWidgets(5));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('restored ordinary tools stay compact and show interrupted reads without output notices', (tester) async {
+    final runtime = _Runtime();
+    runtime.restoreConversation(const [
+      ConversationEntry(kind: ConversationEntryKind.user, text: 'Read tools'),
+      ConversationEntry(kind: ConversationEntryKind.execution, text: '', capability: 'agent.hosts', state: 'completed'),
+      ConversationEntry(kind: ConversationEntryKind.execution, text: '', capability: 'agent.output', state: 'running'),
+    ]);
+    await _panel(tester, runtime);
+    expect(find.text('host_list'), findsOneWidget);
+    expect(find.text('output_read'), findsOneWidget);
+    expect(find.byTooltip('Interrupted'), findsOneWidget);
+    final readCard = find.byKey(ValueKey(runtime.timeline.whereType<AgentExecution>().last.id));
+    await tester.tap(find.descendant(of: readCard, matching: find.byTooltip('Show local output')));
+    await tester.pumpAndSettle();
+    expect(find.text('Interrupted'), findsOneWidget);
+    expect(find.text('Raw tool output is not saved in history.'), findsNothing);
+    expect(runtime.goal, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('approval shows the exact command and output sharing enforces the byte budget', (tester) async {
     final runtime = _Runtime()
       ..active = true

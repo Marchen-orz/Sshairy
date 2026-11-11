@@ -655,6 +655,27 @@ void main() {
     expect(h.runtime.outputs.count, 1);
   });
 
+  test('tool snapshots preserve safe metadata and stopped states without tool arguments or result data', () async {
+    final h = await _create();
+    await h.conversations.send('safe question', _hostA);
+    h.runtime.projectedTimeline = [
+      ...h.runtime.timeline,
+      AgentExecution('list-operation', 'agent.hosts', '', '', '')..state = 'completed',
+      AgentExecution('read-operation', 'agent.output', '', '', '')..state = 'running',
+      AgentExecution('cancel-operation', 'agent.execute', '', '', '')..state = 'cancelled',
+    ];
+    await h.conversations.flush();
+    final entries = h.store.records.single.entries
+        .where((entry) => entry.kind == ConversationEntryKind.execution)
+        .toList();
+    expect(entries.map((entry) => entry.capability), ['agent.hosts', 'agent.output', 'agent.execute']);
+    expect(entries.map((entry) => entry.state), ['completed', 'interrupted', 'cancelled']);
+    expect(entries.every((entry) => entry.text.isEmpty && entry.exitCode == null), isTrue);
+    expect(entries.map((entry) => entry.executionId), ['list-operation', 'read-operation', 'cancel-operation']);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.model.requests, hasLength(1));
+  });
+
   test('save failure retains completed in-memory history and retries without replaying the model', () async {
     final store = _MemoryStore()..failSave = true;
     final h = await _create(store: store);

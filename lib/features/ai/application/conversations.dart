@@ -137,7 +137,7 @@ class AgentConversations extends ChangeNotifier {
           kind: ConversationEntryKind.execution,
           text: sanitizeConversationText(entry.sharedText ?? ''),
           capability: entry.capability,
-          state: entry.state == 'running' || entry.state == 'pending' ? 'outcomeUnknown' : entry.state,
+          state: AgentExecution.restoredState(entry.capability, entry.state),
           exitCode: entry.exitCode,
           truncated: entry.historyTruncated || (entry.output?.truncated ?? false),
           retracted: entry.retracted,

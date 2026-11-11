@@ -1012,6 +1012,45 @@ void main() {
     expect(h.journal.records, isEmpty);
   });
 
+  test('restoring tool records preserves stopped states and interrupts unfinished reads without replay', () async {
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'unused'));
+    });
+    addTearDown(h.close);
+    h.runtime.restoreConversation(const [
+      ConversationEntry(kind: ConversationEntryKind.execution, text: '', capability: 'agent.hosts', state: 'completed'),
+      ConversationEntry(kind: ConversationEntryKind.execution, text: '', capability: 'agent.output', state: 'running'),
+      ConversationEntry(
+        kind: ConversationEntryKind.execution,
+        text: '',
+        capability: 'agent.execute',
+        state: 'cancelled',
+      ),
+      ConversationEntry(
+        kind: ConversationEntryKind.execution,
+        text: '',
+        capability: 'agent.diagnose',
+        state: 'pending',
+      ),
+    ]);
+    expect(h.runtime.executions.map((entry) => entry.toolName), [
+      'host_list',
+      'output_read',
+      'command_execute',
+      'diagnostics_collect',
+    ]);
+    expect(h.runtime.executions.map((entry) => entry.state), [
+      'completed',
+      'interrupted',
+      'cancelled',
+      'outcomeUnknown',
+    ]);
+    expect(h.runtime.executions.every((entry) => entry.archived && entry.output == null), isTrue);
+    expect(h.model.requests, isEmpty);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.backend.target.commands, isEmpty);
+  });
+
   test('a new conversation turn uses plain history data without old protocol state or evidence rights', () async {
     final opaque = Object();
     late String oldHandle;
@@ -1088,8 +1127,10 @@ void main() {
       'first question',
       'follow-up question',
     ]);
-    expect(h.runtime.executions.single.archived, isTrue);
-    expect(h.runtime.executions.single.output, isNull);
+    expect(h.runtime.executions.first.archived, isTrue);
+    expect(h.runtime.executions.first.output, isNull);
+    expect(h.runtime.executions.last.toolName, 'output_read');
+    expect(h.runtime.executions.last.state, 'failed');
     expect(h.runtime.outputs.count, 0);
     expect(h.runtime.phase, AgentPhase.completed);
   });
@@ -1164,6 +1205,70 @@ void main() {
     expect(h.backend.target.commands, isEmpty);
     h.runtime.stop();
     await turn;
+  });
+
+  test('all received calls have one safe timeline record and Stop settles the unstarted calls', () async {
+    final h = _Harness(
+      (_, _, index) => _oneCall(
+        ModelMessage(
+          ModelRole.assistant,
+          calls: [
+            ModelCall('list', 'host_list', {}),
+            ModelCall('command', 'command_execute', _command(command: 'printf synthetic-private-command')),
+            ModelCall('read', 'output_read', {'hostId': _host.value, 'handle': 'synthetic-private-handle'}),
+          ],
+        ),
+        index,
+      ),
+    );
+    addTearDown(h.close);
+    final turn = h.start();
+    await _until(() => h.runtime.approval != null);
+    final records = h.runtime.executions;
+    expect(records.map((entry) => entry.toolName), ['host_list', 'command_execute', 'output_read']);
+    expect(records.map((entry) => entry.state), ['completed', 'running', 'pending']);
+    expect(records.map((entry) => entry.id).toSet(), hasLength(3));
+    expect(records.every((entry) => entry.command.isEmpty && entry.cwd.isEmpty && entry.target.isEmpty), isTrue);
+    expect(records.every((entry) => entry.sharedText == null && entry.output == null), isTrue);
+
+    h.runtime.stop();
+    await turn;
+    expect(h.runtime.executions, records);
+    expect(records.map((entry) => entry.state), ['completed', 'cancelled', 'cancelled']);
+    expect(h.backend.target.commands, isEmpty);
+    expect(h.journal.records, isEmpty);
+    expect(h.model.requests, hasLength(1));
+  });
+
+  test('host listing and shared output reads retain names and status without copying result data', () async {
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('list', 'host_list', {}),
+              ModelCall('diagnose', 'diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}),
+            ],
+          ),
+        );
+      } else if (index == 1) {
+        final handle = _result(request, 1)['handle'];
+        yield ModelMessageComplete(_call('output_read', {'hostId': _host.value, 'handle': handle}, 'read'));
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.target.stdout = _systemOutput;
+    await h.start();
+    expect(h.runtime.executions.map((entry) => entry.toolName), ['host_list', 'diagnostics_collect', 'output_read']);
+    expect(h.runtime.executions.every((entry) => entry.state == 'completed'), isTrue);
+    expect(h.runtime.executions.where((entry) => entry.output != null), hasLength(1));
+    expect(h.runtime.executions.where((entry) => entry.sharedText != null), hasLength(1));
+    expect(h.runtime.executions.first.command, isEmpty);
+    expect(h.runtime.executions.last.command, isEmpty);
+    expect(h.backend.target.commands, hasLength(1));
   });
 
   test('fixed diagnosis flows through dispatch and returns paired structured evidence', () async {
@@ -1324,6 +1429,11 @@ void main() {
     expect(_results(h.model.requests.last).single.toolCallId, 'call-a');
     expect(_results(h.model.requests.last).single.isError, isTrue);
     expect(_result(h.model.requests.last), {'error': 'denied'});
+    expect(h.runtime.executions.single.toolName, 'command_execute');
+    expect(h.runtime.executions.single.state, 'failed');
+    expect(h.runtime.executions.single.failure, 'denied');
+    expect(h.runtime.executions.single.command, isEmpty);
+    expect(h.runtime.executions.single.output, isNull);
   });
 
   test('reordering arguments cannot ask again for an action already denied in the turn', () async {
@@ -1385,7 +1495,10 @@ void main() {
     expect(h.model.requests, hasLength(3));
     expect(h.model.requests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
     expect(_result(h.model.requests.last), containsPair('output', 'withheld'));
-    expect(h.runtime.executions.single.sharedText, isNull);
+    expect(h.runtime.executions.first.sharedText, isNull);
+    expect(h.runtime.executions.last.toolName, 'output_read');
+    expect(h.runtime.executions.last.sharedText, isNull);
+    expect(h.runtime.executions.last.state, 'failed');
     expect(_result(h.model.requests.last, 1), {'error': 'unavailable'});
     expect(_results(h.model.requests.last).last.toolCallId, 'read-a');
   });
@@ -1420,7 +1533,15 @@ void main() {
     await turn;
     expect(h.model.requests, hasLength(3));
     expect(_requestText(h.model.requests.last), contains('user selected summary'));
-    expect(h.runtime.executions.single.sharedText, 'user selected summary');
+    expect(h.runtime.executions.first.sharedText, 'user selected summary');
+    expect(h.runtime.executions.map((entry) => entry.toolName), [
+      'command_execute',
+      'output_read',
+      'output_read',
+      'output_read',
+    ]);
+    expect(h.runtime.executions.skip(1).map((entry) => entry.state), ['completed', 'failed', 'failed']);
+    expect(h.runtime.executions.skip(1).every((entry) => entry.sharedText == null && entry.output == null), isTrue);
     expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
     expect(_result(h.model.requests.last), containsPair('text', 'user selected summary'));
     expect(_result(h.model.requests.last, 1), containsPair('text', 'user selected summary'));
@@ -1591,6 +1712,10 @@ void main() {
     expect(_result(h.model.requests.last, 0), {'error': 'notExposed'});
     expect(_result(h.model.requests.last, 1), {'error': 'outsideScope'});
     expect(_result(h.model.requests.last, 2), {'error': 'invalidArgument'});
+    expect(h.runtime.executions.map((entry) => entry.toolName), [null, 'command_execute', 'command_execute']);
+    expect(h.runtime.executions.every((entry) => entry.state == 'failed'), isTrue);
+    expect(h.runtime.executions.first.capability, 'agent.unknown');
+    expect(h.runtime.executions.every((entry) => entry.command.isEmpty && entry.output == null), isTrue);
   });
 
   test('discovery lists the frozen saved hosts and asks for an unspecified target without connecting', () async {

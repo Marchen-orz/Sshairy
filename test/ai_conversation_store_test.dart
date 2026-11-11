@@ -108,6 +108,51 @@ void main() {
     expect(() => recovered.entries.clear(), throwsUnsupportedError);
   });
 
+  test('tool summaries round-trip in the existing history format without arguments or result buffers', () async {
+    final store = JsonConversationStore(directory.path);
+    await store.save([
+      _record(
+        'tools',
+        entries: const [
+          ConversationEntry(kind: ConversationEntryKind.user, text: 'Inspect tools'),
+          ConversationEntry(
+            kind: ConversationEntryKind.execution,
+            text: '',
+            capability: 'agent.hosts',
+            state: 'completed',
+            executionId: 'list-operation',
+          ),
+          ConversationEntry(
+            kind: ConversationEntryKind.execution,
+            text: '',
+            capability: 'agent.output',
+            state: 'interrupted',
+            executionId: 'read-operation',
+          ),
+          ConversationEntry(
+            kind: ConversationEntryKind.execution,
+            text: '',
+            capability: 'agent.execute',
+            state: 'cancelled',
+            executionId: 'command-operation',
+          ),
+        ],
+      ),
+    ]);
+    final recovered = (await JsonConversationStore(directory.path).load()).single.entries.skip(1).toList();
+    expect(recovered.map((entry) => entry.capability), ['agent.hosts', 'agent.output', 'agent.execute']);
+    expect(recovered.map((entry) => entry.state), ['completed', 'interrupted', 'cancelled']);
+    expect(recovered.every((entry) => entry.text.isEmpty && entry.exitCode == null), isTrue);
+    final document = jsonDecode(file.readAsStringSync()) as Map;
+    expect(document['schemaVersion'], 1);
+    for (final entry in (document['conversations'] as List).single['entries'] as List) {
+      expect(
+        (entry as Map).keys.toSet().difference({'kind', 'text', 'capability', 'state', 'executionId', 'truncated'}),
+        isEmpty,
+      );
+    }
+  });
+
   test('record freezes the caller entry list', () {
     final entries = [const ConversationEntry(kind: ConversationEntryKind.user, text: 'Keep this')];
     final record = _record('immutable', entries: entries);

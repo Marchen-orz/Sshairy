@@ -27,8 +27,15 @@ class AgentChatEntry extends AgentTimelineEntry {
 
 class AgentExecution extends AgentTimelineEntry {
   AgentExecution(this.id, this.capability, this.target, this.command, this.cwd);
-  final String id, capability, target, command, cwd;
+  final String id, capability;
+  String target, command, cwd;
   String state = 'pending';
+  String? failure;
+  String? get toolName => AgentRuntime.toolIds.entries.where((entry) => entry.value == capability).firstOrNull?.key;
+  static String restoredState(String? capability, String? state) => switch (state) {
+    'completed' || 'failed' || 'cancelled' || 'interrupted' || 'outcomeUnknown' => state!,
+    _ => const {'agent.hosts', 'agent.output', 'agent.unknown'}.contains(capability) ? 'interrupted' : 'outcomeUnknown',
+  };
   int? exitCode;
   StoredOutput? output;
   String? sharedText;
@@ -262,10 +269,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         final execution = AgentExecution(entry.executionId ?? newId(), entry.capability ?? 'agent.execute', '', '', '')
           ..archived = true
           ..retracted = entry.retracted
-          ..state = switch (entry.state) {
-            'completed' || 'failed' || 'outcomeUnknown' => entry.state!,
-            _ => 'outcomeUnknown',
-          }
+          ..state = AgentExecution.restoredState(entry.capability, entry.state)
           ..exitCode = entry.exitCode
           ..sharedText = entry.text.isEmpty ? null : entry.text
           ..historyTruncated = entry.truncated;
@@ -288,10 +292,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         'text': entry.text,
         if (entry.kind == ConversationEntryKind.execution) ...{
           'capability': entry.capability,
-          'state': switch (entry.state) {
-            'completed' || 'failed' || 'outcomeUnknown' => entry.state,
-            _ => 'outcomeUnknown',
-          },
+          'state': AgentExecution.restoredState(entry.capability, entry.state),
           'exitCode': entry.exitCode,
           if (entry.executionId != null) 'executionId': entry.executionId,
         },
@@ -510,20 +511,53 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           throw const AgentFailure('protocol');
         }
         history.add(complete);
+        final calls = [
+          for (final call in complete.calls)
+            (
+              call: call,
+              context: RequestContext(Origin.agent, authority: this, cancellation: cancel, deadline: _deadline),
+            ),
+        ];
+        for (final (:call, :context) in calls) {
+          final execution = AgentExecution(
+            context.operationId.value,
+            toolIds[call.name] ?? 'agent.unknown',
+            '',
+            '',
+            '',
+          );
+          _executions.add(execution);
+          _timeline.add(execution);
+        }
+        _emit();
         var resultBytes = 0;
-        for (final call in complete.calls) {
+        for (final (:call, :context) in calls) {
           _check();
           toolCount++;
           final id = toolIds[call.name];
           final permitted = tools.any((t) => t.name == call.name);
-          final context = RequestContext(Origin.agent, authority: this, cancellation: cancel, deadline: _deadline);
+          final execution = _executions.firstWhere((entry) => entry.id == context.operationId.value);
+          execution.state = 'running';
+          _phase(AgentPhase.executing);
           Result<Object?> result;
           try {
             result = id == null || !permitted
                 ? const Err(AppError('notExposed'))
                 : await dispatcher.dispatch(id, call.arguments, context);
+            if (result case Err(:final error)) execution.failure = error.code;
+            if (execution.output == null) {
+              execution.state = cancel.isCancelled
+                  ? 'cancelled'
+                  : result is Err
+                  ? 'failed'
+                  : 'completed';
+            }
+          } on Object {
+            if (execution.output == null) execution.state = cancel.isCancelled ? 'cancelled' : 'failed';
+            rethrow;
           } finally {
             _prepared.remove(context.operationId);
+            _emit();
           }
           _check();
           if (_uncertain) throw const AgentFailure('outcomeUnknown');
@@ -558,6 +592,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       }
       _targets.clear();
       _prepared.clear();
+      for (final execution in _executions) {
+        if (execution.state != 'pending' && execution.state != 'running') continue;
+        execution.state = cancel.isCancelled ? 'cancelled' : 'interrupted';
+      }
       approval = null;
       hostApproval = null;
       _pendingHostRoute = null;
@@ -808,17 +846,19 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         RegExp(r'[\x00-\x1f\x7f]').hasMatch(cwd)) {
       return const Err(AppError('invalidArgument'));
     }
-    final execution = AgentExecution(
-      context.operationId.value,
-      diagnostic ? 'agent.diagnose' : 'agent.execute',
-      target.display,
-      command,
-      cwd,
-    );
+    final execution =
+        _executions.where((entry) => entry.id == context.operationId.value).firstOrNull ??
+        AgentExecution(context.operationId.value, diagnostic ? 'agent.diagnose' : 'agent.execute', '', '', '');
+    execution
+      ..target = target.display
+      ..command = command
+      ..cwd = cwd;
     final output = outputs.create(_owner, target.hostId, _profile!.identity, _scope!.revision);
     execution.output = output;
-    _executions.add(execution);
-    _timeline.add(execution);
+    if (!_executions.contains(execution)) {
+      _executions.add(execution);
+      _timeline.add(execution);
+    }
     final record = OperationRecord(
       context.operationId,
       target.hostId,
