@@ -10,6 +10,7 @@ import '../../foundation/result.dart';
 import '../../features/capabilities/api.dart';
 import '../../features/hosts/api.dart';
 import '../../features/files/api.dart';
+import '../../features/terminal/api.dart' show terminalAiSensitiveText;
 
 Map<String, Object?> fileEntryDto(FileEntry e) => {
   'name': e.name,
@@ -44,23 +45,49 @@ List<Capability> fileCapabilities(Ref ref) {
   TransferManager transfers() => ref.read(transfersProvider.notifier);
 
   /// Runs [body] on the file system of `hostId` (none for this computer), mapping file errors to results.
-  Future<Result<Object?>> on(Args a, Future<Object?> Function(FileSystem fs) body) async {
+  Future<Result<Object?>> on(Args a, RequestContext c, Future<Object?> Function(FileSystem fs) body) async {
+    try {
+      _checkRequest(c);
+    } on OpFailure catch (e) {
+      return Err(AppError(e.code));
+    }
     final id = a.optional<String>('hostId');
+    if (c.origin == Origin.agent && id == null) return const Err(AppError('denied'));
     if (id != null && pool().host(HostId(id)) == null) return const Err(AppError('notFound', detail: 'host'));
     final FsHandle handle;
     try {
-      handle = await pool().acquire(id == null ? null : HostId(id), transfers().ui?.prompts ?? const NoPrompts());
+      handle = await pool().acquire(
+        id == null ? null : HostId(id),
+        transfers().ui?.prompts ?? const NoPrompts(),
+        cancel: c.cancellation,
+        deadline: c.deadline,
+      );
     } on FsError catch (e) {
-      return Err(AppError(e.kind.name, detail: e.detail));
+      try {
+        _checkRequest(c);
+      } on OpFailure catch (stopped) {
+        return Err(AppError(stopped.code));
+      }
+      return Err(AppError(e.kind.name, detail: c.origin == Origin.agent ? '' : e.detail));
     } on Object catch (e) {
-      return Err(AppError('connect', detail: '$e'));
+      return Err(AppError('connect', detail: c.origin == Origin.agent ? '' : '$e'));
     }
     try {
+      _checkRequest(c);
+      if (c.origin == Origin.agent) {
+        for (final key in ['path', 'from', 'to']) {
+          final path = a.optional<String>(key);
+          if (path != null) await _checkedPath(handle.fs, path, context: c, mayBeMissing: true);
+        }
+      }
+      _checkRequest(c);
       return Ok(await body(handle.fs));
     } on FsError catch (e) {
-      return Err(AppError(e.kind.name, detail: e.detail, retryable: e.kind == FsFailure.lost));
+      return Err(
+        AppError(e.kind.name, detail: c.origin == Origin.agent ? '' : e.detail, retryable: e.kind == FsFailure.lost),
+      );
     } on OpFailure catch (e) {
-      return Err(AppError(e.code, detail: e.detail));
+      return Err(AppError(e.code, detail: c.origin == Origin.agent ? '' : e.detail));
     } finally {
       handle.release();
     }
@@ -87,24 +114,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, c) => on(a, (fs) async {
-        final entries = await fs.list(a.require<String>('path'));
-        if (c.origin != Origin.agent) return [for (final e in entries) fileEntryDto(e)];
-        final offset = a.optional<int>('offset') ?? 0;
-        final page = <Map<String, Object?>>[];
-        var bytes = 2;
-        for (final entry in entries.skip(offset)) {
-          final dto = fileEntryDto(entry), size = utf8.encode(jsonEncode(dto)).length + 1;
-          if (page.length == 200 || page.isNotEmpty && bytes + size > 24000) break;
-          page.add(dto);
-          bytes += size;
-        }
-        return {
-          'entries': page,
-          'total': entries.length,
-          'nextOffset': offset + page.length < entries.length ? offset + page.length : null,
-        };
-      }),
+      (a, c) => on(a, c, (fs) => listFiles(fs, a, c)),
     ),
     FunctionCapability(
       'file.stat',
@@ -115,7 +125,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, _) => on(a, (fs) async {
+      (a, c) => on(a, c, (fs) async {
         final e = await fs.stat(a.require<String>('path'));
         return e == null ? null : fileEntryDto(e);
       }),
@@ -133,7 +143,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, _) => on(a, (fs) => readTextFile(fs, a)),
+      (a, c) => on(a, c, (fs) => readTextFile(fs, a, context: c)),
     ),
     FunctionCapability(
       'file.write',
@@ -145,11 +155,18 @@ List<Capability> fileCapabilities(Ref ref) {
           'path': _pathProp,
           'text': {'type': 'string', 'maxLength': 262144},
           'overwrite': {'type': 'boolean'},
+          'expectedSha256': {
+            'type': 'string',
+            'minLength': 64,
+            'maxLength': 64,
+            'pattern': r'^[0-9a-f]{64}$',
+            'description': 'Full-file sha256 returned by files_read; required when replacing an existing file',
+          },
         },
         'required': ['path', 'text'],
       },
       agentExposed: true,
-      (a, _) => on(a, (fs) => writeTextFile(fs, a)),
+      (a, c) => on(a, c, (fs) => writeTextFile(fs, a, context: c)),
     ),
     FunctionCapability(
       'file.mkdir',
@@ -160,7 +177,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, _) => on(a, (fs) => fs.mkdir(a.require<String>('path'))),
+      (a, c) => on(a, c, (fs) => fs.mkdir(a.require<String>('path'))),
     ),
     FunctionCapability(
       'file.rename',
@@ -171,7 +188,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['from', 'to'],
       },
       agentExposed: true,
-      (a, _) => on(a, (fs) => fs.rename(a.require<String>('from'), a.require<String>('to'))),
+      (a, c) => on(a, c, (fs) => fs.rename(a.require<String>('from'), a.require<String>('to'))),
     ),
     FunctionCapability(
       'file.delete',
@@ -182,11 +199,12 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, _) => on(a, (fs) async {
+      (a, c) => on(a, c, (fs) async {
         final path = a.require<String>('path');
         final e = await fs.stat(path);
         if (e == null) throw const FsError(FsFailure.notFound);
-        await deleteTree(fs, path, e);
+        _checkRequest(c);
+        await deleteTree(fs, path, e, cancel: c.cancellation, deadline: c.deadline);
         return null;
       }),
     ),
@@ -326,96 +344,224 @@ List<Capability> fileCapabilities(Ref ref) {
 
 // 12 KiB keeps JSON escaping (tabs, newlines) inside the agent's per-call result budget.
 const _maxTextBytes = 256 * 1024, _pageBytes = 12 * 1024;
+const _maxDirectoryScan = 10000;
 
-/// One bounded, paginated UTF-8 page. Binary and oversized files are refused instead of mangled.
-Future<Object?> readTextFile(FileSystem fs, Args a) async {
-  final path = a.require<String>('path');
-  final offset = a.optional<int>('offset') ?? 0;
-  if (offset < 0 || offset > _maxTextBytes) throw const FsError(FsFailure.unsupported, 'offset');
+void _checkRequest(RequestContext? context) {
+  if (context?.cancellation?.isCancelled ?? false) throw const OpFailure('cancelled');
+  if (context?.deadline case final deadline? when !DateTime.now().isBefore(deadline)) {
+    throw const OpFailure('deadlineExceeded');
+  }
+}
+
+void _checkAgentPath(String path) {
+  if (!path.startsWith('/') || path.contains('\x00')) throw const OpFailure('invalidArgument');
+  final parts = path.toLowerCase().split('/').where((p) => p.isNotEmpty).toList();
+  if (parts.any((p) => p == '.' || p == '..')) throw const OpFailure('invalidArgument');
+  const privateParts = {
+    '.ssh',
+    '.gnupg',
+    '.aws',
+    '.azure',
+    '.kube',
+    '.docker',
+    '.netrc',
+    '.npmrc',
+    '.pypirc',
+    '.git-credentials',
+    '.bash_history',
+    '.zsh_history',
+    '.python_history',
+    '.mysql_history',
+    '.psql_history',
+  };
+  if (parts.any((p) => privateParts.contains(p) || p == '.env' || p.startsWith('.env.')) ||
+      parts.isNotEmpty && {'proc', 'sys', 'dev'}.contains(parts.first) ||
+      RegExp(r'^/etc/(?:shadow|gshadow|ssh)(?:/|$)').hasMatch(path.toLowerCase()) ||
+      RegExp(r'\.(?:pem|key|p12|pfx|kdbx)$').hasMatch(path.toLowerCase()) ||
+      RegExp(r'/\.config/(?:gcloud|gh|rclone)(?:/|$)').hasMatch(path.toLowerCase()) ||
+      RegExp(r'/id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)').hasMatch(path.toLowerCase())) {
+    throw const OpFailure('denied');
+  }
+}
+
+Future<String> _checkedPath(FileSystem fs, String path, {RequestContext? context, bool mayBeMissing = false}) async {
+  _checkRequest(context);
+  _checkAgentPath(path);
   final entry = await fs.stat(path);
+  _checkRequest(context);
+  final String canonical;
+  if (entry == null && mayBeMissing) {
+    canonical = fs.style.join(await fs.resolve(fs.style.parent(path)), fs.style.name(path));
+  } else {
+    if (entry == null) throw const FsError(FsFailure.notFound);
+    canonical = await fs.resolve(path);
+  }
+  _checkRequest(context);
+  _checkAgentPath(canonical);
+  return canonical;
+}
+
+Future<Object?> listFiles(FileSystem fs, Args a, RequestContext c) async {
+  final path = a.require<String>('path');
+  if (c.origin != Origin.agent) return [for (final e in await fs.list(path)) fileEntryDto(e)];
+  final offset = a.optional<int>('offset') ?? 0;
+  if (offset < 0 || offset >= _maxDirectoryScan) throw const OpFailure('invalidArgument');
+  if (fs is! BoundedFileListing) throw const FsError(FsFailure.unsupported, 'boundedListing');
+  _checkRequest(c);
+  final listing = await (fs as BoundedFileListing).listBounded(
+    path,
+    maxScanned: _maxDirectoryScan,
+    cancel: c.cancellation,
+  );
+  _checkRequest(c);
+  final entries = listing.entries, page = <Map<String, Object?>>[];
+  var bytes = 2;
+  for (final entry in entries.skip(offset)) {
+    final dto = fileEntryDto(entry), size = utf8.encode(jsonEncode(dto)).length + 1;
+    if (size > 24000) throw const FsError(FsFailure.unsupported, 'entryTooLarge');
+    if (page.length == 200 || bytes + size > 24000) break;
+    page.add(dto);
+    bytes += size;
+  }
+  return {
+    'entries': page,
+    'total': listing.complete ? entries.length : null,
+    'scanned': listing.scanned,
+    'complete': listing.complete,
+    'nextOffset': offset + page.length < entries.length ? offset + page.length : null,
+  };
+}
+
+Future<Uint8List> _readTextBytes(FileSystem fs, String path, RequestContext? context) async {
+  _checkRequest(context);
+  final entry = await fs.stat(path);
+  _checkRequest(context);
   if (entry == null) throw const FsError(FsFailure.notFound);
   if (entry.kind != FileKind.file) throw const FsError(FsFailure.unsupported, 'notFile');
   if (entry.size case final size? when size > _maxTextBytes) {
     throw const FsError(FsFailure.unsupported, 'tooLarge');
   }
   final bytes = BytesBuilder(copy: false);
-  var eof = true;
-  if (entry.size == null || offset < entry.size!) {
-    await for (final chunk in fs.read(path, offset: offset)) {
-      final room = _pageBytes - bytes.length;
-      if (chunk.length > room) {
-        bytes.add(chunk.sublist(0, room));
-        eof = false;
-        break;
-      }
-      bytes.add(chunk);
-    }
+  await for (final chunk in fs.read(path)) {
+    _checkRequest(context);
+    if (bytes.length + chunk.length > _maxTextBytes) throw const FsError(FsFailure.unsupported, 'tooLarge');
+    bytes.add(chunk);
   }
+  _checkRequest(context);
   final raw = bytes.takeBytes();
-  var end = raw.length;
-  // Never split a UTF-8 sequence at a page boundary; nextOffset resumes at the same byte.
-  if (!eof) {
-    var lead = end - 1;
-    while (lead >= 0 && end - lead <= 4 && (raw[lead] & 0xC0) == 0x80) {
-      lead--;
-    }
-    if (lead >= 0) {
-      final value = raw[lead];
-      final length = value >= 0xF0
-          ? 4
-          : value >= 0xE0
-          ? 3
-          : value >= 0xC0
-          ? 2
-          : 1;
-      if (end - lead < length) end = lead;
-    }
+  if (raw.any((byte) => byte < 32 && byte != 9 && byte != 10 && byte != 13 || byte == 127)) {
+    throw const FsError(FsFailure.unsupported, 'binary');
   }
-  final page = raw.sublist(0, end);
-  if (page.contains(0)) throw const FsError(FsFailure.unsupported, 'binary');
+  final String text;
+  try {
+    text = utf8.decode(raw);
+  } on FormatException {
+    throw const FsError(FsFailure.unsupported, 'encoding');
+  }
+  if (terminalAiSensitiveText(text)) throw const OpFailure('denied');
+  return raw;
+}
+
+/// Validates the whole bounded file before returning a page, so secrets cannot hide across page boundaries.
+Future<Object?> readTextFile(FileSystem fs, Args a, {RequestContext? context}) async {
+  final path = a.require<String>('path');
+  final canonical = await _checkedPath(fs, path, context: context);
+  final offset = a.optional<int>('offset') ?? 0;
+  final raw = await _readTextBytes(fs, canonical, context);
+  if (offset < 0 || offset > raw.length || offset < raw.length && (raw[offset] & 0xC0) == 0x80) {
+    throw const OpFailure('invalidArgument');
+  }
+  var end = (offset + _pageBytes).clamp(0, raw.length);
+  while (end < raw.length && end > offset && (raw[end] & 0xC0) == 0x80) {
+    end--;
+  }
   return {
     'path': path,
-    'text': utf8.decode(page, allowMalformed: true),
+    'text': utf8.decode(raw.sublist(offset, end)),
+    'sha256': fileTextSha256(raw),
     'offset': offset,
-    'nextOffset': eof ? null : offset + end,
-    'eof': eof,
-    if (entry.size != null) 'size': entry.size,
+    'nextOffset': end < raw.length ? end : null,
+    'eof': end == raw.length,
+    'size': raw.length,
   };
 }
 
-/// Writes UTF-8 through a sibling temporary file so a replacement is atomic; never truncates in place.
-Future<Object?> writeTextFile(FileSystem fs, Args a) async {
+/// Empty staging is made private before any content is written; replacements preserve the original mode.
+Future<Object?> writeTextFile(FileSystem fs, Args a, {RequestContext? context}) async {
   final path = a.require<String>('path');
-  final text = a.require<String>('text');
-  final bytes = utf8.encode(text);
+  final canonical = await _checkedPath(fs, path, context: context, mayBeMissing: true);
+  final text = a.require<String>('text'), bytes = utf8.encode(a.require<String>('text'));
   if (text.contains('\x00')) throw const FsError(FsFailure.unsupported, 'nul');
   if (bytes.length > _maxTextBytes) throw const FsError(FsFailure.unsupported, 'tooLarge');
   final existing = await fs.stat(path);
-  if (existing != null && existing.kind != FileKind.file) {
-    throw const FsError(FsFailure.unsupported, 'notFile');
+  _checkRequest(context);
+  if (existing != null && existing.kind != FileKind.file) throw const FsError(FsFailure.unsupported, 'notFile');
+  if (existing != null && !(a.optional<bool>('overwrite') ?? false)) throw const FsError(FsFailure.exists);
+  if (existing != null && !fs.canReplace) throw const FsError(FsFailure.unsupported, 'atomicReplace');
+  if (!fs.canChmod || existing != null && existing.mode == null) {
+    throw const FsError(FsFailure.unsupported, 'privateStaging');
   }
-  if (existing != null && !(a.optional<bool>('overwrite') ?? false)) {
-    throw const FsError(FsFailure.exists);
+  final expected = a.optional<String>('expectedSha256');
+  if (existing != null && (expected == null || !RegExp(r'^[0-9a-f]{64}$').hasMatch(expected))) {
+    throw const OpFailure('invalidArgument');
   }
-  if (existing != null && !fs.canReplace) {
-    throw const FsError(FsFailure.unsupported, 'atomicReplace');
-  }
-  final temp = '$path.sshairy-tmp-${DateTime.now().microsecondsSinceEpoch}';
-  try {
-    await fs.create(temp, Stream.value(Uint8List.fromList(bytes)));
+  Future<void> checkBaseline() async {
+    _checkRequest(context);
+    final now = await fs.stat(path);
+    _checkRequest(context);
     if (existing == null) {
-      await fs.rename(temp, path);
+      if (now != null) throw const OpFailure('conflict');
     } else {
-      await fs.replace(temp, path);
+      if (now == null || !existing.sameAs(now) || now.mode != existing.mode) throw const OpFailure('conflict');
+      if (fileTextSha256(await _readTextBytes(fs, canonical, context)) != expected) {
+        throw const OpFailure('conflict');
+      }
     }
-    return {'path': path, 'bytes': bytes.length, 'created': existing == null};
-  } catch (_) {
-    try {
-      if (await fs.stat(temp) != null) await fs.delete(temp);
-    } on Object {
-      // The partial temporary file is left for the user; the target was not modified.
+    if (await _checkedPath(fs, path, context: context, mayBeMissing: true) != canonical) {
+      throw const OpFailure('conflict');
     }
-    rethrow;
+    _checkRequest(context);
+  }
+
+  await checkBaseline();
+  final temp = '$canonical.sshairy-tmp-${newId()}';
+  var owned = false;
+  try {
+    _checkRequest(context);
+    await fs.create(temp, const Stream<Uint8List>.empty(), cancel: context?.cancellation);
+    owned = true;
+    _checkRequest(context);
+    await fs.chmod(temp, 0x180);
+    final private = await fs.stat(temp);
+    if (private?.mode != 0x180) throw const FsError(FsFailure.permission, 'privateStaging');
+    _checkRequest(context);
+    final written = await fs.append(
+      temp,
+      Stream.value(Uint8List.fromList(bytes)),
+      offset: 0,
+      cancel: context?.cancellation,
+    );
+    _checkRequest(context);
+    final staged = await fs.stat(temp);
+    if (written != bytes.length || staged?.size != bytes.length) throw const OpFailure('sizeMismatch');
+    if (existing?.mode case final mode?) {
+      _checkRequest(context);
+      await fs.chmod(temp, mode);
+      if ((await fs.stat(temp))?.mode != mode) throw const FsError(FsFailure.permission, 'preserveMode');
+    }
+    await checkBaseline();
+    _checkRequest(context);
+    if (existing == null) {
+      await fs.rename(temp, canonical);
+    } else {
+      await fs.replace(temp, canonical);
+    }
+    owned = false;
+    return {'path': path, 'bytes': bytes.length, 'created': existing == null, 'sha256': fileTextSha256(bytes)};
+  } finally {
+    if (owned) {
+      await fs.delete(temp).timeout(const Duration(seconds: 5)).then((_) {}, onError: (Object _) {});
+    }
   }
 }
 

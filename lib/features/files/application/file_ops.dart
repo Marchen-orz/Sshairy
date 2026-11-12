@@ -117,11 +117,50 @@ Future<int> countTree(FileSystem fs, String path, FileEntry entry, {int limit = 
 
 /// Removes [path] item by item through the file system, never by a shell `rm -rf`. Links are removed, not
 /// followed, so deleting a link to a directory leaves the directory alone.
-Future<void> deleteTree(FileSystem fs, String path, FileEntry entry, {CancellationToken? cancel}) async {
-  if (!entry.isDir) return fs.delete(path);
-  for (final e in await fs.list(path)) {
+Future<void> deleteTree(
+  FileSystem fs,
+  String path,
+  FileEntry entry, {
+  CancellationToken? cancel,
+  DateTime? deadline,
+}) async {
+  var visited = 0;
+  void check() {
     if (cancel?.isCancelled ?? false) throw const OpFailure('cancelled');
-    await deleteTree(fs, fs.style.join(path, e.name), e, cancel: cancel);
+    if (deadline != null && !DateTime.now().isBefore(deadline)) throw const OpFailure('deadlineExceeded');
   }
-  await fs.rmdir(path);
+
+  Future<void> remove(String at, FileEntry item, int depth) async {
+    check();
+    if (depth > 64 || ++visited > 20000) throw const OpFailure('treeTooLarge');
+    if (!item.isDir) {
+      await fs.delete(at);
+      return;
+    }
+    final List<FileEntry> children;
+    if (fs is BoundedFileListing) {
+      final listing = await (fs as BoundedFileListing).listBounded(at, maxScanned: 20000 - visited, cancel: cancel);
+      check();
+      if (!listing.complete) throw const OpFailure('treeTooLarge');
+      children = listing.entries;
+    } else {
+      children = await fs.list(at);
+    }
+    check();
+    if (children.length > 20000 - visited) throw const OpFailure('treeTooLarge');
+    for (final child in children) {
+      if (child.name.isEmpty ||
+          child.name == '.' ||
+          child.name == '..' ||
+          child.name.contains('\x00') ||
+          fs.style.name(child.name) != child.name) {
+        throw const OpFailure('invalidName');
+      }
+      await remove(fs.style.join(at, child.name), child, depth + 1);
+    }
+    check();
+    await fs.rmdir(at);
+  }
+
+  await remove(path, entry, 0);
 }

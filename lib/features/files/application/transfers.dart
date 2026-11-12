@@ -85,6 +85,9 @@ class TransferManager extends Notifier<List<Transfer>> {
 
   Transfer? byId(TransferId id) => state.where((t) => t.id == id).firstOrNull;
 
+  /// An approval follows one attempt, rather than another job resumed or retried under the same ID.
+  Object? resourceBinding(TransferId id) => _jobs[id] ?? byId(id);
+
   /// Copies [paths] on [from] (null for this computer) into [targetDir] on [to]. One call is one batch.
   List<TransferId> enqueue({
     required Host? from,
