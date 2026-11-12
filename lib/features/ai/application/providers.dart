@@ -11,6 +11,7 @@ import '../adapters/model_provider.dart';
 import '../adapters/operation_journal.dart';
 import '../domain/agent.dart';
 import '../domain/model.dart';
+import '../domain/resources.dart';
 import 'configuration.dart';
 import 'model_selection.dart';
 import 'runtime.dart';
@@ -37,6 +38,7 @@ final agentConversationRoutesProvider = Provider<Map<HostId, String> Function()>
 );
 
 final agentTerminalHistoryProvider = Provider<TerminalHistoryReader?>((_) => null);
+final agentResourceReaderProvider = Provider<AgentResourceReader?>((_) => null);
 final agentBackendProvider = Provider<AgentBackend>((_) => throw StateError('Agent backend not installed'));
 final aiModelProvider = Provider<ModelProvider>((ref) {
   final provider = HttpModelProvider(
@@ -66,6 +68,7 @@ final agentRuntimeProvider = Provider<AgentRuntime>((ref) {
     estimateInputBytes: estimateModelRequestBytes,
     backend: ref.read(agentBackendProvider),
     terminalHistory: ref.read(agentTerminalHistoryProvider),
+    resources: ref.read(agentResourceReaderProvider),
     journal: ref.read(aiJournalProvider),
     dispatcher: ref.read(capabilityDispatcherProvider),
     hostRoutes: () => ref.read(agentConversationRoutesProvider)(),
@@ -75,6 +78,10 @@ final agentRuntimeProvider = Provider<AgentRuntime>((ref) {
       return (enabled: value.enabled, profile: ref.read(effectiveAgentProfileProvider), revision: value.revision);
     },
   );
+  final activeTurn = ref.read(agentTurnActiveProvider.notifier);
+  void syncActivity() => activeTurn.update(runtime.busy);
+  runtime.addListener(syncActivity);
+  ref.onDispose(() => runtime.removeListener(syncActivity));
   ref.listen(aiConfigurationProvider, (_, _) => runtime.invalidateHostApprovals());
   ref.listen(effectiveAgentProfileProvider, (_, _) => runtime.invalidateHostApprovals());
   final keys = ref.read(aiCredentialsProvider).changes.listen((_) => runtime.invalidateHostApprovals());

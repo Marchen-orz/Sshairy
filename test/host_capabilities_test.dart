@@ -52,6 +52,30 @@ void main() {
 
   Host stored(String id) => container.read(hostsProvider.notifier).byId(HostId(id))!;
 
+  for (final action in ['update', 'move', 'delete']) {
+    test('queued host.$action cannot overwrite an earlier UI save', () async {
+      final created = await ok('host.create', {'address': 'a.example', 'username': 'user', 'label': 'before'});
+      final id = created['id']! as String;
+      final hosts = container.read(hostsProvider.notifier);
+      final ui = hosts.save(stored(id).copyWith(label: 'new UI value'));
+      final cap = dispatcher['host.$action']!;
+      final pending = cap.invoke({
+        if (action != 'move') 'hostId': id,
+        if (action == 'update') 'label': 'stale Agent value',
+        if (action == 'move') ...{
+          'hostIds': [id],
+          'group': 'must-not-exist',
+        },
+      }, RequestContext(Origin.agent));
+      await ui;
+      final result = await pending;
+      expect(result, isA<Err<Object?>>().having((e) => e.error.code, 'code', 'conflict'));
+      expect(stored(id).label, 'new UI value');
+      expect(stored(id).group, isEmpty);
+      expect(hosts.library.groupIdFor('must-not-exist'), isNull);
+    });
+  }
+
   group('groups and defaults', () {
     test('a host created in a group follows it, and an update that does not name a field keeps it inherited', () async {
       await ok('hostDefaults.update', {

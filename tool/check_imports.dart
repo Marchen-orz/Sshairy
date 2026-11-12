@@ -11,6 +11,7 @@ const adapters = {
     'lib/features/connections/adapters/',
     'lib/features/hosts/adapters/finalshell_login.dart',
     'lib/features/ai/adapters/conversation_route.dart',
+    'lib/features/files/adapters/text_digest.dart',
   ],
   // Read compatibility for FinalShell's legacy DES passwords only.
   'pointycastle': ['lib/features/hosts/adapters/finalshell_login.dart'],
@@ -21,6 +22,7 @@ const adapters = {
   'flutter_secure_storage': ['lib/features/credentials/adapters/'],
   'desktop_drop': ['lib/features/files/adapters/'],
   'file_selector': [
+    'lib/features/ai/adapters/attachments.dart',
     'lib/features/files/adapters/',
     'lib/features/hosts/adapters/',
     'lib/features/connections/adapters/',

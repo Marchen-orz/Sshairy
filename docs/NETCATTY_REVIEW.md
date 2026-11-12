@@ -16,6 +16,7 @@
 | 保护备份与退出 | `application/localVaultBackups.ts:219,438`；`electron/main.cjs:1624–1632` 取消退出不能遗留 quitting；`portForwardingBridge.cjs:419` 停止超时 | 保护失败中止覆盖，统一关闭协调，停止失败不能冒充成功 |
 | SFTP | `electron/bridges/transferLimits.cjs:3–27`（#2022/#2030 请求过大损坏，#1507 终端受传输挤占）；`transferBridge.cjs:2345,2655,3096`（#4134 取消断共享连接）；`sftp/useSftpTransfers.ts:1354`（#3559 列表后目标变化） | 固定有界请求、独立 channel、取消不关共享 transport；开始前重验目标、目标旁 .part 发布；不引入 Monaco |
 | AI 运行与审批 | `infrastructure/ai/harness/agentRuntime.ts:107`、`agentStop.ts:31`、`cattyToolApproval.ts:28`、`toolResultDedup.ts:49` | 单 turn/唯一 Stop；工具默认不暴露，审批绑定 effect/参数/目标/revision，用 operationId 区分副作用 |
+| 聊天附件 | `components/ai/ChatInput.tsx:1228–1239` 默认图片选择，`:1525/1534` 分别选择任意文件/图片；`application/state/useFileUpload.ts:12–14,19–86,106–146` 拒绝音视频，按扩展名推断代码/配置/文本/PDF MIME，以 FileReader data URL/base64 读取并保留本机路径 | 独立实现更小的明确范围：有界 UTF-8 文本和 PNG/JPEG/WebP，去图片元数据；本机路径不进入模型或历史，PDF/Office 不伪装文本；只参考行为不复制实现 |
 | AI 执行与上下文 | `electron/bridges/ai/ptyExecHelpers.cjs:294`、`ptyExec.cjs:109–110`；`lib/commandBlocklist.json:19–21`；`contextBudget.ts:42–50`、`toolOutputStore.ts:62–70` | 首版独立 exec 与可见记录，取消可结果未知；黑名单不作授权；预算包括 system/tools/reserve，输出存储有界 |
 | 布局与焦点 | `components/TopTabs.tsx:1052,1116`、`VaultHostListSection.tsx:605`、`components/ui/button.tsx:15,21` | 参考浏览器式标签/主机库，自定 tokens 与可见焦点；不复制素材或堆工具栏 |
 | 补全 | `components/terminal/autocomplete/terminalAutocompleteLayout.ts:283–351,430–565`、`completionEngine.ts:284–714`、`AutocompletePopup.tsx:268–355,416–528`、`useTerminalAutocomplete.ts:964–1215` | 借鉴光标锚定/边界、分支与异步过期保护；AI 顶置是本项目约定，不写成参考项目已有能力 |

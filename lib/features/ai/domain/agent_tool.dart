@@ -115,14 +115,14 @@ const agentTools = <AgentTool>[
   AgentTool(
     'files_read',
     'file.read',
-    'Read a bounded UTF-8 page of one remote text file. Use nextOffset to continue; binary and oversized files are refused. Remote only.',
+    'Read a bounded UTF-8 page of one remote text file, returning the whole-file sha256 baseline. Use nextOffset to continue; sensitive, binary and oversized files are refused. Remote only.',
     readOnly: true,
     hostFields: ['hostId'],
   ),
   AgentTool(
     'files_write',
     'file.write',
-    'Write bounded UTF-8 text to one remote file. Creating needs no overwrite; replacing an existing file needs overwrite=true and an atomic-rename target. Remote only.',
+    'Write bounded UTF-8 text to one remote file. Creating needs no overwrite; replacing requires overwrite=true and expectedSha256 from files_read (64 lowercase hex characters), rechecked before atomic replacement. A changed baseline returns conflict. Remote only.',
     hostFields: ['hostId'],
   ),
   AgentTool('files_mkdir', 'file.mkdir', 'Create one remote directory. Remote only.', hostFields: ['hostId']),
@@ -151,7 +151,11 @@ const agentTools = <AgentTool>[
     'Queue a remote-to-remote copy between two authorized hosts. Local paths are not available to the agent.',
     hostFields: ['fromHostId', 'toHostId'],
   ),
-  AgentTool('transfer_cancel', 'transfer.cancel', 'Cancel one queued or running transfer by ID.', approval: false),
+  AgentTool(
+    'transfer_cancel',
+    'transfer.cancel',
+    'Cancel one queued or running remote-to-remote transfer by ID after approving its actual endpoints.',
+  ),
   AgentTool(
     'session_open',
     'session.open',
@@ -179,8 +183,8 @@ const agentTools = <AgentTool>[
   AgentTool(
     'workspace_split',
     'workspace.split',
-    'Split one pane horizontally or vertically, duplicating its terminal session. Omit tabId and paneId for the focused pane.',
-    approval: false,
+    'Split one SSH pane horizontally or vertically, opening a fresh authorized remote shell. Omit tabId and paneId for the focused pane. Local shells cannot be duplicated by the agent.',
+    approval: true,
   ),
   AgentTool(
     'workspace_rename',
@@ -197,14 +201,14 @@ const agentTools = <AgentTool>[
   AgentTool(
     'settings_get',
     'settings.get',
-    'Read the agent-visible application settings and their revision.',
+    'Read agent-visible settings, revision, and localized setting/option labels matching the Settings UI. Match the user wording to these labels and use the returned stable IDs, never guess setting keys.',
     readOnly: true,
     approval: false,
   ),
   AgentTool(
     'settings_patch',
     'settings.patch',
-    'Change agent-visible application settings. Secret, model, shortcut and translation settings stay hidden.',
+    'First call settings_get to identify the localized setting and stable key. Then pass flat whitelist keys with the returned expectedRevision; do not nest a patch object. Conflicts require reading the latest settings again. Secret, model, shortcut and translation settings stay hidden.',
     approval: true,
   ),
   AgentTool(
@@ -248,7 +252,7 @@ const agentTools = <AgentTool>[
   AgentTool(
     'forwards_stop',
     'forward.stop',
-    'Stop one forwarding listener and close its accepted connections.',
-    approval: false,
+    'Stop one forwarding listener and close its accepted connections after approving the actual saved rule and host.',
+    approval: true,
   ),
 ];

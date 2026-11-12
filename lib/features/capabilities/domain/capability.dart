@@ -28,6 +28,11 @@ abstract interface class AgentAuthority {
   Future<Result<void>> revalidate(Capability capability, Map<String, Object?> args, RequestContext context);
 }
 
+/// Optional invocation boundary for agents that must persist intent after approval and before side effects.
+abstract interface class AgentInvocation {
+  Future<Result<Object?>> invokeAuthorized(Capability capability, Map<String, Object?> args, RequestContext context);
+}
+
 /// A business action that the command palette, and later the AI, can call by ID.
 /// Typed façades in the UI and [invoke] must reach the same handler.
 abstract class Capability {

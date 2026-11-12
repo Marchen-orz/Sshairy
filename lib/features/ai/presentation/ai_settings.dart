@@ -17,6 +17,7 @@ import '../../credentials/api.dart';
 import '../application/configuration.dart';
 import '../application/model_credentials.dart';
 import '../application/model_selection.dart';
+import '../application/providers.dart';
 import '../domain/model_profile.dart';
 import 'model_picker.dart';
 
@@ -38,6 +39,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   String? _providerIdentity;
   final _inlineExcludedHosts = <HostId>{}, _completionExcludedHosts = <HostId>{};
   late ModelProtocol _protocol;
+  late ReasoningEffort _reasoningEffort;
   Timer? _checkTimer;
   var _generation = 0;
   var _working = false, _checking = false, _hasKey = false, _keyError = false, _removeKey = false, _conflict = false;
@@ -75,6 +77,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         tools: true,
         contextWindow: int.tryParse(_contextWindow.text) ?? 0,
         maxOutputTokens: int.tryParse(_maxOutput.text) ?? 0,
+        reasoningEffort: _reasoningEffort,
       );
     } on FormatException {
       return null;
@@ -159,6 +162,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       ..clear()
       ..addAll(config.completionExcludedHosts);
     _protocol = config.profile?.protocol ?? ModelProtocol.openai;
+    _reasoningEffort = config.profile?.reasoningEffort ?? ReasoningEffort.modelDefault;
     _endpoint.text = config.profile?.endpoint ?? '';
     _model.text = config.profile?.model ?? '';
     _inlineModel = config.inlineModel ?? config.profile?.model ?? '';
@@ -386,6 +390,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     final theme = Theme.of(context);
     _saveController?.changed();
     final blocked = _working || config.loadFailed || (_saveController?.busy ?? false);
+    final activeRuntime = ref.exists(agentRuntimeProvider) ? ref.watch(agentRuntimeProvider) : null;
     const gap = SizedBox(height: Space.md);
     return Form(
       key: _form,
@@ -512,6 +517,26 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
             onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, review: true),
+          ),
+          gap,
+          AppFormField(
+            label: l.aiReasoningEffort,
+            child: ListenableBuilder(
+              listenable: Listenable.merge([activeRuntime]),
+              builder: (context, _) => AppSelect<ReasoningEffort>(
+                key: const ValueKey('ai-config-reasoning'),
+                value: _reasoningEffort,
+                options: [
+                  AppOption(ReasoningEffort.modelDefault, l.aiReasoningDefault),
+                  AppOption(ReasoningEffort.low, l.aiReasoningLow),
+                  AppOption(ReasoningEffort.medium, l.aiReasoningMedium),
+                  AppOption(ReasoningEffort.high, l.aiReasoningHigh),
+                ],
+                onChanged: blocked || (activeRuntime?.busy ?? false)
+                    ? null
+                    : (value) => setState(() => _reasoningEffort = value),
+              ),
+            ),
           ),
           gap,
           Text(l.aiConfigAdvanced, style: theme.textTheme.titleSmall),

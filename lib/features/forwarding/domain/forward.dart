@@ -159,6 +159,7 @@ abstract final class ForwardErrors {
   /// Of a request: the rule is unknown or busy, or listens beyond loopback without the user's yes.
   static const unknown = 'unknown';
   static const busy = 'busy';
+  static const conflict = 'conflict';
   static const exposureUnconfirmed = 'exposureUnconfirmed';
 }
 

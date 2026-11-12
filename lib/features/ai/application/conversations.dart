@@ -31,7 +31,10 @@ final agentConversationsProvider = Provider<AgentConversations>((ref) {
     toolsEnabled: () => ref.read(effectiveAgentProfileProvider)?.tools ?? false,
     routes: () => ref.read(agentConversationRoutesProvider)(),
     permissionMode: () => ref.read(selectedAgentPermissionModeProvider),
-    resetPermission: () => ref.read(selectedAgentPermissionModeProvider.notifier).reset(),
+    resetPermission: () {
+      ref.read(selectedAgentPermissionModeProvider.notifier).reset();
+      ref.read(selectedAgentReasoningProvider.notifier).reset();
+    },
   );
   ref.onDispose(controller.dispose);
   return controller;
@@ -80,7 +83,13 @@ class AgentConversations extends ChangeNotifier {
       List.unmodifiable([..._records]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)));
   Future<void> get saved => _pending;
   bool get hasHistory => current?.entries.isNotEmpty ?? false;
-  bool get canWithdraw => !runtime.busy && !_changing && !loading && draft().goal.trim().isEmpty && _lastUserIndex >= 0;
+  bool get canWithdraw =>
+      !runtime.busy &&
+      !_changing &&
+      !loading &&
+      draft().goal.trim().isEmpty &&
+      draft().attachments.isEmpty &&
+      _lastUserIndex >= 0;
   bool get canRegenerate => !runtime.busy && !_changing && !loading && _lastAssistantIndex >= 0;
 
   int get _lastUserIndex =>
@@ -142,11 +151,12 @@ class AgentConversations extends ChangeNotifier {
 
   List<ConversationEntry> _snapshot() => [
     for (final entry in runtime.timeline)
-      if (entry is AgentChatEntry && entry.text.isNotEmpty)
+      if (entry is AgentChatEntry && (entry.text.isNotEmpty || entry.attachments.isNotEmpty))
         ConversationEntry(
           kind: entry.role == 'user' ? ConversationEntryKind.user : ConversationEntryKind.assistant,
           text: sanitizeConversationText(entry.text),
           retracted: entry.retracted,
+          attachments: entry.attachments,
         )
       else if (entry is AgentExecution)
         ConversationEntry(
@@ -172,7 +182,8 @@ class AgentConversations extends ChangeNotifier {
           left.exitCode != right.exitCode ||
           left.truncated != right.truncated ||
           left.retracted != right.retracted ||
-          left.executionId != right.executionId) {
+          left.executionId != right.executionId ||
+          !listEquals(left.attachments, right.attachments)) {
         return false;
       }
     }
@@ -244,9 +255,11 @@ class AgentConversations extends ChangeNotifier {
 
   void _rememberDraft() {
     final value = draft();
-    _drafts[_selected] = AgentComposerState(goal: value.goal, host: value.host);
-    if (current == null && value.goal.trim().isNotEmpty && destination() != null) {
-      _records.add(_newRecord(value.goal, toolsEnabled() ? value.host : null));
+    _drafts[_selected] = AgentComposerState(goal: value.goal, host: value.host, attachments: value.attachments);
+    if (current == null && (value.goal.trim().isNotEmpty || value.attachments.isNotEmpty) && destination() != null) {
+      _records.add(
+        _newRecord(value.goal.isEmpty ? value.attachments.first.name : value.goal, toolsEnabled() ? value.host : null),
+      );
     }
   }
 
@@ -309,6 +322,7 @@ class AgentConversations extends ChangeNotifier {
       _changing = true;
       _selected = newId();
       runtime.clear();
+      resetPermission();
       composer.restore(const AgentComposerState());
       _changing = false;
     }
@@ -317,7 +331,9 @@ class AgentConversations extends ChangeNotifier {
   }
 
   Future<void> send(String goal, HostId? host, {bool continueHistory = false}) async {
-    if (runtime.busy || loading || goal.trim().isEmpty || destination() == null) return;
+    final sendingDraft = draft();
+    final attachments = sendingDraft.attachments;
+    if (runtime.busy || loading || (goal.trim().isEmpty && attachments.isEmpty) || destination() == null) return;
     host = toolsEnabled() ? host : null;
     final matches = hasHistory && canContinue(host);
     final continuing = matches && continueHistory;
@@ -329,11 +345,11 @@ class AgentConversations extends ChangeNotifier {
     final history = continuing ? current!.entries : const <ConversationEntry>[];
     if (current?.entries.isEmpty ?? true) {
       _records.removeWhere((entry) => entry.id == _selected);
-      _records.add(_newRecord(goal, host));
+      _records.add(_newRecord(goal.isEmpty ? attachments.first.name : goal, host));
     }
     final sendingId = _selected;
     _turnConversation = sendingId;
-    composer.setGoal('');
+    composer.restore(AgentComposerState(host: sendingDraft.host));
     final work = runtime.startConversation(
       goal,
       AgentScope(
@@ -345,10 +361,11 @@ class AgentConversations extends ChangeNotifier {
         defaultHostRoute: current!.routeSignature,
       ),
       history,
+      attachments: attachments,
     );
     _wasBusy = runtime.busy;
     if (!runtime.busy && (runtime.error == 'notConfigured' || runtime.error == 'scopeLimit')) {
-      if (draft().goal.isEmpty) composer.setGoal(goal);
+      if (draft().goal.isEmpty && draft().attachments.isEmpty) composer.restore(sendingDraft);
       _emit();
       return;
     }
@@ -358,7 +375,9 @@ class AgentConversations extends ChangeNotifier {
     if (_disposed || _selected != sendingId) return;
     _capture();
     await _persist();
-    if (runtime.error == 'notConfigured' && draft().goal.isEmpty) composer.setGoal(goal);
+    if (runtime.error == 'notConfigured' && draft().goal.isEmpty && draft().attachments.isEmpty) {
+      composer.restore(sendingDraft);
+    }
     _emit();
   }
 
@@ -384,6 +403,7 @@ class AgentConversations extends ChangeNotifier {
     truncated: entry.truncated,
     retracted: true,
     executionId: entry.executionId,
+    attachments: entry.attachments,
   );
 
   void _replaceRecord(AgentConversationRecord record, List<ConversationEntry> entries) {
@@ -403,7 +423,7 @@ class AgentConversations extends ChangeNotifier {
     ];
     _records[_records.indexOf(record)] = _withEntries(record, entries);
     runtime.restoreConversation(entries);
-    composer.restore(AgentComposerState(goal: question, host: host));
+    composer.restore(AgentComposerState(goal: question, host: host, attachments: record.entries[index].attachments));
     unawaited(_persist());
     _emit();
     return true;

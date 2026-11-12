@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/features/ai/application/context.dart';
 import 'package:sshairy/features/ai/application/providers.dart' show agentConversationRoutesProvider;
-import 'package:sshairy/features/connections/api.dart' show HostTrustService, hostTrustProvider;
+import 'package:sshairy/features/connections/api.dart' show ExecError, ExecFailure, HostTrustService, hostTrustProvider;
 import 'package:sshairy/features/credentials/api.dart' show ConnectionCredentials, connectionCredentialsProvider;
 import 'package:sshairy/features/hosts/api.dart' show Host, HostsNotifier, hostsProvider;
 import 'package:sshairy/features/monitor/api.dart' show DiagnosticTemplate, diagnosticCommand;
@@ -16,6 +16,7 @@ import 'package:sshairy/features/ai/application/runtime.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/conversation.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
+import 'package:sshairy/features/ai/domain/resources.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/foundation/cancellation.dart';
@@ -208,7 +209,9 @@ class _TerminalHistory implements TerminalHistoryReader {
 class _Journal implements OperationJournal {
   final records = <OperationRecord>[];
   var loads = 0;
-  bool failIntent = false, failLoad = false;
+  bool failIntent = false, failLoad = false, failTerminal = false;
+  Completer<void>? pendingIntent;
+  var intentAttempts = 0, terminalAttempts = 0;
 
   @override
   Future<List<OperationRecord>> load() async {
@@ -219,7 +222,14 @@ class _Journal implements OperationJournal {
 
   @override
   Future<void> record(OperationRecord record) async {
-    if (failIntent && record.state == OperationState.intent) throw StateError('simulated disk failure');
+    if (record.state == OperationState.intent) {
+      intentAttempts++;
+      if (pendingIntent case final pending?) await pending.future;
+      if (failIntent) throw StateError('simulated disk failure');
+    } else {
+      terminalAttempts++;
+      if (failTerminal) throw StateError('simulated terminal journal failure');
+    }
     records.add(record);
   }
 
@@ -243,6 +253,8 @@ class _Harness {
     OutputStore? outputs,
     Map<HostId, String> Function()? hostRoutes,
     TerminalHistoryReader? terminalHistory,
+    AgentResourceReader? resources,
+    List<Capability> extraCapabilities = const [],
   }) : model = _Model(script, review: review) {
     profile = ModelProfile(
       protocol: ModelProtocol.openai,
@@ -379,6 +391,7 @@ class _Harness {
           ['jobId'],
         ),
       ),
+      ...extraCapabilities,
     ]);
     runtime = AgentRuntime(
       model: model,
@@ -388,6 +401,7 @@ class _Harness {
       outputs: outputs,
       hostRoutes: hostRoutes ?? () => routes,
       terminalHistory: terminalHistory,
+      resources: resources,
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
     if (approveDiagnostics) {
@@ -419,6 +433,18 @@ class _Harness {
     runtime.stop();
     await runtime.settled.timeout(const Duration(seconds: 2));
     runtime.dispose();
+  }
+}
+
+class _Resources implements AgentResourceReader {
+  _Resources({this.hosts = const [_host]});
+  final List<HostId> hosts;
+  var binding = 'resource-a', reads = 0;
+  void Function(int)? onRead;
+  @override
+  AgentResourceSnapshot resolve(String capability, Map<String, Object?> args) {
+    onRead?.call(++reads);
+    return AgentResourceSnapshot(hosts: hosts, binding: binding, details: {'resource': binding});
   }
 }
 
@@ -513,6 +539,225 @@ Stream<ModelEvent> _diagnoseOther(ModelRequest request, CancellationToken _, int
 }
 
 void main() {
+  for (final capability in ['session.close', 'workspace.split', 'transfer.cancel', 'forward.stop']) {
+    test('$capability approval is bound to the resolved resource', () async {
+      final resource = _Resources();
+      var invoked = false;
+      final tool = AgentRuntime.toolIds.entries.firstWhere((entry) => entry.value == capability).key;
+      final h = _Harness(
+        (_, _, i) => _oneCall(_call(tool, {}), i),
+        resources: resource,
+        extraCapabilities: [
+          FunctionCapability(capability, capability == 'workspace.split' ? Effect.connect : Effect.localChange, (
+            _,
+            _,
+          ) async {
+            invoked = true;
+            return const Ok(null);
+          }, agentExposed: true),
+        ],
+      );
+      addTearDown(h.close);
+      final work = h.start();
+      await _until(() => h.runtime.approval != null);
+      expect(invoked, isFalse);
+      expect(h.runtime.approval!.command, contains('resource-a'));
+      resource.binding = 'resource-b';
+      h.runtime.approve(true, expected: h.runtime.approval!);
+      await work;
+      expect(invoked, isFalse);
+      expect(_result(h.model.requests.last), {'error': 'scopeChanged'});
+    });
+  }
+
+  test('a resource changed in the revalidation microtask cannot reach its handler', () async {
+    final resource = _Resources();
+    var invoked = false;
+    final h = _Harness(
+      (_, _, i) => _oneCall(_call('session_close', {}), i),
+      resources: resource,
+      extraCapabilities: [
+        FunctionCapability('session.close', Effect.localChange, (_, _) async {
+          invoked = true;
+          return const Ok(null);
+        }, agentExposed: true),
+      ],
+    );
+    addTearDown(h.close);
+    resource.onRead = (read) {
+      if (read == 2) scheduleMicrotask(() => resource.binding = 'changed-after-revalidation');
+    };
+    final work = h.start();
+    await _until(() => h.runtime.approval != null);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await work;
+    expect(resource.reads, greaterThanOrEqualTo(3));
+    expect(invoked, isFalse);
+    expect(_result(h.model.requests.last), {'error': 'scopeChanged'});
+  });
+
+  test('resource host resolution cannot silently authorize another host', () async {
+    final resource = _Resources(hosts: const [_other]);
+    var invoked = false;
+    final h = _Harness(
+      (_, _, i) => _oneCall(_call('workspace_split', {}), i),
+      resources: resource,
+      extraCapabilities: [
+        FunctionCapability('workspace.split', Effect.connect, (_, _) async {
+          invoked = true;
+          return const Ok(null);
+        }, agentExposed: true),
+      ],
+    );
+    addTearDown(h.close);
+    await h.start();
+    expect(invoked, isFalse);
+    expect(h.runtime.approval, isNull);
+    expect(_result(h.model.requests.last), {'error': 'hostSelectionRequired'});
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  test('missing resource reader fails closed before resource approval', () async {
+    var invoked = false;
+    final h = _Harness(
+      (_, _, i) => _oneCall(_call('session_reconnect', {}), i),
+      extraCapabilities: [
+        FunctionCapability('session.reconnect', Effect.connect, (_, _) async {
+          invoked = true;
+          return const Ok(null);
+        }, agentExposed: true),
+      ],
+    );
+    addTearDown(h.close);
+    await h.start();
+    expect(invoked, isFalse);
+    expect(h.runtime.approval, isNull);
+    expect(_result(h.model.requests.last), {'error': 'outsideScope'});
+  });
+
+  test('host approval summary and review include every validated non-secret field', () async {
+    final args = <String, Object?>{
+      'address': 'new.invalid',
+      'auth': 'key',
+      'methods': ['key', 'password'],
+      'allowInteractive': true,
+      'legacy': true,
+      'inherit': ['port'],
+      'proxy': {'kind': 'socks5', 'address': 'proxy.invalid', 'port': 1080, 'username': 'proxy-user'},
+      'label': 'host-${'x' * 1500}',
+    };
+    Map<String, Object?> schema(Object? value) => switch (value) {
+      String() => {'type': 'string'},
+      bool() => {'type': 'boolean'},
+      int() => {'type': 'integer'},
+      List() => {
+        'type': 'array',
+        'items': {'type': 'string'},
+      },
+      Map() => {
+        'type': 'object',
+        'properties': {for (final e in value.entries) e.key as String: schema(e.value)},
+      },
+      _ => throw StateError('unsupported test field'),
+    };
+    final h = _Harness(
+      (_, _, i) => _oneCall(_call('hosts_create', args), i),
+      review: (_, _, _) => _reviewReply('ask'),
+      extraCapabilities: [
+        FunctionCapability(
+          'host.create',
+          Effect.localChange,
+          (_, _) async => const Ok(null),
+          agentExposed: true,
+          inputSchema: _schema({for (final e in args.entries) e.key: schema(e.value)}, args.keys.toList()),
+        ),
+      ],
+    );
+    addTearDown(h.close);
+    final work = h.runtime.start(
+      'create the host using all supplied fields',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+    );
+    await _until(() => h.runtime.approval != null);
+    expect(jsonDecode(h.runtime.approval!.command), args);
+    final reviewText = h.model.reviewRequests.single.messages.single.text;
+    expect(reviewText, contains('proxy.invalid'));
+    expect(reviewText, contains('allowInteractive'));
+    expect(reviewText, contains('inherit'));
+    expect(reviewText, contains('legacy'));
+    expect(reviewText, contains('x' * 1500));
+    h.runtime.approve(false, expected: h.runtime.approval!);
+    await work;
+  });
+
+  test('invalid application tool schema stops instead of asking the model to repeat it', () async {
+    var invoked = false;
+    final h = _Harness(
+      (_, _, i) => _oneCall(_call('settings_patch', {}), i),
+      extraCapabilities: [
+        FunctionCapability(
+          'settings.patch',
+          Effect.localChange,
+          (_, _) async {
+            invoked = true;
+            return const Ok(null);
+          },
+          agentExposed: true,
+          inputSchema: const {
+            'type': 'object',
+            'additionalProperties': {'type': 'string'},
+          },
+        ),
+      ],
+    );
+    addTearDown(h.close);
+    await h.start();
+    expect(h.runtime.error, 'invalidSchema');
+    expect(h.model.requests, hasLength(1));
+    expect(h.runtime.approval, isNull);
+    expect(invoked, isFalse);
+  });
+
+  for (final failIntent in [false, true]) {
+    test('file mutation persists intent after approval before invoke, failIntent=$failIntent', () async {
+      var invoked = false;
+      late _Harness h;
+      h = _Harness(
+        (_, _, i) => _oneCall(_call('files_mkdir', {'hostId': _host.value, 'path': '/owned'}), i),
+        extraCapabilities: [
+          FunctionCapability(
+            'file.mkdir',
+            Effect.remoteWrite,
+            (_, _) async {
+              invoked = true;
+              expect(h.journal.records.last.state, OperationState.intent);
+              return const Ok(null);
+            },
+            agentExposed: true,
+            inputSchema: _schema(
+              {
+                'hostId': {'type': 'string'},
+                'path': {'type': 'string'},
+              },
+              ['hostId', 'path'],
+            ),
+          ),
+        ],
+      );
+      h.journal.failIntent = failIntent;
+      addTearDown(h.close);
+      final work = h.start();
+      await _until(() => h.runtime.approval != null);
+      expect(h.journal.records, isEmpty);
+      h.runtime.approve(true, expected: h.runtime.approval!);
+      await work;
+      expect(invoked, !failIntent);
+      expect(h.runtime.error, isNull);
+      if (failIntent) expect(h.model.requests.last.messages.last.text, contains('journalFailed'));
+      if (!failIntent) expect(h.journal.records.map((r) => r.state), [OperationState.intent, OperationState.completed]);
+    });
+  }
+
   test('current terminal context is shared by default and focus changes do not retarget reads', () async {
     final current = _terminalSnapshot('window-a', output: 'focused-window-result');
     final other = _terminalSnapshot('window-b', output: 'other-window-result');
@@ -3244,6 +3489,215 @@ void main() {
     expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
   });
 
+  test('command output filters complete secret and control lines before taking its bounded excerpt', () async {
+    final h = _Harness((request, _, index) => _oneCall(_call('command_execute', _command()), index));
+    addTearDown(h.close);
+    h.backend.target.stdout = '${'x' * 8190} api_key=synthetic-private\nplain\n\x1b[31mhidden\n';
+    await h.runtime.start('run a command', _conversationScope(mode: AgentPermissionMode.auto));
+    final result = _result(h.model.requests.last);
+    expect(result['text'], 'plain\n');
+    expect(result['filtered'], isTrue);
+    expect(h.runtime.executions.single.output!.stdout, contains('synthetic-private'));
+    expect(_requestText(h.model.requests.last), isNot(contains('synthetic-private')));
+    expect(_requestText(h.model.requests.last), isNot(contains('hidden')));
+  });
+
+  test('background job output filters secrets split across chunks and omits control lines', () async {
+    final finish = Completer<int?>(), started = Completer<void>(), release = Completer<void>();
+    String? jobId;
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('job_start', _command(), 'job'));
+      } else {
+        jobId = _result(request)['jobId'] as String;
+        started.complete();
+        await release.future;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.target
+      ..stdout = ''
+      ..pendingExecution = finish.future;
+    final work = h.runtime.start('stream filtered output', _conversationScope(mode: AgentPermissionMode.auto));
+    await started.future;
+    Map<String, Object?> read() => ((h.runtime.readJob({'jobId': jobId!}) as Ok<Object?>).value as Map).cast();
+    void emit(String text) => h.backend.target.writeOutput!(false, Uint8List.fromList(utf8.encode(text)));
+    emit('api_');
+    expect(read()['text'], isEmpty);
+    emit('key=synthetic-private\n');
+    emit('-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic-key-body\n-----END OPENSSH PRIVATE KEY-----\n');
+    emit('safe\n\x1b[31mhidden\n');
+    emit('tail');
+    expect(read()['text'], 'safe\n');
+    expect(read()['filtered'], isTrue);
+    finish.complete(0);
+    await _until(() => read()['done'] == true);
+    expect(read()['text'], 'safe\ntail');
+    release.complete();
+    await work;
+  });
+
+  test('background job pages remain append-only as stdout arrives after stderr', () async {
+    final finish = Completer<int?>(), started = Completer<void>(), release = Completer<void>();
+    String? jobId;
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('job_start', _command(), 'job'));
+      } else {
+        jobId = _result(request)['jobId'] as String;
+        started.complete();
+        await release.future;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.target
+      ..stdout = 'first\n'
+      ..pendingExecution = finish.future;
+    final work = h.runtime.start('stream a job', _conversationScope(mode: AgentPermissionMode.auto));
+    await started.future;
+    Map<String, Object?> read([int offset = 0]) =>
+        ((h.runtime.readJob({'jobId': jobId!, 'offset': offset}) as Ok<Object?>).value as Map).cast();
+    final first = read();
+    expect(first['text'], 'first\n');
+    expect(first['eof'], isFalse);
+    expect(first['nextOffset'], 6);
+    h.backend.target.writeOutput!(true, Uint8List.fromList(utf8.encode('warning\n')));
+    final second = read(first['nextOffset'] as int);
+    expect(second['text'], '\n[stderr]\nwarning\n');
+    h.backend.target.writeOutput!(false, Uint8List.fromList(utf8.encode('later\n')));
+    final third = read(second['nextOffset'] as int);
+    expect(third['text'], '\n[stdout]\nlater\n');
+    expect(read()['text'], '${first['text']}${second['text']}${third['text']}');
+    expect(read(third['nextOffset'] as int)['nextOffset'], third['nextOffset']);
+    finish.complete(0);
+    await _until(() => read()['done'] == true);
+    expect(read(third['nextOffset'] as int)['eof'], isTrue);
+    expect(read(third['nextOffset'] as int)['nextOffset'], isNull);
+    release.complete();
+    await work;
+  });
+
+  test('background job UTF-8 chunks and page offsets preserve whole characters and bounded memory', () async {
+    final finish = Completer<int?>(), started = Completer<void>(), release = Completer<void>();
+    String? jobId;
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('job_start', _command(), 'job'));
+      } else {
+        jobId = _result(request)['jobId'] as String;
+        started.complete();
+        await release.future;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.target
+      ..stdout = ''
+      ..pendingExecution = finish.future;
+    final work = h.runtime.start('stream UTF-8', _conversationScope(mode: AgentPermissionMode.auto));
+    await started.future;
+    Map<String, Object?> read([int offset = 0]) =>
+        ((h.runtime.readJob({'jobId': jobId!, 'offset': offset}) as Ok<Object?>).value as Map).cast();
+    final chinese = utf8.encode('中');
+    h.backend.target.writeOutput!(false, Uint8List.fromList(chinese.take(2).toList()));
+    expect(read()['text'], isEmpty);
+    h.backend.target.writeOutput!(false, Uint8List.fromList([chinese.last, 10]));
+    expect(read()['text'], '中\n');
+    h.backend.target.writeOutput!(false, Uint8List.fromList(utf8.encode('${'中' * 6000}\n' * 5)));
+    final page = read();
+    expect(page['truncated'], isTrue);
+    expect(page['bytes'] as int, lessThanOrEqualTo(65536));
+    expect(utf8.encode(page['text'] as String).length, lessThanOrEqualTo(16384));
+    expect(page['text'], isNot(contains('�')));
+    final offset = page['nextOffset'] as int;
+    expect(utf8.encode(page['text'] as String).length, offset);
+    expect(read(offset)['text'], isNot(contains('�')));
+    expect(h.runtime.readJob({'jobId': jobId!, 'offset': 1}), isA<Err<Object?>>());
+    finish.complete(0);
+    await _until(() => read()['done'] == true);
+    release.complete();
+    await work;
+  });
+
+  for (final failure in [const ExecError(ExecFailure.timedOut), StateError('transport lost')]) {
+    test('a submitted background job with $failure keeps an unknown outcome', () async {
+      final finish = Completer<int?>(), started = Completer<void>(), release = Completer<void>();
+      String? jobId;
+      final h = _Harness((request, _, index) async* {
+        if (index == 0) {
+          yield ModelMessageComplete(_call('job_start', _command(), 'job'));
+        } else {
+          jobId = _result(request)['jobId'] as String;
+          started.complete();
+          await release.future;
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'inspect the job'));
+        }
+      });
+      addTearDown(h.close);
+      h.backend.target.pendingExecution = finish.future;
+      final work = h.runtime.start('start a job', _conversationScope(mode: AgentPermissionMode.auto));
+      await started.future;
+      finish.completeError(failure);
+      await _until(() => h.journal.records.any((r) => r.state == OperationState.outcomeUnknown));
+      final status = (h.runtime.jobStatus({'jobId': jobId!}) as Ok<Object?>).value as Map;
+      expect(status['state'], 'outcomeUnknown');
+      expect(status['exitCode'], isNull);
+      expect(h.backend.target.commands, hasLength(1));
+      release.complete();
+      await work;
+    });
+  }
+
+  test('a job cancelled during intent persistence never reaches the remote target', () async {
+    final gate = Completer<void>();
+    final h = _Harness((request, _, index) => _oneCall(_call('job_start', _command(), 'job'), index));
+    addTearDown(h.close);
+    h.journal.pendingIntent = gate;
+    final work = h.runtime.start('start then stop', _conversationScope(mode: AgentPermissionMode.auto));
+    await _until(() => h.journal.intentAttempts == 1);
+    h.runtime.stop();
+    gate.complete();
+    await work;
+    expect(h.backend.target.commands, isEmpty);
+    expect(h.journal.records.map((r) => r.state), [OperationState.intent, OperationState.failed]);
+  });
+
+  test('late job completion and journal failure cannot change the next turn', () async {
+    final finish = Completer<int?>(), started = Completer<void>(), release = Completer<void>();
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('job_start', _command(), 'job'));
+      } else if (index == 1) {
+        started.complete();
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'job started'));
+      } else {
+        await release.future;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'new answer'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.target.pendingExecution = finish.future;
+    final first = h.runtime.start('start a job', _conversationScope(mode: AgentPermissionMode.auto));
+    await started.future;
+    await first;
+    final second = h.runtime.start('a new question', _conversationScope(mode: AgentPermissionMode.auto));
+    await _until(() => h.model.requests.length == 3);
+    h.journal.failTerminal = true;
+    finish.completeError(StateError('late transport loss'));
+    await _until(() => h.journal.terminalAttempts == 1);
+    await Future<void>.delayed(Duration.zero);
+    expect(h.runtime.busy, isTrue);
+    expect(h.runtime.error, isNull);
+    expect(h.runtime.messages.last.text, isNot('job started'));
+    release.complete();
+    await second;
+    expect(h.runtime.error, isNull);
+    expect(h.runtime.messages.last.text, 'new answer');
+    expect(h.backend.target.commands, hasLength(1));
+  });
+
   test('stopping a background job cancels its command without replaying it', () async {
     final h = _Harness((request, _, index) async* {
       if (index == 0) {
@@ -3282,7 +3736,7 @@ void main() {
     h.runtime.approve(true, expected: h.runtime.approval!);
     await work;
     expect(h.backend.target.commands, hasLength(1));
-    expect(_result(h.model.requests.last, 2)['state'], 'cancelled');
-    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.failed]);
+    expect(_result(h.model.requests.last, 2)['state'], 'outcomeUnknown');
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.outcomeUnknown]);
   });
 }

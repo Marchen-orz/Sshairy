@@ -1,4 +1,5 @@
 import '../../../foundation/ids.dart';
+import 'attachment.dart';
 
 enum ConversationEntryKind { user, assistant, execution }
 
@@ -13,6 +14,7 @@ class ConversationEntry {
     this.truncated = false,
     this.retracted = false,
     this.executionId,
+    this.attachments = const [],
   });
 
   final ConversationEntryKind kind;
@@ -20,6 +22,7 @@ class ConversationEntry {
   final String? capability, state, executionId;
   final int? exitCode;
   final bool truncated, retracted;
+  final List<AgentAttachment> attachments;
 }
 
 class AgentConversationRecord {

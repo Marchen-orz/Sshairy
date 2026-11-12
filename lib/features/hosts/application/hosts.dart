@@ -209,6 +209,21 @@ class HostsNotifier extends Notifier<List<Host>> {
     }, expectedRevision: expectedRevision);
   }
 
+  /// Creates a missing path and moves the hosts in the same revision; conflicts leave no empty group behind.
+  Future<void> moveToGroupPath(Iterable<HostId> ids, String path, {int? expectedRevision}) {
+    final wanted = ids.toSet();
+    return _apply((library) {
+      var (next, groupId) = library.withGroupPath(path);
+      final normalized = groupId == null ? '' : next.groupPath(groupId);
+      for (final id in wanted) {
+        final host = next.hostById(id);
+        if (host == null) throw ArgumentError.value(id.value, 'hostId', 'missing host');
+        if (host.groupId != groupId) next = next.withHost(host.copyWith(groupId: () => groupId, group: normalized));
+      }
+      return identical(next, library) ? null : next;
+    }, expectedRevision: expectedRevision);
+  }
+
   /// Recorded when a session opens, for the "recent" order.
   Future<void> touch(HostId id) => _update(id, (current) => current.copyWith(lastUsed: DateTime.now()));
 
@@ -363,8 +378,9 @@ class HostsNotifier extends Notifier<List<Host>> {
   }
 
   /// Throws [HostInUse] while another host, a group or the defaults still use it as their jump host.
-  Future<void> delete(Host host) => _apply(
+  Future<void> delete(Host host, {int? expectedRevision}) => _apply(
     (library) => library.hostById(host.id) == null ? null : library.withoutHost(host.id),
+    expectedRevision: expectedRevision,
     routes: false,
     after: (before) =>
         ref.read(hostCredentialCleanupProvider).clearHost(host.id, before.hostById(host.id)?.proxy?.key ?? ''),

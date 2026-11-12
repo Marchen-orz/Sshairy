@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -20,9 +21,12 @@ import '../application/model_selection.dart';
 import '../application/target.dart';
 import '../application/permission_mode.dart';
 import '../adapters/markdown_view.dart';
+import '../adapters/attachments.dart';
+import '../domain/attachment.dart';
 import 'model_picker.dart';
 import '../application/runtime.dart';
 import '../domain/agent.dart';
+import '../domain/model_profile.dart';
 
 class AgentPanel extends ConsumerStatefulWidget {
   const AgentPanel({super.key, this.onClose});
@@ -34,10 +38,13 @@ class AgentPanel extends ConsumerStatefulWidget {
 
 class _AgentPanelState extends ConsumerState<AgentPanel> {
   late final _goal = TextEditingController(text: ref.read(agentComposerProvider).goal);
-  bool _startFailed = false, _historyExpanded = false;
+  bool _startFailed = false, _historyExpanded = false, _pickingAttachment = false;
+  String? _attachmentError;
+  final _conversationKey = GlobalKey<_ConversationState>();
 
   void _resetConversationUi() => setState(() {
     _startFailed = false;
+    _attachmentError = null;
   });
 
   Future<void> _history(String id, bool delete) async {
@@ -80,16 +87,50 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     _goalChanged();
   }
 
+  Future<void> _attach() async {
+    if (_pickingAttachment) return;
+    final conversations = ref.read(agentConversationsProvider);
+    final selected = conversations.selectedId;
+    final draft = ref.read(agentComposerProvider);
+    final picker = ref.read(agentAttachmentPickerProvider);
+    setState(() {
+      _pickingAttachment = true;
+      _attachmentError = null;
+    });
+    try {
+      final attachments = await picker.choose(draft.attachments);
+      if (mounted &&
+          selected == conversations.selectedId &&
+          !conversations.runtime.busy &&
+          identical(ref.read(agentComposerProvider).attachments, draft.attachments)) {
+        ref.read(agentComposerProvider.notifier).setAttachments(attachments);
+      }
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _attachmentError = error.message);
+    } finally {
+      if (mounted) setState(() => _pickingAttachment = false);
+    }
+  }
+
   Future<void> _send(AgentRuntime runtime, HostId? host) async {
     final goal = _goal.text.trim();
     final conversations = ref.read(agentConversationsProvider);
-    if (runtime.busy || conversations.loading || goal.isEmpty || !_goal.value.composing.isCollapsed) {
+    final draft = ref.read(agentComposerProvider);
+    if (runtime.busy ||
+        conversations.loading ||
+        _pickingAttachment ||
+        (goal.isEmpty && draft.attachments.isEmpty) ||
+        !_goal.value.composing.isCollapsed) {
       return;
     }
     if (conversations.hasHistory && !conversations.canContinue(host)) return;
     setState(() => _startFailed = false);
     try {
-      await conversations.send(goal, host, continueHistory: true);
+      final sending = conversations.send(goal, host, continueHistory: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _conversationKey.currentState?.scrollToBottom();
+      });
+      await sending;
       if (mounted && runtime.error == 'notConfigured' && _goal.text.isEmpty) {
         _replaceGoal(goal);
       }
@@ -226,7 +267,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                           onExample: _replaceGoal,
                         )
                       : _Conversation(
-                          key: ValueKey(conversations.selectedId),
+                          key: _conversationKey,
                           runtime: runtime,
                           conversationId: conversations.selectedId,
                           canRegenerate: enabled && !changedBinding && conversations.canRegenerate,
@@ -308,6 +349,37 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                             Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
                           if (runtime.contextCompacted)
                             Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
+                          Row(
+                            children: [
+                              IconButton(
+                                key: const ValueKey('ai-agent-attach'),
+                                tooltip: l.aiAgentAttach,
+                                onPressed: !enabled || runtime.busy || _pickingAttachment ? null : _attach,
+                                icon: const Icon(Icons.attach_file_rounded, size: 17),
+                              ),
+                              if (_attachmentError != null)
+                                Expanded(
+                                  child: Text(switch (_attachmentError) {
+                                    'attachmentTooLarge' => l.aiAgentAttachmentTooLarge,
+                                    'attachmentUnsupported' => l.aiAgentAttachmentUnsupported,
+                                    _ => l.aiAgentAttachmentUnreadable,
+                                  }, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
+                                ),
+                            ],
+                          ),
+                          if (draft.attachments.isNotEmpty)
+                            _AttachmentList(
+                              attachments: draft.attachments,
+                              onRemove: runtime.busy
+                                  ? null
+                                  : (attachment) {
+                                      ref
+                                          .read(agentComposerProvider.notifier)
+                                          .setAttachments(
+                                            draft.attachments.where((value) => value.id != attachment.id),
+                                          );
+                                    },
+                            ),
                           Focus(
                             onKeyEvent: (_, event) {
                               final keys = HardwareKeyboard.instance;
@@ -323,7 +395,10 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                   !_goal.value.composing.isCollapsed) {
                                 return KeyEventResult.ignored;
                               }
-                              if (enabled && !runtime.busy && !conversations.loading && _goal.text.trim().isNotEmpty) {
+                              if (enabled &&
+                                  !runtime.busy &&
+                                  !conversations.loading &&
+                                  (_goal.text.trim().isNotEmpty || draft.attachments.isNotEmpty)) {
                                 unawaited(_send(runtime, selectedHost));
                               }
                               return KeyEventResult.handled;
@@ -372,7 +447,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                     );
                               final usage = _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0);
                               final permission = _PermissionPicker(
-                                compact: toolbar.maxWidth < 280 * MediaQuery.textScalerOf(context).scale(1),
+                                compact: toolbar.maxWidth < 480 * MediaQuery.textScalerOf(context).scale(1),
                                 mode: runtime.busy ? runtime.permissionMode : permissionMode,
                                 onChanged: !enabled || runtime.busy
                                     ? null
@@ -396,7 +471,11 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                   : IconButton.filled(
                                       key: const ValueKey('ai-agent-send'),
                                       tooltip: l.aiAgentSendShortcut,
-                                      onPressed: !enabled || conversations.loading || draft.goal.trim().isEmpty
+                                      onPressed:
+                                          !enabled ||
+                                              conversations.loading ||
+                                              _pickingAttachment ||
+                                              (draft.goal.trim().isEmpty && draft.attachments.isEmpty)
                                           ? null
                                           : () => _send(runtime, selectedHost),
                                       style: actionStyle.merge(
@@ -407,7 +486,17 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                               return Row(
                                 children: [
                                   Expanded(child: model),
-                                  const SizedBox(width: Space.sm),
+                                  const SizedBox(width: Space.xs),
+                                  _ReasoningPicker(
+                                    effort: runtime.busy
+                                        ? runtime.reasoningEffort
+                                        : profile?.reasoningEffort ?? ReasoningEffort.modelDefault,
+                                    compact: toolbar.maxWidth < 600 * MediaQuery.textScalerOf(context).scale(1),
+                                    onChanged: !enabled || runtime.busy
+                                        ? null
+                                        : ref.read(selectedAgentReasoningProvider.notifier).select,
+                                  ),
+                                  const SizedBox(width: Space.xs),
                                   usage,
                                   const SizedBox(width: Space.sm),
                                   permission,
@@ -524,6 +613,77 @@ class _ContextUsage extends StatelessWidget {
   }
 }
 
+String _reasoningLabel(AppLocalizations l, ReasoningEffort effort) => switch (effort) {
+  ReasoningEffort.modelDefault => l.aiReasoningDefault,
+  ReasoningEffort.low => l.aiReasoningLow,
+  ReasoningEffort.medium => l.aiReasoningMedium,
+  ReasoningEffort.high => l.aiReasoningHigh,
+};
+
+class _ReasoningPicker extends StatelessWidget {
+  const _ReasoningPicker({required this.effort, required this.onChanged, this.compact = false});
+  final ReasoningEffort effort;
+  final ValueChanged<ReasoningEffort>? onChanged;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Builder(
+      builder: (anchorContext) => TextButton(
+        key: const ValueKey('ai-agent-reasoning'),
+        onPressed: onChanged == null
+            ? null
+            : () async {
+                final picked = await showAnchoredPopup<ReasoningEffort>(
+                  context: context,
+                  anchor: anchorOf(anchorContext),
+                  width: 180,
+                  builder: (context) => PopupSurface(
+                    padding: const EdgeInsets.symmetric(vertical: Space.xs),
+                    child: PopupKeys(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final option in ReasoningEffort.values)
+                            PopupRow(
+                              key: ValueKey('ai-agent-reasoning-${option.name}'),
+                              selected: option == effort,
+                              onTap: () => Navigator.pop(context, option),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(_reasoningLabel(l, option))),
+                                  if (option == effort) const Icon(Icons.check_rounded, size: 16),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+                if (context.mounted && picked != null) onChanged?.call(picked);
+              },
+        style: TextButton.styleFrom(
+          minimumSize: const Size(WorkspaceSize.control, WorkspaceSize.control),
+          padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Tooltip(
+          message: '${l.aiReasoningEffort}: ${_reasoningLabel(l, effort)}',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.psychology_outlined, size: 16),
+              if (!compact) ...[const SizedBox(width: Space.xs), Text(_reasoningLabel(l, effort), maxLines: 1)],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 IconData _permissionIcon(AgentPermissionMode mode) => switch (mode) {
   AgentPermissionMode.auto => Icons.bolt_outlined,
   AgentPermissionMode.review => Icons.auto_awesome_outlined,
@@ -586,7 +746,13 @@ class _PermissionPicker extends StatelessWidget {
                                   children: [
                                     Icon(_permissionIcon(option), size: 16),
                                     const SizedBox(width: Space.sm),
-                                    Text(_permissionLabel(l, option)),
+                                    Flexible(
+                                      child: Text(
+                                        _permissionLabel(l, option),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
                                     const SizedBox(width: Space.sm),
                                     Expanded(
                                       child: Text(
@@ -616,6 +782,8 @@ class _PermissionPicker extends StatelessWidget {
         style: TextButton.styleFrom(
           minimumSize: const Size(0, WorkspaceSize.tabHeight),
           padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+          visualDensity: VisualDensity.standard,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
         child: Tooltip(
@@ -696,6 +864,94 @@ class _Welcome extends StatelessWidget {
   }
 }
 
+class _AttachmentList extends StatelessWidget {
+  const _AttachmentList({required this.attachments, this.onRemove});
+  final List<AgentAttachment> attachments;
+  final ValueChanged<AgentAttachment>? onRemove;
+
+  Future<void> _preview(BuildContext context, AgentAttachment attachment) => showAppDialog<void>(
+    context: context,
+    builder: (context) => AppDialog(
+      title: Text(attachment.name, overflow: TextOverflow.ellipsis),
+      width: 640,
+      content: SingleChildScrollView(
+        child: attachment.isImage
+            ? Image.memory(
+                base64Decode(attachment.content),
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined),
+              )
+            : SelectableText(attachment.content),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(AppLocalizations.of(context).close))],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Wrap(
+      spacing: Space.sm,
+      runSpacing: Space.xs,
+      children: [
+        for (final attachment in attachments)
+          Container(
+            constraints: const BoxConstraints(maxWidth: 240),
+            decoration: BoxDecoration(
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(Radii.control),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: TextButton(
+                    key: ValueKey('ai-attachment-preview-${attachment.id}'),
+                    onPressed: () => _preview(context, attachment),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (attachment.isImage)
+                          Image.memory(
+                            base64Decode(attachment.content),
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined, size: 17),
+                          )
+                        else
+                          const Icon(Icons.description_outlined, size: 17),
+                        const SizedBox(width: Space.xs),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(attachment.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              Text(l.aiAgentAttachmentBytes(attachment.bytes), style: theme.textTheme.bodySmall),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (onRemove != null)
+                  IconButton(
+                    key: ValueKey('ai-attachment-remove-${attachment.id}'),
+                    tooltip: l.remove,
+                    onPressed: () => onRemove!(attachment),
+                    icon: const Icon(Icons.close_rounded, size: 14),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _Conversation extends StatefulWidget {
   const _Conversation({
     super.key,
@@ -723,13 +979,19 @@ class _ConversationState extends State<_Conversation> {
 
   List<AgentTimelineEntry> get _entries {
     final timeline = widget.runtime.timeline;
-    // Keep the running reply even before its first token so its actions do not appear only at the end.
+    // Keep a running reply before its first token; actions remain hidden until the turn ends.
     final streaming = widget.runtime.busy
         ? timeline.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'assistant')
         : -1;
     return [
       for (final (index, entry) in timeline.indexed)
-        if (entry is! AgentChatEntry || (!entry.retracted && (entry.text.isNotEmpty || index == streaming))) entry,
+        if (entry is! AgentChatEntry ||
+            (!entry.retracted &&
+                (entry.text.isNotEmpty ||
+                    entry.attachments.isNotEmpty ||
+                    entry.reasoningReceived ||
+                    index == streaming)))
+          entry,
     ];
   }
 
@@ -738,6 +1000,23 @@ class _ConversationState extends State<_Conversation> {
     _navigation++;
     _scroll.dispose();
     super.dispose();
+  }
+
+  void scrollToBottom() {
+    _navigation++;
+    if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.minScrollExtent);
+  }
+
+  @override
+  void didUpdateWidget(_Conversation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.conversationId != widget.conversationId) {
+      _keys.clear();
+      _highlighted = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) scrollToBottom();
+      });
+    }
   }
 
   Future<void> _reveal(String id) async {
@@ -794,6 +1073,7 @@ class _ConversationState extends State<_Conversation> {
   }
 
   Widget _actions(AgentChatEntry message, int index, {required bool latest}) {
+    if (widget.runtime.busy) return const SizedBox.shrink();
     final l = AppLocalizations.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -890,11 +1170,19 @@ class _ConversationState extends State<_Conversation> {
                               border: Border.all(color: theme.colorScheme.outlineVariant),
                               borderRadius: BorderRadius.circular(Radii.control),
                             ),
-                            child: Text(message.text, style: theme.textTheme.bodyMedium),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (message.text.isNotEmpty) Text(message.text, style: theme.textTheme.bodyMedium),
+                                if (message.attachments.isNotEmpty) _AttachmentList(attachments: message.attachments),
+                              ],
+                            ),
                           ),
                         ),
                       )
                     else ...[
+                      if (message.reasoningReceived) _ReasoningSummary(message: message),
                       AiMarkdown(data: message.text, executionReferences: references, onExecution: _reveal),
                       _actions(message, index, latest: index == lastAssistant && index > lastUser),
                     ],
@@ -940,6 +1228,65 @@ class _ConversationState extends State<_Conversation> {
                 )
               : const _ThinkingDots();
         },
+      ),
+    );
+  }
+}
+
+class _ReasoningSummary extends StatefulWidget {
+  const _ReasoningSummary({required this.message});
+  final AgentChatEntry message;
+
+  @override
+  State<_ReasoningSummary> createState() => _ReasoningSummaryState();
+}
+
+class _ReasoningSummaryState extends State<_ReasoningSummary> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final message = widget.message;
+    final summary = message.reasoningSummary;
+    final label = message.reasoningActive
+        ? l.aiReasoningActive
+        : summary.isEmpty
+        ? l.aiReasoningCompleted
+        : l.aiReasoningSummary;
+    final style = Theme.of(context).textTheme.bodySmall
+        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    return Padding(
+      key: const ValueKey('ai-agent-reasoning-status'),
+      padding: const EdgeInsets.only(bottom: Space.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (summary.isEmpty)
+            Text(label, style: style)
+          else ...[
+            TextButton(
+              key: const ValueKey('ai-agent-reasoning-summary-toggle'),
+              onPressed: () => setState(() => _expanded = !_expanded),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, alignment: Alignment.centerLeft),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label, style: style),
+                  const SizedBox(width: Space.xs),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 14),
+                ],
+              ),
+            ),
+            Text(
+              summary,
+              key: const ValueKey('ai-agent-reasoning-summary'),
+              maxLines: _expanded ? null : 2,
+              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              style: style,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1305,6 +1652,8 @@ String _executionState(AppLocalizations l, String state) => switch (state) {
 String _error(AppLocalizations l, String? code) => switch (code) {
   'notConfigured' || 'invalidModelRequest' => l.aiAgentErrorModelConfig,
   'invalidModelKey' => l.aiAgentErrorConfiguration,
+  'invalidSchema' => l.aiAgentErrorToolDefinition,
+  'unsupportedReasoning' => l.aiReasoningUnsupported,
   'modelNetworkError' => l.aiAgentErrorNetwork,
   'modelHttpError' || 'modelStreamError' || 'modelRefused' => l.aiAgentErrorHttp,
   'deadline' || 'modelTimedOut' => l.aiAgentErrorTimeout,

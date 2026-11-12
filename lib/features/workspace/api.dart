@@ -1,3 +1,3 @@
 export 'application/workspace.dart' show workspaceProvider, Workspace, WorkspaceState, WorkspaceTab, TabCloseScope;
-export 'domain/layout.dart' show SplitAxis, PaneSide;
+export 'domain/layout.dart' show Layout, Leaf, SplitAxis, PaneSide;
 export 'presentation/workspace_page.dart';

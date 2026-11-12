@@ -72,7 +72,13 @@ List<Capability> forwardCapabilities(Ref ref) {
           autoStart: a.optional<bool>('autoStart') ?? false,
           autoReconnect: a.optional<bool>('autoReconnect') ?? false,
         );
-        await forwards().save(rule, exposureConfirmed: a.optional<bool>('confirmExposed') ?? false);
+        final expected = forwards().byId(rule.id)?.rule;
+        await forwards().save(
+          rule,
+          exposureConfirmed: a.optional<bool>('confirmExposed') ?? false,
+          checkExpected: context.origin == Origin.agent,
+          expected: expected,
+        );
         return Ok(rule.toJson());
       }),
       inputSchema: const {
@@ -86,7 +92,8 @@ List<Capability> forwardCapabilities(Ref ref) {
       Effect.localChange,
       agentExposed: true,
       (a, context) => guarded(() async {
-        await forwards().delete(ForwardId(a.require<String>('id')));
+        final id = ForwardId(a.require<String>('id'));
+        await forwards().delete(id, checkExpected: context.origin == Origin.agent, expected: forwards().byId(id)?.rule);
         return const Ok(null);
       }),
       inputSchema: _idSchema,

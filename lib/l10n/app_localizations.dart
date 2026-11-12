@@ -104,6 +104,36 @@ abstract class AppLocalizations {
   /// **'AI'**
   String get aiConfigTitle;
 
+  /// No description provided for @aiAgentAttach.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach files'**
+  String get aiAgentAttach;
+
+  /// No description provided for @aiAgentAttachmentTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose up to 4 attachments, 512 KiB in total. Text is limited to 64 KiB per file and normalized images to 256 KiB.'**
+  String get aiAgentAttachmentTooLarge;
+
+  /// No description provided for @aiAgentAttachmentUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose UTF-8 text or a PNG, JPEG or WebP image. Binary files, credentials and unsupported formats cannot be attached.'**
+  String get aiAgentAttachmentUnsupported;
+
+  /// No description provided for @aiAgentAttachmentUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'The selected file could not be read.'**
+  String get aiAgentAttachmentUnreadable;
+
+  /// No description provided for @aiAgentAttachmentBytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{bytes} bytes'**
+  String aiAgentAttachmentBytes(int bytes);
+
   /// No description provided for @aiConfigEnabled.
   ///
   /// In en, this message translates to:
@@ -5066,6 +5096,12 @@ abstract class AppLocalizations {
   /// **'Review the endpoint and model name in Settings.'**
   String get aiAgentErrorModelConfig;
 
+  /// No description provided for @aiAgentErrorToolDefinition.
+  ///
+  /// In en, this message translates to:
+  /// **'This tool is unavailable because its definition is invalid. This turn has stopped.'**
+  String get aiAgentErrorToolDefinition;
+
   /// No description provided for @aiAgentErrorNetwork.
   ///
   /// In en, this message translates to:
@@ -5113,6 +5149,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This server does not support the current command adapter.'**
   String get aiAgentErrorUnsupported;
+
+  /// No description provided for @aiReasoningEffort.
+  ///
+  /// In en, this message translates to:
+  /// **'Reasoning effort'**
+  String get aiReasoningEffort;
+
+  /// No description provided for @aiReasoningDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'Model default'**
+  String get aiReasoningDefault;
+
+  /// No description provided for @aiReasoningLow.
+  ///
+  /// In en, this message translates to:
+  /// **'Low'**
+  String get aiReasoningLow;
+
+  /// No description provided for @aiReasoningMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium'**
+  String get aiReasoningMedium;
+
+  /// No description provided for @aiReasoningHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'High'**
+  String get aiReasoningHigh;
+
+  /// No description provided for @aiReasoningActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking…'**
+  String get aiReasoningActive;
+
+  /// No description provided for @aiReasoningSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking summary'**
+  String get aiReasoningSummary;
+
+  /// No description provided for @aiReasoningCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking complete'**
+  String get aiReasoningCompleted;
+
+  /// No description provided for @aiReasoningUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'This model does not have a supported reasoning setting. Choose Model default or another model.'**
+  String get aiReasoningUnsupported;
 
   /// No description provided for @aiConfigAdvanced.
   ///

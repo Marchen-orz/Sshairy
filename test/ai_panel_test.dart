@@ -155,12 +155,20 @@ class _Runtime extends AgentRuntime {
     List<ConversationEntry> history, {
     bool answerOnly = false,
     bool appendGoal = true,
+    List<AgentAttachment> attachments = const [],
   }) {
     sentHistory = List.unmodifiable(history);
     sentAnswerOnly = answerOnly;
     this.appendGoal = appendGoal;
     restoreConversation(history);
-    return super.startConversation(goal, scope, history, answerOnly: answerOnly, appendGoal: appendGoal);
+    return super.startConversation(
+      goal,
+      scope,
+      history,
+      answerOnly: answerOnly,
+      appendGoal: appendGoal,
+      attachments: attachments,
+    );
   }
 
   @override
@@ -287,6 +295,39 @@ Future<ProviderContainer> _panel(
 }
 
 void main() {
+  testWidgets('reasoning control is disabled while busy and returned summaries can expand', (tester) async {
+    final runtime = _Runtime();
+    final container = await _panel(tester, runtime);
+    final picker = find.byKey(const ValueKey('ai-agent-reasoning'));
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-agent-reasoning-medium')));
+    await tester.pumpAndSettle();
+    expect(container.read(effectiveAgentProfileProvider)!.reasoningEffort, ReasoningEffort.medium);
+    final reply = AgentChatEntry('assistant', 'Answer')
+      ..reasoningReceived = true
+      ..reasoningActive = true
+      ..reasoningSummary = 'Checked the result against the requested constraints.';
+    runtime.entries.addAll([AgentChatEntry('user', 'Inspect'), reply]);
+    runtime.active = true;
+    runtime.refresh();
+    await tester.pump();
+    expect(tester.widget<TextButton>(picker).onPressed, isNull);
+    expect(find.text('Thinking…'), findsOneWidget);
+    expect(find.text(reply.reasoningSummary), findsOneWidget);
+    final summary = find.byKey(const ValueKey('ai-agent-reasoning-summary'));
+    expect(tester.widget<Text>(summary).maxLines, 2);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-reasoning-summary-toggle')));
+    await tester.pump();
+    expect(tester.widget<Text>(summary).maxLines, isNull);
+    reply.reasoningActive = false;
+    runtime.active = false;
+    runtime.refresh();
+    await tester.pumpAndSettle();
+    expect(find.text('Thinking summary'), findsOneWidget);
+    expect(tester.widget<TextButton>(picker).onPressed, isNotNull);
+  });
+
   testWidgets('disabled AI has a brand welcome and no request or mode selector', (tester) async {
     final runtime = _Runtime();
     await _panel(tester, runtime, enabled: false);
@@ -300,12 +341,15 @@ void main() {
 
   testWidgets('examples fill only the draft and a unified Agent can send without a server', (tester) async {
     final runtime = _Runtime();
-    await _panel(tester, runtime);
+    final container = await _panel(tester, runtime);
     await tester.tap(find.text('Explain a command'));
     await tester.pump();
     expect(runtime.goal, isNull);
     final goal = tester.widget<TextField>(find.byKey(const ValueKey('ai-agent-goal')));
     expect(goal.controller!.text, isNotEmpty);
+    expect(container.read(agentComposerProvider).goal, goal.controller!.text);
+    expect(container.read(agentConversationsProvider).loading, isFalse);
+    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-send'))).onPressed, isNotNull);
     await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
     await tester.pump();
     expect(runtime.sentScope!.hosts, isEmpty);
@@ -575,6 +619,7 @@ void main() {
     final history = tester.getRect(find.byKey(const ValueKey('ai-agent-history')));
     final send = tester.getRect(find.byKey(const ValueKey('ai-agent-send')));
     final model = tester.getRect(find.byKey(const ValueKey('ai-agent-model')));
+    final reasoning = tester.getRect(find.byKey(const ValueKey('ai-agent-reasoning')));
     final context = tester.getRect(find.byKey(const ValueKey('ai-agent-context-usage')));
     final permission = tester.getRect(find.byKey(const ValueKey('ai-agent-permission')));
     expect(host.center.dy, closeTo(title.center.dy, 1));
@@ -583,10 +628,12 @@ void main() {
     expect(send.size, const Size.square(WorkspaceSize.tabHeight));
     final button = tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-send')));
     expect(button.style!.shape!.resolve({}), isA<RoundedRectangleBorder>());
+    expect(reasoning.center.dy, closeTo(model.center.dy, 1));
     expect(context.center.dy, closeTo(model.center.dy, 1));
     expect(permission.center.dy, closeTo(model.center.dy, 1));
     expect(send.center.dy, closeTo(model.center.dy, 1));
-    expect(context.left - model.right, closeTo(Space.sm, 1));
+    expect(reasoning.left - model.right, closeTo(Space.xs, 1));
+    expect(context.left - reasoning.right, closeTo(Space.xs, 1));
     expect(permission.left - context.right, closeTo(Space.sm, 1));
     expect(send.left - permission.right, closeTo(Space.sm, 1));
     expect(find.text('0%'), findsOneWidget);
@@ -614,6 +661,7 @@ void main() {
         void expectToolbar() {
           final controls = [
             find.byKey(const ValueKey('ai-agent-model')),
+            find.byKey(const ValueKey('ai-agent-reasoning')),
             find.byKey(const ValueKey('ai-agent-context-usage')),
             find.byKey(const ValueKey('ai-agent-permission')),
             find.byKey(ValueKey(runtime.busy ? 'ai-agent-stop' : 'ai-agent-send')),
@@ -977,7 +1025,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('reply actions stay visible while the running reply has no text yet', (tester) async {
+  testWidgets('reply actions stay hidden until generation completes', (tester) async {
     final runtime = _Runtime();
     await _panel(tester, runtime);
     runtime.active = true;
@@ -985,10 +1033,9 @@ void main() {
     runtime.refresh();
     await tester.pump();
     expect(runtime.active, isTrue);
-    expect(find.byKey(const ValueKey('ai-agent-copy-1')), findsOneWidget);
-    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-copy-1'))).onPressed, isNull);
-    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-regenerate'))).onPressed, isNull);
-    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-withdraw'))).onPressed, isNull);
+    expect(find.byKey(const ValueKey('ai-agent-copy-1')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-regenerate')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-withdraw')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -37,9 +37,16 @@ class AiConfiguration {
   final Set<HostId> inlineExcludedHosts, completionExcludedHosts;
   final String? inlineModel, completionModel, reviewModel;
 
-  ModelProfile? get profileForReview => reviewModel == null ? null : profile?.withModel(reviewModel!, tools: false);
-  ModelProfile? get profileForInline => profile?.withModel(inlineModel ?? profile!.model, tools: false);
-  ModelProfile? get profileForCompletion => profile?.withModel(completionModel ?? profile!.model, tools: false);
+  ModelProfile? get profileForReview => reviewModel == null
+      ? null
+      : profile?.withModel(reviewModel!, tools: false, reasoningEffort: ReasoningEffort.modelDefault);
+  ModelProfile? get profileForInline =>
+      profile?.withModel(inlineModel ?? profile!.model, tools: false, reasoningEffort: ReasoningEffort.modelDefault);
+  ModelProfile? get profileForCompletion => profile?.withModel(
+    completionModel ?? profile!.model,
+    tools: false,
+    reasoningEffort: ReasoningEffort.modelDefault,
+  );
 }
 
 final aiConfigurationProvider = NotifierProvider<AiConfigurationController, AiConfiguration>(

@@ -244,6 +244,35 @@ int estimateModelRequestBytes(ModelRequest request) {
   }
 }
 
+// Fixed compatibility set from the official thinking table; aliases outside it use model defaults.
+const _adaptiveThinkingModels = {
+  'claude-opus-5-5',
+  'claude-sonnet-5-5',
+  'claude-haiku-5-5',
+  'claude-fable-5-2',
+  'claude-mythos-5-2',
+  'claude-fable-5-1',
+  'claude-mythos-5-1',
+  'claude-fable-5',
+  'claude-mythos-5',
+  'claude-opus-5',
+  'claude-sonnet-5',
+  'claude-opus-4-8',
+  'claude-opus-4-7',
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
+  'claude-mythos-preview',
+};
+
+Map<String, Object?> _anthropicReasoning(ModelProfile profile) {
+  if (profile.reasoningEffort == ReasoningEffort.modelDefault) return const {};
+  if (!_adaptiveThinkingModels.contains(profile.model)) throw const ModelFailure('unsupportedReasoning');
+  return {
+    'thinking': {'type': 'adaptive', 'display': 'summarized'},
+    'output_config': {'effort': profile.reasoningEffort.name},
+  };
+}
+
 Map<String, Object?> encodeModelRequest(ModelRequest request) {
   if (request.messages.isEmpty ||
       request.messages.length > 200 ||
@@ -266,6 +295,7 @@ Map<String, Object?> encodeModelRequest(ModelRequest request) {
       'model': request.profile.model,
       'system': request.system,
       'max_tokens': request.profile.maxOutputTokens,
+      ..._anthropicReasoning(request.profile),
       'stream': true,
       'messages': _anthropicMessages(request.messages, request.profile),
       if (request.tools.isNotEmpty)
@@ -276,14 +306,19 @@ Map<String, Object?> encodeModelRequest(ModelRequest request) {
     },
     ModelProtocol.openai => {
       'model': request.profile.model,
-      'max_tokens': request.profile.maxOutputTokens,
+      if (request.profile.reasoningEffort == ReasoningEffort.modelDefault)
+        'max_tokens': request.profile.maxOutputTokens
+      else ...{
+        'max_completion_tokens': request.profile.maxOutputTokens,
+        'reasoning_effort': request.profile.reasoningEffort.name,
+      },
       'stream': true,
       'messages': [
         if (request.system.isNotEmpty) {'role': 'system', 'content': request.system},
         for (final message in request.messages)
           {
             'role': message.role.name,
-            'content': message.text,
+            'content': message.attachments.isEmpty ? message.text : _attachmentContent(message, anthropic: false),
             if (message.role == ModelRole.tool) 'tool_call_id': message.toolCallId,
             if (message.calls.isNotEmpty)
               'tool_calls': [
@@ -313,7 +348,10 @@ void _validateMessages(List<ModelMessage> messages, ModelProfile profile) {
   final seen = <String>{};
   var bytes = 0;
   for (final message in messages) {
-    bytes += utf8.encode(message.text).length;
+    bytes += utf8.encode(message.text).length + message.attachments.fold(0, (size, value) => size + value.storedBytes);
+    if (message.attachments.isNotEmpty && message.role != ModelRole.user) {
+      throw const ModelFailure('invalidModelRequest');
+    }
     if (message.calls.length > 8 ||
         (message.calls.isNotEmpty && message.role != ModelRole.assistant) ||
         (message.role != ModelRole.tool && message.toolCallId != null)) {
@@ -350,6 +388,31 @@ void _validateMessages(List<ModelMessage> messages, ModelProfile profile) {
   if (pending.isNotEmpty) throw const ModelFailure('invalidToolPairing');
 }
 
+List<Map<String, Object?>> _attachmentContent(ModelMessage message, {required bool anthropic}) => [
+  if (message.text.isNotEmpty) {'type': 'text', 'text': message.text},
+  for (final attachment in message.attachments) ...[
+    {
+      'type': 'text',
+      'text': jsonEncode({
+        'attachment': attachment.description,
+        'untrustedData': true,
+        if (!attachment.isImage) 'text': attachment.content,
+      }),
+    },
+    if (attachment.isImage)
+      if (anthropic)
+        {
+          'type': 'image',
+          'source': {'type': 'base64', 'media_type': attachment.mediaType, 'data': attachment.content},
+        }
+      else
+        {
+          'type': 'image_url',
+          'image_url': {'url': 'data:${attachment.mediaType};base64,${attachment.content}'},
+        },
+  ],
+];
+
 List<Map<String, Object?>> _anthropicMessages(List<ModelMessage> messages, ModelProfile profile) {
   final encoded = <Map<String, Object?>>[];
   for (final message in messages) {
@@ -376,7 +439,7 @@ List<Map<String, Object?>> _anthropicMessages(List<ModelMessage> messages, Model
     final content = continuation is _AnthropicContinuation
         ? continuation.blocks
         : <Map<String, Object?>>[
-            if (message.text.isNotEmpty) {'type': 'text', 'text': message.text},
+            ..._attachmentContent(message, anthropic: true),
             for (final call in message.calls)
               {'type': 'tool_use', 'id': call.id, 'name': call.name, 'input': call.arguments},
           ];
@@ -386,7 +449,9 @@ List<Map<String, Object?>> _anthropicMessages(List<ModelMessage> messages, Model
 }
 
 Stream<ModelEvent> decodeModelStream(ModelProfile profile, Stream<List<int>> bytes) async* {
-  final parser = profile.protocol == ModelProtocol.anthropic ? _AnthropicParser(profile.identity) : _OpenAiParser();
+  final parser = profile.protocol == ModelProtocol.anthropic
+      ? _AnthropicParser(profile.identity, summarize: profile.reasoningEffort != ReasoningEffort.modelDefault)
+      : _OpenAiParser();
   try {
     await for (final event in decodeSse(bytes)) {
       for (final result in parser.add(event)) {
@@ -427,8 +492,9 @@ class _AnthropicBlock {
 }
 
 class _AnthropicParser extends _ProtocolParser {
-  _AnthropicParser(this.identity);
+  _AnthropicParser(this.identity, {required this.summarize});
   final String identity;
+  final bool summarize;
   final blocks = <_AnthropicBlock>[];
   var started = false;
   String? reason;
@@ -478,8 +544,10 @@ class _AnthropicParser extends _ProtocolParser {
           if (copy['thinking'] is! String || copy['signature'] is! String) {
             throw const ModelFailure('invalidModelStream');
           }
+          yield ModelReasoningDelta(summarize ? copy['thinking'] as String : '');
         case 'redacted_thinking':
           if (copy['data'] is! String) throw const ModelFailure('invalidModelStream');
+          yield const ModelReasoningDelta();
         default:
           throw const ModelFailure('unsupportedModelContent');
       }
@@ -527,6 +595,7 @@ class _AnthropicParser extends _ProtocolParser {
       } else {
         block.value[field] = '${block.value[field]}$fragment';
         if (field == 'text') yield ModelTextDelta(fragment);
+        if (field == 'thinking') yield ModelReasoningDelta(summarize ? fragment : '');
       }
       return;
     }
@@ -646,8 +715,12 @@ class _OpenAiParser extends _ProtocolParser {
       if (content.isNotEmpty) yield ModelTextDelta(content);
     }
     if (delta['refusal'] != null) throw const ModelFailure('modelRefused');
-    // Compatible providers may send internal reasoning deltas. They consume the message budget, never UI text.
-    if (delta['reasoning_content'] != null) count(delta['reasoning_content']);
+    // Compatible providers' internal reasoning drives activity only; it is never visible summary text.
+    if (delta['reasoning_content'] case final reasoning?) {
+      if (reasoning is! String) throw const ModelFailure('invalidModelStream');
+      count(reasoning);
+      if (reasoning.isNotEmpty) yield const ModelReasoningDelta();
+    }
     final toolCalls = delta['tool_calls'];
     if (toolCalls != null) {
       if (toolCalls is! List || toolCalls.length > 8) throw const ModelFailure('invalidModelStream');

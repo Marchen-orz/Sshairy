@@ -1,5 +1,8 @@
 import '../../../foundation/cancellation.dart';
 import 'model_profile.dart';
+import 'attachment.dart';
+
+export 'attachment.dart';
 
 export 'model_profile.dart';
 
@@ -27,11 +30,14 @@ class ModelMessage {
     this.toolCallId,
     this.isError = false,
     this.opaque,
-  }) : calls = List.unmodifiable(calls);
+    Iterable<AgentAttachment> attachments = const [],
+  }) : calls = List.unmodifiable(calls),
+       attachments = checkedAgentAttachments(attachments);
 
   final ModelRole role;
   final String text;
   final List<ModelCall> calls;
+  final List<AgentAttachment> attachments;
   final String? toolCallId;
   final bool isError;
 
@@ -66,6 +72,12 @@ sealed class ModelEvent {
 class ModelTextDelta extends ModelEvent {
   const ModelTextDelta(this.text);
   final String text;
+}
+
+/// Actual provider reasoning activity. Text is a provider-returned summary, never opaque continuation.
+class ModelReasoningDelta extends ModelEvent {
+  const ModelReasoningDelta([this.summary = '']);
+  final String summary;
 }
 
 class ModelMessageComplete extends ModelEvent {

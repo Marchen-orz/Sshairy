@@ -6,12 +6,15 @@ import '../features/connections/api.dart';
 import '../features/capabilities/api.dart';
 import '../features/credentials/api.dart';
 import '../features/hosts/api.dart';
+import '../features/files/api.dart';
+import '../features/forwarding/api.dart';
 import '../features/settings/api.dart';
 import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
 import '../foundation/ids.dart';
 import 'ai_backend.dart';
+import 'ai_resources.dart';
 import 'ai_terminal_history.dart';
 import 'ai_terminal_hosts.dart';
 import 'capabilities/ai.dart';
@@ -30,6 +33,18 @@ List<Override> appOverrides() => [
   agentTerminalHistoryProvider.overrideWith(
     (ref) =>
         WorkspaceTerminalHistoryReader(() => ref.read(workspaceProvider), () => ref.read(terminalSessionsProvider)),
+  ),
+  agentResourceReaderProvider.overrideWith(
+    (ref) => AppAgentResources(
+      workspace: () => ref.read(workspaceProvider),
+      sessions: () => ref.read(terminalSessionsProvider),
+      forwards: () => ref.read(forwardsProvider),
+      forwardBinding: (id) => ref.read(forwardsProvider.notifier).resourceBinding(id),
+      transfers: () => ref.read(transfersProvider),
+      transferBinding: (id) => ref.read(transfersProvider.notifier).resourceBinding(id),
+      hosts: () => ref.read(hostsProvider),
+      hostRevision: () => ref.read(hostsProvider.notifier).revision,
+    ),
   ),
   agentFocusedHostProvider.overrideWith((ref) {
     final tab = ref.watch(workspaceProvider).activeTab;

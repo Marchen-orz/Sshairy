@@ -13,6 +13,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigTitle => 'AI';
 
   @override
+  String get aiAgentAttach => '添加文件';
+
+  @override
+  String get aiAgentAttachmentTooLarge =>
+      '最多添加 4 个附件，合计 512 KiB；文本每个最多 64 KiB，处理后的图片每个最多 256 KiB。';
+
+  @override
+  String get aiAgentAttachmentUnsupported =>
+      '请选择 UTF-8 文本或 PNG、JPEG、WebP 图片；不支持二进制文件、凭据和其他格式。';
+
+  @override
+  String get aiAgentAttachmentUnreadable => '无法读取所选文件。';
+
+  @override
+  String aiAgentAttachmentBytes(int bytes) {
+    return '$bytes 字节';
+  }
+
+  @override
   String get aiConfigEnabled => '启用 AI';
 
   @override
@@ -2619,6 +2638,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentErrorModelConfig => '请在设置中检查模型地址与模型名称。';
 
   @override
+  String get aiAgentErrorToolDefinition => '工具定义无效，暂时无法使用。本轮已停止，请检查应用实现。';
+
+  @override
   String get aiAgentErrorNetwork => '无法连接模型，请检查网络后重新发起任务。';
 
   @override
@@ -2641,6 +2663,33 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentErrorUnsupported => '当前命令适配器不支持这台主机。';
+
+  @override
+  String get aiReasoningEffort => '思考强度';
+
+  @override
+  String get aiReasoningDefault => '跟随模型';
+
+  @override
+  String get aiReasoningLow => '低';
+
+  @override
+  String get aiReasoningMedium => '中';
+
+  @override
+  String get aiReasoningHigh => '高';
+
+  @override
+  String get aiReasoningActive => '思考中…';
+
+  @override
+  String get aiReasoningSummary => '思考摘要';
+
+  @override
+  String get aiReasoningCompleted => '思考已完成';
+
+  @override
+  String get aiReasoningUnsupported => '当前模型暂不支持调节思考强度，请选择跟随模型或切换模型。';
 
   @override
   String get aiConfigAdvanced => '模型能力与额度';

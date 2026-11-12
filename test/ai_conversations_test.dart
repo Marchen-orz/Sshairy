@@ -245,6 +245,41 @@ Future<_Harness> _create({
 Map<String, dynamic> _input(ModelRequest request) => jsonDecode(request.messages.single.text) as Map<String, dynamic>;
 
 void main() {
+  test('attachment-only messages persist, regenerate and withdraw without rereading files', () async {
+    final h = await _create();
+    final attachment = AgentAttachment.text(id: 'text', name: 'example.txt', text: 'hello attachment');
+    h.composer.setAttachments([attachment]);
+    await h.conversations.send('', _hostA);
+    expect(h.model.requests.single.messages.first.attachments.single, same(attachment));
+    expect(h.draft.attachments, isEmpty);
+    expect(h.conversations.current!.entries.first.attachments.single, same(attachment));
+    expect(h.conversations.current!.title, 'example.txt');
+    expect(await h.conversations.regenerate(_hostA), isTrue);
+    expect(h.model.requests.last.messages.first.attachments.single, same(attachment));
+    expect(h.model.requests.last.tools, isEmpty);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.conversations.withdrawLastTurn(), isTrue);
+    expect(h.draft.goal, isEmpty);
+    expect(h.draft.attachments.single, same(attachment));
+    expect(h.conversations.current!.entries.first.retracted, isTrue);
+  });
+
+  test('attachment drafts survive conversation switching and block accidental withdrawal overwrite', () async {
+    final h = await _create(initial: [_record('old')]);
+    h.conversations.select('old');
+    final attachment = AgentAttachment.text(id: 'draft', name: 'notes.txt', text: 'draft attachment');
+    h.composer.setAttachments([attachment]);
+    expect(h.conversations.canWithdraw, isFalse);
+    h.conversations.newConversation();
+    expect(h.draft.attachments, isEmpty);
+    h.conversations.select('old');
+    expect(h.draft.attachments.single, same(attachment));
+    h.profile = _profile(endpoint: 'https://other.invalid/v1');
+    await h.conversations.send('', _hostA, continueHistory: true);
+    expect(h.model.requests, isEmpty);
+    expect(h.draft.attachments.single, same(attachment));
+  });
+
   test('conversation sends freeze the current user mode and history never restores it', () async {
     final entered = Completer<void>();
     final h = await _create(

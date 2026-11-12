@@ -13,6 +13,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigTitle => 'AI';
 
   @override
+  String get aiAgentAttach => 'Attach files';
+
+  @override
+  String get aiAgentAttachmentTooLarge =>
+      'Choose up to 4 attachments, 512 KiB in total. Text is limited to 64 KiB per file and normalized images to 256 KiB.';
+
+  @override
+  String get aiAgentAttachmentUnsupported =>
+      'Choose UTF-8 text or a PNG, JPEG or WebP image. Binary files, credentials and unsupported formats cannot be attached.';
+
+  @override
+  String get aiAgentAttachmentUnreadable =>
+      'The selected file could not be read.';
+
+  @override
+  String aiAgentAttachmentBytes(int bytes) {
+    return '$bytes bytes';
+  }
+
+  @override
   String get aiConfigEnabled => 'Enable AI';
 
   @override
@@ -2710,6 +2730,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Review the endpoint and model name in Settings.';
 
   @override
+  String get aiAgentErrorToolDefinition =>
+      'This tool is unavailable because its definition is invalid. This turn has stopped.';
+
+  @override
   String get aiAgentErrorNetwork =>
       'Could not reach the model. Check the connection and try a new task.';
 
@@ -2740,6 +2764,34 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiAgentErrorUnsupported =>
       'This server does not support the current command adapter.';
+
+  @override
+  String get aiReasoningEffort => 'Reasoning effort';
+
+  @override
+  String get aiReasoningDefault => 'Model default';
+
+  @override
+  String get aiReasoningLow => 'Low';
+
+  @override
+  String get aiReasoningMedium => 'Medium';
+
+  @override
+  String get aiReasoningHigh => 'High';
+
+  @override
+  String get aiReasoningActive => 'Thinking…';
+
+  @override
+  String get aiReasoningSummary => 'Thinking summary';
+
+  @override
+  String get aiReasoningCompleted => 'Thinking complete';
+
+  @override
+  String get aiReasoningUnsupported =>
+      'This model does not have a supported reasoning setting. Choose Model default or another model.';
 
   @override
   String get aiConfigAdvanced => 'Model capabilities and limits';

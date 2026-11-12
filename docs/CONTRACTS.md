@@ -74,13 +74,15 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 - Typed UI façade 与 dispatcher 最终调用同一 application handler。校验和必要授权不能只写在 Widget 或 prompt 中。
 - RequestContext 来自应用装配：origin、operationId、deadline、cancellation 与 AgentAuthority；scope/目的地/精确批准由运行时绑定，模型参数不能伪造 origin=ui、authority、grant 或 approval。
 - Agent 调度先按受限 schema 校验并深拷贝为不可变参数，拒绝未知字段/超预算；缺失 authority、未开放能力与安全管理能力直接拒绝。流程：解析与校验 → 解析实际目标/版本 → 策略 → 预览/审批（若需要）→ 执行前再次校验范围与修订 → handler → 安全结果/审计。
-- 审批绑定 capability/version、规范参数摘要、目标 ID、scope revision、有效期；参数或目标变化需要新批准，不能用 host label 替代 ID。
+- 审批绑定 capability/version、规范参数摘要、目标 ID、scope revision、有效期；参数或目标变化需要新批准，不能用 host label 替代 ID。主机变更在 handler 入口捕获库修订并传入 typed 用例的 expectedRevision，转发保存/删除捕获当前规则对象并在保存队列内比对；排在已有 UI 保存之后的旧操作返回 conflict，不能覆盖刚提交的新值。按路径移动主机时，创建分组与移动在同一主机库修订提交。
 - 并行读按资源限流；同一路径写入、同终端受控命令串行。同主机不同只读通道可并行，不设阻塞全应用的总锁。
 - 普通 UI 查询不要求走 registry。hover、草稿、滚动、拖动中间帧、逐键终端输入不登记成远程工具。
 
 一期最小目录：host.list/create/update/move/delete/deleteMany、group.reorder、session.open/openLocal/close/reconnect、workspace.split/focus/closeTabs、settings.get/patch；随 M2/M3 添加 files 与 forwarding。`session.openLocal` 只从本机发现的 shell 中按 executable 选取，不允许模型传任意程序/参数，当前不向 Agent 开放。没有实现的 capability 不注册，不用空成功响应占位。
 
 M4d 向 Agent 开放的现有能力为：file.list/stat/read/write/mkdir/rename/delete、transfer.list/enqueue/cancel、host.create/update/move/delete、session.open/close/reconnect、workspace.focus/split/renameTab/closeTabs、settings.get/patch、forward.list/save/delete/start/stop，以及 `agent.*` 主机/终端/诊断/命令/输出/后台 job 工具。文件能力对 Agent 必须带 HostId，不接受“本机”省略；`file.read` 只返回 UTF-8 有界页（文件 ≤256 KiB、页 ≤12 KiB、nextOffset/eof，二进制/超限拒绝），`file.write` 默认不覆盖，覆盖走同目录临时文件加原子替换。`transfer.enqueue` 对 Agent 要求两个远端 HostId，模型不传本机路径。`host.*` 对 Agent 返回去掉地址/账号/代理/密钥的安全 DTO。`forwards_start` 的 hostId 必须与规则保存的主机一致。
+
+Agent 文件读取先校验绝对路径与规范化后的真实路径，拒绝已知密钥/凭据/环境秘密位置；完整小文件严格解码 UTF-8 并做辅助秘密过滤后才分页，返回全文件 `sha256`。覆盖必须提供该值为 `expectedSha256`，暂存前及原子发布前均重读比对，变化返回 conflict；SFTP 检查与提交之间仍无原子 CAS。暂存文件先空建、设为 0600 并核验后才写内容，替换保留原权限；取消/期限在取得文件句柄、读取、目录递归及发布前重验，Stop 后不继续派发新删除或发布；递归删除至多 64 层、20,000 项，符号链接不跟随，超限保留未删部分。SFTP 池只给新操作复用 `isCurrent` 租约，配置变化时旧活动句柄保留至各自释放，不能关闭用户正在使用的通道；单个等待者取消只释放自身占用，晚到通道无人持有时立即关闭。Agent 目录列表最多扫描 10,000 项并明确 incomplete，分页不宣称完整目录快照。
 
 `workspace.split` 保留 axis（horizontal/vertical，向右/下分屏），可提供 tabId、paneId 与 side（left/right/top/bottom）固定目标和方向；typed UI 同样复用该用例，可带 expectedLayout 拒绝过期拖放。为命中 pane 的同一目标新建一个 shell，校验缺失/超限在创建前完成，布局单次发布/保存；新会话继续走原信任/认证或本地 PTY 流程，原会话不重启。
 

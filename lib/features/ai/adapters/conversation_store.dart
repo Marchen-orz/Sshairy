@@ -4,6 +4,7 @@ import 'dart:io';
 import '../../../foundation/ids.dart';
 import '../../../foundation/json_file.dart';
 import '../domain/conversation.dart';
+import '../domain/attachment.dart';
 
 const maxAgentConversations = 100;
 const maxConversationEntries = 200;
@@ -25,7 +26,14 @@ String sanitizeConversationText(String text) => text
     .replaceAllMapped(_assignments, (match) => '${match[1]}${match[2]}[redacted]');
 
 int _textBytes(AgentConversationRecord record) =>
-    utf8.encode(record.title).length + record.entries.fold(0, (size, entry) => size + utf8.encode(entry.text).length);
+    utf8.encode(record.title).length +
+    record.entries.fold(
+      0,
+      (size, entry) =>
+          size +
+          utf8.encode(entry.text).length +
+          entry.attachments.fold(0, (sum, attachment) => sum + attachment.storedBytes),
+    );
 
 AgentConversationRecord _copy(
   AgentConversationRecord record,
@@ -65,6 +73,7 @@ List<AgentConversationRecord> boundedConversationRecords(Iterable<AgentConversat
           truncated: entry.truncated,
           retracted: entry.retracted,
           executionId: entry.executionId,
+          attachments: entry.attachments,
         ),
     ];
     var next = _copy(record, entries, truncated: record.historyTruncated);
@@ -260,7 +269,17 @@ void _validateRecord(Map<String, dynamic> record, {bool bounded = true}) {
 }
 
 void _validateEntry(Map<String, dynamic> entry) {
-  const allowed = {'kind', 'text', 'capability', 'state', 'exitCode', 'truncated', 'retracted', 'executionId'};
+  const allowed = {
+    'kind',
+    'text',
+    'capability',
+    'state',
+    'exitCode',
+    'truncated',
+    'retracted',
+    'executionId',
+    'attachments',
+  };
   if (!entry.keys.toSet().containsAll(const {'kind', 'text'}) || entry.keys.any((key) => !allowed.contains(key))) {
     throw const FormatException('conversation entry fields');
   }
@@ -270,6 +289,15 @@ void _validateEntry(Map<String, dynamic> entry) {
       (entry.containsKey('truncated') && entry['truncated'] is! bool) ||
       (entry.containsKey('retracted') && entry['retracted'] is! bool)) {
     throw const FormatException('conversation entry value');
+  }
+  if (entry.containsKey('attachments')) {
+    final values = entry['attachments'];
+    if (entry['kind'] != ConversationEntryKind.user.name ||
+        values is! List ||
+        values.any((value) => value is! Map<String, dynamic>)) {
+      throw const FormatException('conversation attachments');
+    }
+    checkedAgentAttachments(values.map((value) => AgentAttachment.fromJson((value as Map).cast<String, Object?>())));
   }
   final capability = entry['capability'], state = entry['state'], exitCode = entry['exitCode'];
   final executionId = entry['executionId'];
@@ -299,6 +327,8 @@ Map<String, dynamic> _encode(AgentConversationRecord record) => {
       {
         'kind': entry.kind.name,
         'text': entry.text,
+        if (entry.attachments.isNotEmpty)
+          'attachments': [for (final attachment in entry.attachments) attachment.toJson()],
         if (entry.capability != null) 'capability': entry.capability,
         if (entry.state != null) 'state': entry.state,
         if (entry.exitCode != null) 'exitCode': entry.exitCode,
@@ -329,6 +359,10 @@ AgentConversationRecord _decode(Map<String, dynamic> record) => AgentConversatio
         truncated: entry['truncated'] as bool? ?? false,
         retracted: entry['retracted'] as bool? ?? false,
         executionId: entry['executionId'] as String?,
+        attachments: checkedAgentAttachments([
+          for (final attachment in entry['attachments'] as List? ?? const [])
+            AgentAttachment.fromJson((attachment as Map).cast<String, Object?>()),
+        ]),
       ),
   ],
 );

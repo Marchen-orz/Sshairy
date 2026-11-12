@@ -70,6 +70,9 @@ class Forwards extends Notifier<List<ForwardState>> {
 
   ForwardState? byId(ForwardId id) => state.where((s) => s.rule.id == id).firstOrNull;
 
+  /// Opaque local identity for approvals; a stopped/restarted listener is a different resource.
+  Object? resourceBinding(ForwardId id) => _runs[id]?.lease ?? _runs[id] ?? byId(id)?.rule;
+
   /// Listening beyond loopback needs the user's explicit yes, unless the saved rule already listens there.
   bool needsExposureConfirmation(ForwardRule rule) {
     final saved = byId(rule.id)?.rule;
@@ -78,7 +81,15 @@ class Forwards extends Notifier<List<ForwardState>> {
 
   /// Rules that hold a listener or a lease, or are working towards or away from one, cannot change.
   /// [exposureConfirmed] says the user agreed to [needsExposureConfirmation].
-  Future<void> save(ForwardRule rule, {bool exposureConfirmed = false}) => _persist((rules) {
+  Future<void> save(
+    ForwardRule rule, {
+    bool exposureConfirmed = false,
+    bool checkExpected = false,
+    ForwardRule? expected,
+  }) => _persist((rules) {
+    if (checkExpected && !identical(rules.where((r) => r.id == rule.id).firstOrNull, expected)) {
+      throw const ForwardError(ForwardErrors.conflict);
+    }
     rule.validate();
     if (_runs.containsKey(rule.id)) throw const ForwardError(ForwardErrors.busy);
     if (!exposureConfirmed && needsExposureConfirmation(rule)) {
@@ -88,7 +99,10 @@ class Forwards extends Notifier<List<ForwardState>> {
     return index < 0 ? [...rules, rule] : ([...rules]..[index] = rule);
   });
 
-  Future<void> delete(ForwardId id) => _persist((rules) {
+  Future<void> delete(ForwardId id, {bool checkExpected = false, ForwardRule? expected}) => _persist((rules) {
+    if (checkExpected && !identical(rules.where((r) => r.id == id).firstOrNull, expected)) {
+      throw const ForwardError(ForwardErrors.conflict);
+    }
     if (_runs.containsKey(id)) throw const ForwardError(ForwardErrors.busy);
     return [
       for (final r in rules)

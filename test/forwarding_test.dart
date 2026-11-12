@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/capabilities/forwarding.dart';
 import 'package:sshairy/features/connections/api.dart';
+import 'package:sshairy/features/capabilities/api.dart';
+import 'package:sshairy/foundation/result.dart';
 import 'package:sshairy/features/connections/domain/transport.dart';
 import 'package:sshairy/features/forwarding/api.dart';
 import 'package:sshairy/features/forwarding/application/forwarding.dart' show forwardRuntimeProvider;
@@ -410,6 +412,32 @@ void main() {
       container.dispose();
       manager.closeAll();
       dir.deleteSync(recursive: true);
+    });
+
+    for (final action in ['save', 'delete']) {
+      test('queued Agent forward.$action cannot replace a newer UI rule', () async {
+        await forwards.save(rule('r'));
+        final ui = forwards.save(rule('r', port: 8081));
+        final cap = container
+            .read(Provider((ref) => forwardCapabilities(ref)))
+            .firstWhere((c) => c.id == 'forward.$action');
+        final pending = cap.invoke(
+          action == 'save' ? rule('r', port: 8082).toJson() : {'id': 'r'},
+          RequestContext(Origin.agent),
+        );
+        await ui;
+        expect(await pending, isA<Err<Object?>>().having((e) => e.error.code, 'code', 'conflict'));
+        expect(forwards.byId(const ForwardId('r'))!.rule.listenPort, 8081);
+      });
+    }
+
+    test('queued Agent forward creation cannot overwrite a concurrently created ID', () async {
+      final ui = forwards.save(rule('new', port: 8081));
+      final cap = container.read(Provider((ref) => forwardCapabilities(ref))).firstWhere((c) => c.id == 'forward.save');
+      final pending = cap.invoke(rule('new', port: 8082).toJson(), RequestContext(Origin.agent));
+      await ui;
+      expect(await pending, isA<Err<Object?>>().having((e) => e.error.code, 'code', 'conflict'));
+      expect(forwards.byId(const ForwardId('new'))!.rule.listenPort, 8081);
     });
 
     test('a local forward carries data to its destination and releases everything on stop', () async {

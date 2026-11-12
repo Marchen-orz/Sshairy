@@ -5,12 +5,18 @@ import '../domain/model.dart';
 
 /// Compacts only data already present in an authorized request, at complete tool-group boundaries.
 class AgentContext {
-  AgentContext({required String input, required this.goalInput, Map<String, Object?>? previous})
-    : _messages = [ModelMessage(ModelRole.user, text: input)],
-      // ignore: prefer_initializing_formals
-      _previous = previous;
+  AgentContext({
+    required String input,
+    required this.goalInput,
+    Map<String, Object?>? previous,
+    Iterable<AgentAttachment> attachments = const [],
+  }) : _attachments = checkedAgentAttachments(attachments),
+       _messages = [ModelMessage(ModelRole.user, text: input, attachments: attachments)],
+       // ignore: prefer_initializing_formals
+       _previous = previous;
 
   final String goalInput;
+  final List<AgentAttachment> _attachments;
   final List<ModelMessage> _messages;
   final _summaries = <Map<String, Object?>>[];
   Map<String, Object?>? _previous;
@@ -75,7 +81,10 @@ class AgentContext {
       if (latest.isNotEmpty) _summaries.add(_digest(latest));
       latest = [];
     }
-    List<ModelMessage> candidate() => [ModelMessage(ModelRole.user, text: _summaryInput()), ...latest];
+    List<ModelMessage> candidate() => [
+      ModelMessage(ModelRole.user, text: _summaryInput(), attachments: _attachments),
+      ...latest,
+    ];
     final target = budget * 6 ~/ 10;
     while (_summaries.length > 1 && (_summaryBytes > 8192 || estimate(candidate()) > target)) {
       _summaries.removeAt(0);
@@ -208,6 +217,15 @@ class AgentContext {
     });
     // Private continuation is deliberately opaque; reserve its full per-message cap, then let HTTP check exact bytes.
     final privateBytes = messages.where((message) => message.opaque != null).length * (1 << 20);
-    return utf8.encode(encoded).length + privateBytes + 1024 + messages.length * 256 + tools.length * 256;
+    final attachmentBytes = messages.fold(
+      0,
+      (size, message) => size + message.attachments.fold(0, (sum, value) => sum + value.storedBytes),
+    );
+    return utf8.encode(encoded).length +
+        privateBytes +
+        attachmentBytes +
+        1024 +
+        messages.length * 256 +
+        tools.length * 256;
   }
 }

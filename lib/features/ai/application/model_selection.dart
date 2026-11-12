@@ -39,8 +39,42 @@ class SelectedAgentModel extends Notifier<String?> {
   static String destinationOf(ModelProfile profile) => '${profile.protocol.name} ${profile.endpoint}';
 }
 
+/// Separates the selection guard from the runtime's dependency on the selected profile.
+final agentTurnActiveProvider = NotifierProvider<AgentTurnActive, bool>(AgentTurnActive.new);
+
+class AgentTurnActive extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void update(bool active) {
+    if (state != active) state = active;
+  }
+}
+
+/// A conversation-local override; null follows the saved default.
+final selectedAgentReasoningProvider = NotifierProvider<SelectedAgentReasoning, ReasoningEffort?>(
+  SelectedAgentReasoning.new,
+);
+
+class SelectedAgentReasoning extends Notifier<ReasoningEffort?> {
+  @override
+  ReasoningEffort? build() {
+    ref.watch(aiConfigurationProvider);
+    return null;
+  }
+
+  void select(ReasoningEffort effort) {
+    if (!ref.read(agentTurnActiveProvider)) state = effort;
+  }
+
+  void reset() {
+    if (!ref.read(agentTurnActiveProvider)) state = null;
+  }
+}
+
 final effectiveAgentProfileProvider = Provider<ModelProfile?>((ref) {
   final profile = ref.watch(aiConfigurationProvider).profile;
   final selected = ref.watch(selectedAgentModelProvider);
-  return profile?.withModel(selected ?? profile.model, tools: true);
+  final reasoning = ref.watch(selectedAgentReasoningProvider);
+  return profile?.withModel(selected ?? profile.model, tools: true, reasoningEffort: reasoning);
 });

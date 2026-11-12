@@ -11,6 +11,7 @@ import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/design/select.dart';
 import 'package:sshairy/features/ai/presentation/model_picker.dart';
 import 'package:sshairy/features/ai/application/configuration.dart';
+import 'package:sshairy/features/ai/application/model_selection.dart';
 import 'package:sshairy/features/ai/domain/model_profile.dart';
 import 'package:sshairy/features/ai/presentation/ai_settings.dart';
 import 'package:sshairy/features/credentials/adapters/secure_store.dart';
@@ -603,8 +604,11 @@ void main() {
     expect(tester.widget<TextField>(key).enabled, isTrue);
     expect(tester.widget<AiModelPicker>(model).value, isEmpty);
     final review = find.byKey(const ValueKey('ai-config-review-model'));
-    expect(tester.widget<AiModelPicker>(review).value, isEmpty);
+    expect(tester.widget<AiModelPicker>(review).value, tester.widget<AiModelPicker>(model).value);
     expect(tester.widget<AiModelPicker>(review).label, 'Approval model');
+    tester.widget<AiModelPicker>(model).onChanged!('new-agent-model');
+    await tester.pump();
+    expect(tester.widget<AiModelPicker>(review).value, 'new-agent-model');
     expect(tester.getTopLeft(model).dy, lessThan(tester.getTopLeft(review).dy));
     expect(tester.widget<AppSelect<int>>(find.byKey(const ValueKey('ai-config-context-preset'))).value, 1000000);
     expect(tester.widget<TextFormField>(find.byKey(const ValueKey('ai-config-max-output'))).controller!.text, '4096');
@@ -880,7 +884,8 @@ void main() {
     await tester.enterText(key, 'synthetic-new-key');
     tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-model'))).onChanged!('agent-new');
     await tester.pump();
-    expect(tester.widget<AiModelPicker>(review).value, 'agent-new');
+    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
+    expect(tester.widget<AiModelPicker>(review).value, scope.read(effectiveAgentProfileProvider)!.model);
     expect(tester.widget<TextField>(key).controller!.text, 'synthetic-new-key');
     tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-inline-model'))).onChanged!('inline-fast');
     tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-completion-model'))).onChanged!('complete-fast');
@@ -889,7 +894,6 @@ void main() {
     final preset = tester.widget<AppSelect<int>>(find.byKey(const ValueKey('ai-config-context-preset')));
     preset.onChanged!(256000);
     await tester.pump();
-    final scope = ProviderScope.containerOf(tester.element(find.byType(AiSettings)));
     await tester.ensureVisible(find.byKey(const ValueKey('ai-config-save')));
     await tester.tap(find.byKey(const ValueKey('ai-config-save')));
     await tester.pump();

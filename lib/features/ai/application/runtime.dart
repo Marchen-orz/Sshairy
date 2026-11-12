@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -14,6 +15,7 @@ import '../domain/agent.dart';
 import '../domain/agent_tool.dart';
 import '../domain/conversation.dart';
 import '../domain/model.dart';
+import '../domain/resources.dart';
 import 'context.dart';
 import 'output_store.dart';
 import 'reviewer.dart';
@@ -23,10 +25,13 @@ sealed class AgentTimelineEntry {
 }
 
 class AgentChatEntry extends AgentTimelineEntry {
-  AgentChatEntry(this.role, this.text, {this.retracted = false});
+  AgentChatEntry(this.role, this.text, {this.retracted = false, this.attachments = const []});
+  final List<AgentAttachment> attachments;
   final String role;
   String text;
   final bool retracted;
+  String reasoningSummary = '';
+  bool reasoningReceived = false, reasoningActive = false;
 }
 
 class AgentExecution extends AgentTimelineEntry {
@@ -48,21 +53,112 @@ class AgentExecution extends AgentTimelineEntry {
   int? exitCode;
   StoredOutput? output;
   String? sharedText;
-  bool archived = false, historyTruncated = false, retracted = false;
+  bool archived = false, historyTruncated = false, retracted = false, outputFiltered = false;
 }
 
 class _AgentJob {
-  _AgentJob(this.id, this.target, this.output, this.cancel, this.command, this.cwd, this.timeout, this.record);
-  final String id, command, cwd;
+  _AgentJob(
+    this.id,
+    this.target,
+    this.output,
+    this.cancel,
+    this.command,
+    this.cwd,
+    this.timeout,
+    this.record,
+    this.turnToken,
+    this.owner,
+  ) {
+    stdout = const Utf8Decoder(allowMalformed: true)
+        .startChunkedConversion(_JobTextSink((text) => _append(false, text), () => projectionFiltered = true));
+    stderr = const Utf8Decoder(allowMalformed: true)
+        .startChunkedConversion(_JobTextSink((text) => _append(true, text), () => projectionFiltered = true));
+  }
+  final String id, command, cwd, owner;
   final AgentTarget target;
   final StoredOutput output;
-  final CancellationToken cancel;
+  final CancellationToken cancel, turnToken;
   final Duration timeout;
   final OperationRecord record;
   final started = DateTime.now();
+  final projection = BytesBuilder(copy: false);
+  late final ByteConversionSink stdout, stderr;
   String state = 'running';
   int? exitCode;
-  bool done = false;
+  bool done = false, projectionTruncated = false, projectionFiltered = false;
+  bool? _lastStderr;
+
+  void _append(bool isStderr, String text) {
+    if (text.isEmpty || projectionTruncated) return;
+    final marker = _lastStderr == isStderr || _lastStderr == null && !isStderr
+        ? ''
+        : isStderr
+        ? '\n[stderr]\n'
+        : '\n[stdout]\n';
+    _lastStderr = isStderr;
+    final data = utf8.encode('$marker$text');
+    final room = 65536 - projection.length;
+    var end = min(room, data.length);
+    while (end > 0 && end < data.length && (data[end] & 0xc0) == 0x80) {
+      end--;
+    }
+    if (end > 0) projection.add(Uint8List.fromList(data.sublist(0, end)));
+    projectionTruncated = end < data.length;
+  }
+}
+
+class _JobTextSink implements Sink<String> {
+  // Keep a complete bounded line so a split secret marker cannot escape before it is recognized.
+  _JobTextSink(this.onText, this.onFiltered);
+  final void Function(String) onText;
+  final void Function() onFiltered;
+  final _line = StringBuffer();
+  var _lineBytes = 0, _discardLine = false, _privateKey = false;
+  static final _controls = RegExp(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]');
+  static final _privateKeyStart = RegExp(r'BEGIN [A-Z ]*PRIVATE KEY', caseSensitive: false);
+  static final _privateKeyEnd = RegExp(r'END [A-Z ]*PRIVATE KEY', caseSensitive: false);
+
+  @override
+  void add(String data) {
+    var start = 0;
+    while (start < data.length) {
+      final newline = data.indexOf('\n', start);
+      final end = newline < 0 ? data.length : newline;
+      if (!_discardLine) {
+        final part = data.substring(start, end);
+        _lineBytes += utf8.encode(part).length;
+        if (_lineBytes > 65536) {
+          _discardLine = true;
+          _line.clear();
+          onFiltered();
+        } else {
+          _line.write(part);
+        }
+      }
+      if (newline < 0) return;
+      _finishLine(true);
+      start = newline + 1;
+    }
+  }
+
+  void _finishLine(bool newline) {
+    if (!_discardLine) {
+      final text = _line.toString().replaceFirst(RegExp(r'\r$'), '');
+      _privateKey |= _privateKeyStart.hasMatch(text);
+      if (_privateKey || terminalAiSensitiveText(text) || _controls.hasMatch(text)) {
+        onFiltered();
+      } else if (text.isNotEmpty || newline) {
+        onText('$text${newline ? '\n' : ''}');
+      }
+      if (_privateKeyEnd.hasMatch(text)) _privateKey = false;
+    }
+    _line.clear();
+    _lineBytes = 0;
+    _discardLine = false;
+  }
+
+  @override
+  void close() => _finishLine(false);
 }
 
 class AgentApproval {
@@ -99,7 +195,7 @@ class _Prepared {
 }
 
 /// A single owned turn. Model calls propose actions; dispatcher policy and typed handlers perform them.
-class AgentRuntime extends ChangeNotifier implements AgentAuthority {
+class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvocation {
   AgentRuntime({
     required this.model,
     required this.backend,
@@ -110,6 +206,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     this.estimateInputBytes,
     this.hostRoutes = _noRoutes,
     this.terminalHistory,
+    this.resources,
     OutputStore? outputs,
   }) : outputs = outputs ?? OutputStore();
   final ModelProvider model;
@@ -122,6 +219,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
   final OutputStore outputs;
   final Map<HostId, String> Function() hostRoutes;
   final TerminalHistoryReader? terminalHistory;
+  final AgentResourceReader? resources;
   List<TerminalHistorySession> _terminalSessions = const [];
   SessionId? _defaultTerminal;
   final _readableTerminals = <SessionId>{}, _deniedTerminals = <SessionId>{};
@@ -170,6 +268,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
   bool get busy => _cancel != null;
   HostId? get resolvedHost => _resolvedHost;
   AgentPermissionMode get permissionMode => _scope?.permissionMode ?? AgentPermissionMode.confirm;
+  ReasoningEffort get reasoningEffort => _profile?.reasoningEffort ?? ReasoningEffort.modelDefault;
   int contextUsedTokens = 0, contextWindow = 0;
   double get contextUsageRatio => contextWindow == 0 ? 0 : (contextUsedTokens / contextWindow).clamp(0, 1);
   Future<void> get settled => _working ?? Future.value();
@@ -221,7 +320,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     if (_cancel == null || _cancel!.isCancelled) {
       throw const AgentFailure('cancelled');
     }
-    if (!current.enabled || current.revision != _configRevision || current.profile?.identity != _profile?.identity) {
+    if (!current.enabled ||
+        current.revision != _configRevision ||
+        current.profile?.identity != _profile?.identity ||
+        current.profile?.reasoningEffort != _profile?.reasoningEffort) {
       throw const AgentFailure('scopeChanged');
     }
     if (DateTime.now().isAfter(_deadline!)) {
@@ -261,8 +363,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     List<ConversationEntry> history, {
     bool answerOnly = false,
     bool appendGoal = true,
+    List<AgentAttachment> attachments = const [],
   }) {
     if (busy || _disposed) return Future.value();
+    _seedAttachments = checkedAgentAttachments(attachments);
     _conversationSeed = List.unmodifiable(history);
     _seedAnswerOnly = answerOnly;
     _seedAppendGoal = appendGoal;
@@ -271,6 +375,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     } finally {
       // Also clear the seed when a test/runtime override handles start itself.
       _conversationSeed = null;
+      _seedAttachments = const [];
       _seedAnswerOnly = false;
       _seedAppendGoal = true;
     }
@@ -313,12 +418,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         _executions.add(execution);
         _timeline.add(execution);
       } else {
-        _addMessage(AgentChatEntry(entry.kind.name, entry.text, retracted: entry.retracted));
+        _addMessage(
+          AgentChatEntry(entry.kind.name, entry.text, retracted: entry.retracted, attachments: entry.attachments),
+        );
       }
     }
   }
 
-  static Map<String, Object?>? _historyData(List<ConversationEntry>? history) {
+  static Map<String, Object?>? _historyData(List<ConversationEntry>? history, Set<String> sentAttachments) {
     if (history == null || history.isEmpty) return null;
     final entries = <Map<String, Object?>>[];
     var truncated = history.any((entry) => entry.truncated);
@@ -327,6 +434,11 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       final data = <String, Object?>{
         'kind': entry.kind.name,
         'text': entry.text,
+        if (entry.attachments.isNotEmpty)
+          'attachments': [
+            for (final attachment in entry.attachments)
+              {...attachment.description, 'contentIncluded': sentAttachments.contains(attachment.id)},
+          ],
         if (entry.kind == ConversationEntryKind.execution) ...{
           'capability': entry.capability,
           'state': AgentExecution.restoredState(entry.capability, entry.state),
@@ -345,8 +457,32 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     return {'entries': entries, 'truncated': truncated};
   }
 
+  List<AgentAttachment> _seedAttachments = const [];
+
+  static List<AgentAttachment> _requestAttachments(List<AgentAttachment> current, List<ConversationEntry>? history) {
+    final result = [...current];
+    var bytes = current.fold(0, (size, value) => size + value.bytes);
+    final ids = current.map((value) => value.id).toSet();
+    for (final entry in (history ?? const <ConversationEntry>[]).reversed.take(32)) {
+      if (entry.retracted) continue;
+      for (final attachment in entry.attachments) {
+        if (ids.contains(attachment.id)) continue;
+        if (result.length >= AgentAttachmentLimits.count ||
+            bytes + attachment.bytes > AgentAttachmentLimits.totalBytes) {
+          continue;
+        }
+        result.add(attachment);
+        ids.add(attachment.id);
+        bytes += attachment.bytes;
+      }
+    }
+    return checkedAgentAttachments(result);
+  }
+
   Future<void> start(String goal, AgentScope scope) {
     final seed = _conversationSeed;
+    final attachments = _seedAttachments;
+    _seedAttachments = const [];
     final answerOnly = _seedAnswerOnly, appendGoal = _seedAppendGoal;
     _conversationSeed = null;
     _seedAnswerOnly = false;
@@ -356,7 +492,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     if (_disposed) return Future.value();
     if (!config.enabled ||
         config.profile == null ||
-        goal.trim().isEmpty ||
+        (goal.trim().isEmpty && attachments.isEmpty) ||
         utf8.encode(goal).length > 16384 ||
         scope.hosts.length > 5) {
       error = 'notConfigured';
@@ -446,16 +582,21 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     }
     _resolvedHost = _access!.defaultHost;
     _conversationBytes = utf8.encode(goal).length;
-    if (appendGoal) _addMessage(AgentChatEntry('user', goal));
+    if (appendGoal) _addMessage(AgentChatEntry('user', goal, attachments: attachments));
     _phase(AgentPhase.preparing);
-    final work = _run(goal, _historyData(seed));
+    final requestAttachments = _requestAttachments(attachments, seed);
+    final work = _run(
+      goal,
+      _historyData(seed, requestAttachments.map((value) => value.id).toSet()),
+      requestAttachments,
+    );
     _working = work;
     return work;
   }
 
   static final toolIds = {for (final tool in agentTools) tool.name: tool.capability};
 
-  Future<void> _run(String goal, Map<String, Object?>? previous) async {
+  Future<void> _run(String goal, Map<String, Object?>? previous, List<AgentAttachment> attachments) async {
     final cancel = _cancel!;
     final timer = Timer(const Duration(minutes: 15), cancel.cancel);
     final validity = Timer.periodic(const Duration(milliseconds: 200), (_) {
@@ -496,7 +637,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           : goal;
       _conversationBytes = utf8.encode(input).length;
       final goalInput = _hasTools || _answerOnly ? jsonEncode(goalData) : goal;
-      final history = AgentContext(input: input, goalInput: goalInput, previous: previous);
+      final history = AgentContext(input: input, goalInput: goalInput, previous: previous, attachments: attachments);
       var toolCount = 0, messageCount = 1;
       for (var step = 0; step < 20; step++) {
         _check();
@@ -529,7 +670,13 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           cancel,
         )) {
           _check();
-          if (event is ModelTextDelta) {
+          if (event is ModelReasoningDelta) {
+            visible.reasoningReceived = true;
+            visible.reasoningActive = true;
+            visible.reasoningSummary = _bounded('${visible.reasoningSummary}${event.summary}', 2048);
+            _queueEmit();
+          } else if (event is ModelTextDelta) {
+            visible.reasoningActive = false;
             final bytes = utf8.encode(event.text).length;
             messageBytes += bytes;
             _conversationBytes += bytes;
@@ -551,6 +698,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           throw const AgentFailure('messageLimit');
         }
         visible.text = complete.text;
+        visible.reasoningActive = false;
         contextUsedTokens = history.estimatedTokens(profile, _system, tools, pending: complete);
         _queueEmit();
         if (complete.calls.length > 8 || toolCount + complete.calls.length > 64 || messageCount >= 200) {
@@ -616,6 +764,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           }
           _check();
           if (_uncertain) throw const AgentFailure('outcomeUnknown');
+          if (result case Err(error: AppError(code: 'invalidSchema'))) {
+            throw const AgentFailure('invalidSchema');
+          }
           final text = jsonEncode(switch (result) {
             Ok(:final value) => value,
             Err(:final error) => {'error': error.code},
@@ -653,6 +804,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       for (final execution in _executions) {
         if (execution.state != 'pending' && execution.state != 'running') continue;
         execution.state = cancel.isCancelled ? 'cancelled' : 'interrupted';
+      }
+      for (final message in _messages) {
+        message.reasoningActive = false;
       }
       approval = null;
       hostApproval = null;
@@ -841,107 +995,59 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
 
   AgentTool? _toolFor(String capability) => agentTools.where((tool) => tool.capability == capability).firstOrNull;
 
-  List<HostId>? _hostsFor(AgentTool tool, Map<String, Object?> args) {
-    final hosts = <HostId>[];
+  List<HostId>? _hostsFor(AgentTool tool, Map<String, Object?> args, {AgentResourceSnapshot? resource}) {
+    final resolved =
+        resource ??
+        (agentResourceCapabilities.contains(tool.capability) ? resources?.resolve(tool.capability, args) : null);
+    if (agentResourceCapabilities.contains(tool.capability) && resolved == null) return null;
+    final hosts = <HostId>[...?resolved?.hosts];
     for (final field in tool.hostFields) {
       final raw = args[field];
       if (raw is! String || raw.isEmpty) return null;
       final host = HostId(raw);
-      if (!_availableHosts.any((entry) => entry.id == host)) return null;
       if (!hosts.contains(host)) hosts.add(host);
     }
+    if (hosts.any((host) => !_availableHosts.any((entry) => entry.id == host))) return null;
     return hosts;
   }
 
-  String _binding(Capability capability, Map<String, Object?> args, AgentTarget? target, List<HostId> hosts) =>
-      jsonEncode([
-        capability.id,
-        capability.version,
-        {
-          for (final key in {...args.keys, if (capability.id == 'agent.execute') 'timeoutSeconds'}.toList()..sort())
-            key: key == 'timeoutSeconds' ? (args[key] as num?)?.toInt() ?? 60 : args[key],
-        },
-        _owner,
-        _scope!.revision,
-        permissionMode.name,
-        _configRevision,
-        _profile!.identity,
-        target?.identity,
-        [for (final host in hosts) hostRoutes()[host]],
-      ]);
+  String _binding(
+    Capability capability,
+    Map<String, Object?> args,
+    AgentTarget? target,
+    List<HostId> hosts, {
+    AgentResourceSnapshot? resource,
+  }) => jsonEncode([
+    if (agentResourceCapabilities.contains(capability.id))
+      (resource ?? resources?.resolve(capability.id, args))?.binding,
+    capability.id,
+    capability.version,
+    {
+      for (final key in {...args.keys, if (capability.id == 'agent.execute') 'timeoutSeconds'}.toList()..sort())
+        key: key == 'timeoutSeconds' ? (args[key] as num?)?.toInt() ?? 60 : args[key],
+    },
+    _owner,
+    _scope!.revision,
+    permissionMode.name,
+    _configRevision,
+    _profile!.identity,
+    target?.identity,
+    [for (final host in hosts) hostRoutes()[host]],
+  ]);
 
-  String _approvalSummary(AgentTool tool, Map<String, Object?> args) {
-    if (tool.capability == 'settings.patch') {
-      return _bounded(
-        jsonEncode({
-          for (final entry in args.entries)
-            if (entry.key != 'expectedRevision') entry.key: entry.value,
-          if (args['expectedRevision'] != null) 'expectedRevision': args['expectedRevision'],
-        }),
-        1024,
-      );
-    }
+  String _approvalSummary(AgentTool tool, Map<String, Object?> args, AgentResourceSnapshot? resource) {
     if (tool.capability == 'file.write') {
       final text = args['text'] as String? ?? '';
-      return _bounded(
-        jsonEncode({
-          'path': args['path'],
-          'overwrite': args['overwrite'] == true,
-          'bytes': utf8.encode(text).length,
-          'preview': _bounded(text, 512),
-        }),
-        1024,
-      );
-    }
-    const shown = {
-      'path',
-      'from',
-      'to',
-      'tabId',
-      'paneId',
-      'axis',
-      'side',
-      'scope',
-      'title',
-      'transferId',
-      'paths',
-      'targetDir',
-      'hostId',
-      'fromHostId',
-      'toHostId',
-      'hostIds',
-      'id',
-      'kind',
-      'listenAddress',
-      'listenPort',
-      'destinationAddress',
-      'destinationPort',
-      'autoStart',
-      'autoReconnect',
-      'confirmExposed',
-      'label',
-      'group',
-      'groupId',
-      'address',
-      'port',
-      'username',
-      'keyPath',
-      'identityId',
-      'jumpHostId',
-      'tags',
-      'pinned',
-      'overwrite',
-      'view',
-      'template',
-      'maxLines',
-    };
-    return _bounded(
-      jsonEncode({
+      return jsonEncode({
         for (final entry in args.entries)
-          if (shown.contains(entry.key)) entry.key: entry.value,
-      }),
-      1024,
-    );
+          if (entry.key != 'text') entry.key: entry.value,
+        'bytes': utf8.encode(text).length,
+        'preview': _bounded(text, 512),
+        'previewTruncated': utf8.encode(text).length > 512,
+      });
+    }
+    // Every field in these locally validated schemas is non-secret; omitting one can hide the actual action.
+    return jsonEncode({...args, if (resource != null) 'affected': resource.details});
   }
 
   String _approvalKey(AgentTool tool, Map<String, Object?> args, List<HostId> hosts, Capability capability) {
@@ -1022,7 +1128,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         }
         return const Ok(null);
       }
-      final hosts = _hostsFor(tool, args);
+      final resource = agentResourceCapabilities.contains(capability.id)
+          ? resources?.resolve(capability.id, args)
+          : null;
+      final hosts = _hostsFor(tool, args, resource: resource);
       if (hosts == null) return const Err(AppError('outsideScope'));
       for (final host in hosts) {
         if (!_hostGranted(host)) {
@@ -1041,7 +1150,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         target = await _prepareActionTarget(hosts.single, token!, owner);
         if (target == null) return const Err(AppError('scopeChanged'));
       }
-      var binding = _binding(capability, args, target, hosts);
+      var binding = _binding(capability, args, target, hosts, resource: resource);
       if (_denied.contains(binding)) return const Err(AppError('denied'));
       if (!diagnostic) _prepared[context.operationId] = _Prepared(target, binding);
       currentTurn();
@@ -1091,7 +1200,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           ];
           final accepted = await _approveAction(
             labels.join(', '),
-            _approvalSummary(tool, args),
+            _approvalSummary(tool, args, resource),
             '',
             capability,
             host: hosts.firstOrNull,
@@ -1185,6 +1294,83 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     ]);
   }
 
+  @override
+  Future<Result<Object?>> invokeAuthorized(
+    Capability capability,
+    Map<String, Object?> args,
+    RequestContext context,
+  ) async {
+    // Exec and jobs own their richer intent/unknown-result handling.
+    if (capability.effect != Effect.remoteWrite || capability.id.startsWith('agent.')) {
+      if (agentResourceCapabilities.contains(capability.id)) {
+        _check();
+        final tool = _toolFor(capability.id), prepared = _prepared[context.operationId];
+        final resource = resources?.resolve(capability.id, args);
+        final hosts = tool == null ? null : _hostsFor(tool, args, resource: resource);
+        if (prepared == null ||
+            resource == null ||
+            hosts == null ||
+            prepared.binding != _binding(capability, args, prepared.target, hosts, resource: resource)) {
+          return const Err(AppError('scopeChanged'));
+        }
+      }
+      return capability.invoke(args, context);
+    }
+    final token = _cancel, owner = _owner;
+    _checkTurn(token, owner);
+    final tool = _toolFor(capability.id);
+    final hosts = tool == null ? null : _hostsFor(tool, args);
+    if (hosts == null || hosts.isEmpty) return const Err(AppError('outsideScope'));
+    final record = OperationRecord(
+      context.operationId,
+      hosts.first,
+      capability.id,
+      DateTime.now(),
+      OperationState.intent,
+    );
+    try {
+      await journal.record(record);
+    } on Object {
+      return const Err(AppError('journalFailed'));
+    }
+    var submitted = false;
+    try {
+      _checkTurn(token, owner);
+      final current = await revalidate(capability, args, context);
+      if (current case Err<void>(:final error)) {
+        await journal.record(record.withState(OperationState.failed));
+        return Err(error);
+      }
+      _checkTurn(token, owner);
+      submitted = true;
+      final result = await capability.invoke(args, context);
+      final uncertain =
+          result is Err && const {'lost', 'io', 'connect', 'cancelled', 'deadlineExceeded'}.contains(result.error.code);
+      await journal.record(
+        record.withState(
+          uncertain
+              ? OperationState.outcomeUnknown
+              : result is Err
+              ? OperationState.failed
+              : OperationState.completed,
+        ),
+      );
+      if (uncertain) {
+        if (identical(token, _cancel) && owner == _owner) _uncertain = true;
+        return const Err(AppError('outcomeUnknown'));
+      }
+      return result;
+    } on Object {
+      try {
+        await journal.record(record.withState(submitted ? OperationState.outcomeUnknown : OperationState.failed));
+      } on Object {
+        if (identical(token, _cancel) && owner == _owner) error = 'journalFailed';
+      }
+      if (submitted && identical(token, _cancel) && owner == _owner) _uncertain = true;
+      return Err(AppError(submitted ? 'outcomeUnknown' : 'cancelled'));
+    }
+  }
+
   Result<Object?> readOutput(Map<String, Object?> args) {
     _check();
     final host = _host(args);
@@ -1205,8 +1391,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     'state': job.state,
     'done': job.done,
     'exitCode': ?job.exitCode,
-    'bytes': job.output.length,
-    'truncated': job.output.truncated,
+    'bytes': job.projection.length,
+    'truncated': job.output.truncated || job.projectionTruncated,
+    'filtered': job.projectionFiltered,
   };
 
   _AgentJob? _job(Map<String, Object?> args) {
@@ -1251,7 +1438,29 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     } on Object {
       return const Err(AppError('journalFailed'));
     }
-    final job = _AgentJob(jobId, target, output, cancel, command, cwd, Duration(seconds: timeout), record);
+    try {
+      _checkTurn(token, owner);
+      if (!target.current) throw const AgentFailure('scopeChanged');
+    } on AgentFailure catch (failure) {
+      try {
+        await journal.record(record.withState(OperationState.failed));
+      } on Object {
+        return const Err(AppError('journalFailed'));
+      }
+      return Err(AppError(failure.code));
+    }
+    final job = _AgentJob(
+      jobId,
+      target,
+      output,
+      cancel,
+      command,
+      cwd,
+      Duration(seconds: timeout),
+      record,
+      token,
+      owner,
+    );
     _jobs[jobId] = job;
     unawaited(_runJob(job));
     return Ok({'jobId': jobId, 'state': job.state});
@@ -1259,11 +1468,27 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
 
   Future<void> _runJob(_AgentJob job) async {
     final wrapped = "sh -c ${_quote('cd -- ${_quote(job.cwd)} || exit\n${job.command}')}";
+    bool currentTurn() => !_disposed && identical(job.turnToken, _cancel) && job.owner == _owner;
+    var submitted = false;
+    Timer? watch;
     try {
+      _checkTurn(job.turnToken, job.owner);
+      if (job.cancel.isCancelled || !job.target.current) throw const AgentFailure('scopeChanged');
+      watch = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        try {
+          _checkTurn(job.turnToken, job.owner);
+          if (!job.target.current) job.cancel.cancel();
+        } on Object {
+          job.cancel.cancel();
+        }
+      });
+      submitted = true;
       job.exitCode = await job.target.execute(
         wrapped,
         (stderr, bytes) {
-          if (!job.cancel.isCancelled) outputs.append(job.output, stderr, bytes);
+          if (!currentTurn() || job.cancel.isCancelled) return;
+          outputs.append(job.output, stderr, bytes);
+          (stderr ? job.stderr : job.stdout).add(bytes);
         },
         timeout: job.timeout,
         cancel: job.cancel,
@@ -1273,15 +1498,13 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           : job.exitCode == 0
           ? 'completed'
           : 'failed';
-    } on AgentFailure catch (failure) {
-      job.state = job.cancel.isCancelled
-          ? 'cancelled'
-          : failure.code == 'outcomeUnknown'
-          ? 'outcomeUnknown'
-          : 'failed';
     } on Object {
-      job.state = job.cancel.isCancelled ? 'cancelled' : 'failed';
+      // Losing the channel, including cancellation, does not prove a submitted command stopped.
+      job.state = submitted ? 'outcomeUnknown' : 'failed';
     } finally {
+      watch?.cancel();
+      job.stdout.close();
+      job.stderr.close();
       job.done = true;
       try {
         await journal.record(
@@ -1294,9 +1517,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           ),
         );
       } on Object {
-        if (!_disposed) error = 'journalFailed';
+        if (currentTurn()) error = 'journalFailed';
       }
-      if (!_disposed) _emit();
+      if (currentTurn()) _emit();
     }
   }
 
@@ -1305,14 +1528,19 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     final job = _job(args);
     if (job == null) return const Err(AppError('notFound', detail: 'job'));
     final offset = (args['offset'] as num?)?.toInt() ?? 0;
-    final all = utf8.encode(job.output.preview);
-    if (offset < 0 || offset > all.length) return const Err(AppError('invalidArgument', detail: 'offset'));
-    final end = min(all.length, offset + 16384);
+    final all = job.projection.toBytes();
+    if (offset < 0 || offset > all.length || offset < all.length && (all[offset] & 0xc0) == 0x80) {
+      return const Err(AppError('invalidArgument', detail: 'offset'));
+    }
+    var end = min(all.length, offset + 16384);
+    while (end < all.length && (all[end] & 0xc0) == 0x80) {
+      end--;
+    }
     return Ok({
       ..._jobData(job),
-      'text': utf8.decode(all.sublist(offset, end), allowMalformed: true),
+      'text': utf8.decode(all.sublist(offset, end)),
       'offset': offset,
-      'nextOffset': end < all.length ? end : null,
+      'nextOffset': end < all.length || !job.done ? end : null,
       'eof': job.done && end == all.length,
     });
   }
@@ -1488,6 +1716,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         'executionId': execution.id,
         'exitCode': execution.exitCode,
         'truncated': execution.historyTruncated,
+        'filtered': execution.outputFiltered,
         'droppedBytes': output.dropped,
         'text': text,
       });
@@ -1616,13 +1845,35 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     if (output.owner != owner || output.destination != _profile!.identity || output.revision != _scope!.revision) {
       throw const AgentFailure('scopeChanged');
     }
-    var text = projection ?? output.excerpt;
+    var text = projection ?? '';
     if (projection == null) {
+      final safe = StringBuffer();
+      var bytes = 0;
+      void append(String value) {
+        final bounded = _bounded(value, 8192 - bytes);
+        execution.historyTruncated |= bounded.length != value.length;
+        safe.write(bounded);
+        bytes += utf8.encode(bounded).length;
+      }
+
+      void stream(String value) {
+        final sink = _JobTextSink(append, () => execution.outputFiltered = true);
+        sink.add(value);
+        sink.close();
+      }
+
+      stream(output.stdout);
+      if (output.stderr.isNotEmpty) {
+        append('\n[stderr]\n');
+        stream(output.stderr);
+      }
+      text = safe.toString();
       while (utf8.encode(jsonEncode(text)).length > 6500) {
-        text = text.substring(0, text.length ~/ 2);
+        text = _bounded(text, utf8.encode(text).length ~/ 2);
+        execution.historyTruncated = true;
       }
     }
-    execution.historyTruncated |= output.truncated || (projection == null && text != output.preview);
+    execution.historyTruncated |= output.truncated;
     outputs.share(output, text);
     execution.sharedText = text;
     return text;

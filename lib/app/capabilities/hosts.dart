@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../foundation/ids.dart';
+import '../../foundation/json_file.dart';
 import '../../features/capabilities/api.dart';
 import '../../features/hosts/api.dart';
 import 'host_library.dart';
@@ -89,8 +90,16 @@ List<Capability> hostCapabilities(Ref ref) {
 
   Host find(Args a) => hosts().byId(HostId(a.require<String>('hostId'))) ?? (throw const Rejected('notFound', 'host'));
 
+  Future<T> persist<T>(Future<T> Function() action) async {
+    try {
+      return await action();
+    } on JsonFileError catch (error) {
+      throw Rejected(error.kind.name);
+    }
+  }
+
   Future<Object?> save(Host host, Origin origin) async {
-    await hosts().save(host);
+    await persist(() => hosts().save(host, expectedRevision: hosts().revision));
     final saved = hosts().byId(host.id)!;
     return origin == Origin.agent ? agentHostDto(saved) : hostDto(saved);
   }
@@ -155,21 +164,17 @@ List<Capability> hostCapabilities(Ref ref) {
           throw const Rejected('invalidArgument', 'hostIds');
         }
         final ids = [for (final id in raw) HostId(id as String)];
-        var groupId = a.optional<String>('groupId');
+        final groupId = a.optional<String>('groupId');
         final path = a.optional<String>('group');
-        if (path != null) {
-          if (groupId != null) throw const Rejected('invalidArgument', 'group');
-          final normalized = normalizeGroup(path);
-          if (normalized.isEmpty) {
-            groupId = null;
-          } else {
-            await hosts().addGroup(normalized);
-            groupId = hosts().library.groupIdFor(normalized);
-          }
-        }
+        if (path != null && groupId != null) throw const Rejected('invalidArgument', 'group');
         if (groupId != null && hosts().library.groupById(groupId) == null) throw const Rejected('notFound', 'group');
         if (ids.any((id) => hosts().byId(id) == null)) throw const Rejected('notFound', 'host');
-        await hosts().moveToGroup(ids, groupId);
+        final revision = hosts().revision;
+        await persist(
+          () => path == null
+              ? hosts().moveToGroup(ids, groupId, expectedRevision: revision)
+              : hosts().moveToGroupPath(ids, normalizeGroup(path), expectedRevision: revision),
+        );
         return [
           for (final id in ids.toSet())
             c.origin == Origin.agent ? agentHostDto(hosts().byId(id)!) : hostDto(hosts().byId(id)!),
@@ -217,7 +222,8 @@ List<Capability> hostCapabilities(Ref ref) {
       },
       agentExposed: true,
       guarded((a) async {
-        await hosts().delete(find(a));
+        final host = find(a), revision = hosts().revision;
+        await persist(() => hosts().delete(host, expectedRevision: revision));
         return null;
       }),
     ),

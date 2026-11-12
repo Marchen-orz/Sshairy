@@ -3,6 +3,8 @@ import 'dart:convert';
 /// Each protocol has its own request and continuation format.
 enum ModelProtocol { anthropic, openai }
 
+enum ReasoningEffort { modelDefault, low, medium, high }
+
 String? terminalModelDestination(ModelProfile? profile, String? inlineModel, String? completionModel) {
   if (profile == null) return null;
   final inline = profile.withModel(inlineModel ?? profile.model).identity;
@@ -20,6 +22,7 @@ class ModelProfile {
     this.tools = true,
     this.maxOutputTokens = 4096,
     this.contextWindow = 1000000,
+    this.reasoningEffort = ReasoningEffort.modelDefault,
   }) : endpoint = normalizeEndpoint(endpoint) {
     if (model.trim().isEmpty ||
         model != model.trim() ||
@@ -40,14 +43,16 @@ class ModelProfile {
   final bool tools;
   final int maxOutputTokens;
   final int contextWindow;
+  final ReasoningEffort reasoningEffort;
 
-  ModelProfile withModel(String model, {bool? tools}) => ModelProfile(
+  ModelProfile withModel(String model, {bool? tools, ReasoningEffort? reasoningEffort}) => ModelProfile(
     protocol: protocol,
     endpoint: endpoint,
     model: model,
     tools: tools ?? this.tools,
     maxOutputTokens: maxOutputTokens,
     contextWindow: contextWindow,
+    reasoningEffort: reasoningEffort ?? this.reasoningEffort,
   );
 
   /// Credentials and active continuation are tied to this exact destination.
@@ -62,17 +67,20 @@ class ModelProfile {
     'tools': tools,
     'maxOutputTokens': maxOutputTokens,
     'contextWindow': contextWindow,
+    if (reasoningEffort != ReasoningEffort.modelDefault) 'reasoningEffort': reasoningEffort.name,
   };
 
   factory ModelProfile.fromJson(Map<String, Object?> json) {
-    const keys = {'protocol', 'endpoint', 'model', 'tools', 'maxOutputTokens', 'contextWindow'};
+    const keys = {'protocol', 'endpoint', 'model', 'tools', 'maxOutputTokens', 'contextWindow', 'reasoningEffort'};
     if (json.keys.any((key) => !keys.contains(key)) ||
         json['protocol'] is! String ||
         json['endpoint'] is! String ||
         json['model'] is! String ||
         (json.containsKey('tools') && json['tools'] is! bool) ||
         (json.containsKey('maxOutputTokens') && json['maxOutputTokens'] is! int) ||
-        (json.containsKey('contextWindow') && json['contextWindow'] is! int)) {
+        (json.containsKey('contextWindow') && json['contextWindow'] is! int) ||
+        (json.containsKey('reasoningEffort') &&
+            !ReasoningEffort.values.any((effort) => effort.name == json['reasoningEffort']))) {
       throw const FormatException('invalidModelProfile');
     }
     final protocol = ModelProtocol.values.asNameMap()[json['protocol']];
@@ -84,6 +92,7 @@ class ModelProfile {
       tools: json['tools'] as bool? ?? true,
       maxOutputTokens: json['maxOutputTokens'] as int? ?? 4096,
       contextWindow: json['contextWindow'] as int? ?? 1000000,
+      reasoningEffort: ReasoningEffort.values.asNameMap()[json['reasoningEffort']] ?? ReasoningEffort.modelDefault,
     );
   }
 

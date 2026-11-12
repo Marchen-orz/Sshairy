@@ -9,7 +9,6 @@ import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/terminal/adapters/completion_specs.dart';
 import 'package:sshairy/features/workspace/api.dart';
-import 'package:sshairy/features/workspace/domain/layout.dart' show Layout;
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/ids.dart';
 
@@ -637,10 +636,10 @@ void main() {
 
   testWidgets('snapshot access is explicit and bounded by rows and whole UTF-8 characters', (tester) async {
     final shell = await connect(tester);
-    await _feed(tester, shell.echo, 'first\r\nsecond\r\n中文中文\r\nu@box:~\$ ');
+    await _feed(tester, shell.echo, '中文中文\r\nsecond\r\nthird\r\nu@box:~\$ ');
     final context = session.readAiContext();
     final snapshot = session.readAiSnapshot(context, maxLines: 2)!;
-    expect(snapshot.text, '中文中文\nu@box:~\$');
+    expect(snapshot.text, '中文中文\nsecond');
     expect(snapshot.lastLine - snapshot.firstLine + 1, 2);
     expect(snapshot.truncated, isTrue);
     final bytes = session.readAiSnapshot(context, maxLines: 2, maxBytes: 7)!;
@@ -655,6 +654,36 @@ void main() {
     session.close();
     manager.closeAll();
     await tester.pump();
+  });
+
+  testWidgets('screen reading excludes scrollback and includes rows below the cursor', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, List.generate(60, (i) => 'screen-row-$i').join('\r\n'));
+    final before = session.readScreen(session.historySession!)!;
+    expect(before.text, isNot(contains('screen-row-0\n')));
+    expect(before.text, contains('screen-row-59'));
+    expect(before.lastLine - before.firstLine + 1, 24);
+    expect(before.truncated, isFalse, reason: 'Scrollback outside the active screen is not truncation');
+    await _feed(tester, shell.echo, '\x1b[H');
+    final after = session.readScreen(session.historySession!)!;
+    expect(after.text, before.text, reason: 'Cursor movement does not shrink the screen projection');
+    expect(after.firstLine, before.firstLine);
+    expect(after.lastLine, before.lastLine);
+    final limited = session.readScreen(session.historySession!, maxLines: 2)!;
+    expect(limited.text, before.text.split('\n').take(2).join('\n'));
+    expect(limited.truncated, isTrue);
+  });
+
+  testWidgets('alternate-screen reading includes the bottom row after the cursor returns home', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'normal-buffer-private\x1b[?1049h\x1b[2J\x1b[Htop\x1b[24;1Hbottom\x1b[H');
+    final screen = session.readScreen(session.historySession!)!;
+    expect(screen.text, startsWith('top\n'));
+    expect(screen.text, endsWith('\nbottom'));
+    expect(screen.text, isNot(contains('normal-buffer-private')));
+    expect(screen.firstLine, 0);
+    expect(screen.lastLine, 23);
+    expect(screen.truncated, isFalse);
   });
 
   testWidgets('local context exposes shell kind without its executable and follows the same draft checks', (

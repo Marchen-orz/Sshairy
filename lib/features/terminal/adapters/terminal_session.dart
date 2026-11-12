@@ -403,12 +403,12 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       throw ArgumentError('Invalid terminal snapshot limits');
     }
     final buffer = _terminal.buffer;
-    final last = buffer.absoluteCursorY;
-    if (last < 0 || last >= buffer.lines.length) return null;
-    final first = max(0, last - maxLines + 1);
+    final first = max(0, buffer.scrollBack);
+    final last = min(buffer.height - 1, first + maxLines - 1);
+    if (last < first) return null;
     final text = StringBuffer();
     var bytes = 0, includedLast = first;
-    var truncated = first > 0;
+    var truncated = last < buffer.height - 1;
     bool append(String value) {
       final size = utf8.encode(value).length;
       if (bytes + size > maxBytes) {

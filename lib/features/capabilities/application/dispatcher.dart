@@ -42,7 +42,10 @@ class CapabilityDispatcher {
       }
       final beforeInvoke = _stopped(context);
       if (beforeInvoke != null) return Err(beforeInvoke);
-      return await capability.invoke(args, context);
+      final authority = context.authority;
+      return await (agent && authority is AgentInvocation
+          ? (authority as AgentInvocation).invokeAuthorized(capability, args, context)
+          : capability.invoke(args, context));
     } on ArgumentError catch (e) {
       // An invalid model argument can contain a secret; never include it or an adapter's message in the result.
       return agent
