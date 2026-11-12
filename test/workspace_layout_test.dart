@@ -658,22 +658,20 @@ void main() {
         final agent = tester.getRect(find.byType(AgentPanel));
         final content = tester.getRect(find.byKey(const ValueKey('workspace-content')));
         expect(monitor.top, content.top);
+        expect(monitor.bottom, content.bottom);
         expect(agent.top, content.top);
         expect(agent.bottom, content.bottom);
         expect(agent.right, content.right);
         expect(terminal.left, greaterThan(monitor.right));
         expect(terminal.right, lessThan(agent.left));
+        expect(files.left, greaterThan(monitor.right));
         expect(files.right, lessThan(agent.left));
         if (position == FilesDock.bottom) {
-          expect(files.left, monitor.left);
-          expect(files.left, content.left);
+          expect(files.left, terminal.left);
           expect(files.right, terminal.right);
-          expect(monitor.bottom, terminal.bottom);
           expect(files.top, terminal.bottom + WorkspaceSize.divider);
           expect(files.bottom, content.bottom);
         } else {
-          expect(monitor.bottom, content.bottom);
-          expect(files.left, greaterThan(monitor.right));
           expect(files.top, content.top);
           expect(files.bottom, content.bottom);
           expect(terminal.width, greaterThanOrEqualTo(WorkspaceSize.terminalMin));
@@ -757,9 +755,12 @@ void main() {
       expect(find.byType(SideFilesPanel), findsOneWidget);
       if (side == FilesDock.bottom) {
         final files = tester.getRect(find.byType(SideFilesPanel));
-        expect(files.left, tester.getRect(find.byType(MonitorPanel)).left);
-        expect(files.right, tester.getRect(find.byKey(const ValueKey('workspace-content'))).right);
-        expect(tester.getRect(find.byType(MonitorPanel)).bottom, tester.getRect(find.byType(TerminalPane)).bottom);
+        final terminal = tester.getRect(find.byType(TerminalPane));
+        final content = tester.getRect(find.byKey(const ValueKey('workspace-content')));
+        expect(files.left, terminal.left);
+        expect(files.right, content.right);
+        expect(files.top, terminal.bottom + WorkspaceSize.divider);
+        expect(tester.getRect(find.byType(MonitorPanel)).bottom, content.bottom);
       }
       expect(container.read(settingsProvider).get(SettingKeys.filesDock), side);
       await tester.tap(agentToggle);

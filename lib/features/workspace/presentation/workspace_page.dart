@@ -52,9 +52,6 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   /// Keeps each pane's state (focus, selection) when a split moves it to another place in the tree.
   final _paneKeys = <PaneId, GlobalKey>{};
   final _layoutKeys = <TabId, GlobalKey>{};
-  // Bottom docking changes nesting without replacing either panel's state.
-  final _filesDockKeys = <TabId, GlobalKey>{};
-  final _monitorKeys = <TabId, GlobalKey>{};
   final _paneFocus = <PaneId, FocusNode>{};
   var _overlayOpen = false;
   final _tabScroll = ScrollController();
@@ -357,8 +354,6 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     final live = {for (final t in state.tabs) ...t.layout.leaves.map((l) => l.pane)};
     _paneKeys.removeWhere((pane, _) => !live.contains(pane));
     _layoutKeys.removeWhere((id, _) => !state.tabs.any((tab) => tab.id == id));
-    _filesDockKeys.removeWhere((id, _) => !state.tabs.any((tab) => tab.id == id));
-    _monitorKeys.removeWhere((id, _) => !state.tabs.any((tab) => tab.id == id));
     _paneFocus.removeWhere((pane, node) {
       if (live.contains(pane)) return false;
       node.dispose();
@@ -467,33 +462,24 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     Widget tabBody(WorkspaceTab tab) {
       final session = sessions[tab.layout.focusedLeaf.session];
       final host = session?.sshHost;
-      Widget monitored(Widget child) => SidebarFrame(
+      return SidebarFrame(
         width: _monitorWidth,
         onResize: _setMonitorWidth,
         resizeLabel: l.resizeMonitor,
         sidebar: host != null && showMonitor && wide
-            ? MonitorPanel(
-                key: _monitorKeys.putIfAbsent(tab.id, GlobalKey.new),
-                host: host,
-                active: state.active == tab.id,
-              )
+            ? MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: host, active: state.active == tab.id)
             : null,
-        child: child,
-      );
-
-      // The file panel joins the terminal's connection only after it is ready.
-      return ListenableBuilder(
-        listenable: Listenable.merge([?session]),
-        child: LayoutView(
-          key: _layoutKeys.putIfAbsent(tab.id, GlobalKey.new),
-          root: tab.layout.root,
-          leaf: (l) => leaf(tab, l),
-          onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
-        ),
-        builder: (context, panes) {
-          final bottom = dock == FilesDock.bottom;
-          final files = DockPanel(
-            key: _filesDockKeys.putIfAbsent(tab.id, GlobalKey.new),
+        // Rebuilt as the session changes: the panel dials, so it waits for the terminal's connection and joins it.
+        // A restored, refused or dropped session shows no panel instead of dialing again.
+        child: ListenableBuilder(
+          listenable: Listenable.merge([?session]),
+          child: LayoutView(
+            key: _layoutKeys.putIfAbsent(tab.id, GlobalKey.new),
+            root: tab.layout.root,
+            leaf: (l) => leaf(tab, l),
+            onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
+          ),
+          builder: (context, panes) => DockPanel(
             open: showFiles && host != null && session?.status == SessionStatus.connected,
             side: switch (dock) {
               FilesDock.left => DockSide.left,
@@ -508,15 +494,14 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 ? SideFilesPanel(
                     host: host,
                     active: state.active == tab.id,
-                    tree: bottom,
+                    tree: dock == FilesDock.bottom,
                     directory: session.directory,
                     toolbarActions: _fileToolbar(dock),
                   )
                 : const SizedBox.shrink(),
-            child: bottom ? monitored(panes!) : panes!,
-          );
-          return bottom ? files : monitored(files);
-        },
+            child: panes!,
+          ),
+        ),
       );
     }
 
