@@ -4532,12 +4532,6 @@ abstract class AppLocalizations {
   /// **'Running'**
   String get aiAgentExecuting;
 
-  /// No description provided for @aiAgentAwaitingData.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose what output to share'**
-  String get aiAgentAwaitingData;
-
   /// No description provided for @aiAgentCompleted.
   ///
   /// In en, this message translates to:
@@ -4655,7 +4649,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentShellPermission.
   ///
   /// In en, this message translates to:
-  /// **'This command runs with the SSH account\'s permissions and may change files or access the network. Stopping closes this client\'s channel; remote processes may continue.'**
+  /// **'This command runs with the SSH account\'s permissions and may change files or access the network. Approval also lets Airy use its bounded output. Stopping closes this client\'s channel; remote processes may continue.'**
   String get aiAgentShellPermission;
 
   /// No description provided for @aiAgentReject.
@@ -4669,30 +4663,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Approve once'**
   String get aiAgentApprove;
-
-  /// No description provided for @aiAgentSharePreview.
-  ///
-  /// In en, this message translates to:
-  /// **'Only the text below will be sent to the selected model. Edit it to remove private data.'**
-  String get aiAgentSharePreview;
-
-  /// No description provided for @aiAgentProjectionTooLarge.
-  ///
-  /// In en, this message translates to:
-  /// **'This text exceeds the request limit. Shorten it before sharing.'**
-  String get aiAgentProjectionTooLarge;
-
-  /// No description provided for @aiAgentKeepLocal.
-  ///
-  /// In en, this message translates to:
-  /// **'Keep local'**
-  String get aiAgentKeepLocal;
-
-  /// No description provided for @aiAgentShare.
-  ///
-  /// In en, this message translates to:
-  /// **'Share this text'**
-  String get aiAgentShare;
 
   /// No description provided for @cmdTmuxBreak.
   ///
@@ -4790,12 +4760,6 @@ abstract class AppLocalizations {
   /// **'Approve command'**
   String get aiAgentApproveTitle;
 
-  /// No description provided for @aiAgentShareTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Share output'**
-  String get aiAgentShareTitle;
-
   /// No description provided for @aiAgentExecutionFailed.
   ///
   /// In en, this message translates to:
@@ -4871,7 +4835,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigInlineHint.
   ///
   /// In en, this message translates to:
-  /// **'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment and recent session commands. Review before filling in.'**
+  /// **'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment, recent session commands and their bounded results. Review before filling in.'**
   String get aiConfigInlineHint;
 
   /// No description provided for @aiConfigCompletion.
@@ -4913,7 +4877,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigCompletionHint.
   ///
   /// In en, this message translates to:
-  /// **'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands from this session.'**
+  /// **'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands and their bounded results from this session.'**
   String get aiConfigCompletionHint;
 
   /// No description provided for @aiAgentErrorHostTrust.
@@ -5249,13 +5213,13 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentPermissionConfirmHint.
   ///
   /// In en, this message translates to:
-  /// **'Approve reads, commands and sharing'**
+  /// **'Approve reads and commands'**
   String get aiAgentPermissionConfirmHint;
 
   /// No description provided for @aiAgentPermissionObserveHint.
   ///
   /// In en, this message translates to:
-  /// **'Read-only tools; approve reads and sharing'**
+  /// **'Read-only tools; approve reads'**
   String get aiAgentPermissionObserveHint;
 
   /// No description provided for @aiAgentPermissionReviewHint.
@@ -5279,7 +5243,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentReadApproveHint.
   ///
   /// In en, this message translates to:
-  /// **'Run a fixed read-only diagnostic. Choose what to share afterwards.'**
+  /// **'Run a fixed read-only diagnostic and let Airy use its bounded result.'**
   String get aiAgentReadApproveHint;
 
   /// No description provided for @aiAgentDiagnosticSystem.

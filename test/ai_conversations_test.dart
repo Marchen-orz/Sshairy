@@ -403,7 +403,6 @@ void main() {
     expect(execution.output, isNull);
     expect(h.runtime.outputs.count, 0);
     expect(h.runtime.approval, isNull);
-    expect(h.runtime.dataRequest, isNull);
     expect(h.runtime.busy, isFalse);
     expect(h.model.requests, isEmpty);
     expect(h.backend.prepared, isEmpty);
@@ -442,11 +441,6 @@ void main() {
     expect(h.runtime.approval?.template, 'systemSummary');
     expect(h.backend.prepared, isEmpty);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    for (var attempt = 0; attempt < 1000 && h.runtime.dataRequest == null; attempt++) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
-    expect(h.runtime.dataRequest, isNotNull);
-    h.runtime.shareOutput(h.runtime.dataRequest!.suggested, expected: h.runtime.dataRequest!);
     await work;
     expect(h.backend.prepared, [_hostA]);
     expect(h.runtime.resolvedHost, _hostA);
@@ -669,60 +663,63 @@ void main() {
     expect(_input(h.model.requests.single).containsKey('conversationHistory'), isFalse);
   });
 
-  test('snapshots retain only user-shared execution text and status, never raw buffers or command metadata', () async {
-    final h = await _create();
-    await h.conversations.send('safe question', _hostA);
-    final output = h.runtime.outputs.create('synthetic-owner', _hostA, h.profile.identity, 0);
-    h.runtime.outputs.append(output, false, Uint8List.fromList(utf8.encode('synthetic-private-stdout')));
-    h.runtime.outputs.append(output, true, Uint8List.fromList(utf8.encode('synthetic-private-stderr')));
-    output.dropped = 1;
-    final withheld =
-        AgentExecution(
-            'withheld',
-            'command.execute',
-            'synthetic-account@synthetic-address',
-            'synthetic-private-command',
-            '/synthetic-private-cwd',
-          )
-          ..state = 'completed'
-          ..exitCode = 0
-          ..output = output;
-    final shared =
-        AgentExecution(
-            'shared',
-            'command.execute',
-            'synthetic-account@synthetic-address',
-            'synthetic-private-command',
-            '/synthetic-private-cwd',
-          )
-          ..state = 'running'
-          ..output = output
-          ..sharedText = 'API_KEY=synthetic-shared-secret\nshared readable line';
-    h.runtime.projectedTimeline = [...h.runtime.timeline, withheld, shared];
-    await h.conversations.flush();
-    final record = h.store.records.single;
-    final executions = record.entries.where((entry) => entry.kind == ConversationEntryKind.execution).toList();
-    expect(executions, hasLength(2));
-    expect(executions.first.text, isEmpty);
-    expect(executions.first.state, 'completed');
-    expect(executions.first.exitCode, 0);
-    expect(executions.last.text, 'API_KEY=[redacted]\nshared readable line');
-    expect(executions.last.state, 'outcomeUnknown');
-    expect(executions.every((entry) => entry.truncated), isTrue);
-    final readable = [record.title, for (final entry in record.entries) entry.text].join('\n');
-    for (final private in [
-      'synthetic-private-stdout',
-      'synthetic-private-stderr',
-      'synthetic-account',
-      'synthetic-address',
-      'synthetic-private-command',
-      'synthetic-private-cwd',
-      'synthetic-shared-secret',
-    ]) {
-      expect(readable, isNot(contains(private)));
-    }
-    expect(h.runtime.outputs.count, 1);
-  });
+  test(
+    'snapshots retain only shared bounded execution text and status, never raw buffers or command metadata',
+    () async {
+      final h = await _create();
+      await h.conversations.send('safe question', _hostA);
+      final output = h.runtime.outputs.create('synthetic-owner', _hostA, h.profile.identity, 0);
+      h.runtime.outputs.append(output, false, Uint8List.fromList(utf8.encode('synthetic-private-stdout')));
+      h.runtime.outputs.append(output, true, Uint8List.fromList(utf8.encode('synthetic-private-stderr')));
+      output.dropped = 1;
+      final withheld =
+          AgentExecution(
+              'withheld',
+              'command.execute',
+              'synthetic-account@synthetic-address',
+              'synthetic-private-command',
+              '/synthetic-private-cwd',
+            )
+            ..state = 'completed'
+            ..exitCode = 0
+            ..output = output;
+      final shared =
+          AgentExecution(
+              'shared',
+              'command.execute',
+              'synthetic-account@synthetic-address',
+              'synthetic-private-command',
+              '/synthetic-private-cwd',
+            )
+            ..state = 'running'
+            ..output = output
+            ..sharedText = 'API_KEY=synthetic-shared-secret\nshared readable line';
+      h.runtime.projectedTimeline = [...h.runtime.timeline, withheld, shared];
+      await h.conversations.flush();
+      final record = h.store.records.single;
+      final executions = record.entries.where((entry) => entry.kind == ConversationEntryKind.execution).toList();
+      expect(executions, hasLength(2));
+      expect(executions.first.text, isEmpty);
+      expect(executions.first.state, 'completed');
+      expect(executions.first.exitCode, 0);
+      expect(executions.last.text, 'API_KEY=[redacted]\nshared readable line');
+      expect(executions.last.state, 'outcomeUnknown');
+      expect(executions.every((entry) => entry.truncated), isTrue);
+      final readable = [record.title, for (final entry in record.entries) entry.text].join('\n');
+      for (final private in [
+        'synthetic-private-stdout',
+        'synthetic-private-stderr',
+        'synthetic-account',
+        'synthetic-address',
+        'synthetic-private-command',
+        'synthetic-private-cwd',
+        'synthetic-shared-secret',
+      ]) {
+        expect(readable, isNot(contains(private)));
+      }
+      expect(h.runtime.outputs.count, 1);
+    },
+  );
 
   test('tool snapshots preserve safe metadata and stopped states without tool arguments or result data', () async {
     final h = await _create();

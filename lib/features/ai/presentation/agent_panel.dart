@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -842,9 +841,8 @@ class _ConversationState extends State<_Conversation> {
     final lastUser = entries.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'user');
     final lastAssistant = entries.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'assistant');
     final approval = widget.runtime.approval;
-    final data = widget.runtime.dataRequest;
-    final thinking = widget.runtime.busy && approval == null && data == null;
-    final count = entries.length + (approval == null ? 0 : 1) + (data == null ? 0 : 1) + (thinking ? 1 : 0);
+    final thinking = widget.runtime.busy && approval == null;
+    final count = entries.length + (approval == null ? 0 : 1) + (thinking ? 1 : 0);
     return SelectionArea(
       child: ListView.builder(
         key: PageStorageKey('ai-agent-conversation-${widget.conversationId}'),
@@ -913,12 +911,6 @@ class _ConversationState extends State<_Conversation> {
                 onApprove: () => widget.runtime.approve(true, expected: approval),
                 onReject: () => widget.runtime.approve(false, expected: approval),
               );
-            }
-            index--;
-          }
-          if (data != null) {
-            if (index == 0) {
-              return _OutputApproval(key: ObjectKey(data), request: data, runtime: widget.runtime);
             }
             index--;
           }
@@ -1183,82 +1175,6 @@ class _ApprovalCard extends StatelessWidget {
               children: [
                 TextButton(onPressed: onReject, child: Text(l.aiAgentReject)),
                 FilledButton.tonal(onPressed: onApprove, child: Text(l.aiAgentApprove)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OutputApproval extends ConsumerStatefulWidget {
-  const _OutputApproval({super.key, required this.request, required this.runtime});
-  final AgentDataRequest request;
-  final AgentRuntime runtime;
-
-  @override
-  ConsumerState<_OutputApproval> createState() => _OutputApprovalState();
-}
-
-class _OutputApprovalState extends ConsumerState<_OutputApproval> {
-  late final _text = TextEditingController(text: ref.read(agentComposerProvider).outputText(widget.request));
-
-  @override
-  void dispose() {
-    _text.dispose();
-    super.dispose();
-  }
-
-  void _share(String? text) {
-    widget.runtime.shareOutput(text, expected: widget.request);
-    ref.read(agentComposerProvider.notifier).clearOutput(widget.request);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    final valid = utf8.encode(jsonEncode(_text.text)).length <= 7000;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Space.md),
-      child: _AgentCard(
-        emphasized: true,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _CardTitle(icon: Icons.outbox_outlined, label: l.aiAgentShareTitle),
-            const SizedBox(height: Space.md),
-            Text(l.aiAgentSharePreview, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: Space.sm),
-            TextField(
-              key: const ValueKey('ai-agent-output-projection'),
-              controller: _text,
-              minLines: 3,
-              maxLines: 8,
-              maxLength: 8192,
-              style: mono(context, Theme.of(context).textTheme.bodySmall),
-              decoration: InputDecoration(errorText: valid ? null : l.aiAgentProjectionTooLarge, counterText: ''),
-              onChanged: (value) {
-                ref.read(agentComposerProvider.notifier).editOutput(widget.request, value);
-                setState(() {});
-              },
-            ),
-            if (widget.request.truncated) ...[
-              const SizedBox(height: Space.sm),
-              Text(l.aiAgentTruncated, style: Theme.of(context).textTheme.bodySmall),
-            ],
-            const SizedBox(height: Space.md),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: Space.sm,
-              runSpacing: Space.sm,
-              children: [
-                TextButton(onPressed: () => _share(null), child: Text(l.aiAgentKeepLocal)),
-                FilledButton.tonal(
-                  key: const ValueKey('ai-agent-share-output'),
-                  onPressed: valid ? () => _share(_text.text) : null,
-                  child: Text(l.aiAgentShare),
-                ),
               ],
             ),
           ],

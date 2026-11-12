@@ -73,6 +73,7 @@ class _Target implements AgentTarget {
   AgentFailure? probeFailure;
   void Function(bool stderr, Uint8List bytes)? writeOutput;
   int? result = 0;
+  Future<int?>? pendingExecution;
   String stdout = _privateOutput, stderr = '';
   var probes = 0, releases = 0;
   final commands = <String>[];
@@ -105,7 +106,7 @@ class _Target implements AgentTarget {
       await cancel.whenCancelled;
       throw const AgentFailure('cancelled');
     }
-    return result;
+    return await (pendingExecution ?? Future.value(result));
   }
 
   @override
@@ -234,19 +235,13 @@ class _Harness {
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
     if (approveDiagnostics) {
-      // Non-permission fixtures approve fixed reads and their projections; commands stay manual.
+      // Non-permission fixtures approve fixed reads; commands stay manual.
       AgentApproval? lastRead;
-      AgentDataRequest? lastProjection;
       runtime.addListener(() {
         final pending = runtime.approval;
         if (pending != null && pending.template != null && !identical(lastRead, pending)) {
           lastRead = pending;
           runtime.approve(true, expected: pending);
-        }
-        final data = runtime.dataRequest;
-        if (data != null && data.projection != null && !identical(lastProjection, data)) {
-          lastProjection = data;
-          runtime.shareOutput(data.projection, expected: data);
         }
       });
     }
@@ -407,8 +402,6 @@ void main() {
           expect(h.backend.others[_other]!.commands, isEmpty);
         }
         h.runtime.approve(true, expected: h.runtime.approval!);
-        await _until(() => h.runtime.dataRequest != null);
-        h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
       }
       await work;
       expect(h.backend.prepared, [_other]);
@@ -772,11 +765,10 @@ void main() {
         expect(h.backend.target.probes, 0);
         expect(h.backend.target.commands, isEmpty);
         expect(h.journal.records, isEmpty);
-        expect(h.runtime.dataRequest, isNull);
       });
     }
 
-    test('$mode read approval leaves raw diagnosis private until a separate share decision', () async {
+    test('$mode read approval automatically shares only the bounded diagnostic projection', () async {
       final h = _Harness(
         (_, _, index) =>
             _oneCall(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}), index),
@@ -788,25 +780,18 @@ void main() {
       await _until(() => h.runtime.approval != null);
       expect(h.backend.prepared, isEmpty);
       h.runtime.approve(true, expected: h.runtime.approval!);
-      await _until(() => h.runtime.dataRequest != null);
-      final data = h.runtime.dataRequest!;
+      await work;
       expect(h.backend.prepared, [_host]);
       expect(h.backend.target.probes, 1);
       expect(h.backend.target.commands, hasLength(1));
-      expect(data.output.stdout, contains(_privateOutput));
-      expect(data.projection, isNot(contains(_privateOutput)));
-      expect(jsonDecode(data.suggested), containsPair('system', 'Linux'));
-      expect(h.model.requests, hasLength(1));
-      expect(h.runtime.executions.single.sharedText, isNull);
-      final unshared = h.runtime.readOutput({'hostId': _host.value, 'handle': data.output.id});
-      expect(unshared, isA<Err<Object?>>());
-      expect((unshared as Err<Object?>).error.code, 'unavailable');
-      h.runtime.shareOutput('user selected diagnosis', expected: data);
-      await work;
-      expect(_result(h.model.requests.last)['text'], 'user selected diagnosis');
-      expect(_result(h.model.requests.last).containsKey('data'), isFalse);
+      final execution = h.runtime.executions.single;
+      expect(execution.output!.stdout, contains(_privateOutput));
+      expect(execution.sharedText, isNot(contains(_privateOutput)));
+      expect(jsonDecode(execution.sharedText!), containsPair('system', 'Linux'));
+      expect(h.model.requests, hasLength(2));
+      expect(_result(h.model.requests.last)['data'], containsPair('system', 'Linux'));
+      expect(_result(h.model.requests.last).containsKey('text'), isFalse);
       expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
-      expect(h.runtime.executions.single.sharedText, 'user selected diagnosis');
       expect(h.journal.records, isEmpty);
     });
   }
@@ -832,10 +817,9 @@ void main() {
     }, approveDiagnostics: false);
     addTearDown(h.close);
     h.backend.target.stdout = '${List.filled(20000, 'x').join()}$_privateOutput';
-    var actionCards = 0, dataCards = 0;
+    var actionCards = 0;
     h.runtime.addListener(() {
       if (h.runtime.approval != null) actionCards++;
-      if (h.runtime.dataRequest != null) dataCards++;
     });
     await h.runtime.start(
       'run selected command',
@@ -843,7 +827,6 @@ void main() {
     );
     expect(h.runtime.permissionMode, AgentPermissionMode.auto);
     expect(actionCards, 0);
-    expect(dataCards, 0);
     expect(h.backend.prepared, [_host]);
     expect(h.backend.target.commands, hasLength(1));
     expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
@@ -868,7 +851,7 @@ void main() {
     h.backend.target.stdout = '$_systemOutput$_privateOutput\n';
     var cards = 0;
     h.runtime.addListener(() {
-      if (h.runtime.approval != null || h.runtime.dataRequest != null) cards++;
+      if (h.runtime.approval != null) cards++;
     });
     await h.runtime.start(
       'inspect selected host',
@@ -905,7 +888,7 @@ void main() {
       h.backend.target.stdout = diagnostic ? '$_systemOutput$_privateOutput\n' : _privateOutput;
       var cards = 0;
       h.runtime.addListener(() {
-        if (h.runtime.approval != null || h.runtime.dataRequest != null) cards++;
+        if (h.runtime.approval != null) cards++;
       });
       await h.runtime.start(
         'inspect this selected host',
@@ -914,23 +897,17 @@ void main() {
       expect(cards, 0);
       expect(h.runtime.phase, AgentPhase.completed);
       expect(h.model.requests, hasLength(2));
-      expect(h.model.reviewRequests, hasLength(2));
-      expect(reviewStates.first, (prepared: diagnostic ? 0 : 1, commands: 0));
-      expect(reviewStates.last, (prepared: 1, commands: 1));
+      expect(h.model.reviewRequests, hasLength(1));
+      expect(reviewStates.single, (prepared: diagnostic ? 0 : 1, commands: 0));
       expect(h.backend.prepared, [_host]);
       expect(h.backend.target.commands, hasLength(1));
       final access = h.model.reviewRequests.first;
-      final share = h.model.reviewRequests.last;
       expect(access.messages.single.text, contains('"kind":"access"'));
       expect(access.messages.single.text, contains('"hostId":"host-a"'));
       expect(access.messages.single.text, contains('"capabilityVersion":1'));
       expect(access.messages.single.text, contains('"timeoutSeconds":${diagnostic ? 15 : 60}'));
       if (diagnostic) expect(access.messages.single.text, contains('"templateVersion":1'));
-      expect(share.messages.single.text, contains('"hostId":"host-a"'));
-      expect(share.messages.single.text, contains('"capabilityVersion":1'));
-      expect(share.messages.single.text, contains('"kind":"share"'));
-      expect(share.messages.single.text, contains('"projectionBytes":'));
-      expect(share.messages.single.text, contains('"exitCode":0'));
+      expect(access.messages.single.text, isNot(contains('"kind":"share"')));
       expect(
         access.messages.single.text,
         contains(jsonEncode(diagnostic ? diagnosticCommand(DiagnosticTemplate.systemSummary) : 'printf result')),
@@ -970,7 +947,7 @@ void main() {
       addTearDown(h.close);
       var cards = 0;
       h.runtime.addListener(() {
-        if (h.runtime.approval != null || h.runtime.dataRequest != null) cards++;
+        if (h.runtime.approval != null) cards++;
       });
       await h.runtime.start(
         'inspect this selected host',
@@ -990,7 +967,7 @@ void main() {
   }
 
   for (final response in ['ask', 'invalid', 'error']) {
-    test('review $response falls back to exact manual read and separate output decisions', () async {
+    test('review $response falls back to exact manual read approval including its bounded result', () async {
       final h = _Harness(
         (_, _, index) =>
             _oneCall(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}), index),
@@ -1018,19 +995,17 @@ void main() {
       expect(h.backend.target.commands, isEmpty);
       expect(h.model.reviewRequests, hasLength(1));
       h.runtime.approve(true, expected: h.runtime.approval!);
-      await _until(() => h.runtime.dataRequest != null);
-      expect(h.backend.target.commands, hasLength(1));
-      expect(h.model.requests, hasLength(1));
-      expect(h.model.reviewRequests, hasLength(2));
-      expect(h.runtime.executions.single.sharedText, isNull);
-      h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
       await work;
-      expect(_result(h.model.requests.last)['output'], 'withheld');
-      expect(_result(h.model.requests.last).containsKey('data'), isFalse);
+      expect(h.backend.target.commands, hasLength(1));
+      expect(h.model.requests, hasLength(2));
+      expect(h.model.reviewRequests, hasLength(1));
+      expect(jsonDecode(h.runtime.executions.single.sharedText!), containsPair('system', 'Linux'));
+      expect(_result(h.model.requests.last)['data'], containsPair('system', 'Linux'));
+      expect(_result(h.model.requests.last).containsKey('output'), isFalse);
     });
   }
 
-  test('review deny of output keeps raw bytes unavailable to continuation and output_read', () async {
+  test('review approves the command once and output_read only rereads its bounded result', () async {
     final h = _Harness(
       (request, _, index) async* {
         if (index == 0) {
@@ -1051,13 +1026,12 @@ void main() {
       AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
     );
     expect(h.backend.target.commands, hasLength(1));
-    expect(h.model.reviewRequests, hasLength(2));
+    expect(h.model.reviewRequests, hasLength(1));
     expect(h.model.reviewRequests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
-    expect(_result(h.model.requests[1])['output'], 'withheld');
-    expect(_result(h.model.requests[1]).containsKey('text'), isFalse);
-    expect(_result(h.model.requests.last, 1), {'error': 'unavailable'});
-    expect(h.model.requests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
-    expect(h.runtime.executions.first.sharedText, isNull);
+    expect(_result(h.model.requests[1])['text'], _privateOutput);
+    expect(_result(h.model.requests[1]).containsKey('output'), isFalse);
+    expect(_result(h.model.requests.last, 1)['text'], _privateOutput);
+    expect(h.runtime.executions.first.sharedText, _privateOutput);
   });
 
   for (final diagnostic in [true, false]) {
@@ -1097,7 +1071,6 @@ void main() {
       expect(h.backend.target.commands, isEmpty);
       expect(h.journal.records, isEmpty);
       expect(h.runtime.approval, isNull);
-      expect(h.runtime.dataRequest, isNull);
       expect(h.runtime.reviewing, isFalse);
       expect(h.model.requests, hasLength(1));
     });
@@ -1296,6 +1269,7 @@ void main() {
       contextWindow: 7000,
       maxOutputTokens: 1000,
     );
+    h.backend.target.stdout = selected;
     var compactNotifications = 0, approvals = 0;
     AgentApproval? seen;
     h.runtime.addListener(() {
@@ -1310,8 +1284,6 @@ void main() {
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
-    h.runtime.shareOutput(selected, expected: h.runtime.dataRequest!);
     await turn;
 
     expect(h.runtime.phase, AgentPhase.completed);
@@ -1456,7 +1428,6 @@ void main() {
     expect(h.runtime.executions.last.sharedText, isNull);
     expect(h.runtime.outputs.count, 0);
     expect(h.runtime.approval, isNull);
-    expect(h.runtime.dataRequest, isNull);
     expect(h.model.requests, isEmpty);
     expect(h.backend.prepared, isEmpty);
     expect(h.backend.target.commands, isEmpty);
@@ -1523,16 +1494,14 @@ void main() {
       }
     });
     addTearDown(h.close);
+    h.backend.target.stdout = 'approved bounded result';
     final first = h.runtime.startConversation('first question', AgentScope(hosts: const [_host]), const []);
     await _until(() => h.runtime.approval != null);
     final oldApproval = h.runtime.approval!;
     h.runtime.approve(true, expected: oldApproval);
-    await _until(() => h.runtime.dataRequest != null);
-    final oldData = h.runtime.dataRequest!;
-    h.runtime.shareOutput('approved summary', expected: oldData);
     await first;
-    expect(h.runtime.executions.single.sharedText, 'approved summary');
-    expect(h.runtime.executions.single.output!.stdout, _privateOutput);
+    expect(h.runtime.executions.single.sharedText, 'approved bounded result');
+    expect(h.runtime.executions.single.output!.stdout, 'approved bounded result');
     final entries = [
       for (final entry in h.runtime.timeline)
         switch (entry) {
@@ -1552,7 +1521,6 @@ void main() {
 
     h.runtime.restoreConversation(entries);
     h.runtime.approve(true, expected: oldApproval);
-    h.runtime.shareOutput('stale selection', expected: oldData);
     await h.runtime.startConversation('follow-up question', AgentScope(hosts: const [_host]), entries);
 
     final request = h.model.requests[2];
@@ -1565,7 +1533,7 @@ void main() {
     expect(input['goal'], 'follow-up question');
     final history = input['conversationHistory'] as Map;
     expect(history['truncated'], isFalse);
-    expect(history['entries'], contains(containsPair('text', 'approved summary')));
+    expect(history['entries'], contains(containsPair('text', 'approved bounded result')));
     expect(_requestText(request), contains('first answer'));
     expect(_requestText(request), isNot(contains('private-command')));
     expect(_requestText(request), isNot(contains(_privateOutput)));
@@ -1798,7 +1766,7 @@ void main() {
     // The caller's mutable source is no longer the model call or its bound approval.
     source['command'] = 'printf replaced';
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
+    await turn;
     expect(h.backend.target.commands, hasLength(1));
     expect(h.backend.target.commands.single, contains('printf original'));
     expect(h.backend.target.commands.single, isNot(contains('printf replaced')));
@@ -1806,8 +1774,6 @@ void main() {
     expect(h.backend.target.commands.single, contains(' || exit\nprintf original'));
     expect(h.backend.target.commands.single, isNot(contains("cd -- '/tmp/owner's directory'")));
     expect(h.backend.target.deadlines.single, const Duration(seconds: 60));
-    h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
-    await turn;
     expect(h.journal.loads, 0);
     expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
     expect(h.journal.records.first.id, h.journal.records.last.id);
@@ -1824,17 +1790,15 @@ void main() {
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
+    await turn;
     expect(h.backend.target.commands, hasLength(1));
     expect(h.backend.target.deadlines.single, const Duration(seconds: 1));
-    h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
-    await turn;
     expect(h.runtime.phase, AgentPhase.completed);
     expect(h.journal.records.last.state, OperationState.completed);
     expect(_result(h.model.requests.last), containsPair('exitCode', 0));
   });
 
-  test('callbacks from a prior turn cannot approve or share a newer request', () async {
+  test('approval callbacks from a prior turn cannot approve a newer request', () async {
     final call = _call('command_execute', _command());
     final h = _Harness((_, _, index) => _oneCall(call, index % 2));
     addTearDown(h.close);
@@ -1842,9 +1806,6 @@ void main() {
     await _until(() => h.runtime.approval != null);
     final oldApproval = h.runtime.approval!;
     h.runtime.approve(true, expected: oldApproval);
-    await _until(() => h.runtime.dataRequest != null);
-    final oldData = h.runtime.dataRequest!;
-    h.runtime.shareOutput(null, expected: oldData);
     await first;
 
     final second = h.start();
@@ -1856,17 +1817,10 @@ void main() {
     expect(h.backend.target.commands, hasLength(1));
     expect(identical(h.runtime.approval, currentApproval), isTrue);
     h.runtime.approve(true, expected: currentApproval);
-    await _until(() => h.runtime.dataRequest != null);
-    final currentData = h.runtime.dataRequest!;
-    h.runtime.shareOutput('stale data', expected: oldData);
-    await pumpEventQueue();
-    expect(identical(h.runtime.dataRequest, currentData), isTrue);
-    expect(h.model.requests, hasLength(3));
-    h.runtime.shareOutput('current selection', expected: currentData);
     await second;
     expect(h.backend.target.commands, hasLength(2));
-    expect(_requestText(h.model.requests.last), contains('current selection'));
-    expect(_requestText(h.model.requests.last), isNot(contains('stale data')));
+    expect(h.model.requests, hasLength(4));
+    expect(_result(h.model.requests.last)['text'], _privateOutput);
   });
 
   test('denial returns a paired error without executing or writing an intent', () async {
@@ -1928,7 +1882,7 @@ void main() {
     expect(_result(h.model.requests.last, 1), {'error': 'denied'});
   });
 
-  test('withheld output never enters continuation or output.read', () async {
+  test('approved command output is shared automatically and can be reread without another approval', () async {
     final call = _call('command_execute', _command());
     final h = _Harness((request, _, index) async* {
       if (index == 0) {
@@ -1937,29 +1891,25 @@ void main() {
         final handle = _result(request)['handle'] as String;
         yield ModelMessageComplete(_call('output_read', {'hostId': 'host-a', 'handle': handle}, 'read-a'));
       } else {
-        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'output was withheld'));
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'bounded result received'));
       }
     });
     addTearDown(h.close);
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
-    expect(h.runtime.dataRequest!.suggested, contains(_privateOutput));
-    h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
     await turn;
     expect(h.model.requests, hasLength(3));
-    expect(h.model.requests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
-    expect(_result(h.model.requests.last), containsPair('output', 'withheld'));
-    expect(h.runtime.executions.first.sharedText, isNull);
+    expect(_result(h.model.requests.last), containsPair('text', _privateOutput));
+    expect(h.runtime.executions.first.sharedText, _privateOutput);
     expect(h.runtime.executions.last.toolName, 'output_read');
     expect(h.runtime.executions.last.sharedText, isNull);
-    expect(h.runtime.executions.last.state, 'failed');
-    expect(_result(h.model.requests.last, 1), {'error': 'unavailable'});
+    expect(h.runtime.executions.last.state, 'completed');
+    expect(_result(h.model.requests.last, 1), containsPair('text', _privateOutput));
     expect(_results(h.model.requests.last).last.toolCallId, 'read-a');
   });
 
-  test('only the edited projection is sent and cross-host evidence reads fail', () async {
+  test('only the bounded approved projection is sent and cross-host evidence reads fail', () async {
     final call = _call('command_execute', _command());
     final h = _Harness((request, _, index) async* {
       if (index == 0) {
@@ -1981,15 +1931,16 @@ void main() {
       }
     });
     addTearDown(h.close);
+    h.backend.target.stdout = '${'x' * 20000}$_privateOutput';
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
-    h.runtime.shareOutput('user selected summary', expected: h.runtime.dataRequest!);
     await turn;
     expect(h.model.requests, hasLength(3));
-    expect(_requestText(h.model.requests.last), contains('user selected summary'));
-    expect(h.runtime.executions.first.sharedText, 'user selected summary');
+    final shared = h.runtime.executions.first.sharedText!;
+    expect(shared, isNotEmpty);
+    expect(utf8.encode(jsonEncode(shared)).length, lessThanOrEqualTo(6500));
+    expect(_requestText(h.model.requests.last), contains(shared));
     expect(h.runtime.executions.map((entry) => entry.toolName), [
       'command_execute',
       'output_read',
@@ -1999,8 +1950,8 @@ void main() {
     expect(h.runtime.executions.skip(1).map((entry) => entry.state), ['completed', 'failed', 'failed']);
     expect(h.runtime.executions.skip(1).every((entry) => entry.sharedText == null && entry.output == null), isTrue);
     expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
-    expect(_result(h.model.requests.last), containsPair('text', 'user selected summary'));
-    expect(_result(h.model.requests.last, 1), containsPair('text', 'user selected summary'));
+    expect(_result(h.model.requests.last), containsPair('text', shared));
+    expect(_result(h.model.requests.last, 1), containsPair('text', shared));
     expect(_result(h.model.requests.last, 2), {'error': 'outsideScope'});
     expect(_result(h.model.requests.last, 3), {'error': 'unavailable'});
   });
@@ -2096,19 +2047,91 @@ void main() {
     expect(h.runtime.busy, isFalse);
   });
 
-  test('Stop while selecting output preserves the known execution terminal state', () async {
+  for (final fails in [false, true]) {
+    test('an old execution ${fails ? 'failure' : 'result'} cannot affect a new turn after Stop', () async {
+      final nextReply = Completer<void>();
+      final pending = Completer<int?>();
+      final h = _Harness((_, cancel, index) async* {
+        if (index == 0) {
+          await cancel.whenCancelled;
+        } else {
+          await nextReply.future;
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'new task done'));
+        }
+      });
+      addTearDown(h.close);
+      addTearDown(() {
+        if (!pending.isCompleted) pending.complete(null);
+        if (!nextReply.isCompleted) nextReply.complete();
+      });
+      h.backend.target.pendingExecution = pending.future;
+      final oldTurn = h.runtime.start(
+        'run the approved command',
+        AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto),
+      );
+      await _until(() => h.model.requests.isNotEmpty);
+      final operation = h.runtime.dispatcher.dispatch(
+        'agent.execute',
+        _command(),
+        RequestContext(Origin.agent, authority: h.runtime, cancellation: h.model.cancellations.single),
+      );
+      await _until(() => h.backend.target.commands.isNotEmpty);
+      final oldExecution = h.runtime.executions.single;
+      final oldOutput = oldExecution.output!;
+      final received = oldOutput.length;
+      h.runtime.stop();
+      await oldTurn;
+
+      final newTurn = h.start(hosts: const []);
+      await _until(() => h.model.requests.length == 2);
+      final newToken = h.model.cancellations.last;
+      h.backend.target.current = false;
+      h.backend.target.writeOutput!(false, Uint8List.fromList(utf8.encode('late output')));
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(newToken.isCancelled, isFalse, reason: 'the old execution watcher owns only the old token');
+      if (fails) {
+        pending.completeError(const AgentFailure('connectionFailed'));
+      } else {
+        pending.complete(0);
+      }
+      expect(await operation, isA<Err<Object?>>());
+      expect(oldOutput.length, received);
+      expect(oldExecution.sharedText, isNull);
+      expect(h.runtime.outputs.count, 0);
+      expect(h.runtime.executions, isEmpty);
+      expect(h.runtime.error, isNull);
+      expect(h.runtime.phase, AgentPhase.streaming);
+      expect(newToken.isCancelled, isFalse);
+      expect(h.journal.records.last.state, fails ? OperationState.outcomeUnknown : OperationState.completed);
+
+      nextReply.complete();
+      await newTurn;
+      expect(h.runtime.phase, AgentPhase.completed);
+      expect(h.runtime.error, isNull);
+      expect(h.runtime.messages.last.text, 'new task done');
+      expect(h.model.requests, hasLength(2));
+    });
+  }
+
+  test('Stop after execution finishes prevents result sharing and preserves its known terminal state', () async {
     final call = _call('command_execute', _command());
     final h = _Harness((_, _, index) => _oneCall(call, index));
     addTearDown(h.close);
+    var stopped = false;
+    h.runtime.addListener(() {
+      if (!stopped && h.runtime.executions.any((entry) => entry.state == 'completed')) {
+        stopped = true;
+        h.runtime.stop();
+      }
+    });
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
-    expect(h.runtime.executions.single.exitCode, 0);
-    h.runtime.stop();
     await turn;
     expect(h.runtime.phase, AgentPhase.cancelled);
+    expect(h.runtime.executions.single.exitCode, 0);
     expect(h.runtime.executions.single.state, 'completed');
+    expect(h.runtime.executions.single.sharedText, isNull);
     expect(h.journal.records.last.state, OperationState.completed);
     expect(h.model.requests, hasLength(1));
     expect(h.backend.target.commands, hasLength(1));
@@ -2220,8 +2243,6 @@ void main() {
     expect(h.backend.target.commands, isEmpty);
     expect(h.journal.records, isEmpty);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
-    h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
     await work;
     expect(h.backend.target.commands, hasLength(1));
     expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
@@ -2438,15 +2459,18 @@ void main() {
     final h = _Harness((_, _, index) => _oneCall(call, index));
     addTearDown(h.close);
     h.backend.target.result = 7;
+    var stopped = false;
+    h.runtime.addListener(() {
+      if (!stopped && h.runtime.executions.any((entry) => entry.exitCode == 7)) {
+        stopped = true;
+        h.runtime.stop();
+      }
+    });
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
     h.runtime.approve(true, expected: h.runtime.approval!);
-    await _until(() => h.runtime.dataRequest != null);
-    expect(h.runtime.executions.single.exitCode, 7);
-    expect(h.runtime.executions.single.state, 'failed');
-    expect(h.journal.records.last.state, OperationState.failed);
-    h.runtime.stop();
     await turn;
+    expect(h.runtime.executions.single.exitCode, 7);
     expect(h.runtime.phase, AgentPhase.cancelled);
     expect(h.runtime.executions.single.state, 'failed');
     expect(h.journal.records.last.state, OperationState.failed);
@@ -2582,7 +2606,7 @@ void main() {
 
   test('reviews share the model-request budget and fall back to manual decisions before the final answer', () async {
     final h = _Harness((_, _, index) async* {
-      if (index < 2) {
+      if (index < 3) {
         yield ModelMessageComplete(
           ModelMessage(
             ModelRole.assistant,
@@ -2601,22 +2625,20 @@ void main() {
     }, review: (_, _, _) => _reviewReply('allow'));
     addTearDown(h.close);
     h.backend.target.stdout = _systemOutput;
-    final manualReads = <AgentApproval>{}, manualShares = <AgentDataRequest>{};
+    final manualReads = <AgentApproval>{};
     h.runtime.addListener(() {
       if (h.runtime.approval case final pending?) manualReads.add(pending);
-      if (h.runtime.dataRequest case final pending?) manualShares.add(pending);
     });
     await h.runtime.start(
       'inspect this host',
       AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
     );
     expect(h.runtime.phase, AgentPhase.completed);
-    expect(h.model.requests, hasLength(3));
-    expect(h.model.reviewRequests, hasLength(17));
+    expect(h.model.requests, hasLength(4));
+    expect(h.model.reviewRequests, hasLength(16));
     expect(h.model.requests.length + h.model.reviewRequests.length, 20);
     expect(manualReads, isNotEmpty);
-    expect(manualShares, isNotEmpty);
-    expect(h.backend.target.commands, hasLength(16));
+    expect(h.backend.target.commands, hasLength(24));
     expect(h.runtime.messages.last.text, 'done');
   });
 

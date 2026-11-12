@@ -2346,9 +2346,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentExecuting => '执行中';
 
   @override
-  String get aiAgentAwaitingData => '选择要发送的输出';
-
-  @override
   String get aiAgentCompleted => '已完成';
 
   @override
@@ -2410,25 +2407,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentShellPermission =>
-      '命令以 SSH 账号权限执行，可能修改文件或访问网络。停止会关闭本客户端的通道，远端进程仍可能继续。';
+      '命令以 SSH 账号权限执行，可能修改文件或访问网络。批准也允许 Airy 使用该操作的有界输出。停止会关闭本客户端的通道，远端进程仍可能继续。';
 
   @override
   String get aiAgentReject => '拒绝';
 
   @override
   String get aiAgentApprove => '仅批准此次';
-
-  @override
-  String get aiAgentSharePreview => '只会向所选模型发送下方文字。可先编辑并移除私密信息。';
-
-  @override
-  String get aiAgentProjectionTooLarge => '文字超出请求容量，请缩短后再发送。';
-
-  @override
-  String get aiAgentKeepLocal => '仅保留本地';
-
-  @override
-  String get aiAgentShare => '发送这些文字';
 
   @override
   String get cmdTmuxBreak => '将窗格移入独立窗口';
@@ -2479,9 +2464,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentApproveTitle => '确认执行命令';
 
   @override
-  String get aiAgentShareTitle => '选择发送输出';
-
-  @override
   String get aiAgentExecutionFailed => '执行返回错误';
 
   @override
@@ -2519,7 +2501,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiConfigInlineHint =>
-      '点击终端 AI 按钮或按 Ctrl/Cmd+Shift+G，使用需求、已知环境及本会话近期命令生成；检查后再填入。';
+      '点击终端 AI 按钮或按 Ctrl/Cmd+Shift+G，使用需求、已知环境、近期命令及其有界结果生成；检查后再填入。';
 
   @override
   String get aiConfigCompletion => 'AI 提示补全';
@@ -2542,7 +2524,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiConfigCompletionHint =>
-      '输入 git st 等明确命令后停顿 800 毫秒触发，自动使用本会话最多 8 条相关命令。';
+      '输入 git st 等明确命令后停顿 800 毫秒触发，使用本会话最多 8 条相关命令及其有界结果。';
 
   @override
   String get aiAgentErrorHostTrust => '请先正常连接这台主机并核对主机密钥，再使用远程工具。';
@@ -2718,10 +2700,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentPermissionAutoHint => '自动读取、执行与发送结果';
 
   @override
-  String get aiAgentPermissionConfirmHint => '人工批准读取、执行与发送';
+  String get aiAgentPermissionConfirmHint => '人工批准读取与执行';
 
   @override
-  String get aiAgentPermissionObserveHint => '只读工具，读取与发送需批准';
+  String get aiAgentPermissionObserveHint => '只读工具，读取需批准';
 
   @override
   String get aiAgentPermissionReviewHint => '模型审批，无法判断时由你确认';
@@ -2733,7 +2715,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentReadApproveTitle => '确认读取信息';
 
   @override
-  String get aiAgentReadApproveHint => '仅运行固定只读诊断。读取后另行选择发送范围。';
+  String get aiAgentReadApproveHint => '运行固定只读诊断，并允许 Airy 使用该操作的有界结果。';
 
   @override
   String get aiAgentDiagnosticSystem => '系统与内存';

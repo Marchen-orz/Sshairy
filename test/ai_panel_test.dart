@@ -10,7 +10,6 @@ import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/ai/application/composer.dart';
 import 'package:sshairy/features/ai/application/configuration.dart';
 import 'package:sshairy/features/ai/application/conversations.dart';
-import 'package:sshairy/features/ai/application/output_store.dart';
 import 'package:sshairy/features/ai/application/model_catalog.dart';
 import 'package:sshairy/features/ai/application/model_selection.dart';
 import 'package:sshairy/features/ai/application/providers.dart';
@@ -141,8 +140,6 @@ class _Runtime extends AgentRuntime {
   String? goal;
   AgentScope? sentScope;
   bool? approved;
-  bool dataAnswered = false;
-  String? shared;
   List<ConversationEntry> sentHistory = const [];
   bool sentAnswerOnly = false, appendGoal = true;
   final entries = <AgentTimelineEntry>[];
@@ -205,15 +202,6 @@ class _Runtime extends AgentRuntime {
     if (!identical(approval, expected)) return;
     approved = value;
     approval = null;
-    notifyListeners();
-  }
-
-  @override
-  void shareOutput(String? text, {required AgentDataRequest expected}) {
-    if (!identical(dataRequest, expected)) return;
-    dataAnswered = true;
-    shared = text;
-    dataRequest = null;
     notifyListeners();
   }
 }
@@ -495,7 +483,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('approval shows the exact command and output sharing enforces the byte budget', (tester) async {
+  testWidgets('approval shows the exact command without a second output-sharing form', (tester) async {
     final runtime = _Runtime()
       ..active = true
       ..phase = AgentPhase.awaitingApproval
@@ -507,28 +495,12 @@ void main() {
     await tester.tap(find.text('Approve once'));
     await tester.pump();
     expect(runtime.approved, isTrue);
-
-    final output = OutputStore().create('owner', const HostId('web'), _profile.identity, 0);
-    runtime.dataRequest = AgentDataRequest(output);
-    runtime.phase = AgentPhase.awaitingData;
-    runtime.refresh();
-    await tester.pump();
-    final projection = find.byKey(const ValueKey('ai-agent-output-projection'));
-    await tester.enterText(projection, List.filled(4097, '界').join());
-    await tester.pump();
-    expect(
-      tester.widget<TextField>(projection).decoration!.errorText,
-      AppLocalizations.of(tester.element(projection)).aiAgentProjectionTooLarge,
-    );
-    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('ai-agent-share-output'))).onPressed, isNull);
-    await tester.tap(find.text('Keep local'));
-    await tester.pump();
-    expect(runtime.dataAnswered, isTrue);
-    expect(runtime.shared, isNull);
+    expect(find.byKey(const ValueKey('ai-agent-output-projection')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-share-output')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('read approval and diagnostic projection are separate visible decisions', (tester) async {
+  testWidgets('read approval includes its bounded diagnostic result without another decision', (tester) async {
     final runtime = _Runtime()
       ..active = true
       ..approval = AgentApproval(
@@ -546,42 +518,8 @@ void main() {
     await tester.tap(find.text(l.aiAgentApprove));
     await tester.pump();
     expect(runtime.approved, isTrue);
-    final store = OutputStore();
-    final output = store.create('owner', const HostId('web'), _profile.identity, 0);
-    runtime.dataRequest = AgentDataRequest(output, projection: '{"listeners":[]}', projectionTruncated: true);
-    runtime.refresh();
-    await tester.pump();
-    final projection = find.byKey(const ValueKey('ai-agent-output-projection'));
-    expect(tester.widget<TextField>(projection).controller!.text, '{"listeners":[]}');
-    expect(find.text(l.aiAgentTruncated), findsOneWidget);
-    expect(runtime.shared, isNull);
-    await tester.tap(find.byKey(const ValueKey('ai-agent-share-output')));
-    await tester.pump();
-    expect(runtime.shared, '{"listeners":[]}');
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('edited output survives hiding only for the exact pending request', (tester) async {
-    final store = OutputStore();
-    final first = AgentDataRequest(store.create('owner', const HostId('web'), _profile.identity, 0));
-    final runtime = _Runtime()
-      ..active = true
-      ..dataRequest = first
-      ..phase = AgentPhase.awaitingData;
-    final container = await _panel(tester, runtime);
-    final projection = find.byKey(const ValueKey('ai-agent-output-projection'));
-    await tester.enterText(projection, 'redacted text');
-    await tester.pumpWidget(_app(container, visible: false));
-    await tester.pump();
-    await tester.pumpWidget(_app(container));
-    await tester.pump();
-    expect(tester.widget<TextField>(projection).controller!.text, 'redacted text');
-    final second = AgentDataRequest(store.create('owner', const HostId('web'), _profile.identity, 0));
-    runtime.dataRequest = second;
-    runtime.refresh();
-    await tester.pump();
-    expect(tester.widget<TextField>(projection).controller!.text, second.suggested);
-    expect(container.read(agentComposerProvider).outputRequest, isNull);
+    expect(find.byKey(const ValueKey('ai-agent-output-projection')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-share-output')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1063,16 +1001,11 @@ void main() {
       '/private/old',
       'agent.execute',
     );
-    final rawStore = OutputStore();
-    final raw = rawStore.create('old-owner', const HostId('web'), _profile.identity, 0);
-    rawStore.append(raw, false, Uint8List.fromList([82, 65, 87]));
-    runtime.dataRequest = AgentDataRequest(raw);
     await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-conversation-a')));
     await tester.pumpAndSettle();
     expect(runtime.approval, isNull);
-    expect(runtime.dataRequest, isNull);
     final execution = runtime.timeline.whereType<AgentExecution>().single;
     expect(execution.archived, isTrue);
     expect(execution.command, isEmpty);

@@ -29,7 +29,7 @@ class StoredOutput {
   }
 }
 
-/// Handles carry access provenance; only an explicitly approved projection can be read by tools.
+/// Handles carry access provenance; tools can read only bounded projections of approved operations.
 class OutputStore {
   OutputStore({this.totalLimit = 8 << 20, this.itemLimit = 2 << 20, this.ttl = const Duration(minutes: 30)});
   final int totalLimit, itemLimit;
@@ -53,7 +53,7 @@ class OutputStore {
     item.dropped += bytes.length - kept;
   }
 
-  /// The selected text is exactly what the user previews; never grants access to the raw buffers.
+  /// Shares the approved operation's bounded projection, never its raw buffers.
   void share(StoredOutput item, String text) {
     if (!identical(_items[item.id], item) || utf8.encode(text).length > 8192) throw ArgumentError('output projection');
     item._shared = text;

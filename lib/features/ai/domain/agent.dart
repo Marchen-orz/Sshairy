@@ -9,7 +9,6 @@ enum AgentPhase {
   streaming,
   awaitingApproval,
   executing,
-  awaitingData,
   completed,
   stopping,
   cancelled,

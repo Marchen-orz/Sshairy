@@ -2422,9 +2422,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentExecuting => 'Running';
 
   @override
-  String get aiAgentAwaitingData => 'Choose what output to share';
-
-  @override
   String get aiAgentCompleted => 'Completed';
 
   @override
@@ -2489,27 +2486,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentShellPermission =>
-      'This command runs with the SSH account\'s permissions and may change files or access the network. Stopping closes this client\'s channel; remote processes may continue.';
+      'This command runs with the SSH account\'s permissions and may change files or access the network. Approval also lets Airy use its bounded output. Stopping closes this client\'s channel; remote processes may continue.';
 
   @override
   String get aiAgentReject => 'Reject';
 
   @override
   String get aiAgentApprove => 'Approve once';
-
-  @override
-  String get aiAgentSharePreview =>
-      'Only the text below will be sent to the selected model. Edit it to remove private data.';
-
-  @override
-  String get aiAgentProjectionTooLarge =>
-      'This text exceeds the request limit. Shorten it before sharing.';
-
-  @override
-  String get aiAgentKeepLocal => 'Keep local';
-
-  @override
-  String get aiAgentShare => 'Share this text';
 
   @override
   String get cmdTmuxBreak => 'Move a pane to a window';
@@ -2564,9 +2547,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentApproveTitle => 'Approve command';
 
   @override
-  String get aiAgentShareTitle => 'Share output';
-
-  @override
   String get aiAgentExecutionFailed => 'Finished with errors';
 
   @override
@@ -2613,7 +2593,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigInlineHint =>
-      'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment and recent session commands. Review before filling in.';
+      'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment, recent session commands and their bounded results. Review before filling in.';
 
   @override
   String get aiConfigCompletion => 'AI suggestions';
@@ -2639,7 +2619,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigCompletionHint =>
-      'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands from this session.';
+      'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands and their bounded results from this session.';
 
   @override
   String get aiAgentErrorHostTrust =>
@@ -2837,12 +2817,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Read, execute and share results automatically';
 
   @override
-  String get aiAgentPermissionConfirmHint =>
-      'Approve reads, commands and sharing';
+  String get aiAgentPermissionConfirmHint => 'Approve reads and commands';
 
   @override
-  String get aiAgentPermissionObserveHint =>
-      'Read-only tools; approve reads and sharing';
+  String get aiAgentPermissionObserveHint => 'Read-only tools; approve reads';
 
   @override
   String get aiAgentPermissionReviewHint =>
@@ -2856,7 +2834,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentReadApproveHint =>
-      'Run a fixed read-only diagnostic. Choose what to share afterwards.';
+      'Run a fixed read-only diagnostic and let Airy use its bounded result.';
 
   @override
   String get aiAgentDiagnosticSystem => 'System and memory';
