@@ -24,8 +24,12 @@ const _changedRoute = '11111111111111111111111111111111';
 
 typedef _Script = Stream<ModelEvent> Function(ModelRequest request, CancellationToken cancel);
 
-ModelProfile _profile({String model = 'test-model', bool tools = true}) =>
-    ModelProfile(protocol: ModelProtocol.openai, endpoint: 'https://model.invalid/v1', model: model, tools: tools);
+ModelProfile _profile({
+  String model = 'test-model',
+  bool tools = true,
+  ModelProtocol protocol = ModelProtocol.openai,
+  String endpoint = 'https://model.invalid/v1',
+}) => ModelProfile(protocol: protocol, endpoint: endpoint, model: model, tools: tools);
 
 AgentConversationRecord _record(
   String id, {
@@ -494,32 +498,69 @@ void main() {
     ]);
   });
 
-  for (final change in ['destination']) {
+  test('switching models continues legacy history in the same conversation using fresh requests', () async {
+    final h = await _create(initial: [_record('old')]);
+    h.conversations.select('old');
+    h.composer.setGoal('follow up after switching models');
+    h.permissionMode = AgentPermissionMode.observe;
+    for (final model in ['next-model', 'test-model']) {
+      h.profile = _profile(model: model, endpoint: 'https://model.invalid/v1/');
+      h.revision++;
+      expect(h.conversations.canContinue(_hostA), isTrue);
+      expect(h.conversations.selectedId, 'old');
+      expect(h.model.requests.length, model == 'next-model' ? 0 : 1);
+      expect(h.draft.goal, 'follow up after switching models');
+      await h.conversations.send(h.draft.goal, _hostA, continueHistory: true);
+      final request = h.model.requests.last;
+      expect(request.profile.model, model);
+      expect(request.messages, hasLength(1));
+      expect(request.messages.single.opaque, isNull);
+      expect(request.messages.single.calls, isEmpty);
+      final input = _input(request);
+      final history = input['conversationHistory'] as Map;
+      expect((history['entries'] as List).first['text'], 'earlier user old');
+      expect(h.runtime.permissionMode, AgentPermissionMode.observe);
+      expect(h.conversations.selectedId, 'old');
+      expect(h.backend.prepared, isEmpty);
+      h.composer.setGoal('follow up after switching models');
+    }
+    expect(h.store.records.single.id, 'old');
+    expect(h.conversations.current!.entries, hasLength(6));
+  });
+
+  test('regenerating after a model switch uses the new model without tools in the same conversation', () async {
+    final h = await _create(initial: [_record('old')]);
+    h.conversations.select('old');
+    h.profile = _profile(model: 'new-answer-model');
+    h.revision++;
+    expect(await h.conversations.regenerate(_hostA), isTrue);
+    expect(h.conversations.selectedId, 'old');
+    final request = h.model.requests.single;
+    expect(request.profile.model, 'new-answer-model');
+    expect(request.tools, isEmpty);
+    expect(request.messages.single.opaque, isNull);
+    expect(h.conversations.current!.entries.map((entry) => entry.text), ['earlier user old', 'A safe answer']);
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  for (final change in ['endpoint', 'protocol']) {
     test('explicit continuation refuses $change mismatch without a request or history resend', () async {
       final h = await _create(initial: [_record('old')]);
       h.conversations.select('old');
-      var selectedHost = _hostA;
-      switch (change) {
-        case 'destination':
-          h.profile = _profile(model: 'different-model');
-          h.revision++;
-        case 'host':
-          selectedHost = _hostB;
-        case 'route':
-          h.routes[_hostA] = _changedRoute;
-        case 'missing route':
-          h.routes.remove(_hostA);
-      }
-      expect(h.conversations.canContinue(selectedHost), isFalse);
-      await h.conversations.send('fresh after mismatch', selectedHost, continueHistory: true);
+      h.profile = change == 'endpoint'
+          ? _profile(endpoint: 'https://other.invalid/v1')
+          : _profile(protocol: ModelProtocol.anthropic);
+      h.revision++;
+      expect(h.conversations.canContinue(_hostA), isFalse);
+      await h.conversations.send('fresh after mismatch', _hostA, continueHistory: true);
       expect(h.model.requests, isEmpty);
       expect(h.conversations.selectedId, 'old');
       h.conversations.newConversation(keepDraft: true);
-      await h.conversations.send('fresh after mismatch', selectedHost, continueHistory: true);
+      await h.conversations.send('fresh after mismatch', _hostA, continueHistory: true);
       expect(h.conversations.selectedId, isNot('old'));
       expect(h.conversations.current!.destination, h.profile.identity);
-      expect(h.conversations.current!.host, selectedHost);
-      expect(h.conversations.current!.routeSignature, h.routes[selectedHost]);
+      expect(h.conversations.current!.host, _hostA);
+      expect(h.conversations.current!.routeSignature, h.routes[_hostA]);
       expect(_input(h.model.requests.single).containsKey('conversationHistory'), isFalse);
       final old = h.conversations.records.singleWhere((record) => record.id == 'old');
       expect(old.destination, _profile().identity);
@@ -527,6 +568,23 @@ void main() {
       expect(old.entries.map((entry) => entry.text), ['earlier user old', 'earlier answer old']);
     });
   }
+
+  test('malformed or unknown legacy destinations never qualify for readable history continuation', () async {
+    for (final destination in [
+      'unstructured-destination',
+      jsonEncode(['openai', 'https://model.invalid/v1']),
+      jsonEncode(['unknown', 'https://model.invalid/v1', 'model']),
+      jsonEncode(['openai', 'https://model.invalid/v1', 42]),
+      jsonEncode(['openai', 'https://model.invalid/v1?route=other', 'model']),
+      jsonEncode(['openai', 'https://model.invalid/v1/other', 'model']),
+    ]) {
+      final h = await _create(initial: [_record('old', destination: destination)]);
+      h.conversations.select('old');
+      expect(h.conversations.canContinue(_hostA), isFalse);
+      await h.conversations.send('do not send mismatched history', _hostA, continueHistory: true);
+      expect(h.model.requests, isEmpty);
+    }
+  });
 
   for (final change in ['host', 'route', 'missing route']) {
     test('$change continues readable history in the same conversation', () async {

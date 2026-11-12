@@ -880,12 +880,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('changing the selected model keeps the conversation, history, draft and permission mode', (tester) async {
+    final runtime = _Runtime();
+    final container = await _panel(tester, runtime, store: _ConversationStore([_conversation('a')]));
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-conversation-a')));
+    await tester.pumpAndSettle();
+    final goal = find.byKey(const ValueKey('ai-agent-goal'));
+    await tester.enterText(goal, 'Follow up with a new model');
+    container.read(selectedAgentPermissionModeProvider.notifier).select(AgentPermissionMode.observe);
+    await tester.tap(
+      find.descendant(of: find.byKey(const ValueKey('ai-agent-model')), matching: find.byType(TextButton)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-model-option-alternate-model')));
+    await tester.pumpAndSettle();
+    expect(container.read(effectiveAgentProfileProvider)!.model, 'alternate-model');
+    expect(container.read(agentConversationsProvider).selectedId, 'a');
+    expect(find.byKey(const ValueKey('ai-agent-new-target')), findsNothing);
+    expect(find.text('Previous a'), findsOneWidget);
+    expect(tester.widget<TextField>(goal).controller!.text, 'Follow up with a new model');
+    expect(container.read(selectedAgentPermissionModeProvider), AgentPermissionMode.observe);
+    expect(runtime.goal, isNull);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
+    await tester.pump();
+    expect(runtime.goal, 'Follow up with a new model');
+    expect(runtime.sentHistory.map((entry) => entry.text), ['Previous a']);
+    expect(runtime.sentScope!.conversationId, 'a');
+    expect(runtime.sentScope!.permissionMode, AgentPermissionMode.observe);
+    expect(container.read(agentConversationsProvider).selectedId, 'a');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('changed binding keeps the draft and starts a new conversation only on request', (tester) async {
     final runtime = _Runtime();
     final container = await _panel(
       tester,
       runtime,
-      store: _ConversationStore([_conversation('a', destination: 'previous-model-destination')]),
+      store: _ConversationStore([
+        _conversation(
+          'a',
+          destination: ModelProfile(
+            protocol: _profile.protocol,
+            endpoint: 'https://previous-model.example/v1',
+            model: _profile.model,
+          ).identity,
+        ),
+      ]),
     );
     await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
     await tester.pumpAndSettle();

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../../../foundation/ids.dart';
 import '../adapters/conversation_store.dart';
 import '../domain/conversation.dart';
 import '../domain/agent.dart';
+import '../domain/model_profile.dart';
 import 'composer.dart';
 import 'providers.dart';
 import 'model_selection.dart';
@@ -121,7 +123,21 @@ class AgentConversations extends ChangeNotifier {
   bool canContinue(HostId? host) {
     final record = current;
     if (record == null) return false;
-    return record.destination == destination();
+    final service = _service(record.destination);
+    return service != null && service == _service(destination());
+  }
+
+  // Legacy records include the model; only readable history can cross models within the same service.
+  static (ModelProtocol, String)? _service(String? identity) {
+    if (identity == null) return null;
+    try {
+      final parts = jsonDecode(identity);
+      if (parts is! List || parts.length != 3) return null;
+      final profile = ModelProfile.fromJson({'protocol': parts[0], 'endpoint': parts[1], 'model': parts[2]});
+      return (profile.protocol, profile.endpoint);
+    } on FormatException {
+      return null;
+    }
   }
 
   List<ConversationEntry> _snapshot() => [
@@ -306,7 +322,7 @@ class AgentConversations extends ChangeNotifier {
     final matches = hasHistory && canContinue(host);
     final continuing = matches && continueHistory;
     if (hasHistory && !continuing) {
-      // Sending history to another model destination remains an explicit boundary.
+      // Sending history to another protocol or endpoint remains an explicit boundary.
       if (continueHistory) return;
       newConversation(keepDraft: true);
     }
