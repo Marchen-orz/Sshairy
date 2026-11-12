@@ -73,7 +73,11 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   (bool, bool)? _aiPresentation;
   CommandCandidate? _aiCandidate;
   bool? _aiLastCompositionReady;
-  bool _inlineAiOpen = false, _aiScheduled = false, _aiFrameListening = false, _applicationActive = true;
+  bool _inlineAiOpen = false,
+      _aiScheduled = false,
+      _aiFrameListening = false,
+      _aiCompletionLoading = false,
+      _applicationActive = true;
   late final VoidCallback _aiFrameCallback = _aiFrame;
 
   TerminalSession get _session => widget.session;

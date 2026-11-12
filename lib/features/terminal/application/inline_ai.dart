@@ -64,6 +64,7 @@ class InlineAiController extends ChangeNotifier {
     final discard =
         result != null &&
         (!sameTerminalAiEnvironment(context!, current) ||
+            context!.historyRevision != current.historyRevision ||
             current.draft != null && current.draft!.isNotEmpty && current.draft != context!.draft);
     if (discard) {
       result = null;

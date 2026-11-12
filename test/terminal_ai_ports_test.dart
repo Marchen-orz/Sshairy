@@ -236,6 +236,19 @@ void main() {
     expect(shell.writes, ['\x7f', '\x7f', '\x7f']);
   });
 
+  testWidgets('history changes during replacement prevent a late paste into the emptied line', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ old');
+    final expected = session.readAiContext();
+    final work = session.acceptAiDraft(expected, 'df -h');
+    await tester.pump();
+    session.clearCommandHistory();
+    await _feed(tester, shell.echo, '\r\x1b[2Ku@box:~\$ ');
+    expect(await work, InsertResult.stale);
+    expect(shell.writes, ['\x7f', '\x7f', '\x7f']);
+    expect(await session.acceptAiDraft(expected, 'pwd'), InsertResult.stale);
+  });
+
   testWidgets('replacement rechecks caller authorization before the final paste', (tester) async {
     final shell = await connect(tester);
     await _feed(tester, shell.echo, 'u@box:~\$ old');
@@ -374,6 +387,131 @@ void main() {
     session.close();
     manager.closeAll();
     await tester.pump();
+  });
+
+  testWidgets('recognized prompt results stay paired with each submission of the same command', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ printf value');
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\nfirst\r\nu@box:~\$ ');
+    final first = session.readAiContext();
+    final firstResult = session.readAiHistory(first).single;
+    expect(firstResult.output.trim(), 'first');
+    expect(firstResult.resultStatus, TerminalAiHistoryResultStatus.available);
+    expect(firstResult.boundary, TerminalAiHistoryBoundary.prompt);
+    expect(firstResult.exitCode, isNull);
+    await _feed(tester, shell.echo, 'printf value');
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\nsecond\r\nu@box:~\$ ');
+    final current = session.readAiContext();
+    final results = session.readAiHistory(current);
+    expect(results.map((entry) => entry.text), ['printf value', 'printf value']);
+    expect(results.map((entry) => entry.output.trim()), ['first', 'second']);
+    expect(current.historyRevision, greaterThan(first.historyRevision));
+    expect(session.readAiHistory(first), isEmpty);
+  });
+
+  for (final code in ['133', '633']) {
+    testWidgets('OSC $code command boundaries preserve an explicit exit code and exclude the next prompt', (
+      tester,
+    ) async {
+      final shell = await connect(tester);
+      await _feed(tester, shell.echo, '\x1b]$code;A\x07u@box:~\$ \x1b]$code;B\x07false');
+      session.commandSubmitted();
+      await _feed(
+        tester,
+        shell.echo,
+        '\r\n\x1b]$code;C\x07failed\r\n\x1b]$code;D;7\x07'
+        '\x1b]$code;A\x07u@box:~\$ \x1b]$code;B\x07',
+      );
+      final result = session.readAiHistory(session.readAiContext()).single;
+      expect(result.output.trim(), 'failed');
+      expect(result.exitCode, 7);
+      expect(result.resultStatus, TerminalAiHistoryResultStatus.available);
+      expect(result.output, isNot(contains('u@box')));
+    });
+  }
+
+  testWidgets('OSC completion without a C boundary never borrows a previous exit code', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, '\x1b]133;A\x07u@box:~\$ \x1b]133;B\x07echo value');
+    session.commandSubmitted();
+    await _feed(
+      tester,
+      shell.echo,
+      '\r\nvalue\r\n\x1b]133;D;0\x07'
+      '\x1b]133;A\x07u@box:~\$ \x1b]133;B\x07',
+    );
+    final result = session.readAiHistory(session.readAiContext()).single;
+    expect(result.resultStatus, TerminalAiHistoryResultStatus.unavailable);
+    expect(result.output, isEmpty);
+    expect(result.exitCode, isNull);
+  });
+
+  for (final change in ['\x1b[?1049hprivate TUI\x1b[?1049l', '\x1b[2J\x1b[H']) {
+    testWidgets('destructive screen changes never become command result text: $change', (tester) async {
+      final shell = await connect(tester);
+      await _feed(tester, shell.echo, 'u@box:~\$ echo value');
+      session.commandSubmitted();
+      await _feed(tester, shell.echo, '\r\nvalue$change\r\nu@box:~\$ ');
+      final result = session.readAiHistory(session.readAiContext()).single;
+      expect(result.resultStatus, TerminalAiHistoryResultStatus.unavailable);
+      expect(result.output, isEmpty);
+    });
+  }
+
+  testWidgets('scroll-region screen changes invalidate a command output range', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ echo value');
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\nvalue\x1b[1;10r\r\nu@box:~\$ ');
+    final result = session.readAiHistory(session.readAiContext()).single;
+    expect(result.resultStatus, TerminalAiHistoryResultStatus.unavailable);
+    expect(result.output, isEmpty);
+  });
+
+  testWidgets('a different recognized prompt cannot finish an earlier command result', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ ssh other');
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\nremote output\r\nu@other:~\$ ');
+    final result = session.readAiHistory(session.readAiContext()).single;
+    expect(result.resultStatus, TerminalAiHistoryResultStatus.unavailable);
+    expect(result.output, isEmpty);
+  });
+
+  testWidgets('secret output split between chunks removes the whole command record', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ cat response');
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\napi_');
+    await _feed(tester, shell.echo, 'key=synthetic-private\r\nu@box:~\$ ');
+    expect(session.readAiHistory(session.readAiContext()), isEmpty);
+  });
+
+  testWidgets('a sensitive result is removed even when a later screen change invalidates its boundary', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ cat response');
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\npassword=synthetic-private');
+    await _feed(tester, shell.echo, '\x1b[?1049hTUI\x1b[?1049l\r\nu@box:~\$ ');
+    expect(session.readAiHistory(session.readAiContext()), isEmpty);
+  });
+
+  testWidgets('results are bounded by their encoded projection and clear cannot attach a late result', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, 'u@box:~\$ printf large');
+    session.commandSubmitted();
+    await _feed(tester, shell.echo, '\r\n${'中' * 1800}\r\nu@box:~\$ ');
+    final results = session.readAiHistory(session.readAiContext());
+    expect(results.single.resultStatus, TerminalAiHistoryResultStatus.truncated);
+    expect(utf8.encode(jsonEncode(results.map(terminalAiHistoryData).toList())).length, lessThanOrEqualTo(4096));
+    expect(results.single.output, isNot(contains('�')));
+    await _feed(tester, shell.echo, 'echo late');
+    session.commandSubmitted();
+    session.clearCommandHistory();
+    await _feed(tester, shell.echo, '\r\nlate\r\nu@box:~\$ ');
+    expect(session.readAiHistory(session.readAiContext()), isEmpty);
   });
 
   testWidgets('snapshot access is explicit and bounded by rows and whole UTF-8 characters', (tester) async {

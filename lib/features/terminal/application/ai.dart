@@ -24,6 +24,8 @@ class _DisabledTerminalAi implements TerminalAiService {
   Future<String?> complete(
     TerminalAiContext context,
     List<TerminalAiHistoryEntry> history,
-    CancellationToken cancel,
-  ) async => null;
+    CancellationToken cancel, {
+    void Function()? onStarted,
+    void Function(Duration)? onDeferred,
+  }) async => null;
 }

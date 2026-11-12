@@ -349,6 +349,155 @@ void main() {
     );
   });
 
+  test('history pairs each command with its bounded result and drops the whole sensitive record', () async {
+    final records = [
+      TerminalAiHistoryEntry(
+        text: 'git status',
+        at: now.subtract(const Duration(seconds: 3)),
+        generation: 1,
+        output: 'On branch main',
+        resultStatus: TerminalAiHistoryResultStatus.available,
+        boundary: TerminalAiHistoryBoundary.prompt,
+      ),
+      TerminalAiHistoryEntry(
+        text: 'git status',
+        at: now.subtract(const Duration(seconds: 2)),
+        generation: 1,
+        output: 'clean',
+        resultStatus: TerminalAiHistoryResultStatus.available,
+        exitCode: 0,
+        boundary: TerminalAiHistoryBoundary.osc133,
+      ),
+      TerminalAiHistoryEntry(
+        text: 'git config',
+        at: now.subtract(const Duration(seconds: 1)),
+        generation: 1,
+        output: 'token=synthetic-private',
+        resultStatus: TerminalAiHistoryResultStatus.available,
+      ),
+      TerminalAiHistoryEntry(text: 'git diff', at: now, generation: 1),
+    ];
+    model.json({'status': 'command', 'command': 'git log'});
+    await service.generate(_context(), 'Show recent changes', CancellationToken(), history: records);
+    final history = _input(model.requests.single)['history'] as List;
+    expect(history.map((entry) => entry['text']), ['git status', 'git status', 'git diff']);
+    expect(history[0]['result']['text'], 'On branch main');
+    expect(history[0]['result'], isNot(contains('exitCode')));
+    expect(history[1]['result']['text'], 'clean');
+    expect(history[1]['result']['exitCode'], 0);
+    expect(history[2]['result'], {'status': 'unavailable'});
+    expect(jsonEncode(history), isNot(contains('synthetic-private')));
+    expect(model.requests.single.system, contains('unavailable means no known result'));
+  });
+
+  test('a safe command with a bare Bearer credential result is excluded as a whole record', () async {
+    final records = [
+      TerminalAiHistoryEntry(
+        text: 'cat response',
+        at: now,
+        generation: 1,
+        output: 'Bearer eyJhbGciOiJIUzI1NiJ9.synthetic.signature',
+        resultStatus: TerminalAiHistoryResultStatus.available,
+      ),
+    ];
+    model.json({'status': 'command', 'command': 'pwd'});
+    await service.generate(_context(), 'Show directory', CancellationToken(), history: records);
+    final input = _input(model.requests.single);
+    expect(input, isNot(contains('history')));
+    expect(jsonEncode(input), isNot(contains('synthetic.signature')));
+    expect(jsonEncode(input), isNot(contains('cat response')));
+  });
+
+  test('encoded history budget keeps whole commands and marks reduced results as truncated', () async {
+    final records = [
+      for (var i = 0; i < 8; i++)
+        TerminalAiHistoryEntry(
+          text: 'echo $i',
+          at: now.subtract(Duration(seconds: 8 - i)),
+          generation: 1,
+          output: '中文 \\"\\n' * 1200,
+          resultStatus: TerminalAiHistoryResultStatus.available,
+        ),
+    ];
+    model.json({'status': 'command', 'command': 'pwd'});
+    await service.generate(_context(), 'Where am I?', CancellationToken(), history: records);
+    final history = _input(model.requests.single)['history'] as List;
+    expect(history, hasLength(8));
+    expect(utf8.encode(jsonEncode(history)).length, lessThanOrEqualTo(4096));
+    expect(history.every((entry) => entry['result']['status'] == 'truncated'), isTrue);
+    expect(jsonEncode(history), isNot(contains('�')));
+  });
+
+  test('completion keys include changed history results while entity grounding remains command-only', () async {
+    final context = _context(draft: 'docker logs ');
+    final unknown = TerminalAiHistoryEntry(text: 'docker ps', at: now, generation: 1);
+    var started = 0;
+    model.json({'status': 'abstain'});
+    await service.complete(context, [unknown], CancellationToken(), onStarted: () => started++);
+    now = now.add(const Duration(seconds: 2));
+    final completed = unknown.withResult(status: TerminalAiHistoryResultStatus.available, output: 'new-container');
+    model.json({'status': 'suggest', 'command': 'docker logs new-container'});
+    expect(await service.complete(context, [completed], CancellationToken(), onStarted: () => started++), isNull);
+    expect(model.requests, hasLength(2));
+    expect(started, 2);
+    expect(_input(model.requests.last)['history'][0]['result']['text'], 'new-container');
+    now = now.add(const Duration(seconds: 2));
+    await service.complete(context, [completed], CancellationToken(), onStarted: () => started++);
+    expect(model.requests, hasLength(2));
+    expect(started, 2);
+  });
+
+  test('completion start callback is absent for locally rejected requests', () async {
+    var started = 0;
+    await service.complete(_context(draft: 'g'), const [], CancellationToken(), onStarted: () => started++);
+    final cancelled = CancellationToken()..cancel();
+    await service.complete(_context(), const [], cancelled, onStarted: () => started++);
+    expect(started, 0);
+    expect(model.requests, isEmpty);
+  });
+
+  test('new eligible prefixes defer only for the remaining minimum interval without consuming the request', () async {
+    model.json({'status': 'abstain'});
+    await service.complete(_context(), const [], CancellationToken());
+    now = now.add(const Duration(milliseconds: 800));
+    final deferred = <Duration>[];
+    var started = 0;
+    final next = _context(draft: 'git stat', revision: 2);
+    await service.complete(next, const [], CancellationToken(), onStarted: () => started++, onDeferred: deferred.add);
+    expect(deferred, [const Duration(milliseconds: 1200)]);
+    expect(started, 0);
+    expect(model.requests, hasLength(1));
+    now = now.add(deferred.single);
+    await service.complete(next, const [], CancellationToken(), onStarted: () => started++, onDeferred: deferred.add);
+    expect(started, 1);
+    expect(deferred, hasLength(1));
+    expect(model.requests, hasLength(2));
+  });
+
+  test('duplicate, unknown commands and exhausted minute budgets do not request a deferred retry', () async {
+    model.json({'status': 'abstain'});
+    await service.complete(_context(), const [], CancellationToken());
+    now = now.add(const Duration(milliseconds: 800));
+    final deferred = <Duration>[];
+    await service.complete(_context(), const [], CancellationToken(), onDeferred: deferred.add);
+    await service.complete(
+      _context(draft: 'customunknown status'),
+      const [],
+      CancellationToken(),
+      onDeferred: deferred.add,
+    );
+    expect(deferred, isEmpty);
+    now = now.add(const Duration(milliseconds: 1200));
+    for (var i = 1; i < 10; i++) {
+      await service.complete(_context(revision: i + 1), const [], CancellationToken());
+      now = now.add(const Duration(seconds: 2));
+    }
+    now = now.subtract(const Duration(milliseconds: 1200));
+    await service.complete(_context(revision: 99), const [], CancellationToken(), onDeferred: deferred.add);
+    expect(deferred, isEmpty);
+    expect(model.requests, hasLength(10));
+  });
+
   test('global rate limit prevents duplicate, too frequent and eleventh minute requests', () async {
     model.json({'status': 'abstain'});
     for (var i = 0; i < 10; i++) {

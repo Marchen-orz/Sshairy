@@ -68,7 +68,13 @@ extension _TerminalAiPane on _TerminalPaneState {
     }
     final expected = _aiCompletionContext;
     if (expected != null && (!ready || !sameTerminalAiContext(expected, _session.readAiContext()))) {
+      final hadLoading = _aiCompletionLoading;
       _cancelAiCompletion();
+      if (hadLoading) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _update(() {});
+        });
+      }
       _scheduleAi();
     }
   }
@@ -89,7 +95,17 @@ extension _TerminalAiPane on _TerminalPaneState {
     _aiCompletionCancel?.cancel();
     _aiCompletionCancel = null;
     _aiCompletionContext = null;
+    _aiCompletionLoading = false;
     _aiCandidate = null;
+  }
+
+  bool get _aiCompletionBusy {
+    final expected = _aiCompletionContext;
+    return _aiCompletionLoading &&
+        expected != null &&
+        _session.commandAssistance.value.browse == null &&
+        _completionEligible(expected) &&
+        sameTerminalAiContext(expected, _session.readAiContext());
   }
 
   bool _completionEligible(TerminalAiContext context) =>
@@ -128,13 +144,15 @@ extension _TerminalAiPane on _TerminalPaneState {
       _stopAiFrames();
     }
     if (!eligible) {
-      final had = _aiCandidate != null;
+      final had = _aiCandidate != null || _aiCompletionLoading;
       _cancelAiCompletion();
       if (had && mounted) _update(() {});
       return;
     }
     if (_aiCompletionContext != null && sameTerminalAiContext(_aiCompletionContext!, context)) return;
+    final had = _aiCandidate != null || _aiCompletionLoading;
     _cancelAiCompletion();
+    if (had) _update(() {});
     _aiCompletionContext = context;
     final cancel = _aiCompletionCancel = CancellationToken();
     _aiTimer = Timer(const Duration(milliseconds: 800), () => _requestAiCompletion(context, cancel));
@@ -148,8 +166,24 @@ extension _TerminalAiPane on _TerminalPaneState {
         _completionEligible(expected) &&
         sameTerminalAiContext(expected, _session.readAiContext());
     if (!current()) return;
+    var started = false;
+    Duration? deferred;
     try {
-      final result = await _aiService!.complete(expected, _session.readAiHistory(expected), cancel);
+      final result = await _aiService!.complete(
+        expected,
+        _session.readAiHistory(expected),
+        cancel,
+        onStarted: () {
+          started = true;
+          if (current()) _update(() => _aiCompletionLoading = true);
+        },
+        onDeferred: (delay) => deferred = delay,
+      );
+      if (current() && result == null && !started && deferred != null && deferred! > Duration.zero) {
+        _aiTimer?.cancel();
+        _aiTimer = Timer(deferred!, () => _requestAiCompletion(expected, cancel));
+        return;
+      }
       if (!current() || result == null || !validTerminalAiCommand(result) || !result.startsWith(expected.draft!)) {
         return;
       }
@@ -158,6 +192,10 @@ extension _TerminalAiPane on _TerminalPaneState {
       _update(() => _aiCandidate = CommandCandidate(result, source: CommandCandidateSource.ai));
     } on Object {
       // Optional AI completion quietly leaves the local candidates available.
+    } finally {
+      if (mounted && identical(_aiCompletionCancel, cancel) && _aiCompletionLoading) {
+        _update(() => _aiCompletionLoading = false);
+      }
     }
   }
 

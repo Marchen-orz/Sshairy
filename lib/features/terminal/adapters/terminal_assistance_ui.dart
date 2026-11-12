@@ -12,7 +12,7 @@ extension _AssistancePane on _TerminalPaneState {
       _completionCursor.value != null &&
       state.request != null &&
       !identical(_dismissedCandidateRequest, state.request) &&
-      (state.candidates.isNotEmpty || state.browse != null);
+      (state.candidates.isNotEmpty || state.browse != null || _aiCompletionBusy);
 
   KeyEventResult? _assistanceKey(KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return null;
@@ -36,6 +36,7 @@ extension _AssistancePane on _TerminalPaneState {
         _syncCandidateSelection(state);
       });
       _scrollCandidateIntoView();
+      _scheduleAi();
       return KeyEventResult.handled;
     }
     // xterm's text input owns composing events; modified arrows keep shell/application shortcuts.
@@ -51,18 +52,25 @@ extension _AssistancePane on _TerminalPaneState {
       return null;
     }
     final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape && (_popupAvailable(state) || _aiCompletionCancel != null)) {
+      _cancelAiCompletion();
+      _update(() {
+        _dismissedCandidateRequest = state.request;
+        _candidateMode = false;
+      });
+      return KeyEventResult.handled;
+    }
     if (!_popupAvailable(state)) {
       if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
         _session.browseShellHistory();
       }
       return null;
     }
-    if (key == LogicalKeyboardKey.escape) {
-      _update(() {
-        _dismissedCandidateRequest = state.request;
-        _candidateMode = false;
-      });
-      return KeyEventResult.handled;
+    if (state.candidates.isEmpty && state.browse == null) {
+      if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
+        _session.browseShellHistory();
+      }
+      return null;
     }
     if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
       if (state.candidates.isEmpty) {
@@ -224,6 +232,7 @@ extension _AssistancePane on _TerminalPaneState {
       final l = AppLocalizations.of(context);
       final rowHeight = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
       final browse = state.browse;
+      final aiLoading = _aiCompletionBusy;
       final locale = l.localeName.toLowerCase().replaceAll('_', '-').split('-').first;
       final gutter = ScrollGutterScope.gapOf(context);
       final rowEndPadding = gutter == 0 ? Space.sm : 0.0;
@@ -313,13 +322,18 @@ extension _AssistancePane on _TerminalPaneState {
               CompletionLoad.unavailable => l.completionUnavailable,
               CompletionLoad.ready => state.candidates.isEmpty ? l.completionEmpty : null,
             };
+      const progressHeight = 2.0;
+      final rows = state.candidates.isNotEmpty ? state.candidates.length : (status == null ? 0 : 1);
       return Positioned.fill(
         child: CustomSingleChildLayout(
           delegate: CursorPopupLayout(
             cursor: _completionCursor.value!,
             preferredSize: Size(
               width,
-              min(CompletionSize.maxHeight, headerHeight + rowHeight * max(1, state.candidates.length) + Space.sm),
+              min(
+                CompletionSize.maxHeight,
+                headerHeight + rowHeight * rows + Space.sm + (aiLoading ? progressHeight : 0),
+              ),
             ),
           ),
           child: PopupSurface(
@@ -330,6 +344,14 @@ extension _AssistancePane on _TerminalPaneState {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (aiLoading)
+                    LinearProgressIndicator(
+                      key: const ValueKey('terminal-ai-completion-loading'),
+                      minHeight: progressHeight,
+                      color: scheme.onSurfaceVariant.withValues(alpha: .5),
+                      backgroundColor: Colors.transparent,
+                      semanticsLabel: l.completionLoading,
+                    ),
                   if (browse != null)
                     SizedBox(
                       height: rowHeight,
@@ -382,7 +404,7 @@ extension _AssistancePane on _TerminalPaneState {
                         ),
                       ),
                     )
-                  else
+                  else if (state.candidates.isNotEmpty)
                     Flexible(
                       child: ListView.builder(
                         controller: _candidateScroll,

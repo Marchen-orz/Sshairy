@@ -307,12 +307,15 @@ extension _CommandAssistance on TerminalSession {
   void _rememberCommand(String text) {
     _commands.remember(text);
     _history.value = _commands.commands;
-    if (validTerminalAiCommand(text) && !text.startsWith(' ')) {
-      _aiHistory.add(TerminalAiHistoryEntry(text: text, at: DateTime.now(), generation: _shellGeneration));
-      while (_aiHistory.length > 8 ||
-          _aiHistory.fold<int>(0, (bytes, entry) => bytes + utf8.encode(entry.text).length) > 4096) {
-        _aiHistory.removeAt(0);
-      }
+    if (validTerminalAiCommand(text) && !text.startsWith(' ') && !terminalAiSensitiveText(text)) {
+      final entry = TerminalAiHistoryEntry(text: text, at: DateTime.now(), generation: _shellGeneration);
+      _aiHistory.add(entry);
+      final bounded = boundedTerminalAiHistory(_aiHistory);
+      _aiHistory
+        ..clear()
+        ..addAll(bounded);
+      _historyRevision++;
+      if (_aiHistory.any((candidate) => identical(candidate, entry))) _beginCommandResult(entry);
     }
   }
 
@@ -333,6 +336,7 @@ extension _CommandAssistance on TerminalSession {
   void _submitCommand() {
     _historyBrowsing = false;
     final text = _echoedCommand();
+    _discardPendingCommandResult();
     if (text != null) _rememberCommand(text);
     _markCommandSubmitted();
     _semanticInput = false;
@@ -341,7 +345,7 @@ extension _CommandAssistance on TerminalSession {
 
   void _resetCommandDraft() {
     _shellGeneration++;
-    _aiHistory.clear();
+    _clearAiHistory();
     _semanticSeen = _semanticInput = false;
     _promptRow = _promptColumn = null;
     _submittedLine = null;

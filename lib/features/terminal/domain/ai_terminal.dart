@@ -31,13 +31,14 @@ class TerminalAiContext {
     required this.generation,
     required this.revision,
     required this.prompt,
+    this.historyRevision = 0,
     this.draft,
     this.directory,
   });
 
   final SessionId sessionId;
   final TerminalAiTarget target;
-  final int generation, revision;
+  final int generation, revision, historyRevision;
   final TerminalAiPrompt prompt;
   final String? draft, directory;
   bool get ready => draft != null && (prompt == TerminalAiPrompt.recognized || prompt == TerminalAiPrompt.semantic);
@@ -73,12 +74,136 @@ class TerminalAiGeneration {
   final String? command, message;
 }
 
+enum TerminalAiHistoryResultStatus { available, truncated, unavailable }
+
+enum TerminalAiHistoryBoundary { prompt, osc133, osc633 }
+
 class TerminalAiHistoryEntry {
-  const TerminalAiHistoryEntry({required this.text, required this.at, required this.generation});
-  final String text;
+  const TerminalAiHistoryEntry({
+    required this.text,
+    required this.at,
+    required this.generation,
+    this.output = '',
+    this.resultStatus = TerminalAiHistoryResultStatus.unavailable,
+    this.exitCode,
+    this.boundary,
+  });
+  final String text, output;
   final DateTime at;
   final int generation;
+  final TerminalAiHistoryResultStatus resultStatus;
+  final int? exitCode;
+  final TerminalAiHistoryBoundary? boundary;
+
+  TerminalAiHistoryEntry withResult({
+    required TerminalAiHistoryResultStatus status,
+    required String output,
+    int? exitCode,
+    TerminalAiHistoryBoundary? boundary,
+  }) => TerminalAiHistoryEntry(
+    text: text,
+    at: at,
+    generation: generation,
+    output: output,
+    resultStatus: status,
+    exitCode: exitCode,
+    boundary: boundary,
+  );
 }
+
+final _terminalAiSensitive = RegExp(
+  r'(?:password|passwd|passphrase|secret|token|api[-_]?key|authorization|private[-_]?key|BEGIN [A-Z ]*PRIVATE KEY|\bBearer[ \t]+[A-Za-z0-9._~+/=\-]+)',
+  caseSensitive: false,
+);
+
+/// Auxiliary filtering only; it cannot identify every unknown secret.
+bool terminalAiSensitiveText(String text) => _terminalAiSensitive.hasMatch(text);
+
+Map<String, Object?> terminalAiHistoryData(TerminalAiHistoryEntry entry) => {
+  'text': entry.text,
+  'at': entry.at.toUtc().toIso8601String(),
+  'result': {
+    'status': entry.resultStatus.name,
+    if (entry.resultStatus != TerminalAiHistoryResultStatus.unavailable) 'text': entry.output,
+    if (entry.exitCode != null) 'exitCode': entry.exitCode,
+    if (entry.boundary != null) 'boundary': entry.boundary!.name,
+  },
+};
+
+/// Keeps complete command records and shares the remaining encoded budget between their results.
+List<TerminalAiHistoryEntry> boundedTerminalAiHistory(Iterable<TerminalAiHistoryEntry> history) {
+  final selected = <TerminalAiHistoryEntry>[], originals = <TerminalAiHistoryEntry>[];
+  var bytes = 2;
+  for (final entry in history.toList().reversed) {
+    if (selected.length == 8) break;
+    if (!validTerminalAiCommand(entry.text) ||
+        entry.text.startsWith(' ') ||
+        terminalAiSensitiveText(entry.text) ||
+        terminalAiSensitiveText(entry.output) ||
+        !_terminalAiHistoryOutputValid(entry.output)) {
+      continue;
+    }
+    final empty = entry.resultStatus == TerminalAiHistoryResultStatus.unavailable
+        ? entry.output.isEmpty && entry.exitCode == null && entry.boundary == null
+              ? entry
+              : entry.withResult(status: TerminalAiHistoryResultStatus.unavailable, output: '')
+        : entry.output.isEmpty
+        ? entry
+        : entry.withResult(
+            status: TerminalAiHistoryResultStatus.truncated,
+            output: '',
+            exitCode: entry.exitCode,
+            boundary: entry.boundary,
+          );
+    final size = utf8.encode(jsonEncode(terminalAiHistoryData(empty))).length + (selected.isEmpty ? 0 : 1);
+    if (bytes + size > 4096) continue;
+    originals.add(entry);
+    selected.add(empty);
+    bytes += size;
+  }
+  var remaining = originals
+      .where((entry) => entry.output.isNotEmpty && entry.resultStatus != TerminalAiHistoryResultStatus.unavailable)
+      .length;
+  for (var i = 0; i < selected.length; i++) {
+    final entry = originals[i];
+    if (entry.output.isEmpty || entry.resultStatus == TerminalAiHistoryResultStatus.unavailable) continue;
+    final allowance = (4096 - bytes) ~/ remaining--;
+    final text = StringBuffer();
+    var added = 0;
+    for (final rune in entry.output.runes) {
+      final char = String.fromCharCode(rune);
+      final size = utf8.encode(jsonEncode(char)).length - 2;
+      if (added + size > allowance) break;
+      text.write(char);
+      added += size;
+    }
+    final output = text.toString();
+    selected[i] = output == entry.output
+        ? entry
+        : entry.withResult(
+            status: TerminalAiHistoryResultStatus.truncated,
+            output: output,
+            exitCode: entry.exitCode,
+            boundary: entry.boundary,
+          );
+    bytes += added;
+  }
+  return List.unmodifiable(selected.reversed);
+}
+
+bool _terminalAiHistoryOutputValid(String text) => !text.runes.any(
+  (r) =>
+      r < 32 && r != 9 && r != 10 ||
+      r >= 127 && r <= 159 ||
+      r >= 0xd800 && r <= 0xdfff ||
+      r == 0x2028 ||
+      r == 0x2029 ||
+      r == 0x061c ||
+      r == 0x200e ||
+      r == 0x200f ||
+      r >= 0x202a && r <= 0x202e ||
+      r >= 0x2066 && r <= 0x2069,
+);
 
 abstract interface class TerminalAiService {
   bool canGenerate(TerminalAiContext context);
@@ -90,7 +215,13 @@ abstract interface class TerminalAiService {
     CancellationToken cancel, {
     List<TerminalAiHistoryEntry> history = const [],
   });
-  Future<String?> complete(TerminalAiContext context, List<TerminalAiHistoryEntry> history, CancellationToken cancel);
+  Future<String?> complete(
+    TerminalAiContext context,
+    List<TerminalAiHistoryEntry> history,
+    CancellationToken cancel, {
+    void Function()? onStarted,
+    void Function(Duration)? onDeferred,
+  });
 }
 
 /// Why an inline request produced no usable command; carries no user text or credential.
@@ -105,6 +236,7 @@ class TerminalAiFailure implements Exception {
 bool sameTerminalAiContext(TerminalAiContext a, TerminalAiContext b, {bool draft = true}) =>
     sameTerminalAiEnvironment(a, b) &&
     (!draft || (a.revision == b.revision && a.draft == b.draft)) &&
+    a.historyRevision == b.historyRevision &&
     a.prompt == b.prompt;
 
 bool sameTerminalAiEnvironment(TerminalAiContext a, TerminalAiContext b) =>

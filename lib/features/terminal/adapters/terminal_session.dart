@@ -49,6 +49,7 @@ part 'terminal_assistance.dart';
 part 'terminal_assistance_ui.dart';
 part 'terminal_input_overlays.dart';
 part 'terminal_ai.dart';
+part 'terminal_history.dart';
 
 /// [idle] has never connected; a restored tab waits there until the user connects.
 enum SessionStatus { idle, connecting, connected, failed, disconnected }
@@ -71,7 +72,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
        target = SshTerminalTarget(host.id),
        _connections = connections,
        _localPtyFactory = null,
-       _terminal = Terminal(maxLines: scrollback),
+       _terminal = _HistoryTerminal(maxLines: scrollback),
        _autoReconnect = autoReconnect ?? (() => false),
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
        _translations = completionTranslations,
@@ -93,7 +94,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
        target = LocalTerminalTarget(shell),
        _connections = null,
        _localPtyFactory = factory,
-       _terminal = Terminal(maxLines: scrollback),
+       _terminal = _HistoryTerminal(maxLines: scrollback),
        _autoReconnect = (() => false),
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
        _translations = completionTranslations,
@@ -106,6 +107,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _assistance.addListener(_inlineAi.synchronize);
     _directory.changes.addListener(_inlineAi.synchronize);
     _terminal.onSemanticPrompt = _semanticPrompt;
+    _terminal.onPrivateOSC = _historyOsc;
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
     _terminal.onClipboardQuery = (_) => null;
@@ -141,7 +143,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   Future<void> _localStopped = Future.value();
   Future<void> get stopped => _localStopped;
   final bool Function() _autoReconnect;
-  final Terminal _terminal;
+  final _HistoryTerminal _terminal;
   SessionStatus status = SessionStatus.idle;
   ConnectError? error;
   ShellChannel? _shell;
@@ -162,6 +164,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   final _browseStack = <_BrowseFrame>[];
   final _commands = CommandHistory();
   final _aiHistory = <TerminalAiHistoryEntry>[];
+  _PendingCommandResult? _pendingCommandResult;
+  var _historyRevision = 0;
   late final _inlineAi = InlineAiController(readContext: readAiContext, readHistory: readAiHistory);
   final _history = ValueNotifier<List<String>>(const []);
   final _assistance = ValueNotifier<CommandAssistanceState>(const CommandAssistanceState());
@@ -183,7 +187,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   void clearCommandHistory() {
     if (_closed) return;
     _commands.clear();
-    _aiHistory.clear();
+    _clearAiHistory();
     _history.value = const [];
     _invalidateCommandDraft();
     _syncCommandDraft();
@@ -203,6 +207,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       },
       generation: _shellGeneration,
       revision: _draftRevision,
+      historyRevision: _historyRevision,
       prompt: !canInsert
           ? TerminalAiPrompt.unavailable
           : draft == null
@@ -222,16 +227,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
   List<TerminalAiHistoryEntry> readAiHistory(TerminalAiContext expected) {
     if (!_aiContextCurrent(expected)) return const [];
-    final entries = <TerminalAiHistoryEntry>[];
-    var bytes = 0;
-    for (final entry in _aiHistory.reversed) {
-      if (entry.generation != expected.generation) continue;
-      final size = utf8.encode(entry.text).length;
-      if (entries.length >= 8 || bytes + size > 4096) break;
-      entries.add(entry);
-      bytes += size;
-    }
-    return List.unmodifiable(entries.reversed);
+    return boundedTerminalAiHistory(_aiHistory.where((entry) => entry.generation == expected.generation));
   }
 
   @override
@@ -255,7 +251,10 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       if (erased != InsertResult.sent) return erased;
       if ((cancel?.isCancelled ?? false) || isCurrent?.call() == false) return InsertResult.cancelled;
       final current = readAiContext();
-      if (!current.ready || current.draft!.isNotEmpty || !sameTerminalAiEnvironment(expected, current)) {
+      if (!current.ready ||
+          current.draft!.isNotEmpty ||
+          expected.historyRevision != current.historyRevision ||
+          !sameTerminalAiEnvironment(expected, current)) {
         return InsertResult.stale;
       }
       expected = current;
@@ -296,6 +295,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       } else if (!canInsert ||
           sequence != _inputSequence ||
           !identical(currentLine, line) ||
+          expected.historyRevision != current.historyRevision ||
           !sameTerminalAiEnvironment(expected, current)) {
         finish(InsertResult.stale);
       } else if (current.ready && current.draft!.isEmpty) {
@@ -458,6 +458,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       send: () {
         _terminal.paste(text);
         if (run) {
+          _discardPendingCommandResult();
           _rememberCommand(text);
           _markCommandSubmitted();
           (local != null ? local.write : shell!.write)(utf8.encode('\r'));
@@ -686,6 +687,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   }
 
   void _output(String data) {
+    _scanCommandResult(data);
     _terminal.write(data);
     _inputPending = false;
     final buffer = _terminal.buffer;
@@ -699,6 +701,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         _submittedText = null;
       }
     }
+    _finishRecognizedCommandResult();
     _syncCommandDraft();
     if (!_viewed && !unread) {
       unread = true;
@@ -827,7 +830,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _ownedPaths?.dispose();
     _ownedPaths = null;
     _commands.clear();
-    _aiHistory.clear();
+    _clearAiHistory();
     _assistance.removeListener(_inlineAi.synchronize);
     _directory.changes.removeListener(_inlineAi.synchronize);
     _inlineAi.dispose();

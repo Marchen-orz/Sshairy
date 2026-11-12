@@ -83,10 +83,12 @@ class _Assets extends CachingAssetBundle {
 }
 
 class _Ai implements TerminalAiService {
-  bool enabled = true;
+  bool enabled = true, startCompletions = true;
+  Duration? deferNextCompletion;
   final changed = StreamController<void>.broadcast(sync: true);
   final completions = <Completer<String?>>[];
   final completionTokens = <CancellationToken>[];
+  final completionStarts = <void Function()?>[];
   final generations = <Completer<TerminalAiGeneration>>[];
   final generationTokens = <CancellationToken>[];
   final history = <List<TerminalAiHistoryEntry>>[];
@@ -98,11 +100,26 @@ class _Ai implements TerminalAiService {
   @override
   Stream<void> get changes => changed.stream;
   @override
-  Future<String?> complete(TerminalAiContext context, List<TerminalAiHistoryEntry> history, CancellationToken cancel) {
+  Future<String?> complete(
+    TerminalAiContext context,
+    List<TerminalAiHistoryEntry> history,
+    CancellationToken cancel, {
+    void Function()? onStarted,
+    void Function(Duration)? onDeferred,
+  }) {
     this.history.add(history);
     completionTokens.add(cancel);
+    completionStarts.add(onStarted);
     final result = Completer<String?>();
     completions.add(result);
+    final delay = deferNextCompletion;
+    deferNextCompletion = null;
+    if (delay != null) {
+      onDeferred?.call(delay);
+      result.complete(null);
+    } else if (startCompletions) {
+      onStarted?.call();
+    }
     return result.future;
   }
 
@@ -218,13 +235,145 @@ void main() {
     });
   }
 
-  testWidgets('late AI goes first while Tab retains the previously selected local candidate', (tester) async {
+  testWidgets('completion loading waits for an actual request and clears after abstaining', (tester) async {
+    await mount(tester, 'git st');
+    ai.startCompletions = false;
+    final loading = find.byKey(const ValueKey('terminal-ai-completion-loading'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(ai.completions, isEmpty);
+    expect(loading, findsNothing);
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(ai.completions, hasLength(1));
+    expect(loading, findsNothing);
+    ai.completionStarts.single?.call();
+    await tester.pump();
+    expect(loading, findsOneWidget);
+    ai.completions.single.complete(null);
+    await tester.pump();
+    expect(loading, findsNothing);
+    expect(find.text('status'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(ai.completions, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a rate-limited new prefix waits only its remaining interval before the first request', (tester) async {
     await mount(tester, 'git st');
     await tester.pump(const Duration(milliseconds: 850));
     expect(ai.completions, hasLength(1));
+    ai.deferNextCompletion = const Duration(milliseconds: 350);
+    transport.shell.echo('a');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(ai.completions, hasLength(2));
+    final loading = find.byKey(const ValueKey('terminal-ai-completion-loading'));
+    expect(loading, findsNothing);
+    ai.completions.first.complete(null);
+    await tester.pump(const Duration(milliseconds: 349));
+    expect(ai.completions, hasLength(2));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(ai.completions, hasLength(3));
+    expect(loading, findsOneWidget);
+    ai.completions.last.complete('git status');
+    await tester.pump();
+    expect(loading, findsNothing);
+    expect(find.text('git status'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(ai.completions, hasLength(3));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a deferred first request is cancelled when the pane becomes inactive', (tester) async {
+    await mount(tester, 'git st');
+    ai.deferNextCompletion = const Duration(milliseconds: 350);
+    await tester.pump(const Duration(milliseconds: 850));
+    expect(ai.completions, hasLength(1));
+    await view(tester, active: false);
+    await tester.pump(const Duration(seconds: 3));
+    expect(ai.completions, hasLength(1));
+    expect(ai.completionTokens.single.isCancelled, isTrue);
+    expect(find.byKey(const ValueKey('terminal-ai-completion-loading')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Escape cancels a deferred request even without visible candidates', (tester) async {
+    await mount(tester, 'git st-missing');
+    ai.deferNextCompletion = const Duration(milliseconds: 350);
+    await tester.pump(const Duration(milliseconds: 850));
+    expect(ai.completions, hasLength(1));
+    expect(find.byKey(const ValueKey('command-completion-popup')), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump(const Duration(seconds: 3));
+    expect(ai.completionTokens.single.isCancelled, isTrue);
+    expect(ai.completions, hasLength(1));
+    expect(find.byKey(const ValueKey('terminal-ai-completion-loading')), findsNothing);
+    expect(transport.shell.writes, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a skipped completion never shows loading', (tester) async {
+    await mount(tester, 'git st');
+    ai.startCompletions = false;
+    await tester.pump(const Duration(milliseconds: 850));
+    ai.completions.single.complete(null);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('terminal-ai-completion-loading')), findsNothing);
+    expect(find.text('status'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(ai.completions, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a failed request clears loading and keeps local candidates', (tester) async {
+    await mount(tester, 'git st');
+    await tester.pump(const Duration(milliseconds: 850));
+    final loading = find.byKey(const ValueKey('terminal-ai-completion-loading'));
+    expect(loading, findsOneWidget);
+    ai.completions.single.completeError(const TerminalAiFailure(TerminalAiFailureReason.network));
+    await tester.pump();
+    expect(loading, findsNothing);
+    expect(find.text('status'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(ai.completions, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('loading without candidates leaves Tab to the shell and Escape cancels the request', (tester) async {
+    await mount(tester, 'git st-missing');
+    await tester.pump(const Duration(milliseconds: 850));
+    final loading = find.byKey(const ValueKey('terminal-ai-completion-loading'));
+    final popup = find.byKey(const ValueKey('command-completion-popup'));
+    expect(loading, findsOneWidget);
+    expect(popup, findsOneWidget);
+    expect(find.descendant(of: popup, matching: find.byType(InkWell)), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    expect(transport.shell.writes, ['\t']);
+    expect(ai.completionTokens.single.isCancelled, isTrue);
+    expect(loading, findsNothing);
+    await feed(tester, '\r\x1b[2Ku@box:~\$ git st-missing');
+    await tester.pump(const Duration(milliseconds: 850));
+    expect(loading, findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(ai.completionTokens.last.isCancelled, isTrue);
+    expect(loading, findsNothing);
+    ai.completions.last.complete('git st-missing --help');
+    await tester.pump();
+    expect(popup, findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('late AI goes first while loading preserves the selected local candidate', (tester) async {
+    await mount(tester, 'git st');
+    await tester.pump(const Duration(milliseconds: 850));
+    expect(ai.completions, hasLength(1));
+    final loading = find.byKey(const ValueKey('terminal-ai-completion-loading'));
+    expect(loading, findsOneWidget);
     ai.completions.single.complete('git stash');
     await tester.pump();
     await tester.pump();
+    expect(loading, findsNothing);
     expect(find.text('git stash'), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
@@ -258,24 +407,48 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(ai.completionTokens.single.isCancelled, isTrue);
+    expect(find.byKey(const ValueKey('terminal-ai-completion-loading')), findsNothing);
     ai.completions.single.complete('git stash');
     await tester.pump();
     await tester.pump();
     expect(find.text('git stash'), findsNothing);
+    expect(find.byKey(const ValueKey('terminal-ai-completion-loading')), findsNothing);
     expect(transport.shell.writes, isEmpty);
+  });
+
+  testWidgets('an older completion cannot clear a newer request loading state', (tester) async {
+    await mount(tester, 'git st');
+    await tester.pump(const Duration(milliseconds: 850));
+    await feed(tester, 'a');
+    await tester.pump(const Duration(milliseconds: 850));
+    expect(ai.completions, hasLength(2));
+    final loading = find.byKey(const ValueKey('terminal-ai-completion-loading'));
+    expect(loading, findsOneWidget);
+    ai.completions.first.complete(null);
+    await tester.pump();
+    expect(loading, findsOneWidget);
+    ai.completions.last.complete(null);
+    await tester.pump();
+    expect(loading, findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('changing draft and hiding the pane invalidate suggestions', (tester) async {
     await mount(tester, 'git st');
     await tester.pump(const Duration(milliseconds: 850));
+    final loading = find.byKey(const ValueKey('terminal-ai-completion-loading'));
+    expect(loading, findsOneWidget);
     await feed(tester, 'a');
     expect(ai.completionTokens.first.isCancelled, isTrue);
+    expect(loading, findsNothing);
     ai.completions.first.complete('git status');
     await tester.pump();
     expect(find.text('git status'), findsNothing);
     await tester.pump(const Duration(milliseconds: 850));
+    expect(loading, findsOneWidget);
     await view(tester, active: false);
     expect(ai.completionTokens.last.isCancelled, isTrue);
+    expect(loading, findsNothing);
   });
 
   testWidgets('inline generation passes same-session history without directory probes', (tester) async {
