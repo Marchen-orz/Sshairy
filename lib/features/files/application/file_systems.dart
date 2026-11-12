@@ -84,9 +84,9 @@ class FileSystems {
   _Link _open(HostId id, Host host, ConnectPrompts prompts) {
     final link = _Link();
     _links[id] = link;
-    link.ready = _connections
-        .open(host, prompts, (lease) => lease.openFiles(), purpose: LeasePurpose.files)
-        .then((opened) {
+    link.ready = _connections.open(host, prompts, (lease) => lease.openFiles(), purpose: LeasePurpose.files).then((
+      opened,
+    ) {
       final (lease, fs) = opened;
       link.lease = lease;
       link.fs = fs;

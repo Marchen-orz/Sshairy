@@ -23,7 +23,9 @@ class KnownKeys {
 
   final Map<String, Map<String, String>> entries;
 
-  KnownKeys copy() => KnownKeys({for (final e in entries.entries) e.key: {...e.value}});
+  KnownKeys copy() => KnownKeys({
+    for (final e in entries.entries) e.key: {...e.value},
+  });
 
   static String endpoint(String address, int port) =>
       address.contains(':') ? '[${address.toLowerCase()}]:$port' : '${address.toLowerCase()}:$port';

@@ -6,19 +6,13 @@ import 'package:sshairy/features/hosts/domain/ssh_config.dart';
 import 'package:sshairy/foundation/ids.dart';
 
 SshConfig parse(List<String> lines) => parseSshConfig(
-      SshConfigInput([for (var i = 0; i < lines.length; i++) SshConfigLine('config', i + 1, lines[i])]),
-      defaultUser: 'me',
-      home: '/home/me',
-    );
+  SshConfigInput([for (var i = 0; i < lines.length; i++) SshConfigLine('config', i + 1, lines[i])]),
+  defaultUser: 'me',
+  home: '/home/me',
+);
 
-Host saved(String label, String address, {int port = 22, String username = 'me'}) => Host(
-      id: HostId(label),
-      label: label,
-      address: address,
-      port: port,
-      username: username,
-      auth: AuthKind.password,
-    );
+Host saved(String label, String address, {int port = 22, String username = 'me'}) =>
+    Host(id: HostId(label), label: label, address: address, port: port, username: username, auth: AuthKind.password);
 
 void main() {
   test('directives parse OpenSSH syntax: separators, quotes, comments and escapes', () {
@@ -88,16 +82,11 @@ void main() {
   });
 
   test('ProxyCommand and invalid endpoints block the host', () {
-    final config = parse([
-      'Host via',
-      '  ProxyCommand nc -x proxy %h %p',
-      'Host bad',
-      '  Port notaport',
+    final config = parse(['Host via', '  ProxyCommand nc -x proxy %h %p', 'Host bad', '  Port notaport']);
+    expect(config.hosts.firstWhere((h) => h.alias == 'via').issues.map((i) => i.kind), [
+      SshConfigIssueKind.proxyCommand,
     ]);
-    expect(config.hosts.firstWhere((h) => h.alias == 'via').issues.map((i) => i.kind),
-        [SshConfigIssueKind.proxyCommand]);
-    expect(config.hosts.firstWhere((h) => h.alias == 'bad').issues.map((i) => i.kind),
-        [SshConfigIssueKind.invalid]);
+    expect(config.hosts.firstWhere((h) => h.alias == 'bad').issues.map((i) => i.kind), [SshConfigIssueKind.invalid]);
   });
 
   test('ProxyJump chains become jump hosts, dependencies included once', () {
@@ -146,17 +135,9 @@ void main() {
   });
 
   test('cyclic proxy jumps are refused, not resolved', () {
-    final config = parse([
-      'Host a',
-      '  ProxyJump b',
-      'Host b',
-      '  ProxyJump a',
-    ]);
+    final config = parse(['Host a', '  ProxyJump b', 'Host b', '  ProxyJump a']);
     final plan = planSshConfig(config, const [], newId: () => HostId(newId()));
-    expect(
-      plan.drafts.map((d) => d.issues.map((i) => i.kind)),
-      everyElement(contains(SshConfigIssueKind.jumpCycle)),
-    );
+    expect(plan.drafts.map((d) => d.issues.map((i) => i.kind)), everyElement(contains(SshConfigIssueKind.jumpCycle)));
     expect(plan.additions({'a', 'b'}), isEmpty);
   });
 

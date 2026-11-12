@@ -85,9 +85,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     final enabled = widget.onChanged != null;
     final palette = BrandPalette.of(context);
     final foreground = enabled ? scheme.onSurfaceVariant : palette.textMuted;
-    final current = widget.options
-        .where((o) => o.value == widget.value)
-        .firstOrNull;
+    final current = widget.options.where((o) => o.value == widget.value).firstOrNull;
     final error = widget.errorText;
     final border = AppFormField.border(
       context,
@@ -103,9 +101,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
       value: current?.label,
       child: FocusableActionDetector(
         enabled: enabled,
-        mouseCursor: enabled
-            ? SystemMouseCursors.click
-            : SystemMouseCursors.basic,
+        mouseCursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         onShowHoverHighlight: (v) => setState(() => _hovered = v),
         onFocusChange: (v) => setState(() => _focused = v),
         shortcuts: const {
@@ -113,24 +109,15 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
           SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
           SingleActivator(LogicalKeyboardKey.arrowDown): ActivateIntent(),
         },
-        actions: {
-          ActivateIntent: CallbackAction<ActivateIntent>(
-            onInvoke: (_) => _show(),
-          ),
-        },
+        actions: {ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (_) => _show())},
         child: GestureDetector(
           onTap: enabled ? _show : null,
           child: AnimatedContainer(
             key: _field,
             duration: Motion.quick,
             width: widget.width,
-            constraints: BoxConstraints(
-              minHeight: AppFormField.height(context),
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: Space.xs,
-            ),
+            constraints: BoxConstraints(minHeight: AppFormField.height(context)),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Space.xs),
             decoration: BoxDecoration(
               color: AppFormField.fill(context, enabled: enabled),
               borderRadius: BorderRadius.circular(Radii.control),
@@ -147,21 +134,13 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                     current?.label ?? widget.hint ?? '',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: current == null || !enabled
-                          ? foreground
-                          : scheme.onSurface,
-                    ),
+                    style: TextStyle(color: current == null || !enabled ? foreground : scheme.onSurface),
                   ),
                 ),
                 AnimatedRotation(
                   turns: _open ? .5 : 0,
                   duration: Motion.normal,
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: foreground,
-                  ),
+                  child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: foreground),
                 ),
               ],
             ),
@@ -175,10 +154,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.label != null) ...[
-          Text(widget.label!, style: muted),
-          const SizedBox(height: Space.xs),
-        ],
+        if (widget.label != null) ...[Text(widget.label!, style: muted), const SizedBox(height: Space.xs)],
         field,
         if (error != null) ...[
           const SizedBox(height: Space.xs),
@@ -190,12 +166,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
 }
 
 class _OptionList<T> extends StatefulWidget {
-  const _OptionList({
-    required this.options,
-    required this.selected,
-    required this.searchable,
-    this.searchHint,
-  });
+  const _OptionList({required this.options, required this.selected, required this.searchable, this.searchHint});
 
   final List<AppOption<T>> options;
   final T selected;
@@ -218,11 +189,7 @@ class _OptionListState<T> extends State<_OptionList<T>> {
     if (index > 6) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
-          _scroll.jumpTo(
-            (index * 32.0 - 96)
-                .clamp(0, _scroll.position.maxScrollExtent)
-                .toDouble(),
-          );
+          _scroll.jumpTo((index * 32.0 - 96).clamp(0, _scroll.position.maxScrollExtent).toDouble());
         }
       });
     }
@@ -238,11 +205,7 @@ class _OptionListState<T> extends State<_OptionList<T>> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final q = _query.trim().toLowerCase();
-    final shown = q.isEmpty
-        ? widget.options
-        : widget.options
-              .where((o) => o.label.toLowerCase().contains(q))
-              .toList();
+    final shown = q.isEmpty ? widget.options : widget.options.where((o) => o.label.toLowerCase().contains(q)).toList();
     return PopupSurface(
       padding: const EdgeInsets.symmetric(vertical: Space.xs),
       child: PopupKeys(
@@ -252,12 +215,7 @@ class _OptionListState<T> extends State<_OptionList<T>> {
           children: [
             if (widget.searchable)
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Space.xs,
-                  0,
-                  Space.xs,
-                  Space.xs,
-                ),
+                padding: const EdgeInsets.fromLTRB(Space.xs, 0, Space.xs, Space.xs),
                 child: TextField(
                   autofocus: true,
                   decoration: InputDecoration(
@@ -286,23 +244,13 @@ class _OptionListState<T> extends State<_OptionList<T>> {
                     child: Row(
                       children: [
                         if (o.icon != null) ...[
-                          Icon(
-                            o.icon,
-                            size: 16,
-                            color: scheme.onSurfaceVariant,
-                          ),
+                          Icon(o.icon, size: 16, color: scheme.onSurfaceVariant),
                           const SizedBox(width: Space.sm),
                         ],
                         Expanded(
-                          child: Text(
-                            o.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: o.style,
-                          ),
+                          child: Text(o.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: o.style),
                         ),
-                        if (selected)
-                          Icon(Icons.check, size: 15, color: scheme.primary),
+                        if (selected) Icon(Icons.check, size: 15, color: scheme.primary),
                       ],
                     ),
                   );

@@ -15,25 +15,36 @@ abstract final class ImeCaret {
   static final _imm32 = Platform.isWindows ? DynamicLibrary.open('imm32.dll') : null;
 
   static final _getFocus = _user32?.lookupFunction<IntPtr Function(), int Function()>('GetFocus');
-  static final _createCaret = _user32?.lookupFunction<Int32 Function(IntPtr, IntPtr, Int32, Int32),
-      int Function(int, int, int, int)>('CreateCaret');
-  static final _setCaretPos =
-      _user32?.lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>('SetCaretPos');
-  static final _getCaretPos =
-      _user32?.lookupFunction<Int32 Function(Pointer<_Point>), int Function(Pointer<_Point>)>('GetCaretPos');
+  static final _createCaret = _user32
+      ?.lookupFunction<Int32 Function(IntPtr, IntPtr, Int32, Int32), int Function(int, int, int, int)>('CreateCaret');
+  static final _setCaretPos = _user32?.lookupFunction<Int32 Function(Int32, Int32), int Function(int, int)>(
+    'SetCaretPos',
+  );
+  static final _getCaretPos = _user32?.lookupFunction<Int32 Function(Pointer<_Point>), int Function(Pointer<_Point>)>(
+    'GetCaretPos',
+  );
 
   static final _immGetContext = _imm32?.lookupFunction<IntPtr Function(IntPtr), int Function(int)>('ImmGetContext');
-  static final _immReleaseContext =
-      _imm32?.lookupFunction<Int32 Function(IntPtr, IntPtr), int Function(int, int)>('ImmReleaseContext');
-  static final _immSetCompositionWindow = _imm32?.lookupFunction<Int32 Function(IntPtr, Pointer<_CompositionForm>),
-      int Function(int, Pointer<_CompositionForm>)>('ImmSetCompositionWindow');
-  static final _immSetCandidateWindow = _imm32?.lookupFunction<Int32 Function(IntPtr, Pointer<_CandidateForm>),
-      int Function(int, Pointer<_CandidateForm>)>('ImmSetCandidateWindow');
-  static final _immGetCompositionWindow = _imm32?.lookupFunction<Int32 Function(IntPtr, Pointer<_CompositionForm>),
-      int Function(int, Pointer<_CompositionForm>)>('ImmGetCompositionWindow');
-  static final _immGetCandidateWindow = _imm32?.lookupFunction<
-      Int32 Function(IntPtr, Uint32, Pointer<_CandidateForm>),
-      int Function(int, int, Pointer<_CandidateForm>)>('ImmGetCandidateWindow');
+  static final _immReleaseContext = _imm32?.lookupFunction<Int32 Function(IntPtr, IntPtr), int Function(int, int)>(
+    'ImmReleaseContext',
+  );
+  static final _immSetCompositionWindow = _imm32
+      ?.lookupFunction<Int32 Function(IntPtr, Pointer<_CompositionForm>), int Function(int, Pointer<_CompositionForm>)>(
+        'ImmSetCompositionWindow',
+      );
+  static final _immSetCandidateWindow = _imm32
+      ?.lookupFunction<Int32 Function(IntPtr, Pointer<_CandidateForm>), int Function(int, Pointer<_CandidateForm>)>(
+        'ImmSetCandidateWindow',
+      );
+  static final _immGetCompositionWindow = _imm32
+      ?.lookupFunction<Int32 Function(IntPtr, Pointer<_CompositionForm>), int Function(int, Pointer<_CompositionForm>)>(
+        'ImmGetCompositionWindow',
+      );
+  static final _immGetCandidateWindow = _imm32
+      ?.lookupFunction<
+        Int32 Function(IntPtr, Uint32, Pointer<_CandidateForm>),
+        int Function(int, int, Pointer<_CandidateForm>)
+      >('ImmGetCandidateWindow');
 
   static const _cfsPoint = 0x0002, _cfsExclude = 0x0080;
 

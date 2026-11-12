@@ -6,12 +6,7 @@ import 'theme.dart';
 
 /// Shared label placement and visible field geometry in settings forms.
 class AppFormField extends StatelessWidget {
-  const AppFormField({
-    super.key,
-    required this.label,
-    required this.child,
-    this.helperText,
-  });
+  const AppFormField({super.key, required this.label, required this.child, this.helperText});
 
   final String label;
   final Widget child;
@@ -19,16 +14,13 @@ class AppFormField extends StatelessWidget {
 
   static double height(BuildContext context) {
     final style = Theme.of(context).textTheme.bodyMedium!;
-    final line =
-        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
-        (style.height ?? 1.5);
+    final line = MediaQuery.textScalerOf(context).scale(style.fontSize!) * (style.height ?? 1.5);
     // Matches AppSelect's painted box: rounded text line, vertical inset and border.
     return max(WorkspaceSize.control, line.ceilToDouble() + Space.sm + 2);
   }
 
-  static Color fill(BuildContext context, {bool enabled = true}) => enabled
-      ? Theme.of(context).colorScheme.surface
-      : BrandPalette.of(context).disabledSurface;
+  static Color fill(BuildContext context, {bool enabled = true}) =>
+      enabled ? Theme.of(context).colorScheme.surface : BrandPalette.of(context).disabledSurface;
 
   static BorderSide border(
     BuildContext context, {
@@ -64,21 +56,10 @@ class AppFormField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    OutlineInputBorder outline({
-      bool enabled = true,
-      bool focused = false,
-      bool error = false,
-    }) => OutlineInputBorder(
+    final style = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    OutlineInputBorder outline({bool enabled = true, bool focused = false, bool error = false}) => OutlineInputBorder(
       borderRadius: BorderRadius.circular(Radii.control),
-      borderSide: border(
-        context,
-        enabled: enabled,
-        focused: focused,
-        error: error,
-      ),
+      borderSide: border(context, enabled: enabled, focused: focused, error: error),
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -88,15 +69,10 @@ class AppFormField extends StatelessWidget {
         const SizedBox(height: Space.xs),
         Theme(
           data: theme.copyWith(
-            textTheme: theme.textTheme.copyWith(
-              bodyLarge: theme.textTheme.bodyMedium,
-            ),
+            textTheme: theme.textTheme.copyWith(bodyLarge: theme.textTheme.bodyMedium),
             inputDecorationTheme: theme.inputDecorationTheme.copyWith(
               fillColor: WidgetStateColor.resolveWith(
-                (states) => fill(
-                  context,
-                  enabled: !states.contains(WidgetState.disabled),
-                ),
+                (states) => fill(context, enabled: !states.contains(WidgetState.disabled)),
               ),
               border: outline(),
               enabledBorder: outline(),
@@ -108,10 +84,7 @@ class AppFormField extends StatelessWidget {
           ),
           child: Semantics(label: label, child: child),
         ),
-        if (helperText != null) ...[
-          const SizedBox(height: Space.xs),
-          Text(helperText!, style: style),
-        ],
+        if (helperText != null) ...[const SizedBox(height: Space.xs), Text(helperText!, style: style)],
       ],
     );
   }

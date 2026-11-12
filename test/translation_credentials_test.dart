@@ -118,7 +118,8 @@ void main() {
       '',
       '   ',
       'x' * 8193,
-      for (final code in [0, 9, 10, 13, 31, 127, 128, 159]) 'synthetic-private-marker${String.fromCharCode(code)}injection',
+      for (final code in [0, 9, 10, 13, 31, 127, 128, 159])
+        'synthetic-private-marker${String.fromCharCode(code)}injection',
     ];
     for (final value in invalid) {
       await expectLater(
