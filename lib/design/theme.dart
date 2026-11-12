@@ -84,6 +84,23 @@ class MonoFont extends ThemeExtension<MonoFont> {
 /// [base] in the terminal font.
 TextStyle mono(BuildContext context, [TextStyle? base]) => MonoFont.of(context).apply(base);
 
+/// A visible selection fill that keeps regular text readable through a translucent code background.
+Color textSelectionColor(ColorScheme scheme, {Color overlay = Colors.transparent}) {
+  final primary = scheme.primary;
+  if (colorContrast(Color.alphaBlend(overlay, primary), scheme.onSurface) >= 4.5) return primary;
+  var low = 0.0, high = 1.0;
+  for (var i = 0; i < 16; i++) {
+    final middle = (low + high) / 2;
+    final candidate = Color.lerp(primary, scheme.surface, middle)!;
+    if (colorContrast(Color.alphaBlend(overlay, candidate), scheme.onSurface) >= 4.5) {
+      high = middle;
+    } else {
+      low = middle;
+    }
+  }
+  return Color.lerp(primary, scheme.surface, high)!;
+}
+
 const _onAccentDark = Color(0xFF0B1220);
 
 /// White or a near-black, whichever reads better on [c].

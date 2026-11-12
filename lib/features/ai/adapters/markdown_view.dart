@@ -27,73 +27,68 @@ class AiMarkdown extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final text = theme.textTheme.bodyMedium;
-    final codeBackground = Color.alphaBlend(
-      scheme.primary.withValues(alpha: .18),
-      scheme.surface,
-    );
-    return MarkdownBody(
-      data: data,
-      selectable: false,
-      fitContent: false,
-      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-        p: text,
-        h1: theme.textTheme.titleMedium,
-        h2: theme.textTheme.titleSmall,
-        h3: theme.textTheme.titleSmall,
-        h4: theme.textTheme.labelLarge,
-        h5: theme.textTheme.labelLarge,
-        h6: theme.textTheme.labelMedium,
-        a: text?.copyWith(
-          color: scheme.primary,
-          decoration: TextDecoration.underline,
-        ),
-        code: mono(
-          context,
-          theme.textTheme.bodySmall,
-        ).copyWith(color: scheme.onSurface, backgroundColor: codeBackground),
-        blockSpacing: Space.sm,
-        listIndent: Space.lg,
-        blockquotePadding: const EdgeInsets.all(Space.sm),
-        blockquoteDecoration: BoxDecoration(
-          color: scheme.surfaceContainerLow,
-          border: Border(
-            left: BorderSide(color: scheme.outlineVariant, width: 2),
+    final codeTint = scheme.primary.withValues(alpha: .18);
+    final codeBackground = Color.alphaBlend(codeTint, scheme.surface);
+    final code = mono(context, theme.textTheme.bodySmall).copyWith(color: scheme.onSurface);
+    return DefaultSelectionStyle.merge(
+      selectionColor: textSelectionColor(scheme, overlay: codeTint),
+      child: MarkdownBody(
+        data: data,
+        selectable: false,
+        fitContent: false,
+        syntaxHighlighter: _CodeTextStyle(code),
+        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+          p: text,
+          h1: theme.textTheme.titleMedium,
+          h2: theme.textTheme.titleSmall,
+          h3: theme.textTheme.titleSmall,
+          h4: theme.textTheme.labelLarge,
+          h5: theme.textTheme.labelLarge,
+          h6: theme.textTheme.labelMedium,
+          a: text?.copyWith(color: scheme.primary, decoration: TextDecoration.underline),
+          // Selection is painted before text backgrounds, so this fill must stay translucent.
+          code: code.copyWith(backgroundColor: codeTint),
+          blockSpacing: Space.sm,
+          listIndent: Space.lg,
+          blockquotePadding: const EdgeInsets.all(Space.sm),
+          blockquoteDecoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            border: Border(left: BorderSide(color: scheme.outlineVariant, width: 2)),
+          ),
+          codeblockPadding: const EdgeInsets.all(Space.sm),
+          codeblockDecoration: BoxDecoration(color: codeBackground, borderRadius: BorderRadius.circular(Radii.control)),
+          tableHead: theme.textTheme.labelMedium,
+          tableBody: theme.textTheme.bodySmall,
+          tableColumnWidth: const IntrinsicColumnWidth(),
+          tableCellsPadding: const EdgeInsets.all(Space.sm),
+          tableBorder: TableBorder.all(color: scheme.outlineVariant),
+          horizontalRuleDecoration: BoxDecoration(
+            border: Border(top: BorderSide(color: scheme.outlineVariant)),
           ),
         ),
-        codeblockPadding: const EdgeInsets.all(Space.sm),
-        codeblockDecoration: BoxDecoration(
-          color: codeBackground,
-          borderRadius: BorderRadius.circular(Radii.control),
-        ),
-        tableHead: theme.textTheme.labelMedium,
-        tableBody: theme.textTheme.bodySmall,
-        tableColumnWidth: const IntrinsicColumnWidth(),
-        tableCellsPadding: const EdgeInsets.all(Space.sm),
-        tableBorder: TableBorder.all(color: scheme.outlineVariant),
-        horizontalRuleDecoration: BoxDecoration(
-          border: Border(top: BorderSide(color: scheme.outlineVariant)),
-        ),
+        builders: {if (onExecution != null) 'code': _ExecutionReferenceBuilder(executionReferences, onExecution!)},
+        imageBuilder: (_, _, alt) => Text(alt ?? '', style: text?.copyWith(color: scheme.onSurfaceVariant)),
+        onTapLink: (_, href, _) {
+          final uri = href == null ? null : Uri.tryParse(href);
+          if (uri == null ||
+              !const {'http', 'https'}.contains(uri.scheme) ||
+              uri.host.isEmpty ||
+              uri.userInfo.isNotEmpty) {
+            return;
+          }
+          unawaited(openLink(uri.toString()));
+        },
       ),
-      builders: {
-        if (onExecution != null)
-          'code': _ExecutionReferenceBuilder(executionReferences, onExecution!),
-      },
-      imageBuilder: (_, _, alt) => Text(
-        alt ?? '',
-        style: text?.copyWith(color: scheme.onSurfaceVariant),
-      ),
-      onTapLink: (_, href, _) {
-        final uri = href == null ? null : Uri.tryParse(href);
-        if (uri == null ||
-            !const {'http', 'https'}.contains(uri.scheme) ||
-            uri.host.isEmpty ||
-            uri.userInfo.isNotEmpty) {
-          return;
-        }
-        unawaited(openLink(uri.toString()));
-      },
     );
   }
+}
+
+class _CodeTextStyle extends SyntaxHighlighter {
+  _CodeTextStyle(this.style);
+  final TextStyle style;
+
+  @override
+  TextSpan format(String source) => TextSpan(text: source, style: style);
 }
 
 class _ExecutionReferenceBuilder extends MarkdownElementBuilder {
