@@ -292,12 +292,12 @@ void main() {
       expect(stored(host['id']! as String).policy.keyPath, isNull);
     });
 
-    test('the agent cannot reach any of them until a later review exposes them', () async {
+    test('only reviewed host tools are exposed to the agent', () async {
+      for (final id in ['host.create', 'host.update', 'host.move', 'host.delete']) {
+        final result = await dispatcher.dispatch(id, {}, RequestContext(Origin.agent));
+        expect((result as Err<Object?>).error.code, 'unauthorized', reason: id);
+      }
       for (final id in [
-        'host.create',
-        'host.update',
-        'host.move',
-        'host.delete',
         'group.create',
         'group.update',
         'group.delete',
@@ -308,10 +308,36 @@ void main() {
         'hostDefaults.get',
         'group.list',
         'identity.list',
+        'host.list',
+        'host.deleteMany',
       ]) {
         final result = await dispatcher.dispatch(id, {}, RequestContext(Origin.agent));
         expect((result as Err<Object?>).error.code, 'notExposed', reason: id);
       }
     });
+
+    test('the agent gets host metadata without endpoints or login fields', () async {
+      final result = await dispatcher.dispatch('host.create', {
+        'address': 'a.example',
+        'username': 'root',
+        'label': 'web',
+      }, RequestContext(Origin.agent, authority: _Allow()));
+      final host = (result as Ok<Object?>).value! as Map<String, Object?>;
+      expect(host['label'], 'web');
+      expect(host['id'], isNotNull);
+      for (final key in ['address', 'username', 'auth', 'methods', 'proxy', 'identityId', 'keyPath', 'jumpHostId']) {
+        expect(host.containsKey(key), isFalse, reason: key);
+      }
+    });
   });
+}
+
+class _Allow implements AgentAuthority {
+  @override
+  Future<Result<void>> authorize(Capability capability, Map<String, Object?> args, RequestContext context) async =>
+      const Ok(null);
+
+  @override
+  Future<Result<void>> revalidate(Capability capability, Map<String, Object?> args, RequestContext context) async =>
+      const Ok(null);
 }

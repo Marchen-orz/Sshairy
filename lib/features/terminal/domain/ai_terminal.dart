@@ -30,12 +30,17 @@ class TerminalHistorySession {
     required this.generation,
     required this.historyRevision,
     required this.binding,
+    this.tabId,
+    this.paneId,
   });
 
   final SessionId sessionId;
   final TerminalAiTarget target;
   final String label;
   final int generation, historyRevision;
+
+  /// Local workspace IDs for layout actions; never credentials or transport identity.
+  final String? tabId, paneId;
 
   /// Local identity only; never serialize or send it to a model.
   final Object binding;
@@ -50,11 +55,28 @@ class TerminalHistorySnapshot {
   final List<TerminalAiHistoryEntry> history;
 }
 
+/// The visible screen only, never scrollback; text is already bounded by the caller's limits.
+class TerminalScreenSnapshot {
+  const TerminalScreenSnapshot({
+    required this.session,
+    required this.text,
+    required this.firstLine,
+    required this.lastLine,
+    required this.truncated,
+  });
+
+  final TerminalHistorySession session;
+  final String text;
+  final int firstLine, lastLine;
+  final bool truncated;
+}
+
 abstract interface class TerminalHistoryReader {
   List<TerminalHistorySession> get sessions;
   SessionId? get focusedSession;
   bool isCurrent(TerminalHistorySession expected);
   TerminalHistorySnapshot? read(TerminalHistorySession expected);
+  TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768});
 }
 
 /// Only currently echoed input and already known directory metadata. No output or history is read implicitly.

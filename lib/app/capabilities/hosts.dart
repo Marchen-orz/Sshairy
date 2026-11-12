@@ -27,6 +27,16 @@ Map<String, Object?> hostDto(Host h) => {
   if (h.lastUsed != null) 'lastUsed': h.lastUsed!.toUtc().toIso8601String(),
 };
 
+/// What the agent may see about a saved host: no address, login, proxy or key metadata.
+Map<String, Object?> agentHostDto(Host h) => {
+  'id': h.id.value,
+  'label': h.label,
+  'group': h.group,
+  'groupId': ?h.groupId,
+  'tags': h.tags,
+  'pinned': h.pinned,
+};
+
 const _hostFields = {
   'label': {'type': 'string'},
   'address': {'type': 'string'},
@@ -79,9 +89,10 @@ List<Capability> hostCapabilities(Ref ref) {
 
   Host find(Args a) => hosts().byId(HostId(a.require<String>('hostId'))) ?? (throw const Rejected('notFound', 'host'));
 
-  Future<Object?> save(Host host) async {
+  Future<Object?> save(Host host, Origin origin) async {
     await hosts().save(host);
-    return hostDto(hosts().byId(host.id)!);
+    final saved = hosts().byId(host.id)!;
+    return origin == Origin.agent ? agentHostDto(saved) : hostDto(saved);
   }
 
   return [
@@ -98,7 +109,8 @@ List<Capability> hostCapabilities(Ref ref) {
         'properties': _hostFields,
         'required': ['address'],
       },
-      guarded((a) => save(build(a, null))),
+      agentExposed: true,
+      guardedWithContext((a, c) => save(build(a, null), c.origin)),
     ),
     FunctionCapability(
       'host.update',
@@ -111,7 +123,8 @@ List<Capability> hostCapabilities(Ref ref) {
         },
         'required': ['hostId'],
       },
-      guarded((a) => save(build(a, find(a)))),
+      agentExposed: true,
+      guardedWithContext((a, c) => save(build(a, find(a)), c.origin)),
     ),
     FunctionCapability(
       'host.move',
@@ -128,20 +141,39 @@ List<Capability> hostCapabilities(Ref ref) {
             'type': ['string', 'null'],
             'description': 'A group from group.list; absent or null means no group.',
           },
+          'group': {
+            'type': 'string',
+            'description': 'Slash-separated group path such as prod/web; created when missing.',
+          },
         },
         'required': ['hostIds'],
       },
-      guarded((a) async {
+      agentExposed: true,
+      guardedWithContext((a, c) async {
         final raw = a.raw['hostIds'];
         if (raw is! List || raw.isEmpty || raw.any((id) => id is! String || id.isEmpty)) {
           throw const Rejected('invalidArgument', 'hostIds');
         }
         final ids = [for (final id in raw) HostId(id as String)];
-        final groupId = a.optional<String>('groupId');
+        var groupId = a.optional<String>('groupId');
+        final path = a.optional<String>('group');
+        if (path != null) {
+          if (groupId != null) throw const Rejected('invalidArgument', 'group');
+          final normalized = normalizeGroup(path);
+          if (normalized.isEmpty) {
+            groupId = null;
+          } else {
+            await hosts().addGroup(normalized);
+            groupId = hosts().library.groupIdFor(normalized);
+          }
+        }
         if (groupId != null && hosts().library.groupById(groupId) == null) throw const Rejected('notFound', 'group');
         if (ids.any((id) => hosts().byId(id) == null)) throw const Rejected('notFound', 'host');
         await hosts().moveToGroup(ids, groupId);
-        return [for (final id in ids.toSet()) hostDto(hosts().byId(id)!)];
+        return [
+          for (final id in ids.toSet())
+            c.origin == Origin.agent ? agentHostDto(hosts().byId(id)!) : hostDto(hosts().byId(id)!),
+        ];
       }),
     ),
     FunctionCapability(
@@ -183,6 +215,7 @@ List<Capability> hostCapabilities(Ref ref) {
         },
         'required': ['hostId'],
       },
+      agentExposed: true,
       guarded((a) async {
         await hosts().delete(find(a));
         return null;

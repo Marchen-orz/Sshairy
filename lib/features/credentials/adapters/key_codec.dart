@@ -34,7 +34,9 @@ abstract final class KeyCodec {
   /// Opens [pem] to read its public half; an encrypted key needs [passphrase].
   static KeyInfo inspect(String pem, {String? passphrase, String comment = ''}) {
     final encrypted = isEncrypted(pem);
-    if (encrypted && (passphrase == null || passphrase.isEmpty)) throw const KeyCodecException(KeyProblem.needsPassphrase);
+    if (encrypted && (passphrase == null || passphrase.isEmpty)) {
+      throw const KeyCodecException(KeyProblem.needsPassphrase);
+    }
     final List<SSHKeyPair> pairs;
     try {
       pairs = SSHKeyPair.fromPem(pem, encrypted ? passphrase : null);
@@ -53,7 +55,8 @@ abstract final class KeyCodec {
   }
 
   /// `SHA256:` and unpadded base64, as `ssh-keygen -l` prints it.
-  static String fingerprintOf(Uint8List blob) => 'SHA256:${base64.encode(sha256.convert(blob).bytes).replaceAll('=', '')}';
+  static String fingerprintOf(Uint8List blob) =>
+      'SHA256:${base64.encode(sha256.convert(blob).bytes).replaceAll('=', '')}';
 
   /// A new Ed25519 key in OpenSSH format, unencrypted: the secure store is what protects it.
   static String generateEd25519({String comment = ''}) {

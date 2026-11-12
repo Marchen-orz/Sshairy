@@ -666,12 +666,12 @@ void main() {
       expect(stateOf('a').phase, ForwardPhase.stopped);
     });
 
-    test('forwarding is never offered to the AI', () {
+    test('forwarding is offered to the agent only through approved capabilities', () {
       final capabilities = container.read(Provider((ref) => forwardCapabilities(ref)));
       expect([
-        for (final c in capabilities) c.id,
+        for (final c in capabilities)
+          if (c.agentExposed) c.id,
       ], containsAll(['forward.list', 'forward.save', 'forward.start', 'forward.stop']));
-      expect(capabilities.any((c) => c.agentExposed), isFalse);
     });
   });
 }

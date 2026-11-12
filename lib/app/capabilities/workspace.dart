@@ -24,6 +24,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
         'required': ['hostId'],
       },
+      agentExposed: true,
       (a, _) async {
         final host = ref.read(hostsProvider.notifier).byId(HostId(a.require<String>('hostId')));
         if (host == null) return const Err(AppError('notFound', detail: 'host'));
@@ -56,6 +57,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
           'tabId': {'type': 'string'},
         },
       },
+      agentExposed: true,
       (a, _) async {
         final id = a.optional<String>('tabId');
         id == null ? workspace().closeFocused() : workspace().closeTab(TabId(id));
@@ -76,6 +78,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
           },
         },
       },
+      agentExposed: true,
       (a, _) async {
         final id = a.optional<String>('tabId');
         if (id != null) {
@@ -107,6 +110,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
           },
         },
       },
+      agentExposed: true,
       (a, _) async {
         final rawAxis = a.optional<String>('axis'), rawSide = a.optional<String>('side');
         final axis = SplitAxis.values.asNameMap()[rawAxis], side = PaneSide.values.asNameMap()[rawSide];
@@ -187,6 +191,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
           'tabId': {'type': 'string', 'description': 'omit for the active tab'},
         },
       },
+      agentExposed: true,
       (a, _) async {
         final id = a.optional<String>('tabId');
         final tab = id == null ? ref.read(workspaceProvider).activeTab : _tab(ref, TabId(id));
@@ -211,6 +216,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
         'required': ['tabId'],
       },
+      agentExposed: true,
       (a, _) async {
         final id = TabId(a.require<String>('tabId'));
         if (_tab(ref, id) == null) return const Err(AppError('notFound', detail: 'tab'));
@@ -248,6 +254,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
         'required': ['tabId', 'scope'],
       },
+      agentExposed: true,
       (a, _) async {
         final id = TabId(a.require<String>('tabId'));
         final scope = TabCloseScope.values.asNameMap()[a.require<String>('scope')];

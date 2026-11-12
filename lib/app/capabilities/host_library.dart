@@ -13,17 +13,21 @@ class Rejected implements Exception {
 }
 
 Future<Result<Object?>> Function(Args, RequestContext) guarded(Future<Object?> Function(Args a) body) =>
-    (args, _) async {
-      try {
-        return Ok(await body(args));
-      } on Rejected catch (e) {
-        return Err(AppError(e.code, detail: e.detail));
-      } on IdentityInUse catch (e) {
-        return Err(AppError('inUse', detail: e.references.join(', ')));
-      } on HostInUse catch (e) {
-        return Err(AppError('inUse', detail: e.references.join(', ')));
-      }
-    };
+    guardedWithContext((args, _) => body(args));
+
+Future<Result<Object?>> Function(Args, RequestContext) guardedWithContext(
+  Future<Object?> Function(Args a, RequestContext c) body,
+) => (args, context) async {
+  try {
+    return Ok(await body(args, context));
+  } on Rejected catch (e) {
+    return Err(AppError(e.code, detail: e.detail));
+  } on IdentityInUse catch (e) {
+    return Err(AppError('inUse', detail: e.references.join(', ')));
+  } on HostInUse catch (e) {
+    return Err(AppError('inUse', detail: e.references.join(', ')));
+  }
+};
 
 const connectionFieldNames = ['port', 'login', 'jump', 'proxy', 'legacy'];
 const _loginKeys = ['identityId', 'username', 'auth', 'methods', 'keyId', 'keyPath', 'allowInteractive'];

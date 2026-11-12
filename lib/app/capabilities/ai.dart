@@ -46,6 +46,16 @@ List<Capability> aiCapabilities(Ref ref) {
       inputSchema: schema({'sessionId': host}, []),
     ),
     FunctionCapability(
+      'agent.terminalScreen',
+      Effect.query,
+      (a, c) => call(c, (r) async => r.readTerminalScreen(a.raw)),
+      agentExposed: true,
+      inputSchema: schema({
+        'sessionId': host,
+        'maxLines': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+      }, []),
+    ),
+    FunctionCapability(
       'agent.diagnose',
       Effect.connect,
       (a, c) => call(c, (r) => r.diagnose(a.raw, c)),
@@ -88,6 +98,48 @@ List<Capability> aiCapabilities(Ref ref) {
         },
         ['hostId', 'handle'],
       ),
+    ),
+    FunctionCapability(
+      'agent.jobs.start',
+      Effect.remoteWrite,
+      (a, c) => call(c, (r) => r.startJob(a.raw, c)),
+      agentExposed: true,
+      inputSchema: schema(
+        {
+          'hostId': host,
+          'cwd': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+          'command': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+          'timeoutSeconds': {'type': 'integer', 'minimum': 1, 'maximum': 300},
+        },
+        ['hostId', 'cwd', 'command'],
+      ),
+    ),
+    FunctionCapability(
+      'agent.jobs.read',
+      Effect.query,
+      (a, c) => call(c, (r) async => r.readJob(a.raw)),
+      agentExposed: true,
+      inputSchema: schema(
+        {
+          'jobId': host,
+          'offset': {'type': 'integer', 'minimum': 0},
+        },
+        ['jobId'],
+      ),
+    ),
+    FunctionCapability(
+      'agent.jobs.status',
+      Effect.query,
+      (a, c) => call(c, (r) async => r.jobStatus(a.raw)),
+      agentExposed: true,
+      inputSchema: schema({'jobId': host}, ['jobId']),
+    ),
+    FunctionCapability(
+      'agent.jobs.stop',
+      Effect.localChange,
+      (a, c) => call(c, (r) async => r.stopJob(a.raw)),
+      agentExposed: true,
+      inputSchema: schema({'jobId': host}, ['jobId']),
     ),
   ];
 }

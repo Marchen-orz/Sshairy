@@ -224,7 +224,7 @@ class ConnectionManager {
     if (e.transport == null) {
       e.dialCancel.cancel();
       _forget(e);
-    } else if (_detached.contains(e) || park == Duration.zero) {
+    } else if (_closed || _detached.contains(e) || park == Duration.zero) {
       _close(e);
     } else {
       e.parkTimer?.cancel();

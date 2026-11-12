@@ -4610,6 +4610,264 @@ abstract class AppLocalizations {
   /// **'Let Airy use this terminal\'s known directory, prompt status and recent command results for this turn. Window numbers are the tab and pane positions when you sent the message. No commands will run.'**
   String get aiAgentTerminalApproveHint;
 
+  /// No description provided for @aiAgentToolTerminalScreen.
+  ///
+  /// In en, this message translates to:
+  /// **'Read terminal screen'**
+  String get aiAgentToolTerminalScreen;
+
+  /// No description provided for @aiAgentToolTerminalScreenHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Read the visible text of one terminal, up to 200 lines, without scrollback.'**
+  String get aiAgentToolTerminalScreenHint;
+
+  /// No description provided for @aiAgentTerminalScreenApproveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Let Airy read only the visible text of this terminal, up to 200 lines. Every read asks again. No commands will run.'**
+  String get aiAgentTerminalScreenApproveHint;
+
+  /// No description provided for @aiAgentToolFilesList.
+  ///
+  /// In en, this message translates to:
+  /// **'List directory'**
+  String get aiAgentToolFilesList;
+
+  /// No description provided for @aiAgentToolFilesStat.
+  ///
+  /// In en, this message translates to:
+  /// **'File info'**
+  String get aiAgentToolFilesStat;
+
+  /// No description provided for @aiAgentToolFilesRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Read file'**
+  String get aiAgentToolFilesRead;
+
+  /// No description provided for @aiAgentToolFilesWrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Write file'**
+  String get aiAgentToolFilesWrite;
+
+  /// No description provided for @aiAgentToolFilesMkdir.
+  ///
+  /// In en, this message translates to:
+  /// **'Create directory'**
+  String get aiAgentToolFilesMkdir;
+
+  /// No description provided for @aiAgentToolFilesRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename path'**
+  String get aiAgentToolFilesRename;
+
+  /// No description provided for @aiAgentToolFilesDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete path'**
+  String get aiAgentToolFilesDelete;
+
+  /// No description provided for @aiAgentToolFilesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Read or change remote files and directories.'**
+  String get aiAgentToolFilesHint;
+
+  /// No description provided for @aiAgentToolTransferList.
+  ///
+  /// In en, this message translates to:
+  /// **'List transfers'**
+  String get aiAgentToolTransferList;
+
+  /// No description provided for @aiAgentToolTransferEnqueue.
+  ///
+  /// In en, this message translates to:
+  /// **'Start transfer'**
+  String get aiAgentToolTransferEnqueue;
+
+  /// No description provided for @aiAgentToolTransferCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel transfer'**
+  String get aiAgentToolTransferCancel;
+
+  /// No description provided for @aiAgentToolTransferHint.
+  ///
+  /// In en, this message translates to:
+  /// **'View or act on file transfers.'**
+  String get aiAgentToolTransferHint;
+
+  /// No description provided for @aiAgentToolSessionOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open session'**
+  String get aiAgentToolSessionOpen;
+
+  /// No description provided for @aiAgentToolSessionClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close session'**
+  String get aiAgentToolSessionClose;
+
+  /// No description provided for @aiAgentToolSessionReconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnect session'**
+  String get aiAgentToolSessionReconnect;
+
+  /// No description provided for @aiAgentToolSessionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Open, close or reconnect terminal sessions.'**
+  String get aiAgentToolSessionHint;
+
+  /// No description provided for @aiAgentToolWorkspaceFocus.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch window'**
+  String get aiAgentToolWorkspaceFocus;
+
+  /// No description provided for @aiAgentToolWorkspaceSplit.
+  ///
+  /// In en, this message translates to:
+  /// **'Split pane'**
+  String get aiAgentToolWorkspaceSplit;
+
+  /// No description provided for @aiAgentToolWorkspaceRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename tab'**
+  String get aiAgentToolWorkspaceRename;
+
+  /// No description provided for @aiAgentToolWorkspaceCloseTabs.
+  ///
+  /// In en, this message translates to:
+  /// **'Close tabs'**
+  String get aiAgentToolWorkspaceCloseTabs;
+
+  /// No description provided for @aiAgentToolWorkspaceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch windows or change the layout.'**
+  String get aiAgentToolWorkspaceHint;
+
+  /// No description provided for @aiAgentToolSettingsGet.
+  ///
+  /// In en, this message translates to:
+  /// **'Read settings'**
+  String get aiAgentToolSettingsGet;
+
+  /// No description provided for @aiAgentToolSettingsPatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Change settings'**
+  String get aiAgentToolSettingsPatch;
+
+  /// No description provided for @aiAgentToolSettingsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Read or change this app\'s settings.'**
+  String get aiAgentToolSettingsHint;
+
+  /// No description provided for @aiAgentToolHostCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Add host'**
+  String get aiAgentToolHostCreate;
+
+  /// No description provided for @aiAgentToolHostUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Update host'**
+  String get aiAgentToolHostUpdate;
+
+  /// No description provided for @aiAgentToolHostMove.
+  ///
+  /// In en, this message translates to:
+  /// **'Move host'**
+  String get aiAgentToolHostMove;
+
+  /// No description provided for @aiAgentToolHostDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete host'**
+  String get aiAgentToolHostDelete;
+
+  /// No description provided for @aiAgentToolHostHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Add, update or delete saved hosts.'**
+  String get aiAgentToolHostHint;
+
+  /// No description provided for @aiAgentToolForwardList.
+  ///
+  /// In en, this message translates to:
+  /// **'List forwards'**
+  String get aiAgentToolForwardList;
+
+  /// No description provided for @aiAgentToolForwardSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save forward'**
+  String get aiAgentToolForwardSave;
+
+  /// No description provided for @aiAgentToolForwardDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete forward'**
+  String get aiAgentToolForwardDelete;
+
+  /// No description provided for @aiAgentToolForwardStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start forward'**
+  String get aiAgentToolForwardStart;
+
+  /// No description provided for @aiAgentToolForwardStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop forward'**
+  String get aiAgentToolForwardStop;
+
+  /// No description provided for @aiAgentToolForwardHint.
+  ///
+  /// In en, this message translates to:
+  /// **'View or act on port forwarding rules.'**
+  String get aiAgentToolForwardHint;
+
+  /// No description provided for @aiAgentToolJobStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start background job'**
+  String get aiAgentToolJobStart;
+
+  /// No description provided for @aiAgentToolJobRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Read job output'**
+  String get aiAgentToolJobRead;
+
+  /// No description provided for @aiAgentToolJobStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Job status'**
+  String get aiAgentToolJobStatus;
+
+  /// No description provided for @aiAgentToolJobStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop job'**
+  String get aiAgentToolJobStop;
+
+  /// No description provided for @aiAgentToolJobHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Run or inspect background jobs.'**
+  String get aiAgentToolJobHint;
+
   /// No description provided for @aiAgentToolDiagnostics.
   ///
   /// In en, this message translates to:
@@ -5275,6 +5533,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Run a fixed read-only diagnostic and let Airy use its bounded result.'**
   String get aiAgentReadApproveHint;
+
+  /// No description provided for @aiAgentContentApproveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Let Airy read this content and use its bounded result for this turn.'**
+  String get aiAgentContentApproveHint;
+
+  /// No description provided for @aiAgentActionApproveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve action'**
+  String get aiAgentActionApproveTitle;
+
+  /// No description provided for @aiAgentActionApproveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Let Airy perform this action and use its bounded result for this turn.'**
+  String get aiAgentActionApproveHint;
 
   /// No description provided for @aiAgentDiagnosticSystem.
   ///

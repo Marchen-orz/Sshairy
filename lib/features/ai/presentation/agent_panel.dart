@@ -721,9 +721,17 @@ class _ConversationState extends State<_Conversation> {
   String? _highlighted;
   int _navigation = 0, _revealVersion = 0;
 
-  List<AgentTimelineEntry> get _entries => widget.runtime.timeline
-      .where((entry) => entry is! AgentChatEntry || (!entry.retracted && entry.text.isNotEmpty))
-      .toList();
+  List<AgentTimelineEntry> get _entries {
+    final timeline = widget.runtime.timeline;
+    // Keep the running reply even before its first token so its actions do not appear only at the end.
+    final streaming = widget.runtime.busy
+        ? timeline.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'assistant')
+        : -1;
+    return [
+      for (final (index, entry) in timeline.indexed)
+        if (entry is! AgentChatEntry || (!entry.retracted && (entry.text.isNotEmpty || index == streaming))) entry,
+    ];
+  }
 
   @override
   void dispose() {
@@ -793,7 +801,7 @@ class _ConversationState extends State<_Conversation> {
         IconButton(
           key: ValueKey('ai-agent-copy-$index'),
           tooltip: l.copy,
-          onPressed: () => _copy(message.text),
+          onPressed: message.text.isEmpty ? null : () => _copy(message.text),
           icon: const Icon(Icons.copy_outlined, size: 14),
         ),
         if (latest) ...[
@@ -1026,6 +1034,39 @@ class _ExecutionCardState extends State<_ExecutionCard> {
       'agent.hosts' => (l.aiAgentToolHosts, l.aiAgentToolHostsHint),
       'agent.terminals' => (l.aiAgentToolTerminals, l.aiAgentToolTerminalsHint),
       'agent.terminalHistory' => (l.aiAgentToolTerminalHistory, l.aiAgentToolTerminalHistoryHint),
+      'agent.terminalScreen' => (l.aiAgentToolTerminalScreen, l.aiAgentToolTerminalScreenHint),
+      'file.list' => (l.aiAgentToolFilesList, l.aiAgentToolFilesHint),
+      'file.stat' => (l.aiAgentToolFilesStat, l.aiAgentToolFilesHint),
+      'file.read' => (l.aiAgentToolFilesRead, l.aiAgentToolFilesHint),
+      'file.write' => (l.aiAgentToolFilesWrite, l.aiAgentToolFilesHint),
+      'file.mkdir' => (l.aiAgentToolFilesMkdir, l.aiAgentToolFilesHint),
+      'file.rename' => (l.aiAgentToolFilesRename, l.aiAgentToolFilesHint),
+      'file.delete' => (l.aiAgentToolFilesDelete, l.aiAgentToolFilesHint),
+      'transfer.list' => (l.aiAgentToolTransferList, l.aiAgentToolTransferHint),
+      'transfer.enqueue' => (l.aiAgentToolTransferEnqueue, l.aiAgentToolTransferHint),
+      'transfer.cancel' => (l.aiAgentToolTransferCancel, l.aiAgentToolTransferHint),
+      'session.open' => (l.aiAgentToolSessionOpen, l.aiAgentToolSessionHint),
+      'session.close' => (l.aiAgentToolSessionClose, l.aiAgentToolSessionHint),
+      'session.reconnect' => (l.aiAgentToolSessionReconnect, l.aiAgentToolSessionHint),
+      'workspace.focus' => (l.aiAgentToolWorkspaceFocus, l.aiAgentToolWorkspaceHint),
+      'workspace.split' => (l.aiAgentToolWorkspaceSplit, l.aiAgentToolWorkspaceHint),
+      'workspace.renameTab' => (l.aiAgentToolWorkspaceRename, l.aiAgentToolWorkspaceHint),
+      'workspace.closeTabs' => (l.aiAgentToolWorkspaceCloseTabs, l.aiAgentToolWorkspaceHint),
+      'settings.get' => (l.aiAgentToolSettingsGet, l.aiAgentToolSettingsHint),
+      'settings.patch' => (l.aiAgentToolSettingsPatch, l.aiAgentToolSettingsHint),
+      'host.create' => (l.aiAgentToolHostCreate, l.aiAgentToolHostHint),
+      'host.update' => (l.aiAgentToolHostUpdate, l.aiAgentToolHostHint),
+      'host.move' => (l.aiAgentToolHostMove, l.aiAgentToolHostHint),
+      'host.delete' => (l.aiAgentToolHostDelete, l.aiAgentToolHostHint),
+      'forward.list' => (l.aiAgentToolForwardList, l.aiAgentToolForwardHint),
+      'forward.save' => (l.aiAgentToolForwardSave, l.aiAgentToolForwardHint),
+      'forward.delete' => (l.aiAgentToolForwardDelete, l.aiAgentToolForwardHint),
+      'forward.start' => (l.aiAgentToolForwardStart, l.aiAgentToolForwardHint),
+      'forward.stop' => (l.aiAgentToolForwardStop, l.aiAgentToolForwardHint),
+      'agent.jobs.start' => (l.aiAgentToolJobStart, l.aiAgentToolJobHint),
+      'agent.jobs.read' => (l.aiAgentToolJobRead, l.aiAgentToolJobHint),
+      'agent.jobs.status' => (l.aiAgentToolJobStatus, l.aiAgentToolJobHint),
+      'agent.jobs.stop' => (l.aiAgentToolJobStop, l.aiAgentToolJobHint),
       'agent.diagnose' => (l.aiAgentToolDiagnostics, l.aiAgentToolDiagnosticsHint),
       'agent.execute' => (l.aiAgentToolExecute, l.aiAgentToolExecuteHint),
       'agent.output' => (l.aiAgentToolOutput, l.aiAgentToolOutputHint),
@@ -1144,7 +1185,16 @@ class _ApprovalCard extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final terminalHistory = approval.capability == 'agent.terminalHistory';
-    final reading = terminalHistory || approval.template != null;
+    final terminalScreen = approval.capability == 'agent.terminalScreen';
+    final contentRead = const {
+      'file.list',
+      'file.stat',
+      'file.read',
+      'agent.jobs.read',
+      'agent.jobs.status',
+    }.contains(approval.capability);
+    final shell = const {'agent.execute', 'agent.jobs.start', 'agent.diagnose'}.contains(approval.capability);
+    final reading = terminalHistory || terminalScreen || contentRead || approval.template != null;
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.md),
       child: _AgentCard(
@@ -1154,7 +1204,11 @@ class _ApprovalCard extends StatelessWidget {
           children: [
             _CardTitle(
               icon: reading ? Icons.visibility_outlined : Icons.terminal_rounded,
-              label: reading ? l.aiAgentReadApproveTitle : l.aiAgentApproveTitle,
+              label: reading
+                  ? l.aiAgentReadApproveTitle
+                  : shell
+                  ? l.aiAgentApproveTitle
+                  : l.aiAgentActionApproveTitle,
             ),
             const SizedBox(height: Space.md),
             Text(approval.target, style: theme.textTheme.labelLarge),
@@ -1172,11 +1226,17 @@ class _ApprovalCard extends StatelessWidget {
             ],
             const SizedBox(height: Space.md),
             Text(
-              terminalHistory
+              terminalScreen
+                  ? l.aiAgentTerminalScreenApproveHint
+                  : terminalHistory
                   ? l.aiAgentTerminalApproveHint
-                  : reading
+                  : contentRead
+                  ? l.aiAgentContentApproveHint
+                  : approval.template != null
                   ? l.aiAgentReadApproveHint
-                  : l.aiAgentShellPermission,
+                  : shell
+                  ? l.aiAgentShellPermission
+                  : l.aiAgentActionApproveHint,
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: Space.md),

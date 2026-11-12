@@ -2464,6 +2464,139 @@ class AppLocalizationsEn extends AppLocalizations {
       'Let Airy use this terminal\'s known directory, prompt status and recent command results for this turn. Window numbers are the tab and pane positions when you sent the message. No commands will run.';
 
   @override
+  String get aiAgentToolTerminalScreen => 'Read terminal screen';
+
+  @override
+  String get aiAgentToolTerminalScreenHint =>
+      'Read the visible text of one terminal, up to 200 lines, without scrollback.';
+
+  @override
+  String get aiAgentTerminalScreenApproveHint =>
+      'Let Airy read only the visible text of this terminal, up to 200 lines. Every read asks again. No commands will run.';
+
+  @override
+  String get aiAgentToolFilesList => 'List directory';
+
+  @override
+  String get aiAgentToolFilesStat => 'File info';
+
+  @override
+  String get aiAgentToolFilesRead => 'Read file';
+
+  @override
+  String get aiAgentToolFilesWrite => 'Write file';
+
+  @override
+  String get aiAgentToolFilesMkdir => 'Create directory';
+
+  @override
+  String get aiAgentToolFilesRename => 'Rename path';
+
+  @override
+  String get aiAgentToolFilesDelete => 'Delete path';
+
+  @override
+  String get aiAgentToolFilesHint =>
+      'Read or change remote files and directories.';
+
+  @override
+  String get aiAgentToolTransferList => 'List transfers';
+
+  @override
+  String get aiAgentToolTransferEnqueue => 'Start transfer';
+
+  @override
+  String get aiAgentToolTransferCancel => 'Cancel transfer';
+
+  @override
+  String get aiAgentToolTransferHint => 'View or act on file transfers.';
+
+  @override
+  String get aiAgentToolSessionOpen => 'Open session';
+
+  @override
+  String get aiAgentToolSessionClose => 'Close session';
+
+  @override
+  String get aiAgentToolSessionReconnect => 'Reconnect session';
+
+  @override
+  String get aiAgentToolSessionHint =>
+      'Open, close or reconnect terminal sessions.';
+
+  @override
+  String get aiAgentToolWorkspaceFocus => 'Switch window';
+
+  @override
+  String get aiAgentToolWorkspaceSplit => 'Split pane';
+
+  @override
+  String get aiAgentToolWorkspaceRename => 'Rename tab';
+
+  @override
+  String get aiAgentToolWorkspaceCloseTabs => 'Close tabs';
+
+  @override
+  String get aiAgentToolWorkspaceHint => 'Switch windows or change the layout.';
+
+  @override
+  String get aiAgentToolSettingsGet => 'Read settings';
+
+  @override
+  String get aiAgentToolSettingsPatch => 'Change settings';
+
+  @override
+  String get aiAgentToolSettingsHint => 'Read or change this app\'s settings.';
+
+  @override
+  String get aiAgentToolHostCreate => 'Add host';
+
+  @override
+  String get aiAgentToolHostUpdate => 'Update host';
+
+  @override
+  String get aiAgentToolHostMove => 'Move host';
+
+  @override
+  String get aiAgentToolHostDelete => 'Delete host';
+
+  @override
+  String get aiAgentToolHostHint => 'Add, update or delete saved hosts.';
+
+  @override
+  String get aiAgentToolForwardList => 'List forwards';
+
+  @override
+  String get aiAgentToolForwardSave => 'Save forward';
+
+  @override
+  String get aiAgentToolForwardDelete => 'Delete forward';
+
+  @override
+  String get aiAgentToolForwardStart => 'Start forward';
+
+  @override
+  String get aiAgentToolForwardStop => 'Stop forward';
+
+  @override
+  String get aiAgentToolForwardHint => 'View or act on port forwarding rules.';
+
+  @override
+  String get aiAgentToolJobStart => 'Start background job';
+
+  @override
+  String get aiAgentToolJobRead => 'Read job output';
+
+  @override
+  String get aiAgentToolJobStatus => 'Job status';
+
+  @override
+  String get aiAgentToolJobStop => 'Stop job';
+
+  @override
+  String get aiAgentToolJobHint => 'Run or inspect background jobs.';
+
+  @override
   String get aiAgentToolDiagnostics => 'Collect diagnostics';
 
   @override
@@ -2853,6 +2986,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiAgentReadApproveHint =>
       'Run a fixed read-only diagnostic and let Airy use its bounded result.';
+
+  @override
+  String get aiAgentContentApproveHint =>
+      'Let Airy read this content and use its bounded result for this turn.';
+
+  @override
+  String get aiAgentActionApproveTitle => 'Approve action';
+
+  @override
+  String get aiAgentActionApproveHint =>
+      'Let Airy perform this action and use its bounded result for this turn.';
 
   @override
   String get aiAgentDiagnosticSystem => 'System and memory';

@@ -404,6 +404,9 @@ void main() {
     expect(session.historySession, isNull);
     expect(session.historySessionCurrent(expected), isFalse);
     expect(session.readHistory(expected), isNull);
+    session.close();
+    manager.closeAll();
+    await tester.pump();
   });
 
   testWidgets('workspace history includes background splits and intersects the session manager', (tester) async {

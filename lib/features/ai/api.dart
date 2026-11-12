@@ -1,4 +1,5 @@
 export 'domain/agent.dart';
+export 'domain/agent_tool.dart';
 export 'domain/model.dart';
 export 'application/runtime.dart';
 export 'application/composer.dart';

@@ -205,7 +205,7 @@ void main() {
     });
   });
 
-  test('workspace.closeTabs serves the palette and the UI, not the agent, and rejects bad input', () async {
+  test('workspace.closeTabs serves the palette and the agent, and rejects bad input', () async {
     final c = container();
     final ids = openTabs(c);
     final dispatcher = CapabilityDispatcher(c.read(Provider((ref) => workspaceCapabilities(ref))));
@@ -214,7 +214,7 @@ void main() {
     String code(Result<Object?> r) => (r as Err<Object?>).error.code;
     final clicked = ids[2].value;
 
-    expect(code(await call({'tabId': clicked, 'scope': 'right'}, Origin.agent)), 'notExposed');
+    expect(code(await call({'tabId': clicked, 'scope': 'right'}, Origin.agent)), 'unauthorized');
     expect(code(await call({'tabId': 'gone', 'scope': 'right'})), 'notFound');
     expect(code(await call({'tabId': clicked, 'scope': 'up'})), 'invalidArgument');
     expect(c.read(workspaceProvider).tabs, hasLength(5), reason: 'rejected calls change nothing');

@@ -2386,6 +2386,136 @@ class AppLocalizationsZh extends AppLocalizations {
       '允许 Airy 在本轮使用这个终端的已知目录、提示符状态和近期命令结果。窗口编号为发送时的标签位置与分屏位置；不会执行命令。';
 
   @override
+  String get aiAgentToolTerminalScreen => '读取终端屏幕';
+
+  @override
+  String get aiAgentToolTerminalScreenHint => '读取指定终端当前可见的文字，最多 200 行，不读取回滚内容。';
+
+  @override
+  String get aiAgentTerminalScreenApproveHint =>
+      '允许 Airy 只读取这个终端当前可见的文字，最多 200 行。每次读取都会询问；不会执行命令。';
+
+  @override
+  String get aiAgentToolFilesList => '列出目录';
+
+  @override
+  String get aiAgentToolFilesStat => '查看文件信息';
+
+  @override
+  String get aiAgentToolFilesRead => '读取文件';
+
+  @override
+  String get aiAgentToolFilesWrite => '写入文件';
+
+  @override
+  String get aiAgentToolFilesMkdir => '新建目录';
+
+  @override
+  String get aiAgentToolFilesRename => '重命名路径';
+
+  @override
+  String get aiAgentToolFilesDelete => '删除路径';
+
+  @override
+  String get aiAgentToolFilesHint => '读取或修改远端文件与目录。';
+
+  @override
+  String get aiAgentToolTransferList => '查看传输';
+
+  @override
+  String get aiAgentToolTransferEnqueue => '开始传输';
+
+  @override
+  String get aiAgentToolTransferCancel => '取消传输';
+
+  @override
+  String get aiAgentToolTransferHint => '查看或操作文件传输。';
+
+  @override
+  String get aiAgentToolSessionOpen => '打开会话';
+
+  @override
+  String get aiAgentToolSessionClose => '关闭会话';
+
+  @override
+  String get aiAgentToolSessionReconnect => '重连会话';
+
+  @override
+  String get aiAgentToolSessionHint => '打开、关闭或重连终端会话。';
+
+  @override
+  String get aiAgentToolWorkspaceFocus => '切换窗口';
+
+  @override
+  String get aiAgentToolWorkspaceSplit => '分屏';
+
+  @override
+  String get aiAgentToolWorkspaceRename => '重命名标签';
+
+  @override
+  String get aiAgentToolWorkspaceCloseTabs => '批量关闭标签';
+
+  @override
+  String get aiAgentToolWorkspaceHint => '切换或调整窗口布局。';
+
+  @override
+  String get aiAgentToolSettingsGet => '查看设置';
+
+  @override
+  String get aiAgentToolSettingsPatch => '修改设置';
+
+  @override
+  String get aiAgentToolSettingsHint => '读取或修改本机设置。';
+
+  @override
+  String get aiAgentToolHostCreate => '新增主机';
+
+  @override
+  String get aiAgentToolHostUpdate => '修改主机';
+
+  @override
+  String get aiAgentToolHostMove => '移动主机';
+
+  @override
+  String get aiAgentToolHostDelete => '删除主机';
+
+  @override
+  String get aiAgentToolHostHint => '新增、修改或删除已保存主机。';
+
+  @override
+  String get aiAgentToolForwardList => '查看转发';
+
+  @override
+  String get aiAgentToolForwardSave => '保存转发规则';
+
+  @override
+  String get aiAgentToolForwardDelete => '删除转发规则';
+
+  @override
+  String get aiAgentToolForwardStart => '启动转发';
+
+  @override
+  String get aiAgentToolForwardStop => '停止转发';
+
+  @override
+  String get aiAgentToolForwardHint => '查看或操作端口转发规则。';
+
+  @override
+  String get aiAgentToolJobStart => '运行后台任务';
+
+  @override
+  String get aiAgentToolJobRead => '读取任务输出';
+
+  @override
+  String get aiAgentToolJobStatus => '查看任务状态';
+
+  @override
+  String get aiAgentToolJobStop => '停止任务';
+
+  @override
+  String get aiAgentToolJobHint => '运行或查看后台任务。';
+
+  @override
   String get aiAgentToolDiagnostics => '收集诊断';
 
   @override
@@ -2732,6 +2862,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentReadApproveHint => '运行固定只读诊断，并允许 Airy 使用该操作的有界结果。';
+
+  @override
+  String get aiAgentContentApproveHint => '允许 Airy 读取这项内容并在本轮使用其有界结果。';
+
+  @override
+  String get aiAgentActionApproveTitle => '确认操作';
+
+  @override
+  String get aiAgentActionApproveHint => '允许 Airy 执行这项操作并在本轮使用其有界结果。';
 
   @override
   String get aiAgentDiagnosticSystem => '系统与内存';

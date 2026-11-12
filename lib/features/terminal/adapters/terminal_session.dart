@@ -373,10 +373,35 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
   @override
   TerminalAiSnapshot? readAiSnapshot(TerminalAiContext expected, {int maxLines = 200, int maxBytes = 32768}) {
+    if (!_aiContextCurrent(expected)) return null;
+    final screen = _screenProjection(maxLines, maxBytes);
+    if (screen == null) return null;
+    return TerminalAiSnapshot(
+      context: expected,
+      text: screen.text,
+      firstLine: screen.firstLine,
+      lastLine: screen.lastLine,
+      truncated: screen.truncated,
+    );
+  }
+
+  TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768}) {
+    if (!historySessionCurrent(expected)) return null;
+    final screen = _screenProjection(maxLines, maxBytes);
+    if (screen == null) return null;
+    return TerminalScreenSnapshot(
+      session: expected,
+      text: screen.text,
+      firstLine: screen.firstLine,
+      lastLine: screen.lastLine,
+      truncated: screen.truncated,
+    );
+  }
+
+  ({String text, int firstLine, int lastLine, bool truncated})? _screenProjection(int maxLines, int maxBytes) {
     if (maxLines < 1 || maxLines > 200 || maxBytes < 1 || maxBytes > 32768) {
       throw ArgumentError('Invalid terminal snapshot limits');
     }
-    if (!_aiContextCurrent(expected)) return null;
     final buffer = _terminal.buffer;
     final last = buffer.absoluteCursorY;
     if (last < 0 || last >= buffer.lines.length) return null;
@@ -412,13 +437,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         }
       }
     }
-    return TerminalAiSnapshot(
-      context: expected,
-      text: text.toString(),
-      firstLine: first,
-      lastLine: includedLast,
-      truncated: truncated,
-    );
+    return (text: text.toString(), firstLine: first, lastLine: includedLast, truncated: truncated);
   }
 
   bool browseCommand(CommandCompletionRequest request, CommandCandidate candidate) =>

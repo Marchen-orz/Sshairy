@@ -24,6 +24,8 @@ class WorkspaceTerminalHistoryReader implements TerminalHistoryReader {
                 generation: session.generation,
                 historyRevision: session.historyRevision,
                 binding: session.binding,
+                tabId: tab.id.value,
+                paneId: leaf.pane.value,
               ),
     ]);
   }
@@ -43,4 +45,8 @@ class WorkspaceTerminalHistoryReader implements TerminalHistoryReader {
 
   @override
   TerminalHistorySnapshot? read(TerminalHistorySession expected) => _resolve(expected)?.readHistory(expected);
+
+  @override
+  TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768}) =>
+      _resolve(expected)?.readScreen(expected, maxLines: maxLines, maxBytes: maxBytes);
 }

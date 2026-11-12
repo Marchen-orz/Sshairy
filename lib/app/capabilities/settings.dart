@@ -9,7 +9,7 @@ import '../../features/settings/api.dart';
 
 /// Both read and write through [SettingKeys]; an agent only sees and changes settings marked as exposed.
 List<Capability> settingsCapabilities(Ref ref) => [
-  FunctionCapability('settings.get', Effect.query, (_, c) async {
+  FunctionCapability('settings.get', Effect.query, agentExposed: true, (_, c) async {
     final s = ref.read(settingsProvider);
     return Ok({
       'revision': ref.read(settingsProvider.notifier).revision,
@@ -22,6 +22,7 @@ List<Capability> settingsCapabilities(Ref ref) => [
   FunctionCapability(
     'settings.patch',
     Effect.localChange,
+    agentExposed: true,
     inputSchema: {
       'type': 'object',
       'additionalProperties': false,

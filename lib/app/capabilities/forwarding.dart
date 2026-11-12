@@ -31,7 +31,7 @@ const _idSchema = {
   'required': ['id'],
 };
 
-/// Forwarding is never offered to the AI: it opens network paths into and out of this computer.
+/// Forwarding opens network paths into and out of this computer; the agent gets it only with per-host approval.
 List<Capability> forwardCapabilities(Ref ref) {
   Forwards forwards() => ref.read(forwardsProvider.notifier);
 
@@ -52,11 +52,13 @@ List<Capability> forwardCapabilities(Ref ref) {
     FunctionCapability(
       'forward.list',
       Effect.query,
+      agentExposed: true,
       (a, context) async => Ok([for (final s in ref.read(forwardsProvider)) s.toJson()]),
     ),
     FunctionCapability(
       'forward.save',
       Effect.localChange,
+      agentExposed: true,
       (a, context) => guarded(() async {
         final rule = ForwardRule(
           id: ForwardId(a.optional<String>('id') ?? newId()),
@@ -82,6 +84,7 @@ List<Capability> forwardCapabilities(Ref ref) {
     FunctionCapability(
       'forward.delete',
       Effect.localChange,
+      agentExposed: true,
       (a, context) => guarded(() async {
         await forwards().delete(ForwardId(a.require<String>('id')));
         return const Ok(null);
@@ -91,12 +94,29 @@ List<Capability> forwardCapabilities(Ref ref) {
     FunctionCapability(
       'forward.start',
       Effect.connect,
-      (a, context) => guarded(() async => outcome(await forwards().start(ForwardId(a.require<String>('id'))))),
-      inputSchema: _idSchema,
+      agentExposed: true,
+      (a, context) => guarded(() async {
+        final id = ForwardId(a.require<String>('id'));
+        final known = forwards().byId(id) ?? (throw const ForwardError(ForwardErrors.unknown));
+        final host = a.optional<String>('hostId');
+        if (host != null && known.rule.hostId != HostId(host)) {
+          throw const ForwardError(ForwardErrors.unknown);
+        }
+        return outcome(await forwards().start(id));
+      }),
+      inputSchema: const {
+        'type': 'object',
+        'properties': {
+          'id': {'type': 'string'},
+          'hostId': {'type': 'string', 'description': 'the saved host the rule belongs to'},
+        },
+        'required': ['id'],
+      },
     ),
     FunctionCapability(
       'forward.stop',
       Effect.localChange,
+      agentExposed: true,
       (a, context) => guarded(() async => outcome(await forwards().stop(ForwardId(a.require<String>('id'))))),
       inputSchema: _idSchema,
     ),

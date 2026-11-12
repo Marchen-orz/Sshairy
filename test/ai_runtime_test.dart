@@ -168,7 +168,7 @@ class _TerminalHistory implements TerminalHistoryReader {
   _TerminalHistory(this.snapshots, {this.focusedSession});
   final List<TerminalHistorySnapshot> snapshots;
   final unavailable = <SessionId>{};
-  final reads = <SessionId>[];
+  final reads = <SessionId>[], screenReads = <SessionId>[];
   @override
   SessionId? focusedSession;
 
@@ -187,6 +187,21 @@ class _TerminalHistory implements TerminalHistoryReader {
     if (!isCurrent(expected)) return null;
     reads.add(expected.sessionId);
     return snapshots.firstWhere((snapshot) => identical(snapshot.session, expected));
+  }
+
+  @override
+  TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768}) {
+    final snapshot = read(expected);
+    if (snapshot == null) return null;
+    screenReads.add(expected.sessionId);
+    final text = snapshot.history.map((entry) => entry.output).where((text) => text.isNotEmpty).join('\n');
+    return TerminalScreenSnapshot(
+      session: expected,
+      text: text,
+      firstLine: 0,
+      lastLine: text.isEmpty ? 0 : text.split('\n').length - 1,
+      truncated: false,
+    );
   }
 }
 
@@ -262,6 +277,16 @@ class _Harness {
         }, []),
       ),
       FunctionCapability(
+        'agent.terminalScreen',
+        Effect.query,
+        (args, _) async => runtime.readTerminalScreen(args.raw),
+        agentExposed: true,
+        inputSchema: _schema({
+          'sessionId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+          'maxLines': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+        }, []),
+      ),
+      FunctionCapability(
         'agent.diagnose',
         Effect.connect,
         (args, context) => runtime.diagnose(args.raw, context),
@@ -300,6 +325,58 @@ class _Harness {
             'handle': {'type': 'string', 'minLength': 1, 'maxLength': 128},
           },
           ['hostId', 'handle'],
+        ),
+      ),
+      FunctionCapability(
+        'agent.jobs.start',
+        Effect.remoteWrite,
+        (args, context) => runtime.startJob(args.raw, context),
+        agentExposed: true,
+        inputSchema: _schema(
+          {
+            'hostId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+            'cwd': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+            'command': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+            'timeoutSeconds': {'type': 'integer', 'minimum': 1, 'maximum': 300},
+          },
+          ['hostId', 'cwd', 'command'],
+        ),
+      ),
+      FunctionCapability(
+        'agent.jobs.read',
+        Effect.query,
+        (args, _) async => runtime.readJob(args.raw),
+        agentExposed: true,
+        inputSchema: _schema(
+          {
+            'jobId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+            'offset': {'type': 'integer', 'minimum': 0},
+          },
+          ['jobId'],
+        ),
+      ),
+      FunctionCapability(
+        'agent.jobs.status',
+        Effect.query,
+        (args, _) async => runtime.jobStatus(args.raw),
+        agentExposed: true,
+        inputSchema: _schema(
+          {
+            'jobId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+          },
+          ['jobId'],
+        ),
+      ),
+      FunctionCapability(
+        'agent.jobs.stop',
+        Effect.localChange,
+        (args, _) async => runtime.stopJob(args.raw),
+        agentExposed: true,
+        inputSchema: _schema(
+          {
+            'jobId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+          },
+          ['jobId'],
         ),
       ),
     ]);
@@ -523,6 +600,101 @@ void main() {
       expect(h.runtime.executions.every((execution) => execution.sharedText == null), isTrue);
     });
   }
+
+  for (final mode in AgentPermissionMode.values) {
+    test('$mode asks a person before every terminal screen read', () async {
+      final current = _terminalSnapshot('window-a', output: 'visible-screen-text');
+      final terminal = _TerminalHistory([current], focusedSession: current.session.sessionId);
+      final h = _Harness(
+        (_, _, index) async* {
+          if (index == 0) {
+            yield ModelMessageComplete(
+              ModelMessage(
+                ModelRole.assistant,
+                calls: [
+                  for (var read = 0; read < 2; read++)
+                    ModelCall('screen-$read', 'terminal_screen_read', const {'maxLines': 40}),
+                ],
+              ),
+            );
+          } else {
+            yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'described'));
+          }
+        },
+        terminalHistory: terminal,
+        review: (_, _, _) => _reviewReply('allow'),
+      );
+      addTearDown(h.close);
+      var prompts = 0;
+      AgentApproval? last;
+      h.runtime.addListener(() {
+        final pending = h.runtime.approval;
+        if (pending != null && !identical(last, pending)) {
+          last = pending;
+          prompts++;
+        }
+      });
+      final work = h.runtime.start('describe the visible screen', _conversationScope(mode: mode));
+      AgentApproval? handled;
+      for (var read = 0; read < 2; read++) {
+        await _until(() => h.runtime.approval != null && !identical(h.runtime.approval, handled));
+        handled = h.runtime.approval!;
+        expect(handled.capability, 'agent.terminalScreen');
+        expect(handled.target, contains('window-a'));
+        expect(handled.command, isEmpty);
+        h.runtime.approve(true, expected: handled);
+      }
+      await work;
+      expect(prompts, 2);
+      expect(h.model.reviewRequests, isEmpty);
+      expect(terminal.screenReads, [current.session.sessionId, current.session.sessionId]);
+      for (var read = 0; read < 2; read++) {
+        final result = _result(h.model.requests.last, read);
+        expect(result['sessionId'], 'window-a');
+        expect(result['text'], 'visible-screen-text');
+        expect(result['truncated'], isFalse);
+      }
+      expect(h.runtime.hostApproval, isNull);
+      expect(h.backend.prepared, isEmpty);
+      expect(h.backend.target.commands, isEmpty);
+    });
+  }
+
+  test('auto mode still asks for a screen read and a denial is not retried', () async {
+    final current = _terminalSnapshot('window-a', output: 'visible-screen-text');
+    final terminal = _TerminalHistory([current], focusedSession: current.session.sessionId);
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [for (var read = 0; read < 2; read++) ModelCall('screen-$read', 'terminal_screen_read', const {})],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'declined'));
+      }
+    }, terminalHistory: terminal);
+    addTearDown(h.close);
+    var prompts = 0;
+    AgentApproval? last;
+    h.runtime.addListener(() {
+      final pending = h.runtime.approval;
+      if (pending != null && !identical(last, pending)) {
+        last = pending;
+        prompts++;
+      }
+    });
+    final work = h.runtime.start('look at the screen', _conversationScope(mode: AgentPermissionMode.auto));
+    await _until(() => h.runtime.approval != null);
+    h.runtime.approve(false, expected: h.runtime.approval!);
+    await work;
+    expect(prompts, 1);
+    expect(terminal.screenReads, isEmpty);
+    for (var read = 0; read < 2; read++) {
+      expect(_result(h.model.requests.last, read)['error'], 'denied');
+    }
+  });
 
   test('declining another window suppresses repeated prompts without reading its history', () async {
     final current = _terminalSnapshot('window-a');
@@ -1635,7 +1807,7 @@ void main() {
       endpoint: h.profile.endpoint,
       model: h.profile.model,
       tools: true,
-      contextWindow: 7000,
+      contextWindow: 10500,
       maxOutputTokens: 1000,
     );
     h.backend.target.stdout = selected;
@@ -1793,7 +1965,7 @@ void main() {
     expect(restored.sharedText, 'previously approved projection');
     expect(restored.historyTruncated, isTrue);
     expect(restored.exitCode, 0);
-    expect(h.runtime.executions.last.state, 'outcomeUnknown');
+    expect(h.runtime.executions.last.state, 'interrupted');
     expect(h.runtime.executions.last.sharedText, isNull);
     expect(h.runtime.outputs.count, 0);
     expect(h.runtime.approval, isNull);
@@ -1830,12 +2002,7 @@ void main() {
       'command_execute',
       'diagnostics_collect',
     ]);
-    expect(h.runtime.executions.map((entry) => entry.state), [
-      'completed',
-      'interrupted',
-      'cancelled',
-      'outcomeUnknown',
-    ]);
+    expect(h.runtime.executions.map((entry) => entry.state), ['completed', 'interrupted', 'cancelled', 'interrupted']);
     expect(h.runtime.executions.every((entry) => entry.archived && entry.output == null), isTrue);
     expect(h.model.requests, isEmpty);
     expect(h.backend.prepared, isEmpty);
@@ -2761,7 +2928,13 @@ void main() {
     h.backend.hosts = const [AgentHost(_host, 'scope-data-only-alias'), AgentHost(_other, 'unselected host')];
     await h.start();
     final request = h.model.requests.single;
-    expect(request.tools.map((tool) => tool.name), unorderedEquals(AgentRuntime.toolIds.keys));
+    expect(
+      request.tools.map((tool) => tool.name),
+      unorderedEquals([
+        for (final entry in AgentRuntime.toolIds.entries)
+          if (h.runtime.dispatcher[entry.value] != null) entry.key,
+      ]),
+    );
     final data = jsonDecode(request.messages.single.text) as Map;
     expect(data['goal'], 'check the selected host');
     expect(data['authorizedHosts'], [
@@ -3028,5 +3201,88 @@ void main() {
     expect(h.runtime.error, 'toolLimit');
     expect(h.backend.prepared, isEmpty);
     expect(h.backend.target.commands, isEmpty);
+  });
+
+  test('background job runs one approved command and shares bounded output', () async {
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(
+          _call('job_start', {'hostId': _host.value, 'cwd': '/tmp', 'command': 'printf job-output'}, 'job'),
+        );
+      } else if (index == 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        final jobId = _result(request)['jobId'];
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('read', 'job_read', {'jobId': jobId, 'offset': 0}),
+              ModelCall('status', 'job_status', {'jobId': jobId}),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    });
+    addTearDown(h.close);
+    final work = h.runtime.start('run in the background', _conversationScope(mode: AgentPermissionMode.confirm));
+    await _until(() => h.runtime.approval != null);
+    expect(h.runtime.approval!.capability, 'agent.jobs.start');
+    expect(h.runtime.approval!.command, 'printf job-output');
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await work;
+    expect(h.backend.target.commands, hasLength(1));
+    expect(h.backend.target.commands.single, contains('printf job-output'));
+    final read = _result(h.model.requests.last, 1);
+    expect(read['state'], 'completed');
+    expect(read['exitCode'], 0);
+    expect(read['text'], _privateOutput);
+    expect(read['eof'], isTrue);
+    expect(read['nextOffset'], isNull);
+    expect(_result(h.model.requests.last, 2)['bytes'], utf8.encode(_privateOutput).length);
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
+  });
+
+  test('stopping a background job cancels its command without replaying it', () async {
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(
+          _call('job_start', {'hostId': _host.value, 'cwd': '/tmp', 'command': 'sleep 30'}, 'job'),
+        );
+      } else if (index == 1) {
+        final jobId = _result(request)['jobId'];
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('stop', 'job_stop', {'jobId': jobId}),
+            ],
+          ),
+        );
+      } else if (index == 2) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        final jobId = _result(request, 0)['jobId'];
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('status', 'job_status', {'jobId': jobId}),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'stopped'));
+      }
+    });
+    addTearDown(h.close);
+    h.backend.target.block = true;
+    final work = h.runtime.start('start then stop it', _conversationScope(mode: AgentPermissionMode.confirm));
+    await _until(() => h.runtime.approval != null);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await work;
+    expect(h.backend.target.commands, hasLength(1));
+    expect(_result(h.model.requests.last, 2)['state'], 'cancelled');
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.failed]);
   });
 }

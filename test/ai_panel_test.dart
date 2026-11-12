@@ -977,6 +977,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('reply actions stay visible while the running reply has no text yet', (tester) async {
+    final runtime = _Runtime();
+    await _panel(tester, runtime);
+    runtime.active = true;
+    runtime.entries.addAll([AgentChatEntry('user', 'do it'), AgentChatEntry('assistant', '')]);
+    runtime.refresh();
+    await tester.pump();
+    expect(runtime.active, isTrue);
+    expect(find.byKey(const ValueKey('ai-agent-copy-1')), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-copy-1'))).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-regenerate'))).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-withdraw'))).onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('restored executions show shared text without command, raw output or old approvals', (tester) async {
     final runtime = _Runtime();
     final store = _ConversationStore([
