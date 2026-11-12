@@ -5162,6 +5162,12 @@ abstract class AppLocalizations {
   /// **'Default Airy model'**
   String get aiConfigAgentModel;
 
+  /// No description provided for @aiConfigReviewModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Approval model'**
+  String get aiConfigReviewModel;
+
   /// No description provided for @aiConfigInlineModel.
   ///
   /// In en, this message translates to:
@@ -5213,7 +5219,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentPermissionAuto.
   ///
   /// In en, this message translates to:
-  /// **'Auto'**
+  /// **'Full auto'**
   String get aiAgentPermissionAuto;
 
   /// No description provided for @aiAgentPermissionConfirm.
@@ -5228,23 +5234,83 @@ abstract class AppLocalizations {
   /// **'Observe'**
   String get aiAgentPermissionObserve;
 
+  /// No description provided for @aiAgentPermissionReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto confirm'**
+  String get aiAgentPermissionReview;
+
   /// No description provided for @aiAgentPermissionAutoHint.
   ///
   /// In en, this message translates to:
-  /// **'Execute commands automatically'**
+  /// **'Read, execute and share results automatically'**
   String get aiAgentPermissionAutoHint;
 
   /// No description provided for @aiAgentPermissionConfirmHint.
   ///
   /// In en, this message translates to:
-  /// **'Confirm each command'**
+  /// **'Approve reads, commands and sharing'**
   String get aiAgentPermissionConfirmHint;
 
   /// No description provided for @aiAgentPermissionObserveHint.
   ///
   /// In en, this message translates to:
-  /// **'Fixed read-only diagnostics'**
+  /// **'Read-only tools; approve reads and sharing'**
   String get aiAgentPermissionObserveHint;
+
+  /// No description provided for @aiAgentPermissionReviewHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Model review; ask you when uncertain'**
+  String get aiAgentPermissionReviewHint;
+
+  /// No description provided for @aiAgentReviewing.
+  ///
+  /// In en, this message translates to:
+  /// **'Approval model reviewing…'**
+  String get aiAgentReviewing;
+
+  /// No description provided for @aiAgentReadApproveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve reading information'**
+  String get aiAgentReadApproveTitle;
+
+  /// No description provided for @aiAgentReadApproveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Run a fixed read-only diagnostic. Choose what to share afterwards.'**
+  String get aiAgentReadApproveHint;
+
+  /// No description provided for @aiAgentDiagnosticSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System and memory'**
+  String get aiAgentDiagnosticSystem;
+
+  /// No description provided for @aiAgentDiagnosticStorage.
+  ///
+  /// In en, this message translates to:
+  /// **'Storage capacity'**
+  String get aiAgentDiagnosticStorage;
+
+  /// No description provided for @aiAgentDiagnosticProcesses.
+  ///
+  /// In en, this message translates to:
+  /// **'Process resources'**
+  String get aiAgentDiagnosticProcesses;
+
+  /// No description provided for @aiAgentDiagnosticPorts.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening ports'**
+  String get aiAgentDiagnosticPorts;
+
+  /// No description provided for @aiAgentDiagnosticServices.
+  ///
+  /// In en, this message translates to:
+  /// **'Service states'**
+  String get aiAgentDiagnosticServices;
 
   /// No description provided for @aiAgentContextUsage.
   ///

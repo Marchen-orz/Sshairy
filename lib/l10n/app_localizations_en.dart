@@ -2793,6 +2793,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigAgentModel => 'Default Airy model';
 
   @override
+  String get aiConfigReviewModel => 'Approval model';
+
+  @override
   String get aiConfigInlineModel => 'Inline generation model';
 
   @override
@@ -2818,7 +2821,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentAutoTarget => 'Auto';
 
   @override
-  String get aiAgentPermissionAuto => 'Auto';
+  String get aiAgentPermissionAuto => 'Full auto';
 
   @override
   String get aiAgentPermissionConfirm => 'Confirm';
@@ -2827,13 +2830,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentPermissionObserve => 'Observe';
 
   @override
-  String get aiAgentPermissionAutoHint => 'Execute commands automatically';
+  String get aiAgentPermissionReview => 'Auto confirm';
 
   @override
-  String get aiAgentPermissionConfirmHint => 'Confirm each command';
+  String get aiAgentPermissionAutoHint =>
+      'Read, execute and share results automatically';
 
   @override
-  String get aiAgentPermissionObserveHint => 'Fixed read-only diagnostics';
+  String get aiAgentPermissionConfirmHint =>
+      'Approve reads, commands and sharing';
+
+  @override
+  String get aiAgentPermissionObserveHint =>
+      'Read-only tools; approve reads and sharing';
+
+  @override
+  String get aiAgentPermissionReviewHint =>
+      'Model review; ask you when uncertain';
+
+  @override
+  String get aiAgentReviewing => 'Approval model reviewing…';
+
+  @override
+  String get aiAgentReadApproveTitle => 'Approve reading information';
+
+  @override
+  String get aiAgentReadApproveHint =>
+      'Run a fixed read-only diagnostic. Choose what to share afterwards.';
+
+  @override
+  String get aiAgentDiagnosticSystem => 'System and memory';
+
+  @override
+  String get aiAgentDiagnosticStorage => 'Storage capacity';
+
+  @override
+  String get aiAgentDiagnosticProcesses => 'Process resources';
+
+  @override
+  String get aiAgentDiagnosticPorts => 'Listening ports';
+
+  @override
+  String get aiAgentDiagnosticServices => 'Service states';
 
   @override
   String aiAgentContextUsage(int percent, int used, int total) {

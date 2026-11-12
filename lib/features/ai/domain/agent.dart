@@ -19,7 +19,7 @@ enum AgentPhase {
 
 enum OperationState { intent, completed, failed, outcomeUnknown }
 
-enum AgentPermissionMode { observe, confirm, auto }
+enum AgentPermissionMode { observe, confirm, review, auto }
 
 class AgentHost {
   const AgentHost(this.id, this.label);

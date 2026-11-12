@@ -39,6 +39,25 @@ void main() {
     }
   });
 
+  test('extended probes collect fixed columns with bounded noninteractive commands', () {
+    final process = diagnosticCommand(DiagnosticTemplate.processSummary);
+    final listeners = diagnosticCommand(DiagnosticTemplate.listeningPorts);
+    final services = diagnosticCommand(DiagnosticTemplate.serviceStates);
+    expect(process, contains('pid=,pcpu=,pmem=,rss=,comm='));
+    expect(process, contains('--sort=-pcpu'));
+    expect(listeners, contains('ss -H -lntu'));
+    expect(services, contains('--no-pager --plain --no-legend --full --type=service --all list-units'));
+    for (final command in [process, listeners, services]) {
+      expect(command, startsWith("sh -c '"));
+      expect(command, contains('uname -s'));
+      expect(command, contains('NR <= 101'));
+      expect(command, contains('@@failed'));
+      for (final forbidden in ['sudo', 'args', 'environ', 'journalctl', ' status', ' restart', ' start ', ' stop ']) {
+        expect(command, isNot(contains(forbidden)));
+      }
+    }
+  });
+
   test('system projection contains only explicit finite fields, not raw text or process IDs', () {
     final parsed = parseDiagnostic(DiagnosticTemplate.systemSummary, _summary);
     expect(parsed, {
@@ -106,6 +125,125 @@ void main() {
     });
     expect(jsonEncode(parsed), isNot(contains('private-device')));
     expect(jsonEncode(parsed), isNot(contains('secret-should-not-leave')));
+  });
+
+  test('process projection keeps only PID, comm and finite resource columns', () {
+    final parsed = parseDiagnostic(
+      DiagnosticTemplate.processSummary,
+      '@@processes\n'
+      ' 20 125.3 2.5 4096 kworker/0:1\n'
+      ' 21 0.0 0.1 64 sshd\n'
+      '22 1.0 1.0 64 private --token=secret-should-not-leave\n'
+      '23 NaN 1.0 64 invalid\n'
+      '24 1.0 100.1 64 invalid\n'
+      '25 1.0 1.0 64 hidden\x1b[31m\n',
+    );
+    expect(parsed, {
+      'supported': true,
+      'status': 'partial',
+      'processes': [
+        {'pid': 20, 'name': 'kworker/0:1', 'cpuPercent': 125.3, 'memoryPercent': 2.5, 'residentKib': 4096},
+        {'pid': 21, 'name': 'sshd', 'cpuPercent': 0.0, 'memoryPercent': 0.1, 'residentKib': 64},
+      ],
+      'truncated': false,
+      'skipped': 4,
+    });
+    expect(jsonEncode(parsed), isNot(contains('secret-should-not-leave')));
+  });
+
+  test('listening projection only accepts TCP listen and UDP unconnected numeric endpoints', () {
+    final parsed = parseDiagnostic(
+      DiagnosticTemplate.listeningPorts,
+      '@@listeners\n'
+      'tcp LISTEN 127.0.0.1:22\n'
+      'udp UNCONN 0.0.0.0:53\n'
+      'tcp LISTEN [::]:443\n'
+      'udp UNCONN [fe80::1%eth0]:5353\n'
+      'tcp LISTEN [::ffff:192.0.2.1]:8080\n'
+      'tcp LISTEN *:9000\n'
+      'tcp ESTAB 127.0.0.1:22\n'
+      'tcp LISTEN private.example:22\n'
+      'tcp LISTEN 999.0.0.1:22\n'
+      'tcp LISTEN [1::2::3]:22\n'
+      'tcp LISTEN [::]:65536\n'
+      'tcp LISTEN [::]:22 users:secret-should-not-leave\n',
+    );
+    expect(parsed, {
+      'supported': true,
+      'status': 'partial',
+      'listeners': [
+        {'protocol': 'tcp', 'address': '127.0.0.1', 'port': 22},
+        {'protocol': 'udp', 'address': '0.0.0.0', 'port': 53},
+        {'protocol': 'tcp', 'address': '::', 'port': 443},
+        {'protocol': 'udp', 'address': 'fe80::1%eth0', 'port': 5353},
+        {'protocol': 'tcp', 'address': '::ffff:192.0.2.1', 'port': 8080},
+        {'protocol': 'tcp', 'address': '*', 'port': 9000},
+      ],
+      'truncated': false,
+      'skipped': 6,
+    });
+    expect(jsonEncode(parsed), isNot(contains('secret-should-not-leave')));
+  });
+
+  test('service projection uses fixed state enums and marks new state names unknown', () {
+    final parsed = parseDiagnostic(
+      DiagnosticTemplate.serviceStates,
+      '@@services\n'
+      'sshd.service loaded active running\n'
+      'disabled.service masked inactive dead\n'
+      'future.service future-load future-active future-sub\n'
+      r'user\x2dexample@1.service loaded active exited'
+      '\n'
+      'described.service loaded active running secret-should-not-leave\n'
+      'private.target loaded active running\n',
+    );
+    expect(parsed, {
+      'supported': true,
+      'status': 'partial',
+      'services': [
+        {'name': 'sshd.service', 'loadState': 'loaded', 'activeState': 'active', 'subState': 'running'},
+        {'name': 'disabled.service', 'loadState': 'masked', 'activeState': 'inactive', 'subState': 'dead'},
+        {'name': 'future.service', 'loadState': 'unknown', 'activeState': 'unknown', 'subState': 'unknown'},
+        {'name': r'user\x2dexample@1.service', 'loadState': 'loaded', 'activeState': 'active', 'subState': 'exited'},
+      ],
+      'truncated': false,
+      'skipped': 2,
+    });
+    expect(jsonEncode(parsed), isNot(contains('future-load')));
+    expect(jsonEncode(parsed), isNot(contains('secret-should-not-leave')));
+  });
+
+  test('new templates bound rows, reject unexpected sections and never call missing data healthy', () {
+    const templates = {
+      DiagnosticTemplate.processSummary: ('processes', '1 0.0 0.0 32 sshd'),
+      DiagnosticTemplate.listeningPorts: ('listeners', 'tcp LISTEN 127.0.0.1:22'),
+      DiagnosticTemplate.serviceStates: ('services', 'sshd.service loaded active running'),
+    };
+    for (final template in templates.entries) {
+      final (section, row) = template.value;
+      final output = '@@$section\n${List.filled(101, row).join('\n')}\n';
+      final parsed = parseDiagnostic(template.key, output);
+      expect(parsed[section], hasLength(100));
+      expect(parsed['status'], 'partial');
+      expect(parsed['truncated'], isTrue);
+      expect(parseDiagnostic(template.key, output.replaceAll('\n', '\r\n')), parsed);
+      for (final absent in ['@@$section\n', '@@$section\n@@failed\n']) {
+        final unknown = parseDiagnostic(template.key, absent);
+        expect(unknown['status'], 'unknown');
+        expect(unknown[section], isEmpty);
+      }
+      expect(parseDiagnostic(template.key, '@@unsupported\n')['status'], 'unsupported');
+      for (final invalid in [
+        '@@$section\n$row\n@@private\nsecret-should-not-leave\n',
+        '@@$section\n$row\n@@$section\n$row\n',
+        '@@$section\n$row\n@@failed\nsecret-should-not-leave\n',
+        List.filled(65537, 'x').join(),
+      ]) {
+        final rejected = parseDiagnostic(template.key, invalid);
+        expect(rejected['supported'], isFalse);
+        expect(jsonEncode(rejected), isNot(contains('secret-should-not-leave')));
+      }
+    }
   });
 
   test('storage output is bounded and collection failure never means healthy storage', () {

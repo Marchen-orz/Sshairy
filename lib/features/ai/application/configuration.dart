@@ -27,6 +27,7 @@ class AiConfiguration {
     this.completionExcludedHosts = const {},
     this.inlineModel,
     this.completionModel,
+    this.reviewModel,
   });
 
   final bool enabled, loadFailed;
@@ -34,8 +35,9 @@ class AiConfiguration {
   final int revision;
   final bool inlineEnabled, completionEnabled;
   final Set<HostId> inlineExcludedHosts, completionExcludedHosts;
-  final String? inlineModel, completionModel;
+  final String? inlineModel, completionModel, reviewModel;
 
+  ModelProfile? get profileForReview => reviewModel == null ? null : profile?.withModel(reviewModel!, tools: false);
   ModelProfile? get profileForInline => profile?.withModel(inlineModel ?? profile!.model, tools: false);
   ModelProfile? get profileForCompletion => profile?.withModel(completionModel ?? profile!.model, tools: false);
 }
@@ -66,6 +68,7 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
         completionExcludedHosts: value.completionExcludedHosts,
         inlineModel: value.inlineModel,
         completionModel: value.completionModel,
+        reviewModel: value.reviewModel,
       );
     } on JsonFileError catch (error) {
       _loadError = error;
@@ -87,6 +90,7 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
     Set<HostId>? completionExcludedHosts,
     String? inlineModel,
     String? completionModel,
+    String? reviewModel,
   }) {
     final inlineExcluded = inlineExcludedHosts == null ? null : Set<HostId>.unmodifiable(inlineExcludedHosts);
     final completionExcluded = completionExcludedHosts == null
@@ -103,6 +107,7 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
       final selectedCompletion = checked == null
           ? null
           : completionModel ?? (sameProvider ? state.completionModel : null) ?? checked.model;
+      final selectedReview = checked == null ? null : reviewModel ?? (sameProvider ? state.reviewModel : null);
       await _store.write(
         enabled: enabled,
         profile: checked,
@@ -113,6 +118,7 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
         completionExcludedHosts: completionExcluded ?? state.completionExcludedHosts,
         inlineModel: selectedInline,
         completionModel: selectedCompletion,
+        reviewModel: selectedReview,
       );
       state = _read();
     });

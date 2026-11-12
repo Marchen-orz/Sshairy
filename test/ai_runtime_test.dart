@@ -10,6 +10,7 @@ import 'package:sshairy/features/ai/application/providers.dart' show agentConver
 import 'package:sshairy/features/connections/api.dart' show HostTrustService, hostTrustProvider;
 import 'package:sshairy/features/credentials/api.dart' show ConnectionCredentials, connectionCredentialsProvider;
 import 'package:sshairy/features/hosts/api.dart' show Host, HostsNotifier, hostsProvider;
+import 'package:sshairy/features/monitor/api.dart' show DiagnosticTemplate, diagnosticCommand;
 import 'package:sshairy/features/ai/application/output_store.dart';
 import 'package:sshairy/features/ai/application/runtime.dart';
 import 'package:sshairy/features/ai/domain/agent.dart';
@@ -31,14 +32,23 @@ const _systemOutput =
 typedef _Script = Stream<ModelEvent> Function(ModelRequest request, CancellationToken cancel, int index);
 
 class _Model implements ModelProvider {
-  _Model(this.script);
+  _Model(this.script, {this.review});
   final _Script script;
+  final _Script? review;
   final requests = <ModelRequest>[];
   final cancellations = <CancellationToken>[];
+  final reviewRequests = <ModelRequest>[];
+  final reviewCancellations = <CancellationToken>[];
   var closes = 0;
 
   @override
   Stream<ModelEvent> stream(ModelRequest request, CancellationToken cancel) {
+    if (!request.profile.tools && review != null) {
+      final index = reviewRequests.length;
+      reviewRequests.add(request);
+      reviewCancellations.add(cancel);
+      return review!(request, cancel, index);
+    }
     final index = requests.length;
     requests.add(request);
     cancellations.add(cancel);
@@ -150,8 +160,14 @@ Map<String, Object?> _schema(Map<String, Object?> properties, List<String> requi
 };
 
 class _Harness {
-  _Harness(_Script script, {bool tools = true, OutputStore? outputs, Map<HostId, String> Function()? hostRoutes})
-    : model = _Model(script) {
+  _Harness(
+    _Script script, {
+    bool tools = true,
+    bool approveDiagnostics = true,
+    _Script? review,
+    OutputStore? outputs,
+    Map<HostId, String> Function()? hostRoutes,
+  }) : model = _Model(script, review: review) {
     profile = ModelProfile(
       protocol: ModelProtocol.openai,
       endpoint: 'https://model.example.invalid/v1',
@@ -174,10 +190,7 @@ class _Harness {
         inputSchema: _schema(
           {
             'hostId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
-            'template': {
-              'type': 'string',
-              'enum': ['systemSummary', 'storageCapacity'],
-            },
+            'template': {'type': 'string', 'enum': DiagnosticTemplate.values.map((template) => template.name).toList()},
           },
           ['hostId', 'template'],
         ),
@@ -220,6 +233,23 @@ class _Harness {
       hostRoutes: hostRoutes ?? () => routes,
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
+    if (approveDiagnostics) {
+      // Non-permission fixtures approve fixed reads and their projections; commands stay manual.
+      AgentApproval? lastRead;
+      AgentDataRequest? lastProjection;
+      runtime.addListener(() {
+        final pending = runtime.approval;
+        if (pending != null && pending.template != null && !identical(lastRead, pending)) {
+          lastRead = pending;
+          runtime.approve(true, expected: pending);
+        }
+        final data = runtime.dataRequest;
+        if (data != null && data.projection != null && !identical(lastProjection, data)) {
+          lastProjection = data;
+          runtime.shareOutput(data.projection, expected: data);
+        }
+      });
+    }
   }
 
   final _Model model;
@@ -275,6 +305,10 @@ Stream<ModelEvent> _oneCall(ModelMessage call, int index) async* {
     yield const ModelTextDelta('done');
     yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
   }
+}
+
+Stream<ModelEvent> _reviewReply(String decision) async* {
+  yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: jsonEncode({'decision': decision})));
 }
 
 Map<String, Object?> _command({String host = 'host-a', String command = 'printf result', String cwd = '/tmp'}) => {
@@ -333,21 +367,25 @@ void main() {
       final remote = mode == AgentPermissionMode.observe
           ? _call('diagnostics_collect', {'hostId': _other.value, 'template': 'systemSummary'})
           : _call('command_execute', _command(host: _other.value));
-      final h = _Harness((request, _, _) async* {
-        if (_results(request).isEmpty) {
-          yield ModelMessageComplete(
-            ModelMessage(
-              ModelRole.assistant,
-              calls: [
-                ModelCall('list', 'host_list', {}),
-                ModelCall('remote', remote.calls.single.name, remote.calls.single.arguments),
-              ],
-            ),
-          );
-        } else {
-          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
-        }
-      });
+      final h = _Harness(
+        (request, _, _) async* {
+          if (_results(request).isEmpty) {
+            yield ModelMessageComplete(
+              ModelMessage(
+                ModelRole.assistant,
+                calls: [
+                  ModelCall('list', 'host_list', {}),
+                  ModelCall('remote', remote.calls.single.name, remote.calls.single.arguments),
+                ],
+              ),
+            );
+          } else {
+            yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+          }
+        },
+        approveDiagnostics: false,
+        review: (_, _, _) => _reviewReply('ask'),
+      );
       addTearDown(h.close);
       final work = h.runtime.start('also inspect the other host', _conversationScope(mode: mode));
       await _until(() => h.runtime.hostApproval != null);
@@ -358,13 +396,17 @@ void main() {
       expect(h.backend.prepared, isEmpty);
       expect(h.backend.target.probes, 0);
       expect(h.runtime.approval, isNull);
+      expect(h.model.reviewRequests, isEmpty);
       h.runtime.decideHost(pending, true);
-      if (mode == AgentPermissionMode.confirm) {
+      if (mode != AgentPermissionMode.auto) {
         await _until(() => h.runtime.approval != null);
-        expect(h.backend.others[_other]!.commands, isEmpty);
+        if (mode == AgentPermissionMode.observe) {
+          expect(h.runtime.approval!.template, 'systemSummary');
+          expect(h.backend.prepared, isEmpty);
+        } else {
+          expect(h.backend.others[_other]!.commands, isEmpty);
+        }
         h.runtime.approve(true, expected: h.runtime.approval!);
-      }
-      if (mode != AgentPermissionMode.observe) {
         await _until(() => h.runtime.dataRequest != null);
         h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
       }
@@ -681,40 +723,442 @@ void main() {
     await work;
   });
 
-  test('observe still permits fixed diagnostics on the frozen host', () async {
-    final h = _Harness(
-      (_, _, index) =>
-          _oneCall(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}), index),
-    );
-    addTearDown(h.close);
-    h.backend.target.stdout = _systemOutput;
-    await h.runtime.start(
-      'inspect selected host',
-      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.observe),
-    );
-    expect(h.backend.target.commands, hasLength(1));
-    expect(h.runtime.approval, isNull);
-    expect(h.runtime.phase, AgentPhase.completed);
-    expect(h.journal.records, isEmpty);
-  });
+  for (final mode in [AgentPermissionMode.observe, AgentPermissionMode.confirm]) {
+    for (final template in DiagnosticTemplate.values) {
+      test('$mode declining ${template.name} prevents preparation, probes and repeated read prompts', () async {
+        final h = _Harness(
+          (_, _, index) => _oneCall(
+            ModelMessage(
+              ModelRole.assistant,
+              calls: [
+                for (var index = 0; index < 2; index++)
+                  ModelCall('read-$index', 'diagnostics_collect', {'hostId': _host.value, 'template': template.name}),
+              ],
+            ),
+            index,
+          ),
+          approveDiagnostics: false,
+        );
+        addTearDown(h.close);
+        var prompts = 0;
+        AgentApproval? last;
+        h.runtime.addListener(() {
+          final pending = h.runtime.approval;
+          if (pending != null && !identical(last, pending)) {
+            last = pending;
+            prompts++;
+          }
+        });
+        final work = h.runtime.start(
+          'inspect the selected host',
+          AgentScope(hosts: const [_host], permissionMode: mode),
+        );
+        await _until(() => h.runtime.approval != null);
+        final read = h.runtime.approval!;
+        expect(read.capability, 'agent.diagnose');
+        expect(read.template, template.name);
+        expect(read.command, diagnosticCommand(template));
+        expect(read.target, 'selected host');
+        expect(read.cwd, '/');
+        expect(h.backend.prepared, isEmpty);
+        expect(h.backend.target.probes, 0);
+        expect(h.backend.target.commands, isEmpty);
+        h.runtime.approve(false, expected: read);
+        await work;
+        expect(prompts, 1);
+        expect(_result(h.model.requests.last, 0), {'error': 'denied'});
+        expect(_result(h.model.requests.last, 1), {'error': 'denied'});
+        expect(h.backend.prepared, isEmpty);
+        expect(h.backend.target.probes, 0);
+        expect(h.backend.target.commands, isEmpty);
+        expect(h.journal.records, isEmpty);
+        expect(h.runtime.dataRequest, isNull);
+      });
+    }
 
-  test('auto executes without command approval but keeps intent and a separate output decision', () async {
-    final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command()), index));
+    test('$mode read approval leaves raw diagnosis private until a separate share decision', () async {
+      final h = _Harness(
+        (_, _, index) =>
+            _oneCall(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}), index),
+        approveDiagnostics: false,
+      );
+      addTearDown(h.close);
+      h.backend.target.stdout = '$_systemOutput$_privateOutput\n';
+      final work = h.runtime.start('inspect the selected host', AgentScope(hosts: const [_host], permissionMode: mode));
+      await _until(() => h.runtime.approval != null);
+      expect(h.backend.prepared, isEmpty);
+      h.runtime.approve(true, expected: h.runtime.approval!);
+      await _until(() => h.runtime.dataRequest != null);
+      final data = h.runtime.dataRequest!;
+      expect(h.backend.prepared, [_host]);
+      expect(h.backend.target.probes, 1);
+      expect(h.backend.target.commands, hasLength(1));
+      expect(data.output.stdout, contains(_privateOutput));
+      expect(data.projection, isNot(contains(_privateOutput)));
+      expect(jsonDecode(data.suggested), containsPair('system', 'Linux'));
+      expect(h.model.requests, hasLength(1));
+      expect(h.runtime.executions.single.sharedText, isNull);
+      final unshared = h.runtime.readOutput({'hostId': _host.value, 'handle': data.output.id});
+      expect(unshared, isA<Err<Object?>>());
+      expect((unshared as Err<Object?>).error.code, 'unavailable');
+      h.runtime.shareOutput('user selected diagnosis', expected: data);
+      await work;
+      expect(_result(h.model.requests.last)['text'], 'user selected diagnosis');
+      expect(_result(h.model.requests.last).containsKey('data'), isFalse);
+      expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
+      expect(h.runtime.executions.single.sharedText, 'user selected diagnosis');
+      expect(h.journal.records, isEmpty);
+    });
+  }
+
+  test('auto executes and shares only a bounded projection without approval cards', () async {
+    final h = _Harness((request, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(_call('command_execute', _command()));
+      } else if (index == 1) {
+        final handle = _result(request)['handle'];
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('same-host', 'output_read', {'hostId': _host.value, 'handle': handle}),
+              ModelCall('other-host', 'output_read', {'hostId': _other.value, 'handle': handle}),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    }, approveDiagnostics: false);
     addTearDown(h.close);
-    final work = h.runtime.start(
+    h.backend.target.stdout = '${List.filled(20000, 'x').join()}$_privateOutput';
+    var actionCards = 0, dataCards = 0;
+    h.runtime.addListener(() {
+      if (h.runtime.approval != null) actionCards++;
+      if (h.runtime.dataRequest != null) dataCards++;
+    });
+    await h.runtime.start(
       'run selected command',
       AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto),
     );
-    await _until(() => h.runtime.dataRequest != null);
     expect(h.runtime.permissionMode, AgentPermissionMode.auto);
-    expect(h.runtime.approval, isNull);
+    expect(actionCards, 0);
+    expect(dataCards, 0);
+    expect(h.backend.prepared, [_host]);
     expect(h.backend.target.commands, hasLength(1));
     expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
-    expect(h.model.requests, hasLength(1));
-    h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
-    await work;
+    final shared = _result(h.model.requests[1])['text'] as String;
+    expect(shared, isNotEmpty);
+    expect(utf8.encode(jsonEncode(shared)).length, lessThanOrEqualTo(6500));
+    expect(h.backend.target.stdout.startsWith(shared), isTrue);
+    expect(h.runtime.executions.first.output!.stdout, contains(_privateOutput));
+    expect(h.runtime.executions.first.sharedText, shared);
+    expect(_result(h.model.requests.last, 1)['text'], shared);
+    expect(_result(h.model.requests.last, 2), {'error': 'outsideScope'});
+    expect(h.model.requests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
+  });
+
+  test('auto shares the fixed diagnostic projection without raw stdout or approval cards', () async {
+    final h = _Harness(
+      (_, _, index) =>
+          _oneCall(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}), index),
+      approveDiagnostics: false,
+    );
+    addTearDown(h.close);
+    h.backend.target.stdout = '$_systemOutput$_privateOutput\n';
+    var cards = 0;
+    h.runtime.addListener(() {
+      if (h.runtime.approval != null || h.runtime.dataRequest != null) cards++;
+    });
+    await h.runtime.start(
+      'inspect selected host',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto),
+    );
+    expect(cards, 0);
+    expect(h.backend.target.commands, hasLength(1));
+    expect(_result(h.model.requests.last)['data'], containsPair('system', 'Linux'));
     expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
-    expect(_result(h.model.requests.last)['output'], 'withheld');
+    expect(h.journal.records, isEmpty);
+  });
+
+  for (final diagnostic in [true, false]) {
+    final tool = diagnostic ? 'diagnostics_collect' : 'command_execute';
+    final call = diagnostic
+        ? _call(tool, {'hostId': _host.value, 'template': 'systemSummary'})
+        : _call(tool, _command());
+
+    test('review allow authorizes $tool and its projection through isolated metadata requests', () async {
+      final reviewStates = <({int prepared, int commands})>[];
+      late _Harness h;
+      h = _Harness(
+        (_, _, index) => _oneCall(
+          ModelMessage(ModelRole.assistant, calls: call.calls, opaque: 'private-agent-protocol-state'),
+          index,
+        ),
+        approveDiagnostics: false,
+        review: (_, _, _) {
+          reviewStates.add((prepared: h.backend.prepared.length, commands: h.backend.target.commands.length));
+          return _reviewReply('allow');
+        },
+      );
+      addTearDown(h.close);
+      h.backend.target.stdout = diagnostic ? '$_systemOutput$_privateOutput\n' : _privateOutput;
+      var cards = 0;
+      h.runtime.addListener(() {
+        if (h.runtime.approval != null || h.runtime.dataRequest != null) cards++;
+      });
+      await h.runtime.start(
+        'inspect this selected host',
+        AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+      );
+      expect(cards, 0);
+      expect(h.runtime.phase, AgentPhase.completed);
+      expect(h.model.requests, hasLength(2));
+      expect(h.model.reviewRequests, hasLength(2));
+      expect(reviewStates.first, (prepared: diagnostic ? 0 : 1, commands: 0));
+      expect(reviewStates.last, (prepared: 1, commands: 1));
+      expect(h.backend.prepared, [_host]);
+      expect(h.backend.target.commands, hasLength(1));
+      final access = h.model.reviewRequests.first;
+      final share = h.model.reviewRequests.last;
+      expect(access.messages.single.text, contains('"kind":"access"'));
+      expect(share.messages.single.text, contains('"kind":"share"'));
+      expect(share.messages.single.text, contains('"projectionBytes":'));
+      expect(share.messages.single.text, contains('"exitCode":0'));
+      expect(
+        access.messages.single.text,
+        contains(jsonEncode(diagnostic ? diagnosticCommand(DiagnosticTemplate.systemSummary) : 'printf result')),
+      );
+      for (final request in h.model.reviewRequests) {
+        expect(request.profile.model, h.profile.model);
+        expect(request.profile.tools, isFalse);
+        expect(request.profile.maxOutputTokens, lessThanOrEqualTo(256));
+        expect(request.tools, isEmpty);
+        expect(request.messages, hasLength(1));
+        expect(request.messages.single.role, ModelRole.user);
+        expect(request.messages.single.calls, isEmpty);
+        expect(request.messages.single.opaque, isNull);
+        expect(_requestText(request), contains('inspect this selected host'));
+        expect(_requestText(request), contains('selected host'));
+        expect(_requestText(request), isNot(contains(h.backend.target.display)));
+        expect(_requestText(request), isNot(contains(_privateOutput)));
+        expect(_requestText(request), isNot(contains('private-agent-protocol-state')));
+      }
+      final result = _result(h.model.requests.last);
+      if (diagnostic) {
+        expect(result['data'], containsPair('system', 'Linux'));
+        expect(_requestText(h.model.requests.last), isNot(contains(_privateOutput)));
+        expect(h.journal.records, isEmpty);
+      } else {
+        expect(result['text'], _privateOutput);
+        expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
+      }
+    });
+
+    test('review deny prevents $tool without opening a manual approval', () async {
+      final h = _Harness(
+        (_, _, index) => _oneCall(call, index),
+        approveDiagnostics: false,
+        review: (_, _, _) => _reviewReply('deny'),
+      );
+      addTearDown(h.close);
+      var cards = 0;
+      h.runtime.addListener(() {
+        if (h.runtime.approval != null || h.runtime.dataRequest != null) cards++;
+      });
+      await h.runtime.start(
+        'inspect this selected host',
+        AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+      );
+      expect(cards, 0);
+      expect(h.model.reviewRequests, hasLength(1));
+      expect(h.backend.target.commands, isEmpty);
+      expect(h.journal.records, isEmpty);
+      expect(_result(h.model.requests.last), {'error': 'denied'});
+      if (diagnostic) {
+        expect(h.backend.prepared, isEmpty);
+        expect(h.backend.target.probes, 0);
+      }
+    });
+  }
+
+  for (final response in ['ask', 'invalid', 'error']) {
+    test('review $response falls back to exact manual read and separate output decisions', () async {
+      final h = _Harness(
+        (_, _, index) =>
+            _oneCall(_call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}), index),
+        approveDiagnostics: false,
+        review: (_, _, _) async* {
+          if (response == 'error') throw const ModelFailure('network');
+          if (response == 'invalid') {
+            yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: '{"decision":"allow","reason":"safe"}'));
+          } else {
+            yield* _reviewReply('ask');
+          }
+        },
+      );
+      addTearDown(h.close);
+      h.backend.target.stdout = _systemOutput;
+      final work = h.runtime.start(
+        'inspect selected host',
+        AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+      );
+      await _until(() => h.runtime.approval != null);
+      expect(h.runtime.approval!.template, 'systemSummary');
+      expect(h.runtime.approval!.command, diagnosticCommand(DiagnosticTemplate.systemSummary));
+      expect(h.backend.prepared, isEmpty);
+      expect(h.backend.target.probes, 0);
+      expect(h.backend.target.commands, isEmpty);
+      expect(h.model.reviewRequests, hasLength(1));
+      h.runtime.approve(true, expected: h.runtime.approval!);
+      await _until(() => h.runtime.dataRequest != null);
+      expect(h.backend.target.commands, hasLength(1));
+      expect(h.model.requests, hasLength(1));
+      expect(h.model.reviewRequests, hasLength(2));
+      expect(h.runtime.executions.single.sharedText, isNull);
+      h.runtime.shareOutput(null, expected: h.runtime.dataRequest!);
+      await work;
+      expect(_result(h.model.requests.last)['output'], 'withheld');
+      expect(_result(h.model.requests.last).containsKey('data'), isFalse);
+    });
+  }
+
+  test('review deny of output keeps raw bytes unavailable to continuation and output_read', () async {
+    final h = _Harness(
+      (request, _, index) async* {
+        if (index == 0) {
+          yield ModelMessageComplete(_call('command_execute', _command()));
+        } else if (index == 1) {
+          final handle = _result(request)['handle'];
+          yield ModelMessageComplete(_call('output_read', {'hostId': _host.value, 'handle': handle}, 'read'));
+        } else {
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+        }
+      },
+      approveDiagnostics: false,
+      review: (_, _, index) => _reviewReply(index == 0 ? 'allow' : 'deny'),
+    );
+    addTearDown(h.close);
+    await h.runtime.start(
+      'run selected command',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+    );
+    expect(h.backend.target.commands, hasLength(1));
+    expect(h.model.reviewRequests, hasLength(2));
+    expect(h.model.reviewRequests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
+    expect(_result(h.model.requests[1])['output'], 'withheld');
+    expect(_result(h.model.requests[1]).containsKey('text'), isFalse);
+    expect(_result(h.model.requests.last, 1), {'error': 'unavailable'});
+    expect(h.model.requests.every((request) => !_requestText(request).contains(_privateOutput)), isTrue);
+    expect(h.runtime.executions.first.sharedText, isNull);
+  });
+
+  for (final diagnostic in [true, false]) {
+    test('Stop cancels a pending ${diagnostic ? 'diagnostic' : 'command'} review and ignores a late allow', () async {
+      final lateDecision = Completer<void>();
+      final call = diagnostic
+          ? _call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'})
+          : _call('command_execute', _command());
+      final h = _Harness(
+        (_, _, index) => _oneCall(call, index),
+        approveDiagnostics: false,
+        review: (_, _, _) async* {
+          await lateDecision.future;
+          yield* _reviewReply('allow');
+        },
+      );
+      addTearDown(h.close);
+      addTearDown(() {
+        if (!lateDecision.isCompleted) lateDecision.complete();
+      });
+      final work = h.runtime.start(
+        'inspect selected host',
+        AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+      );
+      await _until(() => h.model.reviewRequests.isNotEmpty);
+      expect(h.runtime.reviewing, isTrue);
+      expect(h.backend.prepared, diagnostic ? isEmpty : [_host]);
+      h.runtime.stop();
+      await work;
+      expect(h.runtime.phase, AgentPhase.cancelled);
+      expect(h.model.reviewCancellations.single.isCancelled, isTrue);
+      expect(h.model.requests, hasLength(1));
+      lateDecision.complete();
+      await pumpEventQueue();
+      expect(h.backend.prepared, diagnostic ? isEmpty : [_host]);
+      expect(h.backend.target.probes, diagnostic ? 0 : 1);
+      expect(h.backend.target.commands, isEmpty);
+      expect(h.journal.records, isEmpty);
+      expect(h.runtime.approval, isNull);
+      expect(h.runtime.dataRequest, isNull);
+      expect(h.runtime.reviewing, isFalse);
+      expect(h.model.requests, hasLength(1));
+    });
+  }
+
+  test('a cancelled reviewer cannot replace or clear a new turn approval during late cleanup', () async {
+    final lateDecision = Completer<void>();
+    final h = _Harness(
+      (_, cancel, index) async* {
+        if (index == 0) {
+          yield ModelMessageComplete(
+            _call('diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}),
+          );
+        } else {
+          await cancel.whenCancelled;
+        }
+      },
+      approveDiagnostics: false,
+      review: (_, _, _) async* {
+        await lateDecision.future;
+        yield* _reviewReply('allow');
+      },
+    );
+    addTearDown(h.close);
+    addTearDown(() {
+      if (!lateDecision.isCompleted) lateDecision.complete();
+    });
+    Future<void>? nextTurn;
+    Future<Result<Object?>>? nextDispatch;
+    AgentApproval? nextApproval;
+    var restart = false;
+    h.runtime.addListener(() {
+      if (!restart || h.runtime.busy) return;
+      restart = false;
+      // Re-enter at the first idle notification while the old policy can still be unwinding.
+      nextTurn = h.runtime.start('inspect storage instead', AgentScope(hosts: const [_host]));
+      nextDispatch = h.runtime.dispatcher.dispatch('agent.diagnose', {
+        'hostId': _host.value,
+        'template': 'storageCapacity',
+      }, RequestContext(Origin.agent, authority: h.runtime));
+      nextApproval = h.runtime.approval;
+    });
+    final oldTurn = h.runtime.start(
+      'inspect system information',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+    );
+    await _until(() => h.model.reviewRequests.isNotEmpty);
+    restart = true;
+    h.runtime.stop();
+    await oldTurn;
+    expect(nextApproval, isNotNull);
+    expect(nextApproval!.template, 'storageCapacity');
+    lateDecision.complete();
+    await pumpEventQueue();
+    expect(h.runtime.approval, same(nextApproval));
+    expect(h.runtime.permissionMode, AgentPermissionMode.confirm);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.backend.target.probes, 0);
+    expect(h.backend.target.commands, isEmpty);
+    expect(h.journal.records, isEmpty);
+    h.runtime.approve(false, expected: nextApproval!);
+    final result = await nextDispatch!;
+    expect(result, isA<Err<Object?>>());
+    expect((result as Err<Object?>).error.code, 'denied');
+    h.runtime.stop();
+    await nextTurn!;
+    expect(h.model.requests, hasLength(2));
+    expect(h.model.reviewRequests, hasLength(1));
   });
 
   test('auto still blocks execution when intent cannot be persisted', () async {
@@ -1312,7 +1756,7 @@ void main() {
     final call = _call('diagnostics_collect', {'hostId': 'host-a', 'template': 'storageCapacity'});
     final h = _Harness((_, _, index) => _oneCall(call, index));
     addTearDown(h.close);
-    final longPath = List.filled(100, 'a').join();
+    final longPath = List.filled(100, r'\"').join();
     h.backend.target.stdout =
         '@@storage\nFilesystem Type 1024-blocks Used Available Capacity Mounted on\n'
         '${[for (var i = 0; i < 90; i++) '/dev/disk$i ext4 1000 400 600 40% /mount-$i-$longPath'].join('\n')}\n';
@@ -1324,6 +1768,9 @@ void main() {
     final data = (result['data'] as Map).cast<String, Object?>();
     expect(data['filesystems'], isNotEmpty);
     expect((data['filesystems'] as List).length, lessThan(90));
+    expect(jsonDecode(h.runtime.executions.single.sharedText!), data);
+    expect(utf8.encode(jsonEncode(h.runtime.executions.single.sharedText)).length, lessThanOrEqualTo(6500));
+    expect(h.runtime.executions.single.historyTruncated, isTrue);
     expect(h.runtime.executions.single.state, 'completed');
   });
 

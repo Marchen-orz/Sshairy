@@ -528,6 +528,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('read approval and diagnostic projection are separate visible decisions', (tester) async {
+    final runtime = _Runtime()
+      ..active = true
+      ..approval = AgentApproval(
+        'Production web',
+        'fixed read command',
+        '/',
+        'agent.diagnose',
+        template: 'listeningPorts',
+      );
+    await _panel(tester, runtime);
+    final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+    expect(find.text(l.aiAgentReadApproveTitle), findsOneWidget);
+    expect(find.text(l.aiAgentDiagnosticPorts), findsOneWidget);
+    expect(find.text(l.aiAgentReadApproveHint), findsOneWidget);
+    await tester.tap(find.text(l.aiAgentApprove));
+    await tester.pump();
+    expect(runtime.approved, isTrue);
+    final store = OutputStore();
+    final output = store.create('owner', const HostId('web'), _profile.identity, 0);
+    runtime.dataRequest = AgentDataRequest(output, projection: '{"listeners":[]}', projectionTruncated: true);
+    runtime.refresh();
+    await tester.pump();
+    final projection = find.byKey(const ValueKey('ai-agent-output-projection'));
+    expect(tester.widget<TextField>(projection).controller!.text, '{"listeners":[]}');
+    expect(find.text(l.aiAgentTruncated), findsOneWidget);
+    expect(runtime.shared, isNull);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-share-output')));
+    await tester.pump();
+    expect(runtime.shared, '{"listeners":[]}');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('edited output survives hiding only for the exact pending request', (tester) async {
     final store = OutputStore();
     final first = AgentDataRequest(store.create('owner', const HostId('web'), _profile.identity, 0));
@@ -711,7 +744,12 @@ void main() {
     testWidgets('permission descriptions stay in the dropdown at width $width', (tester) async {
       await _panel(tester, _Runtime(), size: Size(width, 420), textScale: 1.5);
       final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
-      final hints = [l.aiAgentPermissionAutoHint, l.aiAgentPermissionConfirmHint, l.aiAgentPermissionObserveHint];
+      final hints = [
+        l.aiAgentPermissionObserveHint,
+        l.aiAgentPermissionConfirmHint,
+        l.aiAgentPermissionReviewHint,
+        l.aiAgentPermissionAutoHint,
+      ];
       for (final hint in hints) {
         expect(find.text(hint), findsNothing);
       }
@@ -720,9 +758,10 @@ void main() {
       await tester.tap(permission);
       await tester.pumpAndSettle();
       for (final (index, mode) in [
-        AgentPermissionMode.auto,
-        AgentPermissionMode.confirm,
         AgentPermissionMode.observe,
+        AgentPermissionMode.confirm,
+        AgentPermissionMode.review,
+        AgentPermissionMode.auto,
       ].indexed) {
         final row = find.byKey(ValueKey('ai-agent-permission-${mode.name}'));
         final hint = find.descendant(of: row, matching: find.text(hints[index]));

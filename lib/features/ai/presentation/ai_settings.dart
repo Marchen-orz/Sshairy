@@ -16,6 +16,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../credentials/api.dart';
 import '../application/configuration.dart';
 import '../application/model_credentials.dart';
+import '../application/model_selection.dart';
 import '../domain/model_profile.dart';
 import 'model_picker.dart';
 
@@ -32,7 +33,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   final _form = GlobalKey<FormState>();
   late AiConfiguration _initial;
   late bool _enabled, _inlineEnabled, _completionEnabled;
-  String _inlineModel = '', _completionModel = '';
+  String _inlineModel = '', _completionModel = '', _reviewModel = '';
   var _customContext = false, _inlineAdvanced = false, _completionAdvanced = false;
   String? _providerIdentity;
   final _inlineExcludedHosts = <HostId>{}, _completionExcludedHosts = <HostId>{};
@@ -102,12 +103,14 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
 
   String? get _catalogCredential => _removeKey ? null : _identity;
 
-  void _selectModel(String value, {bool inline = false, bool completion = false}) {
+  void _selectModel(String value, {bool inline = false, bool completion = false, bool review = false}) {
     setState(() {
       if (inline) {
         _inlineModel = value;
       } else if (completion) {
         _completionModel = value;
+      } else if (review) {
+        _reviewModel = value;
       } else {
         _model.text = value;
         if (_inlineModel.isEmpty) _inlineModel = value;
@@ -128,6 +131,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       !setEquals(_completionExcludedHosts, _initial.completionExcludedHosts) ||
       _inlineModel != (_initial.inlineModel ?? _initial.profile?.model ?? '') ||
       _completionModel != (_initial.completionModel ?? _initial.profile?.model ?? '') ||
+      _reviewModel != (_initial.reviewModel ?? '') ||
       jsonEncode(_profile?.toJson()) != jsonEncode(_initial.profile?.toJson()) ||
       _key.text.isNotEmpty ||
       _removeKey ||
@@ -158,6 +162,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _model.text = config.profile?.model ?? '';
     _inlineModel = config.inlineModel ?? config.profile?.model ?? '';
     _completionModel = config.completionModel ?? config.profile?.model ?? '';
+    _reviewModel = config.reviewModel ?? '';
     _contextWindow.text = '${config.profile?.contextWindow ?? 1000000}';
     _customContext = !{1000000, 256000}.contains(int.tryParse(_contextWindow.text));
     _maxOutput.text = '${config.profile?.maxOutputTokens ?? 4096}';
@@ -303,6 +308,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         completionExcludedHosts: _completionExcludedHosts,
         inlineModel: _inlineModel.isEmpty ? profile?.model : _inlineModel,
         completionModel: _completionModel.isEmpty ? profile?.model : _completionModel,
+        reviewModel: _reviewModel.isEmpty ? null : _reviewModel,
       );
       if (!mounted) return;
       setState(() => _load(ref.read(aiConfigurationProvider)));
@@ -370,6 +376,11 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   Widget build(BuildContext context) {
     ref.listen(aiConfigurationProvider, _configurationChanged);
     final config = ref.watch(aiConfigurationProvider);
+    final effective = ref.watch(effectiveAgentProfileProvider);
+    final reviewDefault =
+        effective != null && _draftProvider == jsonEncode([effective.protocol.name, effective.endpoint])
+        ? effective.model
+        : _model.text;
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     _saveController?.changed();
@@ -489,6 +500,17 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
             onChanged: blocked || _draftProvider == null ? null : _selectModel,
+          ),
+          gap,
+          AiModelPicker(
+            key: const ValueKey('ai-config-review-model'),
+            value: _reviewModel.isEmpty ? reviewDefault : _reviewModel,
+            label: l.aiConfigReviewModel,
+            protocol: _protocol,
+            endpoint: _endpoint.text.trim(),
+            credentialIdentity: _catalogCredential,
+            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, review: true),
           ),
           gap,
           Text(l.aiConfigAdvanced, style: theme.textTheme.titleSmall),

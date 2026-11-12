@@ -21,6 +21,7 @@ class AiConfigStore {
     'completionEnabled',
     'inlineModel',
     'completionModel',
+    'reviewModel',
   };
   static const _legacyKeys = {'completionHistory', 'completionPosix', 'completionHosts', 'terminalDestination'};
   static final _hostControls = RegExp(r'[\x00-\x20\x7f-\x9f]');
@@ -43,7 +44,7 @@ class AiConfigStore {
     for (final key in ['inlineEnabled', 'completionEnabled']) {
       if (json.containsKey(key) && json[key] is! bool) throw const FormatException('invalid AI terminal setting');
     }
-    for (final key in ['inlineModel', 'completionModel']) {
+    for (final key in ['inlineModel', 'completionModel', 'reviewModel']) {
       final model = json[key];
       if (model != null) {
         if (model is! String || profile == null) throw const FormatException('invalid AI role model');
@@ -123,6 +124,7 @@ class AiConfigStore {
     Set<HostId> completionExcludedHosts,
     String? inlineModel,
     String? completionModel,
+    String? reviewModel,
   })
   read({bool reload = false}) {
     if (reload) _file = _open(path);
@@ -142,6 +144,7 @@ class AiConfigStore {
       }),
       inlineModel: json?['inlineModel'] as String? ?? profile?.model,
       completionModel: json?['completionModel'] as String? ?? profile?.model,
+      reviewModel: json?['reviewModel'] as String?,
     );
   }
 
@@ -155,6 +158,7 @@ class AiConfigStore {
     Set<HostId> completionExcludedHosts = const {},
     String? inlineModel,
     String? completionModel,
+    String? reviewModel,
   }) => _file.write({
     'schemaVersion': 2,
     'enabled': enabled,
@@ -165,6 +169,7 @@ class AiConfigStore {
     'completionExcludedHosts': [for (final id in completionExcludedHosts) id.value]..sort(),
     'inlineModel': inlineModel,
     'completionModel': completionModel,
+    'reviewModel': reviewModel,
   }, expectedRevision: expectedRevision);
 
   int get revision => _file.revision;

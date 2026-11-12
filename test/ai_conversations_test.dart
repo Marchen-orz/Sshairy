@@ -436,6 +436,17 @@ void main() {
     expect(h.runtime.hostApproval, isNotNull);
     expect(h.backend.prepared, isEmpty);
     h.runtime.decideHost(h.runtime.hostApproval!, true);
+    for (var attempt = 0; attempt < 1000 && h.runtime.approval == null; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    expect(h.runtime.approval?.template, 'systemSummary');
+    expect(h.backend.prepared, isEmpty);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    for (var attempt = 0; attempt < 1000 && h.runtime.dataRequest == null; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    expect(h.runtime.dataRequest, isNotNull);
+    h.runtime.shareOutput(h.runtime.dataRequest!.suggested, expected: h.runtime.dataRequest!);
     await work;
     expect(h.backend.prepared, [_hostA]);
     expect(h.runtime.resolvedHost, _hostA);

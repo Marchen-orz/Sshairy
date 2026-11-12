@@ -125,6 +125,8 @@ void main() {
       expect(state.completionEnabled, isTrue);
       expect(state.inlineExcludedHosts, isEmpty);
       expect(state.completionExcludedHosts, isEmpty);
+      expect(state.reviewModel, isNull);
+      expect(state.profileForReview, isNull);
       expect(dir.listSync(), isEmpty);
       expect(store.reads, isEmpty);
     },
@@ -159,6 +161,25 @@ void main() {
     expect(container.read(aiConfigurationProvider).revision, 2);
   });
 
+  test('schema two without an approval model leaves the runtime fallback without rewriting', () {
+    final profile = _profile();
+    final file = File('${dir.path}/ai.json');
+    final content = jsonEncode({
+      'schemaVersion': 2,
+      'revision': 7,
+      'enabled': true,
+      'profile': profile.toJson(),
+    });
+    file.writeAsStringSync(content);
+    final state = container.read(aiConfigurationProvider);
+    expect(state.loadFailed, isFalse);
+    expect(state.revision, 7);
+    expect(state.reviewModel, isNull);
+    expect(state.profileForReview, isNull);
+    expect(file.readAsStringSync(), content);
+    expect(store.reads, isEmpty);
+  });
+
   test(
     'bad and future configuration stay protected while AI remains disabled',
     () async {
@@ -168,6 +189,13 @@ void main() {
         '{"schemaVersion":99,"enabled":true,"profile":null}',
         '{"enabled":true,"profile":null}',
         '{"enabled":false,"profile":null,"apiKey":"synthetic-key"}',
+        '{"schemaVersion":2,"enabled":false,"profile":null,"reviewModel":"reviewer"}',
+        jsonEncode({
+          'schemaVersion': 2,
+          'enabled': false,
+          'profile': _profile().toJson(),
+          'reviewModel': 12,
+        }),
       ]) {
         file.writeAsStringSync(content);
         container.invalidate(aiConfigurationProvider);
@@ -370,6 +398,7 @@ void main() {
         profile: _profile(),
         inlineModel: 'inline-fast',
         completionModel: 'complete-fast',
+        reviewModel: 'review-model',
         inlineEnabled: false,
         completionEnabled: true,
         inlineExcludedHosts: {const HostId('web')},
@@ -379,6 +408,17 @@ void main() {
       expect(before.profileForCompletion!.model, 'complete-fast');
       expect(before.profileForInline!.tools, isFalse);
       expect(before.profileForCompletion!.tools, isFalse);
+      expect(before.profileForReview!.model, 'review-model');
+      expect(before.profileForReview!.tools, isFalse);
+      expect(before.profileForReview!.endpoint, before.profile!.endpoint);
+      expect(
+        before.profileForReview!.contextWindow,
+        before.profile!.contextWindow,
+      );
+      expect(
+        before.profileForReview!.maxOutputTokens,
+        before.profile!.maxOutputTokens,
+      );
       final restarted = ProviderContainer(
         overrides: [dataDirProvider.overrideWithValue(dir.path)],
       );
@@ -389,6 +429,10 @@ void main() {
       expect(
         restarted.read(aiConfigurationProvider).completionModel,
         'complete-fast',
+      );
+      expect(
+        restarted.read(aiConfigurationProvider).reviewModel,
+        'review-model',
       );
       restarted.dispose();
       await notifier.save(
@@ -401,6 +445,26 @@ void main() {
       expect(changed.completionEnabled, isTrue);
       expect(changed.inlineExcludedHosts, {const HostId('web')});
       expect(changed.completionModel, 'complete-fast');
+      expect(changed.reviewModel, 'review-model');
+      await notifier.save(
+        enabled: true,
+        profile: _profile().withModel('new-agent'),
+      );
+      expect(
+        container.read(aiConfigurationProvider).reviewModel,
+        'review-model',
+      );
+      await notifier.save(
+        enabled: true,
+        profile: _profile('https://other.example/v1'),
+      );
+      final newProvider = container.read(aiConfigurationProvider);
+      expect(newProvider.reviewModel, isNull);
+      expect(newProvider.profileForReview, isNull);
+      final json =
+          jsonDecode(File('${dir.path}/ai.json').readAsStringSync()) as Map;
+      expect(json['schemaVersion'], 2);
+      expect(json['reviewModel'], isNull);
     },
   );
 
@@ -411,21 +475,24 @@ void main() {
       await notifier.save(enabled: true, profile: _profile());
       final file = File('${dir.path}/ai.json');
       final original = file.readAsBytesSync();
-      await expectLater(
-        notifier.save(
-          enabled: true,
-          profile: _profile(),
-          inlineModel: 'bad model',
-        ),
-        throwsA(
-          isA<JsonFileError>().having(
-            (error) => error.kind,
-            'kind',
-            JsonFileFailure.corrupt,
+      for (final role in ['inline', 'review']) {
+        await expectLater(
+          notifier.save(
+            enabled: true,
+            profile: _profile(),
+            inlineModel: role == 'inline' ? 'bad model' : null,
+            reviewModel: role == 'review' ? 'bad model' : null,
           ),
-        ),
-      );
-      expect(file.readAsBytesSync(), original);
+          throwsA(
+            isA<JsonFileError>().having(
+              (error) => error.kind,
+              'kind',
+              JsonFileFailure.corrupt,
+            ),
+          ),
+        );
+        expect(file.readAsBytesSync(), original);
+      }
       final invalid =
           jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
       invalid['inlineExcludedHosts'] = ['bad host id'];
@@ -706,6 +773,13 @@ void main() {
       await tester.pump();
       expect(tester.widget<TextField>(key).enabled, isTrue);
       expect(tester.widget<AiModelPicker>(model).value, isEmpty);
+      final review = find.byKey(const ValueKey('ai-config-review-model'));
+      expect(tester.widget<AiModelPicker>(review).value, isEmpty);
+      expect(tester.widget<AiModelPicker>(review).label, 'Approval model');
+      expect(
+        tester.getTopLeft(model).dy,
+        lessThan(tester.getTopLeft(review).dy),
+      );
       expect(
         tester
             .widget<AppSelect<int>>(
@@ -1086,15 +1160,57 @@ void main() {
   );
 
   testWidgets(
+    'approval model changes are dirty, resettable and save independently without reading a key',
+    (tester) async {
+      final credentials = await showSettings(tester);
+      final review = find.byKey(const ValueKey('ai-config-review-model'));
+      final save = find.byKey(const ValueKey('ai-config-save'));
+      final l = AppLocalizations.of(tester.element(find.byType(AiSettings)));
+      expect(tester.widget<AiModelPicker>(review).value, _profile().model);
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+      tester.widget<AiModelPicker>(review).onChanged!('review-model');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, l.cancel))
+          .onPressed!();
+      await tester.pumpAndSettle();
+      expect(tester.widget<AiModelPicker>(review).value, _profile().model);
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+      tester.widget<AiModelPicker>(review).onChanged!('review-model');
+      await tester.pump();
+      final scope = ProviderScope.containerOf(
+        tester.element(find.byType(AiSettings)),
+      );
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pump();
+      await drainConfiguration(tester, scope);
+      await tester.pumpAndSettle();
+      final state = scope.read(aiConfigurationProvider);
+      expect(state.reviewModel, 'review-model');
+      expect(state.profile!.model, _profile().model);
+      expect(state.inlineModel, _profile().model);
+      expect(state.completionModel, _profile().model);
+      expect(tester.widget<AiModelPicker>(review).value, 'review-model');
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+      expect(credentials.reads, 0);
+      expect(credentials.saved, isEmpty);
+    },
+  );
+
+  testWidgets(
     'model changes retain a typed key and save independent model selections',
     (tester) async {
       final credentials = await showSettings(tester);
       final key = find.byKey(const ValueKey('ai-config-key'));
+      final review = find.byKey(const ValueKey('ai-config-review-model'));
       await tester.enterText(key, 'synthetic-new-key');
       tester
           .widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-model')))
           .onChanged!('agent-new');
       await tester.pump();
+      expect(tester.widget<AiModelPicker>(review).value, 'agent-new');
       expect(
         tester.widget<TextField>(key).controller!.text,
         'synthetic-new-key',
@@ -1109,6 +1225,7 @@ void main() {
             find.byKey(const ValueKey('ai-config-completion-model')),
           )
           .onChanged!('complete-fast');
+      tester.widget<AiModelPicker>(review).onChanged!('review-fast');
       await tester.pump();
       final preset = tester.widget<AppSelect<int>>(
         find.byKey(const ValueKey('ai-config-context-preset')),
@@ -1129,6 +1246,8 @@ void main() {
       expect(state.profile!.contextWindow, 256000);
       expect(state.inlineModel, 'inline-fast');
       expect(state.completionModel, 'complete-fast');
+      expect(state.reviewModel, 'review-fast');
+      expect(state.profileForReview!.tools, isFalse);
       expect(credentials.reads, 0);
       expect(
         credentials.values[state.profile!.identity]!.reveal(),
@@ -1162,6 +1281,8 @@ void main() {
       await tester.pumpAndSettle();
       final next = scope.read(aiConfigurationProvider).profile!;
       expect(next.model, 'agent-new');
+      expect(scope.read(aiConfigurationProvider).reviewModel, isNull);
+      expect(scope.read(aiConfigurationProvider).profileForReview, isNull);
       expect(credentials.reads, 1);
       expect(
         credentials.values[next.identity]!.reveal(),

@@ -39,7 +39,7 @@ List<Capability> aiCapabilities(Ref ref) {
           'hostId': host,
           'template': {
             'type': 'string',
-            'enum': ['systemSummary', 'storageCapacity'],
+            'enum': ['systemSummary', 'storageCapacity', 'processSummary', 'listeningPorts', 'serviceStates'],
           },
         },
         ['hostId', 'template'],

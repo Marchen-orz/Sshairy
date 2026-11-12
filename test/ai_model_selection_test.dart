@@ -289,12 +289,12 @@ void main() {
     final container = _container(AiConfiguration(enabled: true, profile: profile), credentials: credentials);
     final provider = container.read(aiModelProvider) as HttpModelProvider;
     expect(credentials.reads, isEmpty);
-    for (final model in ['default-model', 'airy-model', 'inline-model', 'completion-model']) {
+    for (final model in ['default-model', 'airy-model', 'inline-model', 'completion-model', 'review-model']) {
       final selected = profile.withModel(model);
       final key = await provider.readKey(selected.identity);
       expect(key?.reveal(), 'synthetic-default-model-key');
     }
-    expect(credentials.reads, List.filled(4, profile.identity));
+    expect(credentials.reads, List.filled(5, profile.identity));
     expect(container.read(aiConfigurationProvider).profile, same(profile));
   });
 

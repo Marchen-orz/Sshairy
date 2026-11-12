@@ -66,6 +66,7 @@ final agentRuntimeProvider = Provider<AgentRuntime>((ref) {
     journal: ref.read(aiJournalProvider),
     dispatcher: ref.read(capabilityDispatcherProvider),
     hostRoutes: () => ref.read(agentConversationRoutesProvider)(),
+    reviewProfile: () => ref.read(aiConfigurationProvider).profileForReview ?? ref.read(effectiveAgentProfileProvider),
     configuration: () {
       final value = ref.read(aiConfigurationProvider);
       return (enabled: value.enabled, profile: ref.read(effectiveAgentProfileProvider), revision: value.revision);

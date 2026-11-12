@@ -527,18 +527,21 @@ class _ContextUsage extends StatelessWidget {
 
 IconData _permissionIcon(AgentPermissionMode mode) => switch (mode) {
   AgentPermissionMode.auto => Icons.bolt_outlined,
+  AgentPermissionMode.review => Icons.auto_awesome_outlined,
   AgentPermissionMode.confirm => Icons.verified_user_outlined,
   AgentPermissionMode.observe => Icons.visibility_outlined,
 };
 
 String _permissionLabel(AppLocalizations l, AgentPermissionMode mode) => switch (mode) {
   AgentPermissionMode.auto => l.aiAgentPermissionAuto,
+  AgentPermissionMode.review => l.aiAgentPermissionReview,
   AgentPermissionMode.confirm => l.aiAgentPermissionConfirm,
   AgentPermissionMode.observe => l.aiAgentPermissionObserve,
 };
 
 String _permissionHint(AppLocalizations l, AgentPermissionMode mode) => switch (mode) {
   AgentPermissionMode.auto => l.aiAgentPermissionAutoHint,
+  AgentPermissionMode.review => l.aiAgentPermissionReviewHint,
   AgentPermissionMode.confirm => l.aiAgentPermissionConfirmHint,
   AgentPermissionMode.observe => l.aiAgentPermissionObserveHint,
 };
@@ -569,9 +572,10 @@ class _PermissionPicker extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           for (final option in [
-                            AgentPermissionMode.auto,
-                            AgentPermissionMode.confirm,
                             AgentPermissionMode.observe,
+                            AgentPermissionMode.confirm,
+                            AgentPermissionMode.review,
+                            AgentPermissionMode.auto,
                           ])
                             PopupRow(
                               key: ValueKey('ai-agent-permission-${option.name}'),
@@ -918,7 +922,23 @@ class _ConversationState extends State<_Conversation> {
             }
             index--;
           }
-          return const _ThinkingDots();
+          return widget.runtime.reviewing
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Space.sm),
+                  child: Row(
+                    children: [
+                      const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Text(
+                          AppLocalizations.of(context).aiAgentReviewing,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : const _ThinkingDots();
         },
       ),
     );
@@ -1111,6 +1131,15 @@ class _ExecutionCardState extends State<_ExecutionCard> {
   }
 }
 
+String _templateLabel(AppLocalizations l, String template) => switch (template) {
+  'systemSummary' => l.aiAgentDiagnosticSystem,
+  'storageCapacity' => l.aiAgentDiagnosticStorage,
+  'processSummary' => l.aiAgentDiagnosticProcesses,
+  'listeningPorts' => l.aiAgentDiagnosticPorts,
+  'serviceStates' => l.aiAgentDiagnosticServices,
+  _ => l.aiAgentToolDiagnostics,
+};
+
 class _ApprovalCard extends StatelessWidget {
   const _ApprovalCard({required this.approval, required this.onApprove, required this.onReject});
   final AgentApproval approval;
@@ -1127,15 +1156,25 @@ class _ApprovalCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _CardTitle(icon: Icons.terminal_rounded, label: l.aiAgentApproveTitle),
+            _CardTitle(
+              icon: approval.template == null ? Icons.terminal_rounded : Icons.visibility_outlined,
+              label: approval.template == null ? l.aiAgentApproveTitle : l.aiAgentReadApproveTitle,
+            ),
             const SizedBox(height: Space.md),
             Text(approval.target, style: theme.textTheme.labelLarge),
+            if (approval.template != null) ...[
+              const SizedBox(height: Space.xs),
+              Text(_templateLabel(l, approval.template!), style: theme.textTheme.labelLarge),
+            ],
             const SizedBox(height: Space.xs),
             Text(approval.cwd, style: mono(context, theme.textTheme.bodySmall)),
             const SizedBox(height: Space.md),
             Text(approval.command, style: mono(context, theme.textTheme.bodyMedium)),
             const SizedBox(height: Space.md),
-            Text(l.aiAgentShellPermission, style: theme.textTheme.bodySmall),
+            Text(
+              approval.template == null ? l.aiAgentShellPermission : l.aiAgentReadApproveHint,
+              style: theme.textTheme.bodySmall,
+            ),
             const SizedBox(height: Space.md),
             Wrap(
               alignment: WrapAlignment.end,
@@ -1204,7 +1243,7 @@ class _OutputApprovalState extends ConsumerState<_OutputApproval> {
                 setState(() {});
               },
             ),
-            if (widget.request.output.truncated) ...[
+            if (widget.request.truncated) ...[
               const SizedBox(height: Space.sm),
               Text(l.aiAgentTruncated, style: Theme.of(context).textTheme.bodySmall),
             ],

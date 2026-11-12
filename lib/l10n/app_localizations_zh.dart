@@ -2676,6 +2676,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigAgentModel => '默认 Airy 模型';
 
   @override
+  String get aiConfigReviewModel => '审批模型';
+
+  @override
   String get aiConfigInlineModel => '行内生成模型';
 
   @override
@@ -2700,7 +2703,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentAutoTarget => '自动选择';
 
   @override
-  String get aiAgentPermissionAuto => '自动';
+  String get aiAgentPermissionAuto => '全自动';
 
   @override
   String get aiAgentPermissionConfirm => '确认';
@@ -2709,13 +2712,43 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentPermissionObserve => '观察';
 
   @override
-  String get aiAgentPermissionAutoHint => '自动执行命令';
+  String get aiAgentPermissionReview => '自动确认';
 
   @override
-  String get aiAgentPermissionConfirmHint => '逐条确认命令';
+  String get aiAgentPermissionAutoHint => '自动读取、执行与发送结果';
 
   @override
-  String get aiAgentPermissionObserveHint => '固定只读诊断';
+  String get aiAgentPermissionConfirmHint => '人工批准读取、执行与发送';
+
+  @override
+  String get aiAgentPermissionObserveHint => '只读工具，读取与发送需批准';
+
+  @override
+  String get aiAgentPermissionReviewHint => '模型审批，无法判断时由你确认';
+
+  @override
+  String get aiAgentReviewing => '审批模型正在审核…';
+
+  @override
+  String get aiAgentReadApproveTitle => '确认读取信息';
+
+  @override
+  String get aiAgentReadApproveHint => '仅运行固定只读诊断。读取后另行选择发送范围。';
+
+  @override
+  String get aiAgentDiagnosticSystem => '系统与内存';
+
+  @override
+  String get aiAgentDiagnosticStorage => '磁盘容量';
+
+  @override
+  String get aiAgentDiagnosticProcesses => '进程资源';
+
+  @override
+  String get aiAgentDiagnosticPorts => '监听端口';
+
+  @override
+  String get aiAgentDiagnosticServices => '服务状态';
 
   @override
   String aiAgentContextUsage(int percent, int used, int total) {
