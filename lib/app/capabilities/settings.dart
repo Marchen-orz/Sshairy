@@ -1,9 +1,13 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/theme.dart';
 import '../../design/theme_names.dart';
 import '../../foundation/result.dart';
+import '../../foundation/json_file.dart';
+import '../../l10n/app_localizations.dart';
 import '../../features/capabilities/api.dart';
 import '../../features/settings/api.dart';
 
@@ -11,11 +15,21 @@ import '../../features/settings/api.dart';
 List<Capability> settingsCapabilities(Ref ref) => [
   FunctionCapability('settings.get', Effect.query, agentExposed: true, (_, c) async {
     final s = ref.read(settingsProvider);
+    final language = s.locale ?? PlatformDispatcher.instance.locale.languageCode;
+    final locale = language == 'zh' ? 'zh' : 'en';
+    final l = lookupAppLocalizations(Locale(locale));
     return Ok({
       'revision': ref.read(settingsProvider.notifier).revision,
       'settings': {
         for (final d in SettingKeys.all)
           if (c.origin != Origin.agent || d.agentExposed) d.key: d.encode(s.get(d)),
+      },
+      if (c.origin == Origin.agent) ...{
+        'locale': locale,
+        'definitions': {
+          for (final d in SettingKeys.all)
+            if (d.agentExposed) d.key: settingDescription(d, l),
+        },
       },
     });
   }),
@@ -27,19 +41,89 @@ List<Capability> settingsCapabilities(Ref ref) => [
       'type': 'object',
       'additionalProperties': false,
       'properties': {
-        for (final d in SettingKeys.all) d.key: d.schema,
+        for (final d in SettingKeys.all)
+          if (d.agentExposed) d.key: d.schema,
         'expectedRevision': {'type': 'integer', 'minimum': 0},
       },
+      'required': ['expectedRevision'],
     },
-    (a, c) => ref
-        .read(settingsProvider.notifier)
-        .patch(
-          {...a.raw}..remove('expectedRevision'),
-          exposedOnly: c.origin == Origin.agent,
-          expectedRevision: a.optional<int>('expectedRevision'),
-        ),
+    (a, c) async {
+      try {
+        return await ref
+            .read(settingsProvider.notifier)
+            .patch(
+              {...a.raw}..remove('expectedRevision'),
+              exposedOnly: c.origin == Origin.agent,
+              expectedRevision: c.origin == Origin.agent
+                  ? a.require<int>('expectedRevision')
+                  : a.optional<int>('expectedRevision'),
+            );
+      } on JsonFileError catch (error) {
+        return Err(AppError(error.kind.name));
+      }
+    },
   ),
 ];
+
+/// Uses the same localized strings and stable values as the settings controls.
+Map<String, Object?> settingDescription(SettingDef<Object?> d, AppLocalizations l) {
+  final label = switch (d.key) {
+    'themeMode' => l.theme,
+    'accent' => l.accent,
+    'locale' => l.language,
+    'uiScale' => l.uiScale,
+    'uiFontFamily' => l.uiFont,
+    'uiFontSize' => l.uiFontSize,
+    'appBackgroundOpacity' => '${l.appBackgroundImage} · ${l.backgroundOpacity}',
+    'terminalBackgroundOpacity' => '${l.terminalBackgroundImage} · ${l.backgroundOpacity}',
+    'terminalFontFamily' => l.terminalFont,
+    'fontSize' => l.fontSize,
+    'scrollback' => l.scrollback,
+    'cursorShape' => l.cursorShape,
+    'copyOnSelect' => l.copyOnSelect,
+    'rightClick' => l.rightClick,
+    'connectTimeout' => l.connectTimeout,
+    'keepAlive' => l.keepAlive,
+    'idleTtl' => l.idleTtl,
+    'autoReconnect' => l.autoReconnect,
+    'hostView' => '${l.hosts} · ${l.gridView} / ${l.listView}',
+    'hostOrder' => '${l.sortName} / ${l.sortRecent}',
+    'monitorWidth' => l.resizeMonitor,
+    'navigationWidth' => l.resizeNavigation,
+    'showMonitor' => l.monitor,
+    'showFiles' => l.files,
+    'monitorInterval' => l.monitorInterval,
+    'filesDock' => l.filesDock,
+    'navigationExpanded' => l.navigationExpand,
+    'showHidden' => l.hiddenFiles,
+    'transferConcurrency' => l.transferConcurrency,
+    _ => d.key,
+  };
+  final options = switch (d.key) {
+    'themeMode' => <Object?, String>{'system': l.themeSystem, 'light': l.themeLight, 'dark': l.themeDark},
+    'accent' => <Object?, String>{for (final a in Accent.values) a.name: a.label(l)},
+    'locale' => <Object?, String>{null: l.themeSystem, 'zh': l.langZh, 'en': l.langEn},
+    'cursorShape' => <Object?, String>{'block': l.cursorBlock, 'underline': l.cursorUnderline, 'bar': l.cursorBar},
+    'rightClick' => <Object?, String>{'menu': l.rightClickMenu, 'paste': l.paste},
+    'hostView' => <Object?, String>{'grid': l.gridView, 'list': l.listView},
+    'hostOrder' => <Object?, String>{'name': l.sortName, 'recent': l.sortRecent},
+    'filesDock' => <Object?, String>{'left': l.dockLeft, 'right': l.dockRight, 'bottom': l.dockBottom},
+    _ => <Object?, String>{},
+  };
+  return {
+    'label': label,
+    'schema': d.schema,
+    'apply': d.apply.name,
+    if (options.isNotEmpty)
+      'options': [
+        for (final e in options.entries) {'value': e.key, 'label': e.value},
+      ],
+    if (d.key == 'uiScale') 'description': 'Ratio: 1.25 means 125%.',
+    if (d.key.endsWith('Opacity')) 'description': 'Ratio from 0 (transparent) to 1 (opaque).',
+    if (const {'connectTimeout', 'keepAlive', 'idleTtl', 'monitorInterval'}.contains(d.key)) 'unit': 'seconds',
+    if (const {'monitorWidth', 'navigationWidth', 'fontSize', 'uiFontSize'}.contains(d.key)) 'unit': 'logicalPixels',
+  };
+}
 
 List<PaletteEntry> settingsPaletteEntries(PaletteContext c) {
   final l = c.l;
