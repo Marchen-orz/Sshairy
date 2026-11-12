@@ -1,6 +1,6 @@
 # 测试
 
-更新：2026-11-12。以作者的真实环境为准（ADR-10），不提供兼容性和可用性保障。测试范围可缩小，SECURITY 的安全与数据保护要求照常执行。
+更新：2026-11-13。以作者的真实环境为准（ADR-10），不提供兼容性和可用性保障。测试范围可缩小，SECURITY 的安全与数据保护要求照常执行。
 
 ## 1. 环境与方式
 
@@ -110,6 +110,10 @@
 2026-11-10 统一 Agent、行内生成与 AI 补全已完成本轮自动验证。模型协议/配置、确定性授权、流式 exec 适配、持久 intent 与输出发送选择继续保留。未使用真实模型 Key、未调用付费模型，未在 Ubuntu 上执行新的 Agent 闭环；不将本轮自动测试记作完整 M4 或实网验收。
 
 ### 自动与真实 SSH/SFTP
+
+2026-11-13 Agent 设置、附件、思考强度与工具检查：最终 24 份定向回归共 507 项通过、19 秒、退出码 0。覆盖中英文可见设置名称/选项、公开键 schema、允许/拒绝/revision 冲突；附件两协议编码、历史/草稿/撤回、预算与无本机路径；思考参数/回合冻结/有界摘要、300/360/560 窄栏和 150% 字号；实际资源授权/重验/持久 intent、主机与转发保存队列冲突；远端文本 SHA256 覆盖、私有 staging/取消清理、路径与敏感内容拒绝、连接池过期租约；可见屏幕不读回滚、光标上移仍保留屏幕底部与备用屏幕；job 双流 UTF-8、稳定分页、秘密过滤和跨 turn 隔离。最终静态分析覆盖 lib、导入检查器、三份集成测试及列明的改动测试，无问题、退出码 0；imports 检查通过，新增第三方引用仅登记精确的附件 picker 与文本摘要适配文件。手写 Dart 已按 120 列格式化，本地化已重新生成，文档链接与 git diff --check 通过。仅运行显式列出的相关测试，未重跑整个测试树或既知挂起的 reviewer deadline 用例，未读取/运行原 zz_probe。`integration_test/ai_attachments_ui_test.dart -d windows` 通过：显式附件预览/移除/发送/撤回恢复，模型请求包含内容而不含本机路径，翻到历史顶部后发送自动置底，生成中手动滚动不被拉回；注入 picker 结果，未自动操作原生 OS 文件选择器。`integration_test/ai_m4d_test.dart -d windows` 完整通过：真实 SshairyApp + 临时 dataDir/内存凭据 + 本机脚本化 OpenAI endpoint，实际连接作者 Ubuntu；29 次动作审批、2 次主机授权、1 次密码提示，设置本地化读取/允许/拒绝、屏幕/历史、中文文本写读与 SHA256 覆盖、默认不覆盖/二进制/超限拒绝、远端复制、loopback 转发 SSH banner/停止释放、有限 job 读/查/停、标签重命名/分屏/关闭及隔离主机 CRUD 均通过。关闭聚焦 pane 或删除主机后 scopeChanged 为预期失效，副作用后断言实际状态；删除主机放在连接测试之后，避免凭据修订使旧连接绑定失效。每轮 finally 只删除已验证的自建目录，最终报告 m4dRemoteCleanup=1；没有触碰服务器现有服务、系统配置或作者真实本机配置。`integration_test/ai_agent_ui_test.dart -d windows` 三项全过：无 Key 保存 endpoint；设置中保存低强度、Agent 下拉覆盖为高且实际 HTTP 请求发送 high/max_completion_tokens，运行中两处控件禁改，只显示服务返回的思考状态而不展示 reasoning_content；新建会话回到低强度默认。运行中复制/重试/撤回入口全部隐藏，结束后显示。脚本化模型验证工具与界面通路，不评价真实模型质量，不据定向结果声称完整 M4 验收。
+
+2026-11-13 Windows 产物：原 `build/windows/x64/runner/Release` 重建 136.9 秒、退出码 0；打包脚本改用显式加载的 .NET ZIP/SHA256 API，规避本机 Windows PowerShell 的 Compress-Archive 类型解析及 Get-FileHash 不可用问题，完整打包执行成功。新包 `sshairy-0.1.0+1-windows-x64-20261113-014541-639.zip`（28,527,829 字节），SHA256 `79725c62fb0d10bd1ac1dd134c8512ac93c9ea814a0107434919dea724f2eed7`。1603 个 Release 文件同 bundle 逐文件哈希一致；bundle 与 ZIP 各 1605 个文件（额外 README/第三方声明），清单、CRC、内容哈希及同名 `.sha256` 全部一致。只清理本轮三份失败打包产物，旧包保留；未启动新版读取作者真实配置。
 
 2026-11-12 运行中操作入口与可选 Key 的软件内自动化：新增 `integration_test/ai_optional_key_test.dart` 与 `integration_test/ai_agent_ui_test.dart`，在 Windows 上以 `-d windows` 启动真实应用并点击界面，只使用临时 dataDir、内存凭据和本机脚本化 endpoint，不访问作者真实配置/安全存储。`ai_optional_key_test` 由侧栏 Airy 打开 Agent、在 `ai-agent-goal` 输入并发送，本地 SSE（两段文本后 `[DONE]`）返回后界面显示完整回复，服务端记录的请求没有 `Authorization` 头，证明未保存 Key 也可完成一次对话。`ai_agent_ui_test` 第一项点击面板设置图标打开 AI 设置，确认“未保存密钥”提示，修改 endpoint 后点击设置弹窗的 `settings-save`，轮询 `ai.json` 看到新 endpoint 落盘；第二项让本地 SSE 先发一段正文并保持连接（`HttpResponse.bufferOutput = false`，否则首段不会在关闭前到达），运行中断言复制入口已出现且可用、重生成/撤回入口保留但禁用，`finish.complete()` 后断言两者均可用。`integration_test/snippets_test.dart` 同轮通过 1 项。该轮发现并修复真实请求编码缺陷：M4d 后暴露给 Agent 的能力为 39 个，超过 `encodeModelRequest` 原有的 32 工具上限，运行中的真实 HTTP 路径直接报 `invalidModelRequest`（组件测试使用替身模型，未覆盖编码）；上限改为 64，并在 ai_protocol 新增“完整工具目录可编码、65 个工具被拒绝”回归，ai_protocol 11 项通过。定向 ai_protocol、ai_runtime、ai_config、ai_panel、forwarding、tab_close 共 238 项，234 项通过、4 项失败；4 项均为上一轮已在未改动 HEAD 复现的既有失败（ai_config 模型跟随 1 项、ai_panel 150% 窄栏与权限下拉 3 项）。`flutter analyze` 全树仅报 3 条位于未改动、未纳入本轮的原 zz_probe 导入提示，本轮文件无问题。原目录 Release 重建 136.1 秒、退出码 0，打包 `sshairy-0.1.0+1-windows-x64-20261112-215210-052.zip`，SHA256 `b7946bc186197db959f26deb1cafc648476c6eafcf8728c5fe5f61e38d949631`；1603 个 Release 文件与 bundle 逐文件哈希一致，ZIP 1605 个文件与 15 个目录同 bundle 一一对应，旧包保留。未请求真实模型、未连接服务器；腾讯云真实主机上的文件/转发/会话/布局工具与原生审批卡仍需在提供 `SSHAIRY_TEST_TARGET`/`SSHAIRY_TEST_PASSWORD` 后按 §2 验收。
 
