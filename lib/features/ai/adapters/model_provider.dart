@@ -247,7 +247,7 @@ int estimateModelRequestBytes(ModelRequest request) {
 Map<String, Object?> encodeModelRequest(ModelRequest request) {
   if (request.messages.isEmpty ||
       request.messages.length > 200 ||
-      request.tools.length > 32 ||
+      request.tools.length > 64 ||
       (!request.profile.tools && request.tools.isNotEmpty)) {
     throw const ModelFailure('invalidModelRequest');
   }

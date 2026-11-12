@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/ai/adapters/model_provider.dart';
 import 'package:sshairy/features/ai/adapters/sse.dart';
+import 'package:sshairy/features/ai/domain/agent_tool.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
 
 ModelProfile profile(ModelProtocol protocol, {String endpoint = 'https://model.example/v1'}) =>
@@ -74,6 +75,27 @@ void main() {
     expect(() => ModelProfile.fromJson({...p.toJson(), 'tools': 'true'}), throwsFormatException);
     expect(() => ModelProfile.fromJson({...p.toJson(), 'maxOutputTokens': p.contextWindow}), throwsFormatException);
     expect(() => ModelProfile.fromJson({...p.toJson(), 'key': 'secret'}), throwsFormatException);
+  });
+
+  test('a request carries the full agent tool catalog and rejects more than 64 tools', () {
+    ModelRequest request(List<ModelTool> tools) => ModelRequest(
+      profile: profile(ModelProtocol.openai),
+      system: '',
+      messages: [ModelMessage(ModelRole.user, text: 'hi')],
+      tools: tools,
+    );
+    final catalog = [
+      for (final tool in agentTools) ModelTool(tool.name, tool.description, const {'type': 'object'}),
+    ];
+    expect(catalog.length, greaterThan(32));
+    expect(encodeModelRequest(request(catalog))['tools'], hasLength(catalog.length));
+    final excess = [
+      for (var i = 0; i <= 64; i++) ModelTool('tool_$i', 'd', const {'type': 'object'}),
+    ];
+    expect(
+      () => encodeModelRequest(request(excess)),
+      throwsA(isA<ModelFailure>().having((error) => error.code, 'code', 'invalidModelRequest')),
+    );
   });
 
   test('SSE handles every UTF-8 byte boundary, CRLF, standalone CR, multiline data and comments', () async {
