@@ -105,7 +105,7 @@ Agent 不要求向量数据库、MCP、多 Agent、复杂编排框架或长记�
 
 | 概念 | 解决的问题 | 在当前项目中的位置 |
 |---|---|---|
-| Function calling / tool use | 让模型按约定提出结构化函数名和参数 | 已通过两种协议与六项本地工具实现 |
+| Function calling / tool use | 让模型按约定提出结构化函数名和参数 | 已通过两种协议与集中式本地工具目录实现 |
 | Context | 某一次请求实际发送给模型的信息 | 当前 turn 的消息、工具定义、获准结果；有大小限制 |
 | Memory | 跨请求/任务保留并按需取回的信息 | 当前有有界持久文本历史与内存草稿，明确继续后选择有限历史；没有检索式长期知识库 |
 | RAG | 检索相关材料，再作为上下文交给模型 | 当前没有检索知识库或向量库；RAG 本身也不会授予执行权限 |
@@ -197,8 +197,20 @@ flowchart TD
 | `diagnostics_collect` → `agent.diagnose` | `hostId`、`template` | template 只能是 `systemSummary`、`storageCapacity`、`processSummary`、`listeningPorts` 或 `serviceStates`；固定读取先审批，获批后共享有界结构化投影 |
 | `command_execute` → `agent.execute` | `hostId`、绝对 `cwd`、`command`、可选 `timeoutSeconds` | 默认 60 秒，允许 1–300 秒；按用户权限模式执行，动作批准包含退出状态、截断及有界输出摘录的使用 |
 | `output_read` → `agent.output` | `hostId`、`handle` | 只返回此前获准共享的文本；不读取任意文件，不扩大到原始未共享输出，也不重新执行命令 |
+| `terminal_screen_read` → `agent.terminalScreen` | 可选 `sessionId`、`maxLines` | 只读可见屏幕（≤200 行/32 KiB），不读回滚；四种模式逐次人工批准，拒绝后本 turn 不再询问 |
+| `job_start` / `job_read` / `job_status` / `job_stop` → `agent.jobs.*` | 与命令相同的 host/cwd/command/超时；读取用 `jobId`、`offset` | 与命令同审批；同一主机同时最多一个未结束 job；按字节 offset 读 ≤16 KiB 新输出；随 turn 结束取消，不跨重启恢复 |
+| `files_list` / `files_stat` / `files_read` | `hostId`、`path`，list 可选 `offset`，read 可选 `offset` | 仅远端 HostId；list 每页 ≤200 项，read 只返回 UTF-8 文本（文件 ≤256 KiB、页 ≤12 KiB、nextOffset/eof），二进制/超限拒绝 |
+| `files_write` / `files_mkdir` / `files_rename` / `files_delete` | `hostId`、路径、文本或覆盖开关 | 仅远端；write 默认不覆盖，覆盖用临时文件加原子替换；delete 无撤销；逐次按权限模式批准 |
+| `transfer_list` / `transfer_enqueue` / `transfer_cancel` | 传输 ID；enqueue 需两个远端 HostId、路径与目标目录 | 对模型不暴露本机路径；list 去掉源/目的路径；enqueue 只做远端到远端 |
+| `hosts_create` / `hosts_update` / `hosts_move` / `hosts_delete` | 主机字段、HostId、组路径 | 返回 ID/别名/组/标签/固定状态，不含地址、账号、代理或密钥；删除无撤销 |
+| `session_open` / `session_close` / `session_reconnect` | HostId 或 tabId | open 先过主机许可；close/reconnect 省略 tabId 时作用于当前窗口 |
+| `workspace_focus` / `workspace_split` / `workspace_rename` / `workspace_close_tabs` | tabId/paneId、方向、标题、范围 | 只调整本机布局；tabId 来自 terminal_list；split 复制现有会话 |
+| `settings_get` / `settings_patch` | 键值与可选 `expectedRevision` | 只碰 agentExposed 键；patch 按权限模式批准 |
+| `forwards_list` / `forwards_save` / `forwards_delete` / `forwards_start` / `forwards_stop` | 规则 ID/HostId/两端地址/端口 | start 的 hostId 必须等于规则保存的主机；非 loopback 暴露需 confirmExposed |
 
-对话按模型完整请求的顺序记录工具卡：主机、终端目录、窗口读取与输出读取显示紧凑的工具名与状态，`diagnostics_collect` 和 `command_execute` 复用执行卡。被拒绝、参数错误或取消也有终态；名称来自本地目录，未知工具不回显模型自填名称。历史只恢复这些可读记录，不重新执行工具；未结束的普通读取显示中断，未结束的远端执行仍视为结果未知。
+模型名、Capability ID、effect、主机参数与只读标记的唯一目录是 `lib/features/ai/domain/agent_tool.dart`；上表只列教学摘要。`plan.update` 尚未实现，不注册。
+
+对话按模型完整请求的顺序记录工具卡：主机、终端目录、窗口/屏幕读取、输出读取、文件、传输、会话、布局、设置和转发显示当前界面语言的本地工具名与状态，`diagnostics_collect`、`command_execute` 和 `job_start` 复用执行卡。动作审批卡显示目标主机与参数摘要；`file.write` 另显示字节数和有界内容预览。被拒绝、参数错误或取消也有终态；名称来自本地目录，未知工具不回显模型自填名称。历史只恢复这些可读记录，不重新执行工具；未结束的普通读取显示中断，未结束的远端执行仍视为结果未知。
 
 这些 schema 都拒绝未知字段，并有长度/范围限制。`command` 另限 UTF-8 4 KiB，`cwd` 必须是绝对路径且不含控制字符；schema 通过后仍可能被业务校验拒绝。模型工具调用示例：
 

@@ -24,7 +24,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | TerminalIo | 有序 bytes、writeInput、resize、close；数据路径不 JSON 化 |
 | TerminalContextReader | SSH/local typed 身份、session/generation/草稿 revision、已知 cwd、当前回显提示符投影；显式 readAiSnapshot 另限 200 行/32 KiB，不隐式读历史/输出，不包含本地 executable 或 shell 对象；发送授权仍在调用者 |
 | TerminalAiService | terminal 定义的无工具生成/补全端口，app 注入 AI 实现；只收固定上下文与当代有限历史，历史每项保留命令及可靠关联的有界结果/截断或不可用状态，禁止从回滚猜配；公开可用性/取消变更流，补全只有最小请求间隔未满时才通知剩余时长以延后首次请求，其他拒绝/重复/失败/abstain 不触发重排；通过调度与校验后真正开始请求才通知本地加载状态，不为等待停顿或限频显示生成中；不接触 shell/目录列表/dispatcher；AI 只被动观察已知 cwd，订阅不启动目录跟随或远端探测；配置与 Key/目标变化使请求失效 |
-| TerminalHistoryReader | app 从全部 workspace 标签/分屏与 session manager 的已连接会话交集提供目录和当前聚焦 SessionId；目录含安全名称、typed SSH/local 目标、SessionId/代次/历史修订及不外发的连接 binding。Agent 发送时冻结当前窗口并默认附其已知 cwd、提示符状态及最近有界命令/结果；其他窗口在四种模式下均须人工批准精确会话快照，不授予该主机连接/执行权限。不要求可编辑提示符、不读草稿/完整回滚、不新建连接或执行；审批、读取及后续模型请求重验仍打开/连接有效/身份与历史修订 |
+| TerminalHistoryReader | app 从全部 workspace 标签/分屏与 session manager 的已连接会话交集提供目录和当前聚焦 SessionId；目录含安全名称、typed SSH/local 目标、SessionId/代次/历史修订、tabId/paneId 及不外发的连接 binding。Agent 发送时冻结当前窗口并默认附其已知 cwd、提示符状态及最近有界命令/结果；其他窗口在四种模式下均须人工批准精确会话快照，不授予该主机连接/执行权限。`readScreen` 只投影可见屏幕（≤200 行/32 KiB），不读回滚，逐次读取仍需调用者取得人工批准。不要求可编辑提示符、不读草稿/完整回滚、不新建连接或执行；审批、读取及后续模型请求重验仍打开/连接有效/身份与历史修订 |
 | TerminalDraftAcceptor | acceptAiDraft(expected,text,suffix,cancel,isCurrent) 完整命令接受可替换精确匹配的已回显原文，端口内部退格并等待已识别空行回显后粘贴；后缀只追加精确回显前缀；重验实际 target/generation/revision/cwd/回显，替换中新输入/失效/超时不得继续粘贴，统一字符/UTF-8 限额，无 Enter/任意删行/执行参数；调用方另管焦点/IME/发送授权，不登记 Agent 工具 |
 | TransferManager | enqueue / cancel / retry / watch；任务不由 SftpPane 持有 |
 | SettingsService | get / patch(expectedRevision)；类型、范围、策略统一验证 |
@@ -50,7 +50,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | 监控 exec 租约 | 监控面板的 ServerMonitor | 面板卸载、标签切走、会话断开时停止轮询并归还；只在主机已连接时取用，不自己拨号 |
 | 文件 watcher / 临时副本 | ExternalEditManager | 用户结束编辑或退出处理完成；失败稿保留 |
 | Auth/host-key challenge | ConnectionAttempt | 完成、取消、超时或 generation 过期时失效 |
-| Agent stream / tool jobs | AgentRuntime | 单 turn 终态后清理；长 job 的所有者/期限/输出有界，Stop 不与独立轻量请求串错 |
+| Agent stream / tool jobs | AgentRuntime | 单 turn 终态后清理；后台 job 绑定本 turn 的 owner/取消令牌与一个已连接 target，输出进入本 turn 的 OutputStore，Stop/turn 结束取消；jobId 只在本次运行内有效，不持久化、不跨重启恢复 |
 | Agent 额外主机确认与会话许可 | AgentRuntime 持按 conversationId/HostId 及模型目的地/路由/安全修订绑定的内存许可；应用级 presenter 显示弹窗 | 确认前不得 prepare/探测/执行；拒绝/Stop/过期回调不能授予许可；删会话/退出清理，路由或授权变化撤销对应许可，历史恢复不复活 |
 | 行内生成（M4） | TerminalSession 的行内输入控制器持请求 token 与最近一次内存结果，共用 AI 网络调度 | 关闭弹窗/切换焦点仅隐藏；同输入与上下文重开复用，输入变化立即取消且只待手动重发；代次/上下文/授权/目的地变化、手动停止、关闭会话/AI 或退出取消并失效结果，边界见 AI §4.2 |
 | AI 补全（M4） | 当前 pane 输入控制器持短请求 token，共用 AI 网络调度 | 草稿/焦点/代次/上下文/授权/目的地变化取消，迟到结果不回填；关闭总 AI/退出全部收束，本地 loading 不写远端 |
@@ -80,11 +80,13 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 
 一期最小目录：host.list/create/update/move/delete/deleteMany、group.reorder、session.open/openLocal/close/reconnect、workspace.split/focus/closeTabs、settings.get/patch；随 M2/M3 添加 files 与 forwarding。`session.openLocal` 只从本机发现的 shell 中按 executable 选取，不允许模型传任意程序/参数，当前不向 Agent 开放。没有实现的 capability 不注册，不用空成功响应占位。
 
+M4d 向 Agent 开放的现有能力为：file.list/stat/read/write/mkdir/rename/delete、transfer.list/enqueue/cancel、host.create/update/move/delete、session.open/close/reconnect、workspace.focus/split/renameTab/closeTabs、settings.get/patch、forward.list/save/delete/start/stop，以及 `agent.*` 主机/终端/诊断/命令/输出/后台 job 工具。文件能力对 Agent 必须带 HostId，不接受“本机”省略；`file.read` 只返回 UTF-8 有界页（文件 ≤256 KiB、页 ≤12 KiB、nextOffset/eof，二进制/超限拒绝），`file.write` 默认不覆盖，覆盖走同目录临时文件加原子替换。`transfer.enqueue` 对 Agent 要求两个远端 HostId，模型不传本机路径。`host.*` 对 Agent 返回去掉地址/账号/代理/密钥的安全 DTO。`forwards_start` 的 hostId 必须与规则保存的主机一致。
+
 `workspace.split` 保留 axis（horizontal/vertical，向右/下分屏），可提供 tabId、paneId 与 side（left/right/top/bottom）固定目标和方向；typed UI 同样复用该用例，可带 expectedLayout 拒绝过期拖放。为命中 pane 的同一目标新建一个 shell，校验缺失/超限在创建前完成，布局单次发布/保存；新会话继续走原信任/认证或本地 PTY 流程，原会话不重启。
 
 `workspace.moveTerminal` 接收 sourceTabId、可选 sourcePaneId、targetTabId、targetPaneId 与 side（left/right/top/bottom），搬移整个标签树或一个 pane，typed UI 可另带源/目标布局身份以拒绝过期拖放。`workspace.detachPane` 接收 tabId、paneId 与插入标签索引，将 pane 移到独立标签；均为 localChange，复用同一确定性布局校验，缺失/自包含/超限整次拒绝，不打开或关闭会话，不向 Agent 开放。几何可用性在 UI 检查，松开时重验；移动后资源所有者仍为 TerminalSessionManager。
 
-`workspace.closeTabs` 接收 tabId 和 scope（left/right/others），保留基准标签，按标签顺序关闭目标中的所有 shell，再单次更新和保存工作区；活动标签被关闭时切到基准，否则保留原活动页。缺失标签返回 notFound，空目标返回 closed: 0，不向 agent 开放。传输和隧道遵循原租约所有权，不因批量关闭 shell 而被主动取消。主机批量删除和同级组排序的原子边界见 HOST_INHERITANCE。
+`workspace.closeTabs` 接收 tabId 和 scope（left/right/others），保留基准标签，按标签顺序关闭目标中的所有 shell，再单次更新和保存工作区；活动标签被关闭时切到基准，否则保留原活动页。缺失标签返回 notFound，空目标返回 closed: 0。对 Agent 开放，模型只从 `terminal_list` 的 tabId 取值，动作根据当前权限模式批准。传输和隧道遵循原租约所有权，不因批量关闭 shell 而被主动取消。主机批量删除和同级组排序的原子边界见 HOST_INHERITANCE。
 
 ## 4. 重试、撤销与审计
 
