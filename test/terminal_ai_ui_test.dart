@@ -335,11 +335,15 @@ void main() {
   });
 
   for (final draft in ['', 'git status', 'unfamiliar', '中文/文件']) {
-    testWidgets('ordinary input "$draft" has no AI badge but can explicitly open the editor', (tester) async {
+    testWidgets('ordinary input "$draft" keeps a subdued AI badge and opens only on explicit click', (tester) async {
       await mount(tester, draft);
-      expect(find.byKey(const ValueKey('terminal-ai-toggle')), findsNothing);
+      final badge = find.byKey(const ValueKey('terminal-ai-toggle'));
+      expect(badge, findsOneWidget);
+      final color = Theme.of(tester.element(badge)).colorScheme.onSurfaceVariant;
+      expect(tester.widget<IconButton>(badge).style!.foregroundColor!.resolve({}), color);
       expect(ai.generations, isEmpty);
-      await openWithShortcut(tester);
+      await tester.tap(badge);
+      await tester.pump();
       expect(find.byKey(const ValueKey('terminal-ai-composer')), findsOneWidget);
       expect(ai.generations, hasLength(draft.isEmpty ? 0 : 1));
     });
@@ -347,7 +351,10 @@ void main() {
 
   testWidgets('a short natural-language request shows the badge without a global length threshold', (tester) async {
     await mount(tester, '查看内存');
-    expect(find.byKey(const ValueKey('terminal-ai-toggle')), findsOneWidget);
+    final badge = find.byKey(const ValueKey('terminal-ai-toggle'));
+    expect(badge, findsOneWidget);
+    final color = Theme.of(tester.element(badge)).colorScheme.primary;
+    expect(tester.widget<IconButton>(badge).style!.foregroundColor!.resolve({}), color);
     expect(ai.generations, isEmpty);
   });
 

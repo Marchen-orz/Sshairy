@@ -803,6 +803,28 @@ void main() {
       }
     });
 
+    for (final scale in [1.0, 1.5]) {
+      testWidgets('empty path completion fits its reserved status row at $scale scale', (tester) async {
+        final shell = await mount(
+          tester,
+          scale: scale,
+          paths: _Paths(entries: const []),
+        );
+        try {
+          await _feed(tester, shell, '\x1b]7;file://box/work\x07u@box:~\$ cat ');
+          final popup = find.byKey(const ValueKey('command-completion-popup'));
+          expect(popup, findsOneWidget);
+          expect(find.text('No matches'), findsOneWidget);
+          expect(session.commandAssistance.value.candidates, isEmpty);
+          expect(tester.getSize(popup).height, closeTo((CompletionSize.row * 2 + Space.sm) * scale, .1));
+          expect(shell.writes, isEmpty);
+          expect(tester.takeException(), isNull);
+        } finally {
+          await unmount(tester);
+        }
+      });
+    }
+
     testWidgets('arrows browse paths virtually and Tab appends a safely escaped selection', (tester) async {
       final paths = _Paths();
       final shell = await mount(tester, paths: paths);

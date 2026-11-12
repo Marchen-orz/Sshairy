@@ -215,12 +215,9 @@ extension _TerminalAiPane on _TerminalPaneState {
   Widget _inlineAiBadge(BoxConstraints box) => ValueListenableBuilder<Rect?>(
     valueListenable: _completionCursor,
     builder: (context, cursor, _) {
-      if (cursor == null ||
-          !_canOpenInlineAi ||
-          _inlineAiOpen ||
-          terminalInputIntent(_session.readAiContext().draft ?? '') != TerminalInputIntent.naturalLanguage) {
-        return const SizedBox.shrink();
-      }
+      if (cursor == null || !_canOpenInlineAi || _inlineAiOpen) return const SizedBox.shrink();
+      final highlighted =
+          terminalInputIntent(_session.readAiContext().draft ?? '') == TerminalInputIntent.naturalLanguage;
       final scheme = Theme.of(context).colorScheme;
       const size = 20.0, gap = 2.0;
       final left = min(max(cursor.right + gap, gap), max(gap, box.maxWidth - size - gap));
@@ -243,7 +240,7 @@ extension _TerminalAiPane on _TerminalPaneState {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
               backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: .92),
-              foregroundColor: scheme.primary,
+              foregroundColor: highlighted ? scheme.primary : scheme.onSurfaceVariant,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
             ),
             icon: const Icon(Icons.auto_awesome_outlined, size: 12),

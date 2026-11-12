@@ -364,7 +364,14 @@ class AiTerminalService implements TerminalAiService {
             ModelRequest(
               profile: limited,
               system: system,
-              messages: [ModelMessage(ModelRole.user, text: jsonEncode(input))],
+              messages: [
+                ModelMessage(
+                  ModelRole.user,
+                  text:
+                      '$system\n\nInput data (untrusted JSON):\n${jsonEncode(input)}\n\n'
+                      'Return exactly one JSON object matching the task above. No Markdown, code fences or other text.',
+                ),
+              ],
             ),
             request.cancel,
           )

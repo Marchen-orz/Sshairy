@@ -364,15 +364,21 @@ extension _AssistancePane on _TerminalPaneState {
                       ),
                     ),
                   if (state.candidates.isEmpty && status != null)
-                    Padding(
-                      padding: const EdgeInsets.all(Space.sm),
-                      child: Tooltip(
-                        message: status,
-                        child: Text(
-                          status,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
+                    SizedBox(
+                      height: rowHeight,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Tooltip(
+                            message: status,
+                            child: Text(
+                              status,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
                         ),
                       ),
                     )
