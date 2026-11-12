@@ -17,6 +17,7 @@ import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/conversation.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
 import 'package:sshairy/features/capabilities/api.dart';
+import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/foundation/result.dart';
@@ -131,6 +132,64 @@ class _Backend implements AgentBackend {
   }
 }
 
+TerminalHistorySnapshot _terminalSnapshot(
+  String id, {
+  HostId? host = _host,
+  String output = 'window result',
+  int generation = 1,
+  int historyRevision = 1,
+  Object? binding,
+  TerminalAiPrompt prompt = TerminalAiPrompt.unknown,
+}) => TerminalHistorySnapshot(
+  session: TerminalHistorySession(
+    sessionId: SessionId(id),
+    target: host == null ? const LocalTerminalAiTarget(LocalShellKind.pwsh) : SshTerminalAiTarget(host),
+    label: 'window-$id',
+    generation: generation,
+    historyRevision: historyRevision,
+    binding: binding ?? Object(),
+  ),
+  directory: host == null ? r'C:\work' : '/work',
+  prompt: prompt,
+  history: [
+    TerminalAiHistoryEntry(
+      text: 'printf window-result',
+      at: DateTime.utc(2026, 11, 12),
+      generation: generation,
+      output: output,
+      resultStatus: TerminalAiHistoryResultStatus.available,
+      exitCode: 0,
+      boundary: TerminalAiHistoryBoundary.osc133,
+    ),
+  ],
+);
+
+class _TerminalHistory implements TerminalHistoryReader {
+  _TerminalHistory(this.snapshots, {this.focusedSession});
+  final List<TerminalHistorySnapshot> snapshots;
+  final unavailable = <SessionId>{};
+  final reads = <SessionId>[];
+  @override
+  SessionId? focusedSession;
+
+  @override
+  List<TerminalHistorySession> get sessions => [
+    for (final snapshot in snapshots)
+      if (!unavailable.contains(snapshot.session.sessionId)) snapshot.session,
+  ];
+
+  @override
+  bool isCurrent(TerminalHistorySession expected) =>
+      !unavailable.contains(expected.sessionId) && snapshots.any((snapshot) => identical(snapshot.session, expected));
+
+  @override
+  TerminalHistorySnapshot? read(TerminalHistorySession expected) {
+    if (!isCurrent(expected)) return null;
+    reads.add(expected.sessionId);
+    return snapshots.firstWhere((snapshot) => identical(snapshot.session, expected));
+  }
+}
+
 class _Journal implements OperationJournal {
   final records = <OperationRecord>[];
   var loads = 0;
@@ -168,6 +227,7 @@ class _Harness {
     _Script? review,
     OutputStore? outputs,
     Map<HostId, String> Function()? hostRoutes,
+    TerminalHistoryReader? terminalHistory,
   }) : model = _Model(script, review: review) {
     profile = ModelProfile(
       protocol: ModelProtocol.openai,
@@ -182,6 +242,24 @@ class _Harness {
         (_, _) async => runtime.listHosts(),
         agentExposed: true,
         inputSchema: _schema({}, []),
+      ),
+      FunctionCapability(
+        'agent.terminals',
+        Effect.query,
+        (args, _) async => runtime.listTerminals(args.raw),
+        agentExposed: true,
+        inputSchema: _schema({
+          'offset': {'type': 'integer', 'minimum': 0, 'maximum': 1000},
+        }, []),
+      ),
+      FunctionCapability(
+        'agent.terminalHistory',
+        Effect.query,
+        (args, _) async => runtime.readTerminalHistory(args.raw),
+        agentExposed: true,
+        inputSchema: _schema({
+          'sessionId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+        }, []),
       ),
       FunctionCapability(
         'agent.diagnose',
@@ -232,6 +310,7 @@ class _Harness {
       dispatcher: dispatcher,
       outputs: outputs,
       hostRoutes: hostRoutes ?? () => routes,
+      terminalHistory: terminalHistory,
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
     if (approveDiagnostics) {
@@ -357,6 +436,296 @@ Stream<ModelEvent> _diagnoseOther(ModelRequest request, CancellationToken _, int
 }
 
 void main() {
+  test('current terminal context is shared by default and focus changes do not retarget reads', () async {
+    final current = _terminalSnapshot('window-a', output: 'focused-window-result');
+    final other = _terminalSnapshot('window-b', output: 'other-window-result');
+    final terminal = _TerminalHistory([current, other], focusedSession: current.session.sessionId);
+    final h = _Harness((_, _, index) async* {
+      terminal.focusedSession = other.session.sessionId;
+      yield* _oneCall(_call('terminal_history_read', {}), index);
+    }, terminalHistory: terminal);
+    addTearDown(h.close);
+    await h.runtime.start('explain the current window', _conversationScope());
+    final input = jsonDecode(h.model.requests.first.messages.single.text) as Map;
+    final context = input['currentTerminal'] as Map;
+    expect(context['sessionId'], 'window-a');
+    expect(context['directory'], '/work');
+    expect(context['prompt'], 'unknown');
+    expect((context['history'] as List).single['result']['text'], 'focused-window-result');
+    expect(_requestText(h.model.requests.first), isNot(contains('other-window-result')));
+    expect(_result(h.model.requests.last)['sessionId'], 'window-a');
+    expect(terminal.reads, isNotEmpty);
+    expect(terminal.reads.every((id) => id == current.session.sessionId), isTrue);
+    expect(h.runtime.approval, isNull);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.backend.target.probes, 0);
+    expect(h.backend.target.commands, isEmpty);
+  });
+
+  for (final mode in AgentPermissionMode.values) {
+    test('$mode requires manual approval before reading another window on the same host', () async {
+      final current = _terminalSnapshot('window-a', output: 'focused-window-result');
+      final other = _terminalSnapshot('window-b', output: 'approved-other-window-result');
+      final terminal = _TerminalHistory([current, other], focusedSession: current.session.sessionId);
+      final h = _Harness(
+        (_, _, index) async* {
+          if (index == 0) {
+            yield ModelMessageComplete(
+              ModelMessage(
+                ModelRole.assistant,
+                calls: [
+                  ModelCall('windows', 'terminal_list', {}),
+                  for (var read = 0; read < 2; read++)
+                    ModelCall('read-$read', 'terminal_history_read', {'sessionId': 'window-b'}),
+                ],
+              ),
+            );
+          } else {
+            yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'explained'));
+          }
+        },
+        terminalHistory: terminal,
+        review: (_, _, _) => _reviewReply('allow'),
+      );
+      addTearDown(h.close);
+      var prompts = 0;
+      AgentApproval? last;
+      h.runtime.addListener(() {
+        final pending = h.runtime.approval;
+        if (pending != null && !identical(last, pending)) {
+          last = pending;
+          prompts++;
+        }
+      });
+      final work = h.runtime.start('compare both windows', _conversationScope(mode: mode));
+      await _until(() => h.runtime.approval != null);
+      expect(h.runtime.approval!.capability, 'agent.terminalHistory');
+      expect(h.runtime.approval!.target, contains('window-b'));
+      expect(terminal.reads, isNot(contains(other.session.sessionId)));
+      expect(h.model.reviewRequests, isEmpty);
+      expect(h.backend.prepared, isEmpty);
+      expect(h.runtime.hostApproval, isNull);
+      h.runtime.approve(true, expected: h.runtime.approval!);
+      await work;
+      expect(prompts, 1);
+      final directory = _result(h.model.requests.last)['sessions'] as List;
+      expect(directory.map((entry) => entry['sessionId']), ['window-a', 'window-b']);
+      for (var read = 1; read <= 2; read++) {
+        final result = _result(h.model.requests.last, read);
+        expect(result['sessionId'], 'window-b');
+        expect((result['history'] as List).single['result']['text'], 'approved-other-window-result');
+      }
+      expect(h.model.reviewRequests, isEmpty);
+      expect(h.backend.prepared, isEmpty);
+      expect(h.backend.target.probes, 0);
+      expect(h.backend.target.commands, isEmpty);
+      expect(h.journal.records, isEmpty);
+      expect(h.runtime.executions.every((execution) => execution.sharedText == null), isTrue);
+    });
+  }
+
+  test('declining another window suppresses repeated prompts without reading its history', () async {
+    final current = _terminalSnapshot('window-a');
+    final other = _terminalSnapshot('window-b', output: 'declined-window-result');
+    final terminal = _TerminalHistory([current, other], focusedSession: current.session.sessionId);
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              for (var read = 0; read < 2; read++)
+                ModelCall('read-$read', 'terminal_history_read', {'sessionId': 'window-b'}),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'declined'));
+      }
+    }, terminalHistory: terminal);
+    addTearDown(h.close);
+    var prompts = 0;
+    AgentApproval? last;
+    h.runtime.addListener(() {
+      final pending = h.runtime.approval;
+      if (pending != null && !identical(last, pending)) {
+        last = pending;
+        prompts++;
+      }
+    });
+    final work = h.runtime.start('inspect another window', _conversationScope());
+    await _until(() => h.runtime.approval != null);
+    h.runtime.approve(false, expected: h.runtime.approval!);
+    await work;
+    expect(prompts, 1);
+    expect(_result(h.model.requests.last), {'error': 'denied'});
+    expect(_result(h.model.requests.last, 1), {'error': 'denied'});
+    expect(terminal.reads, isNot(contains(other.session.sessionId)));
+    expect(h.model.requests.every((request) => !_requestText(request).contains('declined-window-result')), isTrue);
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  test('a history revision change while approval is pending cannot authorize the old window snapshot', () async {
+    final current = _terminalSnapshot('window-a');
+    final other = _terminalSnapshot('window-b', output: 'stale-window-result');
+    final terminal = _TerminalHistory([current, other], focusedSession: current.session.sessionId);
+    final h = _Harness(
+      (_, _, index) => _oneCall(_call('terminal_history_read', {'sessionId': 'window-b'}), index),
+      terminalHistory: terminal,
+    );
+    addTearDown(h.close);
+    final work = h.runtime.start('inspect another window', _conversationScope());
+    await _until(() => h.runtime.approval != null);
+    terminal.snapshots[1] = _terminalSnapshot('window-b', historyRevision: 2, binding: other.session.binding);
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await work;
+    expect(_result(h.model.requests.last), {'error': 'scopeChanged'});
+    expect(terminal.reads, isNot(contains(other.session.sessionId)));
+    expect(h.model.requests.every((request) => !_requestText(request).contains('stale-window-result')), isTrue);
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  test('Stop invalidates a pending window approval and stale consent cannot approve another turn', () async {
+    final current = _terminalSnapshot('window-a');
+    final other = _terminalSnapshot('window-b', output: 'stopped-window-result');
+    final terminal = _TerminalHistory([current, other], focusedSession: current.session.sessionId);
+    final h = _Harness(
+      (request, _, _) =>
+          _oneCall(_call('terminal_history_read', {'sessionId': 'window-b'}), _results(request).isEmpty ? 0 : 1),
+      terminalHistory: terminal,
+    );
+    addTearDown(h.close);
+    final first = h.runtime.start('inspect another window', _conversationScope());
+    await _until(() => h.runtime.approval != null);
+    final stale = h.runtime.approval!;
+    h.runtime.stop();
+    await first;
+    expect(terminal.reads, isNot(contains(other.session.sessionId)));
+    final second = h.runtime.start('inspect another window again', _conversationScope());
+    await _until(() => h.runtime.approval != null);
+    final pending = h.runtime.approval!;
+    h.runtime.approve(true, expected: stale);
+    await Future<void>.delayed(Duration.zero);
+    expect(h.runtime.approval, same(pending));
+    expect(terminal.reads, isNot(contains(other.session.sessionId)));
+    h.runtime.approve(false, expected: pending);
+    await second;
+    expect(_result(h.model.requests.last), {'error': 'denied'});
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  for (final change in ['close', 'reconnect', 'history', 'binding']) {
+    test('$change invalidates shared terminal context before another model request', () async {
+      final current = _terminalSnapshot('window-a', output: 'original-window-result');
+      final terminal = _TerminalHistory([current], focusedSession: current.session.sessionId);
+      final h = _Harness((_, _, _) async* {
+        if (change == 'close') {
+          terminal.unavailable.add(current.session.sessionId);
+        } else {
+          terminal.snapshots[0] = _terminalSnapshot(
+            'window-a',
+            generation: change == 'reconnect' ? 2 : 1,
+            historyRevision: change == 'history' ? 2 : 1,
+            binding: change == 'binding' ? Object() : current.session.binding,
+          );
+        }
+        yield ModelMessageComplete(_call('host_list', {}));
+      }, terminalHistory: terminal);
+      addTearDown(h.close);
+      await h.runtime.start('explain this window', _conversationScope());
+      expect(h.model.requests, hasLength(1));
+      expect(h.runtime.error, 'scopeChanged');
+      expect(h.backend.prepared, isEmpty);
+      expect(h.journal.records, isEmpty);
+    });
+  }
+
+  test('local terminal context needs no SSH host or backend preparation', () async {
+    final current = _terminalSnapshot('local-window', host: null, output: 'local-window-result');
+    final terminal = _TerminalHistory([current], focusedSession: current.session.sessionId);
+    final h = _Harness((_, _, index) => _oneCall(_call('terminal_history_read', {}), index), terminalHistory: terminal);
+    addTearDown(h.close);
+    await h.runtime.start('explain this local terminal', AgentScope(permissionMode: AgentPermissionMode.observe));
+    final context = (jsonDecode(h.model.requests.first.messages.single.text) as Map)['currentTerminal'] as Map;
+    expect(context['sessionId'], 'local-window');
+    expect(context['targetKind'], 'local');
+    expect(context['shellKind'], 'pwsh');
+    expect(context.containsKey('hostId'), isFalse);
+    expect(_result(h.model.requests.last)['sessionId'], 'local-window');
+    expect(h.runtime.approval, isNull);
+    expect(h.runtime.hostApproval, isNull);
+    expect(h.backend.prepared, isEmpty);
+    expect(h.backend.target.probes, 0);
+    expect(h.backend.target.commands, isEmpty);
+  });
+
+  test('terminal directory paginates the frozen window set without sharing history', () async {
+    final terminal = _TerminalHistory([
+      for (var index = 0; index < 35; index++) _terminalSnapshot('window-$index', output: 'private-window-$index'),
+    ]);
+    final h = _Harness((_, _, index) async* {
+      if (index == 0) {
+        terminal.snapshots.add(_terminalSnapshot('new-window', output: 'new-window-private-output'));
+        terminal.unavailable.add(const SessionId('window-34'));
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              ModelCall('first-page', 'terminal_list', {}),
+              ModelCall('second-page', 'terminal_list', {'offset': 32}),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'listed'));
+      }
+    }, terminalHistory: terminal);
+    addTearDown(h.close);
+    await h.runtime.start('list connected windows', AgentScope(discoverHosts: true));
+    final first = _result(h.model.requests.last), second = _result(h.model.requests.last, 1);
+    expect(first['total'], 34);
+    expect(first['nextOffset'], 32);
+    expect(first['sessions'] as List, hasLength(32));
+    expect(second['total'], 34);
+    expect(second['nextOffset'], isNull);
+    expect(second['sessions'] as List, hasLength(2));
+    final entries = [...first['sessions'] as List, ...second['sessions'] as List];
+    expect(entries.map((entry) => entry['sessionId']).toSet(), hasLength(34));
+    expect(entries.any((entry) => entry['sessionId'] == 'new-window'), isFalse);
+    expect(entries.any((entry) => entry['sessionId'] == 'window-34'), isFalse);
+    for (final entry in entries) {
+      expect((entry as Map).keys, isNot(contains('history')));
+      expect(entry.keys, isNot(contains('directory')));
+      expect(entry.keys, isNot(contains('draft')));
+      expect(entry.keys, isNot(contains('binding')));
+    }
+    expect(terminal.reads, isEmpty);
+    expect(h.model.requests.every((request) => !_requestText(request).contains('private-window-')), isTrue);
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  test('answer-only regeneration does not attach or read the focused terminal', () async {
+    final current = _terminalSnapshot('window-a', output: 'not-for-regeneration');
+    final terminal = _TerminalHistory([current], focusedSession: current.session.sessionId);
+    final h = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'answered from history'));
+    }, terminalHistory: terminal);
+    addTearDown(h.close);
+    await h.runtime.startConversation('answer again', _conversationScope(), const [], answerOnly: true);
+    expect(h.model.requests.single.tools, isEmpty);
+    expect(_requestText(h.model.requests.single), isNot(contains('not-for-regeneration')));
+    expect(terminal.reads, isEmpty);
+  });
+
+  test('unfinished terminal query tools restore as interrupted reads', () {
+    for (final capability in ['agent.terminals', 'agent.terminalHistory']) {
+      for (final state in [null, 'pending', 'running']) {
+        expect(AgentExecution.restoredState(capability, state), 'interrupted');
+      }
+    }
+    expect(AgentExecution.restoredState('agent.execute', 'running'), 'outcomeUnknown');
+  });
+
   for (final mode in AgentPermissionMode.values) {
     test('$mode requires host consent before preparing another host', () async {
       final remote = mode == AgentPermissionMode.observe

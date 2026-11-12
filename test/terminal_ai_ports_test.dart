@@ -3,10 +3,13 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sshairy/app/ai_terminal_history.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/terminal/adapters/completion_specs.dart';
+import 'package:sshairy/features/workspace/api.dart';
+import 'package:sshairy/features/workspace/domain/layout.dart' show Layout;
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/ids.dart';
 
@@ -347,6 +350,121 @@ void main() {
     expect(await session.acceptAiDraft(beforeEnter, 'pwd'), InsertResult.stale);
     expect(shell.writes, isEmpty);
     session.close();
+    manager.closeAll();
+    await tester.pump();
+  });
+
+  testWidgets('history reads completed records while running and never include an unsubmitted draft', (tester) async {
+    final shell = await connect(tester);
+    await _feed(tester, shell.echo, '\x1b]7;file://box/work\x07u@box:~\$ printf value');
+    session.commandSubmitted();
+    final pending = session.historySession!;
+    await _feed(tester, shell.echo, '\r\nfirst\r\nu@box:~\$ ');
+    expect(session.readHistory(pending), isNull, reason: 'completing a result changes its history revision');
+    final completed = session.historySession!;
+    await _feed(tester, shell.echo, 'draft-only-text');
+    final snapshot = session.readHistory(completed)!;
+    expect(snapshot.directory, '/work');
+    expect(snapshot.prompt, TerminalAiPrompt.recognized);
+    expect(snapshot.history.single.text, 'printf value');
+    expect(snapshot.history.single.output.trim(), 'first');
+    expect(jsonEncode(snapshot.history.map(terminalAiHistoryData).toList()), isNot(contains('draft-only-text')));
+    session.commandSubmitted();
+    expect(session.readHistory(completed), isNull);
+    final running = session.historySession!;
+    await _feed(tester, shell.echo, '\r\nworking');
+    expect(session.readAiContext().prompt, TerminalAiPrompt.unknown);
+    final result = session.readHistory(running)!;
+    expect(result.prompt, TerminalAiPrompt.unknown);
+    expect(result.history.first.output.trim(), 'first');
+    expect(result.history.last.resultStatus, TerminalAiHistoryResultStatus.unavailable);
+    await _feed(tester, shell.echo, '\x1b]7;file://box/token/cache\x07');
+    expect(session.readHistory(running)!.directory, isNull);
+    expect(shell.writes, isEmpty);
+  });
+
+  testWidgets('history rejects a stale SSH lease even while its existing shell remains connected', (tester) async {
+    final host = session.host;
+    session.close();
+    manager.closeAll();
+    var revision = 0;
+    manager = ConnectionManager((_, _, _) async => transport, securityRevision: () => [revision]);
+    session = TerminalSession(
+      const SessionId('session'),
+      host,
+      manager,
+      completionSpecs: CompletionSpecs(bundle: _Assets()),
+    );
+    await connect(tester);
+    final expected = session.historySession!;
+    expect(session.readHistory(expected), isNotNull);
+    revision++;
+    expect(session.status, SessionStatus.connected);
+    expect(session.canInsert, isTrue);
+    expect(session.historySession, isNull);
+    expect(session.historySessionCurrent(expected), isFalse);
+    expect(session.readHistory(expected), isNull);
+  });
+
+  testWidgets('workspace history includes background splits and intersects the session manager', (tester) async {
+    await connect(tester);
+    final others = [
+      for (final id in ['split', 'background', 'orphan', 'idle'])
+        TerminalSession(SessionId(id), session.host, manager, completionSpecs: CompletionSpecs(bundle: _Assets())),
+    ];
+    for (final other in others) {
+      addTearDown(other.close);
+      if (other.id != const SessionId('idle')) unawaited(other.connect(NoPrompts()));
+    }
+    final local = TerminalSession.local(
+      const SessionId('local'),
+      const LocalShell(kind: LocalShellKind.cmd, executable: r'C:\Windows\System32\cmd.exe'),
+      _Factory(),
+      completionSpecs: CompletionSpecs(bundle: _Assets()),
+    );
+    addTearDown(local.close);
+    unawaited(local.connect());
+    await tester.pump();
+    final current = {session.id: session, for (final other in others) other.id: other, local.id: local};
+    final split = Layout.single(
+      const PaneId('first'),
+      session.id,
+    ).split(const PaneId('first'), SplitAxis.horizontal, const PaneId('second'), others.first.id)!;
+    final initial = WorkspaceState(
+      active: const TabId('active'),
+      tabs: [
+        WorkspaceTab(const TabId('active'), split),
+        WorkspaceTab(const TabId('background'), Layout.single(const PaneId('third'), others[1].id)),
+        WorkspaceTab(const TabId('local'), Layout.single(const PaneId('local'), local.id)),
+        WorkspaceTab(const TabId('idle'), Layout.single(const PaneId('idle'), others.last.id)),
+        WorkspaceTab(const TabId('missing'), Layout.single(const PaneId('missing'), const SessionId('missing'))),
+      ],
+    );
+    var workspace = initial;
+    final reader = WorkspaceTerminalHistoryReader(() => workspace, () => current);
+    expect(reader.sessions.map((entry) => entry.sessionId), [session.id, others.first.id, others[1].id, local.id]);
+    expect(reader.sessions.where((entry) => entry.target is SshTerminalAiTarget), hasLength(3));
+    expect(reader.sessions.last.target, isA<LocalTerminalAiTarget>());
+    expect(reader.focusedSession, split.focusedLeaf.session);
+    final expected = reader.sessions.first;
+    expect(reader.read(expected), isNotNull);
+    workspace = WorkspaceState(tabs: initial.tabs.skip(1).toList());
+    expect(reader.focusedSession, isNull);
+    expect(reader.isCurrent(expected), isFalse);
+    expect(reader.read(expected), isNull);
+    workspace = initial;
+    current.remove(expected.sessionId);
+    expect(reader.isCurrent(expected), isFalse);
+    expect(reader.sessions.map((entry) => entry.sessionId), isNot(contains(expected.sessionId)));
+    current[expected.sessionId] = session;
+    expect(reader.isCurrent(expected), isTrue);
+    session.close();
+    expect(reader.isCurrent(expected), isFalse);
+    expect(reader.read(expected), isNull);
+    for (final other in others) {
+      other.close();
+    }
+    local.close();
     manager.closeAll();
     await tester.pump();
   });

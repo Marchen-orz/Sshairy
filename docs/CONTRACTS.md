@@ -24,6 +24,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 | TerminalIo | 有序 bytes、writeInput、resize、close；数据路径不 JSON 化 |
 | TerminalContextReader | SSH/local typed 身份、session/generation/草稿 revision、已知 cwd、当前回显提示符投影；显式 readAiSnapshot 另限 200 行/32 KiB，不隐式读历史/输出，不包含本地 executable 或 shell 对象；发送授权仍在调用者 |
 | TerminalAiService | terminal 定义的无工具生成/补全端口，app 注入 AI 实现；只收固定上下文与当代有限历史，历史每项保留命令及可靠关联的有界结果/截断或不可用状态，禁止从回滚猜配；公开可用性/取消变更流，补全只有最小请求间隔未满时才通知剩余时长以延后首次请求，其他拒绝/重复/失败/abstain 不触发重排；通过调度与校验后真正开始请求才通知本地加载状态，不为等待停顿或限频显示生成中；不接触 shell/目录列表/dispatcher；AI 只被动观察已知 cwd，订阅不启动目录跟随或远端探测；配置与 Key/目标变化使请求失效 |
+| TerminalHistoryReader | app 从全部 workspace 标签/分屏与 session manager 的已连接会话交集提供目录和当前聚焦 SessionId；目录含安全名称、typed SSH/local 目标、SessionId/代次/历史修订及不外发的连接 binding。Agent 发送时冻结当前窗口并默认附其已知 cwd、提示符状态及最近有界命令/结果；其他窗口在四种模式下均须人工批准精确会话快照，不授予该主机连接/执行权限。不要求可编辑提示符、不读草稿/完整回滚、不新建连接或执行；审批、读取及后续模型请求重验仍打开/连接有效/身份与历史修订 |
 | TerminalDraftAcceptor | acceptAiDraft(expected,text,suffix,cancel,isCurrent) 完整命令接受可替换精确匹配的已回显原文，端口内部退格并等待已识别空行回显后粘贴；后缀只追加精确回显前缀；重验实际 target/generation/revision/cwd/回显，替换中新输入/失效/超时不得继续粘贴，统一字符/UTF-8 限额，无 Enter/任意删行/执行参数；调用方另管焦点/IME/发送授权，不登记 Agent 工具 |
 | TransferManager | enqueue / cancel / retry / watch；任务不由 SftpPane 持有 |
 | SettingsService | get / patch(expectedRevision)；类型、范围、策略统一验证 |

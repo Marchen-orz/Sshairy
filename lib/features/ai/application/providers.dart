@@ -6,6 +6,7 @@ import '../../../foundation/data_dir.dart';
 import '../../../foundation/ids.dart';
 import '../../capabilities/api.dart';
 import '../../credentials/api.dart';
+import '../../terminal/api.dart';
 import '../adapters/model_provider.dart';
 import '../adapters/operation_journal.dart';
 import '../domain/agent.dart';
@@ -35,6 +36,7 @@ final agentConversationRoutesProvider = Provider<Map<HostId, String> Function()>
       () => const {},
 );
 
+final agentTerminalHistoryProvider = Provider<TerminalHistoryReader?>((_) => null);
 final agentBackendProvider = Provider<AgentBackend>((_) => throw StateError('Agent backend not installed'));
 final aiModelProvider = Provider<ModelProvider>((ref) {
   final provider = HttpModelProvider(
@@ -63,6 +65,7 @@ final agentRuntimeProvider = Provider<AgentRuntime>((ref) {
     model: ref.read(aiModelProvider),
     estimateInputBytes: estimateModelRequestBytes,
     backend: ref.read(agentBackendProvider),
+    terminalHistory: ref.read(agentTerminalHistoryProvider),
     journal: ref.read(aiJournalProvider),
     dispatcher: ref.read(capabilityDispatcherProvider),
     hostRoutes: () => ref.read(agentConversationRoutesProvider)(),

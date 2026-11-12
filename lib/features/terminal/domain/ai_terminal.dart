@@ -22,6 +22,41 @@ final class LocalTerminalAiTarget extends TerminalAiTarget {
 
 enum TerminalAiPrompt { unavailable, unknown, recognized, semantic }
 
+class TerminalHistorySession {
+  const TerminalHistorySession({
+    required this.sessionId,
+    required this.target,
+    required this.label,
+    required this.generation,
+    required this.historyRevision,
+    required this.binding,
+  });
+
+  final SessionId sessionId;
+  final TerminalAiTarget target;
+  final String label;
+  final int generation, historyRevision;
+
+  /// Local identity only; never serialize or send it to a model.
+  final Object binding;
+}
+
+class TerminalHistorySnapshot {
+  const TerminalHistorySnapshot({required this.session, required this.prompt, required this.history, this.directory});
+
+  final TerminalHistorySession session;
+  final String? directory;
+  final TerminalAiPrompt prompt;
+  final List<TerminalAiHistoryEntry> history;
+}
+
+abstract interface class TerminalHistoryReader {
+  List<TerminalHistorySession> get sessions;
+  SessionId? get focusedSession;
+  bool isCurrent(TerminalHistorySession expected);
+  TerminalHistorySnapshot? read(TerminalHistorySession expected);
+}
+
 /// Only currently echoed input and already known directory metadata. No output or history is read implicitly.
 /// A recognized prompt is a compatibility heuristic, not proof of the remote account or nested shell identity.
 class TerminalAiContext {

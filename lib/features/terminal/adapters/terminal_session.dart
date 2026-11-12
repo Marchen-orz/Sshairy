@@ -164,6 +164,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   final _browseStack = <_BrowseFrame>[];
   final _commands = CommandHistory();
   final _aiHistory = <TerminalAiHistoryEntry>[];
+  final _historyBinding = Object();
   _PendingCommandResult? _pendingCommandResult;
   var _historyRevision = 0;
   late final _inlineAi = InlineAiController(readContext: readAiContext, readHistory: readAiHistory);
@@ -229,6 +230,52 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     if (!_aiContextCurrent(expected)) return const [];
     return boundedTerminalAiHistory(_aiHistory.where((entry) => entry.generation == expected.generation));
   }
+
+  TerminalHistorySession? get historySession {
+    if (!canInsert || !isLocal && _lease?.isCurrent != true) return null;
+    return TerminalHistorySession(
+      sessionId: id,
+      target: switch (target) {
+        SshTerminalTarget(:final hostId) => SshTerminalAiTarget(hostId),
+        LocalTerminalTarget(:final shell) => LocalTerminalAiTarget(shell.kind),
+      },
+      label: _historyMetadata(_sshHost?.label ?? localShell!.name, 256) ?? '',
+      generation: _shellGeneration,
+      historyRevision: _historyRevision,
+      binding: _historyBinding,
+    );
+  }
+
+  bool historySessionCurrent(TerminalHistorySession expected) =>
+      canInsert &&
+      (isLocal || _lease?.isCurrent == true) &&
+      expected.sessionId == id &&
+      expected.generation == _shellGeneration &&
+      expected.historyRevision == _historyRevision &&
+      identical(expected.binding, _historyBinding) &&
+      switch ((expected.target, target)) {
+        (SshTerminalAiTarget(hostId: final expected), SshTerminalTarget(:final hostId)) => expected == hostId,
+        (LocalTerminalAiTarget(kind: final expected), LocalTerminalTarget(:final shell)) => expected == shell.kind,
+        _ => false,
+      };
+
+  TerminalHistorySnapshot? readHistory(TerminalHistorySession expected) {
+    if (!historySessionCurrent(expected)) return null;
+    return TerminalHistorySnapshot(
+      session: expected,
+      directory: _historyMetadata(_directory.value, 1024),
+      prompt: readAiContext().prompt,
+      history: boundedTerminalAiHistory(_aiHistory.where((entry) => entry.generation == expected.generation)),
+    );
+  }
+
+  String? _historyMetadata(String? text, int maxBytes) =>
+      text != null &&
+          validTerminalAiCommand(text) &&
+          utf8.encode(text).length <= maxBytes &&
+          !terminalAiSensitiveText(text)
+      ? text
+      : null;
 
   @override
   Future<InsertResult> acceptAiDraft(

@@ -30,6 +30,22 @@ List<Capability> aiCapabilities(Ref ref) {
       inputSchema: schema({}, []),
     ),
     FunctionCapability(
+      'agent.terminals',
+      Effect.query,
+      (a, c) => call(c, (r) async => r.listTerminals(a.raw)),
+      agentExposed: true,
+      inputSchema: schema({
+        'offset': {'type': 'integer', 'minimum': 0, 'maximum': 1000},
+      }, []),
+    ),
+    FunctionCapability(
+      'agent.terminalHistory',
+      Effect.query,
+      (a, c) => call(c, (r) async => r.readTerminalHistory(a.raw)),
+      agentExposed: true,
+      inputSchema: schema({'sessionId': host}, []),
+    ),
+    FunctionCapability(
       'agent.diagnose',
       Effect.connect,
       (a, c) => call(c, (r) => r.diagnose(a.raw, c)),

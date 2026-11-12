@@ -34,7 +34,7 @@
 | 范围 | 当前能看到的实现 |
 |---|---|
 | 模型接入 | Anthropic Messages、OpenAI-compatible Chat Completions；增量文本与工具调用解析 |
-| 工具执行 | 四项审核后的工具，经 CapabilityDispatcher 校验、授权和重验 |
+| 工具执行 | 受审工具，经 CapabilityDispatcher 校验、授权和重验 |
 | SSH | 独立 exec channel/租约，不往用户当前交互终端里自动敲命令 |
 | 审批 | 固定读取在准备连接前审批；精确绑定命令、参数、目标连接、配置与范围；自动确认使用独立无工具审批请求，旧回调不能批准新动作 |
 | 输出 | 本地有界存储与共享投影隔离；动作获批后自动共享该操作的有限摘录或白名单结构，无结果二次审批；句柄受来源约束 |
@@ -105,7 +105,7 @@ Agent 不要求向量数据库、MCP、多 Agent、复杂编排框架或长记�
 
 | 概念 | 解决的问题 | 在当前项目中的位置 |
 |---|---|---|
-| Function calling / tool use | 让模型按约定提出结构化函数名和参数 | 已通过两种协议与四项本地工具实现 |
+| Function calling / tool use | 让模型按约定提出结构化函数名和参数 | 已通过两种协议与六项本地工具实现 |
 | Context | 某一次请求实际发送给模型的信息 | 当前 turn 的消息、工具定义、获准结果；有大小限制 |
 | Memory | 跨请求/任务保留并按需取回的信息 | 当前有有界持久文本历史与内存草稿，明确继续后选择有限历史；没有检索式长期知识库 |
 | RAG | 检索相关材料，再作为上下文交给模型 | 当前没有检索知识库或向量库；RAG 本身也不会授予执行权限 |
@@ -151,7 +151,7 @@ flowchart TD
   R --> D[CapabilityDispatcher]
   D --> A[AgentAuthority：授权与执行前重验]
   A --> R
-  D --> C[app 的四项 AI Capability handler]
+  D --> C[app 的 AI Capability handler]
   C --> R
   R --> B[SshAgentBackend：准备实际目标]
   B --> CM[ConnectionManager / HostTrustService]
@@ -169,7 +169,7 @@ flowchart TD
 |---|---|
 | [agent.dart](../lib/features/ai/domain/agent.dart) | scope、phase、AgentBackend/AgentTarget 窄端口与 operation 等领域对象 |
 | [model.dart](../lib/features/ai/domain/model.dart) | 模型请求、消息、事件与纯接口 |
-| [runtime.dart](../lib/features/ai/application/runtime.dart) | start/startConversation、候选快照、逐主机会话许可与 resolvedHost、四模式动作审批、prepare 前固定读取批准、执行、有界结果共享、Stop |
+| [runtime.dart](../lib/features/ai/application/runtime.dart) | start/startConversation、候选快照、当前窗口冻结、逐主机会话许可与 resolvedHost、四模式动作审批、跨窗口读取许可、prepare 前固定读取批准、执行、有界结果共享、Stop |
 | [reviewer.dart](../lib/features/ai/application/reviewer.dart) | 独立无工具审批、最小元信息、严格 allow/deny/ask 与失败回人工 |
 | [target.dart](../lib/features/ai/application/target.dart) | app 投影当前聚焦 SSH 主机，UI 在发送时冻结目标，不直接读取 workspace 内部对象 |
 | [conversations.dart](../lib/features/ai/application/conversations.dart) | 可读会话、草稿切换、安全历史投影、继续前的模型目的地校验与会话许可身份 |
@@ -177,12 +177,13 @@ flowchart TD
 | [model_selection.dart](../lib/features/ai/application/model_selection.dart) | 配置默认模型与同服务全局最后选择的分离，Agent 工具协议归一 |
 | [capability.dart](../lib/features/capabilities/domain/capability.dart) | Capability、RequestContext、AgentAuthority |
 | [dispatcher.dart](../lib/features/capabilities/application/dispatcher.dart) | 从不可信参数到业务 handler 的统一入口 |
-| [app/capabilities/ai.dart](../lib/app/capabilities/ai.dart) | 四项 AI 工具的 schema、暴露和安全结果 |
+| [app/capabilities/ai.dart](../lib/app/capabilities/ai.dart) | AI 工具的 schema、暴露和安全结果 |
+| [app/ai_terminal_history.dart](../lib/app/ai_terminal_history.dart) | 把工作区全部标签/分屏与 session manager 装配成只读终端上下文端口 |
 | [ai_backend.dart](../lib/app/ai_backend.dart) | AI 的窄执行端口如何接入真实 SSH |
 
 `domain` 纯 Dart，`application` 编排用例，`adapters` 处理网络/文件/第三方细节，`presentation` 呈现交互，`app` 装配模块。跨 feature 只经 `api.dart`，避免 Agent 直接取得终端、凭据库和 SSH 库内部对象。
 
-## 5. 四项工具与一次任务的完整经过
+## 5. 受审工具与一次任务的完整经过
 
 ### 5.1 工具目录
 
@@ -191,11 +192,13 @@ flowchart TD
 | 模型工具名 → 内部 ID | 参数 | 实际结果与限制 |
 |---|---|---|
 | `host_list` → `agent.hosts` | 空对象 `{}` | 返回发送时全部已保存主机的候选 ID/别名，有聚焦主机时也不缩减列表；可见不等于可访问，其他主机须先确认；不返回账号、地址和认证配置 |
+| `terminal_list` → `agent.terminals` | 可选 `offset` | 列出本 turn 开始时打开且已连接的标签/分屏，含后台标签与本地 PTY；同主机多会话以 SessionId 分列；每页 32 项并给总数/下一页；不含命令、结果、草稿或地址 |
+| `terminal_history_read` → `agent.terminalHistory` | 可选 `sessionId` | 省略时读取发送时冻结的当前窗口；返回已知 cwd、提示符状态和最近 8 条/编码 4 KiB 命令及可靠关联结果。读取其他窗口在四种模式下都先人工批准；不连接、不执行、不读草稿或完整回滚 |
 | `diagnostics_collect` → `agent.diagnose` | `hostId`、`template` | template 只能是 `systemSummary`、`storageCapacity`、`processSummary`、`listeningPorts` 或 `serviceStates`；固定读取先审批，获批后共享有界结构化投影 |
 | `command_execute` → `agent.execute` | `hostId`、绝对 `cwd`、`command`、可选 `timeoutSeconds` | 默认 60 秒，允许 1–300 秒；按用户权限模式执行，动作批准包含退出状态、截断及有界输出摘录的使用 |
 | `output_read` → `agent.output` | `hostId`、`handle` | 只返回此前获准共享的文本；不读取任意文件，不扩大到原始未共享输出，也不重新执行命令 |
 
-对话按模型完整请求的顺序记录工具卡：`host_list` 和 `output_read` 显示紧凑的工具名与状态，`diagnostics_collect` 和 `command_execute` 复用执行卡。被拒绝、参数错误或取消也有终态；名称来自本地目录，未知工具不回显模型自填名称。历史只恢复这些可读记录，不重新执行工具；未结束的普通读取显示中断，未结束的远端执行仍视为结果未知。
+对话按模型完整请求的顺序记录工具卡：主机、终端目录、窗口读取与输出读取显示紧凑的工具名与状态，`diagnostics_collect` 和 `command_execute` 复用执行卡。被拒绝、参数错误或取消也有终态；名称来自本地目录，未知工具不回显模型自填名称。历史只恢复这些可读记录，不重新执行工具；未结束的普通读取显示中断，未结束的远端执行仍视为结果未知。
 
 这些 schema 都拒绝未知字段，并有长度/范围限制。`command` 另限 UTF-8 4 KiB，`cwd` 必须是绝对路径且不含控制字符；schema 通过后仍可能被业务校验拒绝。模型工具调用示例：
 
@@ -217,8 +220,8 @@ flowchart TD
 
 以下以默认确认模式理解循环，不代表模型一定选择相同顺序：
 
-1. 用户在聚焦 host-A 的工作区输入目标并发送。应用固定 profile、权限模式、全部主机候选快照、默认主机、配置修订、conversationId、turn owner 和期限。
-2. 模型获得目标、范围内主机的有限信息和当前四项工具定义。
+1. 用户在聚焦 host-A 的工作区输入目标并发送。应用固定 profile、权限模式、全部主机候选快照、默认主机、当前终端窗口与其有界上下文、配置修订、conversationId、turn owner 和期限。
+2. 模型获得目标、范围内主机的有限信息、当前窗口上下文和当前受审工具定义。
 3. 模型提出 `diagnostics_collect`，参数为 host-A 与 `storageCapacity`。
 4. 应用等完整消息结束，校验 schema 和范围，在 `backend.prepare`、POSIX 探测与采集前请求该固定读取的人工批准。拒绝即不准备连接、不采集。
 5. 批准后经既有信任/连接机制准备目标，执行固定采集。客户端只解析白名单字段，将有界结构化 projection 作为该 callId 的 tool result 返回；读取批准已包含结果使用，不再等待发送审批。
@@ -229,6 +232,8 @@ flowchart TD
 10. 模型给出最终回答，或系统因预算、Stop、错误而结束。任务需要 host-B 时可继续，但在准备 host-B 前等待本会话首次访问确认；确认后仍按权限模式批准该主机上的读取或命令。
 
 [AgentScope](../lib/features/ai/domain/agent.dart) 带 conversationId 与默认主机信息，runtime 冻结发送时全部已保存主机的快照。host_list 可查看完整 ID/别名；没有明确目标或别名有歧义时反问，不能按列表顺序猜测。主机确认不是 prompt 判断：代码在 backend.prepare 之前挂起新的额外目标，应用层弹窗返回确定性答复后才建立本会话许可，四种权限模式均不可跳过。没有初始聚焦主机的会话，对第一台实际目标也须确认。resolvedHost 表示当前工具目标供只读 UI 使用，不把整个对话锁到一台机器。程序直接 start(goal, AgentScope()) 的默认空 scope 仍是纯文本调用；正式范围和容量规则见 AI §7.2。
+
+终端上下文由独立窄端口提供，不经过 SSH 执行路径。[ai_terminal_history.dart](../lib/app/ai_terminal_history.dart) 枚举工作区全部标签/分屏与 session manager 的已连接会话交集，按 SessionId 分列，不把同主机多个 shell 合并。发送时 runtime 冻结当前聚焦会话并自动共享其已知目录、提示符状态和近期命令结果；切换焦点不会扩大本轮读取范围。其他窗口在观察、确认、自动确认、全自动四种模式下都弹出人工许可，批准只覆盖该精确会话快照的已有记录，不代表该主机的连接或执行许可，也不授本机执行/文件权限。会话关闭、重连、binding、generation 或历史修订变化会使已共享上下文失效，后续模型请求停止。
 
 如果主机密钥未知或需要交互认证，当前 AI backend 不自动回答挑战；用户先通过正常连接流程处理，再发起任务。
 
@@ -496,7 +501,7 @@ turn 的取消 token 传播到模型 HTTP、等待动作/主机审批、probe �
 | 方面 | 侧栏 Agent | 行内生成 | AI 补全 |
 |---|---|---|---|
 | 谁决定下一步 | 模型可多步选工具 | 单次返回命令/澄清/转交建议 | 单次返回 suggest/abstain |
-| 工具 | 四项受控工具 | 无 | 无 |
+| 工具 | 受控 Agent 工具 | 无 | 无 |
 | 触发 | 用户发送目标 | 用户显式点击/快捷键 | 功能开启且符合条件的输入停顿 |
 | 默认数据 | 本次目标、聚焦主机或候选快照，明确继续后的有限历史 | 需求、已知环境与近期命令及其有界结果 | 当前前缀、已知环境与相关命令及其有界结果 |
 | 执行 | 观察禁任意命令；确认人工审批；自动确认由无工具模型审核；全自动免逐项审批，由 exec 执行 | 接受只填文字 | 接受只追加后缀 |
@@ -561,7 +566,7 @@ AI 总开关默认关闭；配置并启用 AI 后，行内生成与自动补全�
 
 | 阶段 | 阅读入口 | 读完应能回答 |
 |---|---|---|
-| 第一次：跑通脑中的任务 | [AgentPanel](../lib/features/ai/presentation/agent_panel.dart) → [AgentRuntime](../lib/features/ai/application/runtime.dart) 的 start/_run → [四项工具](../lib/app/capabilities/ai.dart) | 一次用户发送为什么会产生多次模型请求？何时等待用户？ |
+| 第一次：跑通脑中的任务 | [AgentPanel](../lib/features/ai/presentation/agent_panel.dart) → [AgentRuntime](../lib/features/ai/application/runtime.dart) 的 start/_run → [受审工具](../lib/app/capabilities/ai.dart) | 一次用户发送为什么会产生多次模型请求？何时等待用户？ |
 | 第二次：权限 | [Capability 契约](../lib/features/capabilities/domain/capability.dart) → [schema](../lib/features/capabilities/domain/schema.dart) → [dispatcher](../lib/features/capabilities/application/dispatcher.dart) → runtime authorize/revalidate → [reviewer](../lib/features/ai/application/reviewer.dart) | 模型为什么不能伪造 UI 身份？审批模型能看什么？批准后为什么还要重验？ |
 | 第三次：真实效果 | [SSH backend](../lib/app/ai_backend.dart) → [ConnectionManager](../lib/features/connections/application/connection_manager.dart) → [exec adapter](../lib/features/connections/adapters/ssh_exec.dart) | 租约、channel、transport 是什么关系？Stop 为什么不能断共享连接？ |
 | 第四次：数据与失败 | [OutputStore](../lib/features/ai/application/output_store.dart) → [OperationJournal](../lib/features/ai/adapters/operation_journal.dart) → runtime 执行/结果投影/Stop | 原文与共享投影怎样分开？什么情况下结果未知？ |

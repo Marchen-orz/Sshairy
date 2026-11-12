@@ -2370,6 +2370,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentToolHostsHint => '查看已保存主机的名称和标识。';
 
   @override
+  String get aiAgentToolTerminals => '查看终端窗口';
+
+  @override
+  String get aiAgentToolTerminalsHint => '列出已连接的标签和分屏，不读取命令或输出。';
+
+  @override
+  String get aiAgentToolTerminalHistory => '读取窗口上下文';
+
+  @override
+  String get aiAgentToolTerminalHistoryHint => '读取指定终端已知目录、近期命令及对应结果。';
+
+  @override
+  String get aiAgentTerminalApproveHint =>
+      '允许 Airy 在本轮使用这个终端的已知目录、提示符状态和近期命令结果。窗口编号为发送时的标签位置与分屏位置；不会执行命令。';
+
+  @override
   String get aiAgentToolDiagnostics => '收集诊断';
 
   @override
@@ -2425,7 +2441,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentWelcome => '有什么想一起解决的？';
 
   @override
-  String get aiAgentWelcomeHint => '直接描述任务，Airy 会使用聚焦主机，或询问操作目标。';
+  String get aiAgentWelcomeHint => '默认查看当前终端上下文；读取其他窗口时会请求批准。';
 
   @override
   String get aiAgentSetupTitle => '你的 SSH 助手';

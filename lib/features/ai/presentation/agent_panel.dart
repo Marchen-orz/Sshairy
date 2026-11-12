@@ -1024,6 +1024,8 @@ class _ExecutionCardState extends State<_ExecutionCard> {
     final compact = execution.capability != 'agent.execute' && execution.capability != 'agent.diagnose';
     final (title, description) = switch (execution.capability) {
       'agent.hosts' => (l.aiAgentToolHosts, l.aiAgentToolHostsHint),
+      'agent.terminals' => (l.aiAgentToolTerminals, l.aiAgentToolTerminalsHint),
+      'agent.terminalHistory' => (l.aiAgentToolTerminalHistory, l.aiAgentToolTerminalHistoryHint),
       'agent.diagnose' => (l.aiAgentToolDiagnostics, l.aiAgentToolDiagnosticsHint),
       'agent.execute' => (l.aiAgentToolExecute, l.aiAgentToolExecuteHint),
       'agent.output' => (l.aiAgentToolOutput, l.aiAgentToolOutputHint),
@@ -1141,6 +1143,8 @@ class _ApprovalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final terminalHistory = approval.capability == 'agent.terminalHistory';
+    final reading = terminalHistory || approval.template != null;
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.md),
       child: _AgentCard(
@@ -1149,8 +1153,8 @@ class _ApprovalCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _CardTitle(
-              icon: approval.template == null ? Icons.terminal_rounded : Icons.visibility_outlined,
-              label: approval.template == null ? l.aiAgentApproveTitle : l.aiAgentReadApproveTitle,
+              icon: reading ? Icons.visibility_outlined : Icons.terminal_rounded,
+              label: reading ? l.aiAgentReadApproveTitle : l.aiAgentApproveTitle,
             ),
             const SizedBox(height: Space.md),
             Text(approval.target, style: theme.textTheme.labelLarge),
@@ -1158,13 +1162,21 @@ class _ApprovalCard extends StatelessWidget {
               const SizedBox(height: Space.xs),
               Text(_templateLabel(l, approval.template!), style: theme.textTheme.labelLarge),
             ],
-            const SizedBox(height: Space.xs),
-            Text(approval.cwd, style: mono(context, theme.textTheme.bodySmall)),
-            const SizedBox(height: Space.md),
-            Text(approval.command, style: mono(context, theme.textTheme.bodyMedium)),
+            if (approval.cwd.isNotEmpty) ...[
+              const SizedBox(height: Space.xs),
+              Text(approval.cwd, style: mono(context, theme.textTheme.bodySmall)),
+            ],
+            if (approval.command.isNotEmpty) ...[
+              const SizedBox(height: Space.md),
+              Text(approval.command, style: mono(context, theme.textTheme.bodyMedium)),
+            ],
             const SizedBox(height: Space.md),
             Text(
-              approval.template == null ? l.aiAgentShellPermission : l.aiAgentReadApproveHint,
+              terminalHistory
+                  ? l.aiAgentTerminalApproveHint
+                  : reading
+                  ? l.aiAgentReadApproveHint
+                  : l.aiAgentShellPermission,
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: Space.md),

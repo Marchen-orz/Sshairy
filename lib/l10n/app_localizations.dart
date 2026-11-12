@@ -4580,6 +4580,36 @@ abstract class AppLocalizations {
   /// **'View saved hosts by name and ID.'**
   String get aiAgentToolHostsHint;
 
+  /// No description provided for @aiAgentToolTerminals.
+  ///
+  /// In en, this message translates to:
+  /// **'List terminal windows'**
+  String get aiAgentToolTerminals;
+
+  /// No description provided for @aiAgentToolTerminalsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'List connected tabs and splits without reading commands or output.'**
+  String get aiAgentToolTerminalsHint;
+
+  /// No description provided for @aiAgentToolTerminalHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Read window context'**
+  String get aiAgentToolTerminalHistory;
+
+  /// No description provided for @aiAgentToolTerminalHistoryHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Read one terminal\'s known directory, recent commands and paired results.'**
+  String get aiAgentToolTerminalHistoryHint;
+
+  /// No description provided for @aiAgentTerminalApproveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Let Airy use this terminal\'s known directory, prompt status and recent command results for this turn. Window numbers are the tab and pane positions when you sent the message. No commands will run.'**
+  String get aiAgentTerminalApproveHint;
+
   /// No description provided for @aiAgentToolDiagnostics.
   ///
   /// In en, this message translates to:
@@ -4685,7 +4715,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentWelcomeHint.
   ///
   /// In en, this message translates to:
-  /// **'Describe a task. Airy uses the focused server or asks which one you mean.'**
+  /// **'Uses the current terminal context by default; asks before reading another window.'**
   String get aiAgentWelcomeHint;
 
   /// No description provided for @aiAgentSetupTitle.

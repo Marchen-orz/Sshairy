@@ -2446,6 +2446,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentToolHostsHint => 'View saved hosts by name and ID.';
 
   @override
+  String get aiAgentToolTerminals => 'List terminal windows';
+
+  @override
+  String get aiAgentToolTerminalsHint =>
+      'List connected tabs and splits without reading commands or output.';
+
+  @override
+  String get aiAgentToolTerminalHistory => 'Read window context';
+
+  @override
+  String get aiAgentToolTerminalHistoryHint =>
+      'Read one terminal\'s known directory, recent commands and paired results.';
+
+  @override
+  String get aiAgentTerminalApproveHint =>
+      'Let Airy use this terminal\'s known directory, prompt status and recent command results for this turn. Window numbers are the tab and pane positions when you sent the message. No commands will run.';
+
+  @override
   String get aiAgentToolDiagnostics => 'Collect diagnostics';
 
   @override
@@ -2505,7 +2523,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentWelcomeHint =>
-      'Describe a task. Airy uses the focused server or asks which one you mean.';
+      'Uses the current terminal context by default; asks before reading another window.';
 
   @override
   String get aiAgentSetupTitle => 'Your SSH assistant';

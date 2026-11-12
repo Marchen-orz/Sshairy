@@ -12,6 +12,7 @@ import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
 import '../foundation/ids.dart';
 import 'ai_backend.dart';
+import 'ai_terminal_history.dart';
 import 'ai_terminal_hosts.dart';
 import 'capabilities/ai.dart';
 import 'capabilities/hosts.dart';
@@ -26,6 +27,10 @@ import 'capabilities/forwarding.dart';
 /// The composition root: the one place that knows every feature and registers what each one offers.
 List<Override> appOverrides() => [
   aiTerminalHostsProvider.overrideWith((ref) => aiTerminalHosts(ref.watch(hostsProvider))),
+  agentTerminalHistoryProvider.overrideWith(
+    (ref) =>
+        WorkspaceTerminalHistoryReader(() => ref.read(workspaceProvider), () => ref.read(terminalSessionsProvider)),
+  ),
   agentFocusedHostProvider.overrideWith((ref) {
     final tab = ref.watch(workspaceProvider).activeTab;
     final sessions = ref.watch(terminalSessionsProvider);
