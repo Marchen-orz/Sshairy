@@ -28,8 +28,19 @@ try {
     if (Test-Path "LICENSE") { Copy-Item -Path "LICENSE" -Destination $bundle }
     & dart run tool/write_notices.dart (Join-Path $bundle "THIRD_PARTY_NOTICES.txt")
     if ($LASTEXITCODE -ne 0) { throw "Third-party license inventory failed. Bundle is incomplete: $bundle" }
-    Compress-Archive -Path "$bundle/*" -DestinationPath $archive -CompressionLevel Optimal
-    $hash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archivePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($archive)
+    [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $bundle).Path, $archivePath)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $archiveStream = $null
+    try {
+        $archiveStream = [System.IO.File]::OpenRead($archivePath)
+        $hash = [System.BitConverter]::ToString($sha256.ComputeHash($archiveStream)).Replace("-", "").ToLowerInvariant()
+    } finally {
+        if ($archiveStream) { $archiveStream.Dispose() }
+        $sha256.Dispose()
+    }
     "$hash  $(Split-Path $archive -Leaf)" | Set-Content -Path "$archive.sha256" -Encoding ascii
     Write-Output "Created $archive"
     Write-Output "SHA256 $hash"
