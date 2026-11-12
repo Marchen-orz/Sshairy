@@ -1303,7 +1303,8 @@ String _executionState(AppLocalizations l, String state) => switch (state) {
 };
 
 String _error(AppLocalizations l, String? code) => switch (code) {
-  'notConfigured' || 'invalidModelKey' || 'invalidModelRequest' => l.aiAgentErrorConfiguration,
+  'notConfigured' || 'invalidModelRequest' => l.aiAgentErrorModelConfig,
+  'invalidModelKey' => l.aiAgentErrorConfiguration,
   'modelNetworkError' => l.aiAgentErrorNetwork,
   'modelHttpError' || 'modelStreamError' || 'modelRefused' => l.aiAgentErrorHttp,
   'deadline' || 'modelTimedOut' => l.aiAgentErrorTimeout,

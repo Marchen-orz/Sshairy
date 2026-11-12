@@ -56,11 +56,12 @@ class _UiCredentials implements AiCredentials {
   final checked = <String>[];
   final saved = <String>[];
   var reads = 0;
-  var failRead = false;
+  var failRead = false, failHas = false;
 
   @override
   Future<bool> has(String identity) async {
     checked.add(identity);
+    if (failHas) throw StateError('secure storage unavailable');
     return values.containsKey(identity);
   }
 
@@ -623,6 +624,25 @@ void main() {
     final container = InputDecorator.containerOf(tester.element(editable))!;
     return container.localToGlobal(Offset.zero) & container.size;
   }
+
+  testWidgets('an optional API key check failure leaves saving available', (tester) async {
+    final credentials = await showSettings(tester, configured: false);
+    final l = AppLocalizations.of(tester.element(find.byType(AiSettings)));
+    final endpoint = find.byKey(const ValueKey('ai-config-endpoint'));
+    await tester.enterText(endpoint, 'https://model.example/v1');
+    await tester.pump();
+    tester.widget<AiModelPicker>(find.byKey(const ValueKey('ai-config-model'))).onChanged!('agent-new');
+    await tester.pumpAndSettle();
+    expect(find.text(l.aiConfigKeyMissing), findsOneWidget);
+    credentials.failHas = true;
+    await tester.enterText(endpoint, 'https://model.example/v2');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.text(l.aiConfigKeyLoadFailed), findsOneWidget);
+    final save = find.byKey(const ValueKey('ai-config-save'));
+    expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('ai-config-key'))).enabled, isFalse);
+  });
 
   testWidgets('AI settings align labelled inputs and selections at the same control height', (tester) async {
     await showSettings(tester, enabled: true, width: 820);

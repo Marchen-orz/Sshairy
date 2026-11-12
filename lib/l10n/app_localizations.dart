@@ -185,7 +185,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigKeyMissing.
   ///
   /// In en, this message translates to:
-  /// **'No API key saved for this destination.'**
+  /// **'No key saved; leave empty if this endpoint needs none.'**
   String get aiConfigKeyMissing;
 
   /// No description provided for @aiConfigKeyRemoved.
@@ -5059,6 +5059,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Review the model configuration and API key in Settings.'**
   String get aiAgentErrorConfiguration;
+
+  /// No description provided for @aiAgentErrorModelConfig.
+  ///
+  /// In en, this message translates to:
+  /// **'Review the endpoint and model name in Settings.'**
+  String get aiAgentErrorModelConfig;
 
   /// No description provided for @aiAgentErrorNetwork.
   ///

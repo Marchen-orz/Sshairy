@@ -53,7 +53,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigKeySaved => '此目的地已保存密钥；留空保留原值。';
 
   @override
-  String get aiConfigKeyMissing => '此目的地尚未保存 API Key。';
+  String get aiConfigKeyMissing => '未保存密钥；不需要认证时可留空。';
 
   @override
   String get aiConfigKeyRemoved => '保存后将移除此密钥。';
@@ -2614,6 +2614,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentErrorConfiguration => '请在设置中检查模型配置与 API Key。';
+
+  @override
+  String get aiAgentErrorModelConfig => '请在设置中检查模型地址与模型名称。';
 
   @override
   String get aiAgentErrorNetwork => '无法连接模型，请检查网络后重新发起任务。';

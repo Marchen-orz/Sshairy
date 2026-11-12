@@ -55,7 +55,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'A key is saved for this destination. Leave the field empty to keep it.';
 
   @override
-  String get aiConfigKeyMissing => 'No API key saved for this destination.';
+  String get aiConfigKeyMissing =>
+      'No key saved; leave empty if this endpoint needs none.';
 
   @override
   String get aiConfigKeyRemoved =>
@@ -2703,6 +2704,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiAgentErrorConfiguration =>
       'Review the model configuration and API key in Settings.';
+
+  @override
+  String get aiAgentErrorModelConfig =>
+      'Review the endpoint and model name in Settings.';
 
   @override
   String get aiAgentErrorNetwork =>

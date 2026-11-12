@@ -122,7 +122,8 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   }
 
   bool get _emptyProfile => _endpoint.text.trim().isEmpty && _model.text.trim().isEmpty;
-  bool get _credentialBlocked => (_checking || _keyError) && (_enabled || _key.text.isNotEmpty || _removeKey);
+  // The key is optional: a pending or failed presence check must not block unrelated AI settings.
+  bool get _credentialBlocked => (_checking || _keyError) && (_key.text.isNotEmpty || _removeKey);
   bool get _dirty =>
       _enabled != _initial.enabled ||
       _inlineEnabled != _initial.inlineEnabled ||
