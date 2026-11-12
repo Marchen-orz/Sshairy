@@ -639,6 +639,8 @@ void main() {
       final terminal = tester.state(find.byType(TerminalPane));
       final files = tester.state(find.byType(SideFilesPanel));
       final monitor = tester.state(find.byType(MonitorPanel));
+      final filesDock = find.ancestor(of: find.byType(SideFilesPanel), matching: find.byType(DockPanel)).first;
+      final dockState = tester.state(filesDock);
       final agentToggle = find.descendant(of: find.byType(IconRail), matching: find.byTooltip('Airy'));
       await tester.tap(agentToggle);
       await _frames(tester);
@@ -648,31 +650,34 @@ void main() {
       container.read(agentComposerProvider.notifier).setGoal('Keep this draft');
       await _frames(tester);
 
-      void expectLayout() {
+      void expectLayout([FilesDock? currentSide]) {
+        final position = currentSide ?? side;
         final monitor = tester.getRect(find.byType(MonitorPanel));
         final terminal = tester.getRect(find.byType(TerminalPane));
         final files = tester.getRect(find.byType(SideFilesPanel));
         final agent = tester.getRect(find.byType(AgentPanel));
         final content = tester.getRect(find.byKey(const ValueKey('workspace-content')));
         expect(monitor.top, content.top);
-        expect(monitor.bottom, content.bottom);
         expect(agent.top, content.top);
         expect(agent.bottom, content.bottom);
         expect(agent.right, content.right);
         expect(terminal.left, greaterThan(monitor.right));
         expect(terminal.right, lessThan(agent.left));
-        expect(files.left, greaterThan(monitor.right));
         expect(files.right, lessThan(agent.left));
-        if (side == FilesDock.bottom) {
-          expect(files.left, terminal.left);
+        if (position == FilesDock.bottom) {
+          expect(files.left, monitor.left);
+          expect(files.left, content.left);
           expect(files.right, terminal.right);
+          expect(monitor.bottom, terminal.bottom);
           expect(files.top, terminal.bottom + WorkspaceSize.divider);
           expect(files.bottom, content.bottom);
         } else {
+          expect(monitor.bottom, content.bottom);
+          expect(files.left, greaterThan(monitor.right));
           expect(files.top, content.top);
           expect(files.bottom, content.bottom);
           expect(terminal.width, greaterThanOrEqualTo(WorkspaceSize.terminalMin));
-          if (side == FilesDock.left) {
+          if (position == FilesDock.left) {
             expect(files.right + WorkspaceSize.divider, terminal.left);
           } else {
             expect(files.left, terminal.right + WorkspaceSize.divider);
@@ -684,6 +689,7 @@ void main() {
         expect(identical(tester.state(find.byType(TerminalPane)), terminal), isTrue);
         expect(identical(tester.state(find.byType(SideFilesPanel)), files), isTrue);
         expect(identical(tester.state(find.byType(MonitorPanel)), monitor), isTrue);
+        expect(identical(tester.state(filesDock), dockState), isTrue);
       }
 
       expectLayout();
@@ -713,10 +719,31 @@ void main() {
       expectLayout();
       expectKept();
 
+      if (side == FilesDock.bottom) {
+        await tester.drag(find.bySemanticsLabel('Resize tool panel'), const Offset(0, -48));
+        await _frames(tester);
+        final height = tester.getSize(find.byType(SideFilesPanel)).height;
+        expect(height, greaterThan(WorkspaceSize.dockBottom));
+        expectLayout();
+        for (final position in [FilesDock.left, FilesDock.right, FilesDock.bottom]) {
+          container.read(settingsProvider.notifier).set(SettingKeys.filesDock, position);
+          await _settled(tester, container, (settings) => settings.get(SettingKeys.filesDock) == position);
+          await _frames(tester);
+          expectLayout(position);
+          expectKept();
+          expect(identical(tester.state(find.byType(AgentPanel)), agent), isTrue);
+        }
+        expect(tester.getSize(find.byType(SideFilesPanel)).height, height);
+      }
+
       await tester.tap(find.descendant(of: find.byType(SideFilesPanel), matching: find.byTooltip('Close pane')));
       await _settled(tester, container, (settings) => !settings.get(SettingKeys.showFiles));
       await _frames(tester);
       expect(find.byType(SideFilesPanel), findsNothing);
+      expect(
+        tester.getRect(find.byType(MonitorPanel)).bottom,
+        tester.getRect(find.byKey(const ValueKey('workspace-content'))).bottom,
+      );
       expect(identical(tester.state(find.byType(AgentPanel)), agent), isTrue);
       await tester.tap(find.byTooltip('Files'));
       await _settled(tester, container, (settings) => settings.get(SettingKeys.showFiles));
@@ -728,6 +755,12 @@ void main() {
       await _frames(tester);
       expect(find.byType(AgentPanel), findsNothing);
       expect(find.byType(SideFilesPanel), findsOneWidget);
+      if (side == FilesDock.bottom) {
+        final files = tester.getRect(find.byType(SideFilesPanel));
+        expect(files.left, tester.getRect(find.byType(MonitorPanel)).left);
+        expect(files.right, tester.getRect(find.byKey(const ValueKey('workspace-content'))).right);
+        expect(tester.getRect(find.byType(MonitorPanel)).bottom, tester.getRect(find.byType(TerminalPane)).bottom);
+      }
       expect(container.read(settingsProvider).get(SettingKeys.filesDock), side);
       await tester.tap(agentToggle);
       await _frames(tester);
