@@ -922,6 +922,12 @@ void main() {
       final access = h.model.reviewRequests.first;
       final share = h.model.reviewRequests.last;
       expect(access.messages.single.text, contains('"kind":"access"'));
+      expect(access.messages.single.text, contains('"hostId":"host-a"'));
+      expect(access.messages.single.text, contains('"capabilityVersion":1'));
+      expect(access.messages.single.text, contains('"timeoutSeconds":${diagnostic ? 15 : 60}'));
+      if (diagnostic) expect(access.messages.single.text, contains('"templateVersion":1'));
+      expect(share.messages.single.text, contains('"hostId":"host-a"'));
+      expect(share.messages.single.text, contains('"capabilityVersion":1'));
       expect(share.messages.single.text, contains('"kind":"share"'));
       expect(share.messages.single.text, contains('"projectionBytes":'));
       expect(share.messages.single.text, contains('"exitCode":0'));
@@ -974,6 +980,7 @@ void main() {
       expect(h.model.reviewRequests, hasLength(1));
       expect(h.backend.target.commands, isEmpty);
       expect(h.journal.records, isEmpty);
+      expect(h.backend.target.probes, 0);
       expect(_result(h.model.requests.last), {'error': 'denied'});
       if (diagnostic) {
         expect(h.backend.prepared, isEmpty);
@@ -1086,7 +1093,7 @@ void main() {
       lateDecision.complete();
       await pumpEventQueue();
       expect(h.backend.prepared, diagnostic ? isEmpty : [_host]);
-      expect(h.backend.target.probes, diagnostic ? 0 : 1);
+      expect(h.backend.target.probes, 0);
       expect(h.backend.target.commands, isEmpty);
       expect(h.journal.records, isEmpty);
       expect(h.runtime.approval, isNull);
@@ -1785,6 +1792,7 @@ void main() {
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
     expect(h.backend.target.commands, isEmpty);
+    expect(h.backend.target.probes, 0);
     expect(h.journal.records, isEmpty);
     expect(h.runtime.approval!.command, 'printf original');
     // The caller's mutable source is no longer the model call or its bound approval.
@@ -1871,6 +1879,7 @@ void main() {
     await turn;
     expect(h.runtime.phase, AgentPhase.completed);
     expect(h.backend.target.commands, isEmpty);
+    expect(h.backend.target.probes, 0);
     expect(h.journal.records, isEmpty);
     expect(h.backend.target.releases, 1);
     expect(_results(h.model.requests.last).single.toolCallId, 'call-a');
@@ -2569,6 +2578,46 @@ void main() {
         await h.close();
       }
     }
+  });
+
+  test('reviews share the model-request budget and fall back to manual decisions before the final answer', () async {
+    final h = _Harness((_, _, index) async* {
+      if (index < 2) {
+        yield ModelMessageComplete(
+          ModelMessage(
+            ModelRole.assistant,
+            calls: [
+              for (var i = 0; i < 8; i++)
+                ModelCall('read-$index-$i', 'diagnostics_collect', {
+                  'hostId': _host.value,
+                  'template': 'systemSummary',
+                }),
+            ],
+          ),
+        );
+      } else {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      }
+    }, review: (_, _, _) => _reviewReply('allow'));
+    addTearDown(h.close);
+    h.backend.target.stdout = _systemOutput;
+    final manualReads = <AgentApproval>{}, manualShares = <AgentDataRequest>{};
+    h.runtime.addListener(() {
+      if (h.runtime.approval case final pending?) manualReads.add(pending);
+      if (h.runtime.dataRequest case final pending?) manualShares.add(pending);
+    });
+    await h.runtime.start(
+      'inspect this host',
+      AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
+    );
+    expect(h.runtime.phase, AgentPhase.completed);
+    expect(h.model.requests, hasLength(3));
+    expect(h.model.reviewRequests, hasLength(17));
+    expect(h.model.requests.length + h.model.reviewRequests.length, 20);
+    expect(manualReads, isNotEmpty);
+    expect(manualShares, isNotEmpty);
+    expect(h.backend.target.commands, hasLength(16));
+    expect(h.runtime.messages.last.text, 'done');
   });
 
   test('oversized tool groups fail before any member can execute', () async {

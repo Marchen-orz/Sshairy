@@ -135,7 +135,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
   HostId? _resolvedHost;
   bool _hostsListed = false;
   ModelProfile? _profile, _reviewProfile;
-  int _configRevision = 0;
+  int _configRevision = 0, _modelRequests = 0;
   String _owner = '', _goal = '';
   bool reviewing = false;
   final _deniedReads = <String>{};
@@ -359,6 +359,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     _profile = config.profile;
     _reviewProfile = reviewProfile?.call() ?? config.profile;
     _goal = goal;
+    _modelRequests = 0;
     _deniedReads.clear();
     reviewing = false;
     _configRevision = config.revision;
@@ -471,6 +472,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       var toolCount = 0, messageCount = 1;
       for (var step = 0; step < 20; step++) {
         _check();
+        if (_modelRequests >= 20) throw const AgentFailure('stepLimit');
         final profile = _profile!;
         if (history.prepare(
           profile,
@@ -493,6 +495,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
         messageCount++;
         ModelMessage? complete;
         var messageBytes = 0;
+        _modelRequests++;
         await for (final event in model.stream(
           ModelRequest(profile: profile, system: _system, messages: history.messages, tools: tools),
           cancel,
@@ -744,7 +747,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           _bounded(alias, 256),
           diagnosticCommand(template),
           '/',
-          capability.id,
+          capability,
+          host: host,
+          timeoutSeconds: 15,
           template: template.name,
         );
         currentTurn();
@@ -769,15 +774,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       if (_denied.contains(binding)) return const Err(AppError('denied'));
       _prepared[context.operationId] = _Prepared(target, binding);
       currentTurn();
-      final supported = await target.supportsPosix(token!);
-      currentTurn();
-      if (!supported) throw const AgentFailure('unsupported');
       if (capability.id == 'agent.execute') {
         final accepted = await _approveAction(
           target.display,
           args['command'] as String,
           args['cwd'] as String,
-          capability.id,
+          capability,
+          host: host,
+          timeoutSeconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 60,
         );
         currentTurn();
         if (!accepted) {
@@ -785,6 +789,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           return const Err(AppError('denied'));
         }
       }
+      final supported = await target.supportsPosix(token!);
+      currentTurn();
+      if (!supported) throw const AgentFailure('unsupported');
       return const Ok(null);
     } on AgentFailure catch (failure) {
       const safe = {
@@ -985,7 +992,13 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           throw const AgentFailure('outputLimit');
         }
         execution.historyTruncated = output.truncated || data['truncated'] == true;
-        final selected = await _selectOutput(execution, output, projection: projection, template: template.name);
+        final selected = await _selectOutput(
+          execution,
+          output,
+          timeoutSeconds: 15,
+          projection: projection,
+          template: template.name,
+        );
         _check();
         return Ok({
           'handle': output.id,
@@ -998,7 +1011,11 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
           'truncated': execution.historyTruncated,
         });
       }
-      final selected = await _selectOutput(execution, output);
+      final selected = await _selectOutput(
+        execution,
+        output,
+        timeoutSeconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 60,
+      );
       _check();
       return Ok({
         'handle': output.id,
@@ -1051,6 +1068,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     if (selected == null || selected.protocol != _profile!.protocol || selected.endpoint != _profile!.endpoint) {
       return AgentReviewDecision.ask;
     }
+    // Leave one request for the main model to explain completed work after manual decisions.
+    if (_modelRequests >= 19) return AgentReviewDecision.ask;
+    _modelRequests++;
     reviewing = true;
     _phase(AgentPhase.awaitingApproval);
     try {
@@ -1073,23 +1093,35 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
     }
   }
 
-  Future<bool> _approveAction(String target, String command, String cwd, String capability, {String? template}) async {
+  Future<bool> _approveAction(
+    String target,
+    String command,
+    String cwd,
+    Capability capability, {
+    required HostId host,
+    required int timeoutSeconds,
+    String? template,
+  }) async {
     final token = _cancel, owner = _owner;
     _checkTurn(token, owner);
     if (permissionMode == AgentPermissionMode.auto) return true;
     if (permissionMode == AgentPermissionMode.review) {
       final decision = await _review({
         'kind': 'access',
-        'capability': capability,
+        'capability': capability.id,
+        'capabilityVersion': capability.version,
+        'hostId': host.value,
+        'timeoutSeconds': timeoutSeconds,
         'command': command,
         'cwd': cwd,
         'template': ?template,
+        if (template != null) 'templateVersion': 1,
       });
       _checkTurn(token, owner);
       if (decision != AgentReviewDecision.ask) return decision == AgentReviewDecision.allow;
     }
     _checkTurn(token, owner);
-    final pending = approval = AgentApproval(target, command, cwd, capability, template: template);
+    final pending = approval = AgentApproval(target, command, cwd, capability.id, template: template);
     final result = _approvalResult = Completer<bool>();
     _phase(AgentPhase.awaitingApproval);
     try {
@@ -1108,6 +1140,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
   Future<String?> _selectOutput(
     AgentExecution execution,
     StoredOutput output, {
+    required int timeoutSeconds,
     String? projection,
     String? template,
   }) async {
@@ -1124,9 +1157,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority {
       final decision = await _review({
         'kind': 'share',
         'capability': execution.capability,
+        'capabilityVersion': dispatcher[execution.capability]!.version,
+        'hostId': output.host.value,
+        'executionId': execution.id,
+        'timeoutSeconds': timeoutSeconds,
         'command': execution.command,
         'cwd': execution.cwd,
         'template': ?template,
+        if (template != null) 'templateVersion': 1,
         'projectionBytes': utf8.encode(request.suggested).length,
         'truncated': request.truncated,
         'exitCode': execution.exitCode,
