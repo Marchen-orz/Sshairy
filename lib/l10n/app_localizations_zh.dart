@@ -2367,6 +2367,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentDiagnostics => '固定诊断';
 
   @override
+  String get aiAgentToolHosts => '查看主机列表';
+
+  @override
+  String get aiAgentToolHostsHint => '查看已保存主机的名称和标识。';
+
+  @override
+  String get aiAgentToolDiagnostics => '收集诊断';
+
+  @override
+  String get aiAgentToolDiagnosticsHint => '收集固定的系统或磁盘诊断信息。';
+
+  @override
+  String get aiAgentToolExecute => '执行命令';
+
+  @override
+  String get aiAgentToolExecuteHint => '通过独立 SSH 通道执行已获授权的命令。';
+
+  @override
+  String get aiAgentToolOutput => '读取输出';
+
+  @override
+  String get aiAgentToolOutputHint => '读取已获准共享的命令输出。';
+
+  @override
   String get aiAgentDiagnosticScope =>
       '固定 Linux 诊断可向所选模型发送系统、内核、负载、内存、磁盘挂载点及容量，不含进程参数和环境变量。';
 

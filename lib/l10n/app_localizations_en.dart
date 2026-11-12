@@ -2443,6 +2443,33 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentDiagnostics => 'Fixed diagnostics';
 
   @override
+  String get aiAgentToolHosts => 'List hosts';
+
+  @override
+  String get aiAgentToolHostsHint => 'View saved hosts by name and ID.';
+
+  @override
+  String get aiAgentToolDiagnostics => 'Collect diagnostics';
+
+  @override
+  String get aiAgentToolDiagnosticsHint =>
+      'Collect fixed system or disk diagnostics.';
+
+  @override
+  String get aiAgentToolExecute => 'Execute command';
+
+  @override
+  String get aiAgentToolExecuteHint =>
+      'Run an authorized command through a separate SSH channel.';
+
+  @override
+  String get aiAgentToolOutput => 'Read output';
+
+  @override
+  String get aiAgentToolOutputHint =>
+      'Read command output that has been approved for sharing.';
+
+  @override
   String get aiAgentDiagnosticScope =>
       'Fixed Linux diagnostics may send OS, kernel, load, memory, disk mounts and capacity to the selected model. Process arguments and environment variables are excluded.';
 

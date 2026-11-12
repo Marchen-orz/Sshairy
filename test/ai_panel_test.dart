@@ -225,12 +225,17 @@ class _Assets extends CachingAssetBundle {
       : ByteData.sublistView(File(key).readAsBytesSync());
 }
 
-Widget _app(ProviderContainer container, {bool visible = true, double textScale = 1}) => UncontrolledProviderScope(
+Widget _app(
+  ProviderContainer container, {
+  bool visible = true,
+  double textScale = 1,
+  Locale locale = const Locale('en'),
+}) => UncontrolledProviderScope(
   container: container,
   child: DefaultAssetBundle(
     bundle: _Assets(),
     child: MaterialApp(
-      locale: const Locale('en'),
+      locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       theme: buildTheme(Brightness.light).copyWith(splashFactory: NoSplash.splashFactory),
@@ -250,6 +255,7 @@ Future<ProviderContainer> _panel(
   bool tools = true,
   Size size = const Size(440, 1000),
   double textScale = 1,
+  Locale locale = const Locale('en'),
   _ConversationStore? store,
   HostId? focusedHost,
 }) async {
@@ -286,7 +292,7 @@ Future<ProviderContainer> _panel(
     container.dispose();
     runtime.dispose();
   });
-  await tester.pumpWidget(_app(container, textScale: textScale));
+  await tester.pumpWidget(_app(container, textScale: textScale, locale: locale));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 250));
   return container;
@@ -411,47 +417,80 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('all tool kinds use one ordered card with safe names and explicit stopped status', (tester) async {
-    final runtime = _Runtime();
-    runtime.entries.addAll([
-      AgentChatEntry('user', 'Check tools'),
-      AgentExecution('list', 'agent.hosts', '', '', '')..state = 'completed',
-      AgentExecution('diagnose', 'agent.diagnose', 'target', 'fixed diagnostic', '/')..state = 'completed',
-      AgentExecution('execute', 'agent.execute', 'target', 'printf checked', '/')..state = 'failed',
-      AgentExecution('read', 'agent.output', '', '', '')..state = 'cancelled',
-      AgentExecution('unknown', 'agent.unknown', '', '', '')..state = 'failed',
-    ]);
-    await _panel(tester, runtime);
-    expect(find.text('host_list'), findsOneWidget);
-    expect(find.textContaining('diagnostics_collect'), findsOneWidget);
-    expect(find.textContaining('command_execute'), findsOneWidget);
-    expect(find.text('output_read'), findsOneWidget);
-    expect(find.text('Execution record'), findsOneWidget);
-    expect(find.byTooltip('Stopped'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.text('host_list')).dy,
-      lessThan(tester.getTopLeft(find.textContaining('diagnostics_collect')).dy),
-    );
-    expect(find.byTooltip('Show local output'), findsNWidgets(5));
-    expect(tester.takeException(), isNull);
-  });
+  for (final locale in [const Locale('en'), const Locale('zh')]) {
+    testWidgets('tool cards use localized names and purpose hints in $locale', (tester) async {
+      final runtime = _Runtime();
+      runtime.entries.addAll([
+        AgentChatEntry('user', 'Check tools'),
+        AgentExecution('list', 'agent.hosts', '', '', '')..state = 'completed',
+        AgentExecution('diagnose', 'agent.diagnose', 'target', 'fixed diagnostic', '/')..state = 'completed',
+        AgentExecution('execute', 'agent.execute', 'target', 'printf checked', '/')..state = 'failed',
+        AgentExecution('read', 'agent.output', '', '', '')..state = 'cancelled',
+        AgentExecution('unknown', 'agent.unknown', '', '', '')..state = 'failed',
+      ]);
+      await _panel(tester, runtime, locale: locale);
+      final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+      expect(find.text(l.aiAgentToolHosts), findsOneWidget);
+      expect(find.text(l.aiAgentToolDiagnostics), findsOneWidget);
+      expect(find.text('${l.aiAgentToolExecute} · printf checked'), findsOneWidget);
+      expect(find.text(l.aiAgentToolOutput), findsOneWidget);
+      expect(find.text(l.aiAgentExecutionRecord), findsOneWidget);
+      for (final raw in ['host_list', 'diagnostics_collect', 'command_execute', 'output_read']) {
+        expect(find.textContaining(raw), findsNothing);
+      }
+      for (final (name, hint) in [
+        (l.aiAgentToolHosts, l.aiAgentToolHostsHint),
+        (l.aiAgentToolDiagnostics, l.aiAgentToolDiagnosticsHint),
+        ('${l.aiAgentToolExecute} · printf checked', l.aiAgentToolExecuteHint),
+        (l.aiAgentToolOutput, l.aiAgentToolOutputHint),
+      ]) {
+        expect(find.byTooltip('$name\n$hint'), findsOneWidget);
+      }
+      expect(find.byTooltip(l.aiAgentCancelled), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text(l.aiAgentToolHosts)).dy,
+        lessThan(tester.getTopLeft(find.text(l.aiAgentToolDiagnostics)).dy),
+      );
+      expect(find.byTooltip(l.aiAgentShowOutput), findsNWidgets(5));
+      final executeCard = find.byKey(const ValueKey('execute'));
+      await tester.tap(find.descendant(of: executeCard, matching: find.byTooltip(l.aiAgentShowOutput)));
+      await tester.pumpAndSettle();
+      expect(find.text('printf checked'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('restored ordinary tools stay compact and show interrupted reads without output notices', (tester) async {
     final runtime = _Runtime();
     runtime.restoreConversation(const [
       ConversationEntry(kind: ConversationEntryKind.user, text: 'Read tools'),
       ConversationEntry(kind: ConversationEntryKind.execution, text: '', capability: 'agent.hosts', state: 'completed'),
+      ConversationEntry(kind: ConversationEntryKind.execution, text: '', capability: 'agent.execute', state: 'failed'),
+      ConversationEntry(
+        kind: ConversationEntryKind.execution,
+        text: '',
+        capability: 'agent.diagnose',
+        state: 'completed',
+      ),
       ConversationEntry(kind: ConversationEntryKind.execution, text: '', capability: 'agent.output', state: 'running'),
     ]);
-    await _panel(tester, runtime);
-    expect(find.text('host_list'), findsOneWidget);
-    expect(find.text('output_read'), findsOneWidget);
+    final container = await _panel(tester, runtime);
+    expect(find.text('List hosts'), findsOneWidget);
+    expect(find.text('Execute command'), findsOneWidget);
+    expect(find.text('Collect diagnostics'), findsOneWidget);
+    expect(find.text('Read output'), findsOneWidget);
     expect(find.byTooltip('Interrupted'), findsOneWidget);
     final readCard = find.byKey(ValueKey(runtime.timeline.whereType<AgentExecution>().last.id));
     await tester.tap(find.descendant(of: readCard, matching: find.byTooltip('Show local output')));
     await tester.pumpAndSettle();
     expect(find.text('Interrupted'), findsOneWidget);
     expect(find.text('Raw tool output is not saved in history.'), findsNothing);
+    await tester.pumpWidget(_app(container, locale: const Locale('zh')));
+    await tester.pumpAndSettle();
+    expect(find.text('查看主机列表'), findsOneWidget);
+    expect(find.text('执行命令'), findsOneWidget);
+    expect(find.text('收集诊断'), findsOneWidget);
+    expect(find.text('读取输出'), findsOneWidget);
     expect(runtime.goal, isNull);
     expect(tester.takeException(), isNull);
   });
@@ -591,6 +630,82 @@ void main() {
     expect(usage.message, 'Estimated context: 25% · 32000 / 128000 tokens');
     expect(tester.takeException(), isNull);
   });
+
+  for (final locale in [const Locale('en'), const Locale('zh')]) {
+    for (final scale in [1.0, 1.5]) {
+      testWidgets('composer stays in one row while resizing in $locale at text scale $scale', (tester) async {
+        final runtime = _Runtime()
+          ..estimatedUsed = 128000
+          ..estimatedWindow = 128000;
+        await _panel(tester, runtime, size: const Size(560, 800), textScale: scale, locale: locale);
+        await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'Keep this task while resizing');
+
+        void expectToolbar() {
+          final controls = [
+            find.byKey(const ValueKey('ai-agent-model')),
+            find.byKey(const ValueKey('ai-agent-context-usage')),
+            find.byKey(const ValueKey('ai-agent-permission')),
+            find.byKey(ValueKey(runtime.busy ? 'ai-agent-stop' : 'ai-agent-send')),
+          ].map(tester.getRect).toList();
+          final panel = tester.getRect(find.byType(AgentPanel));
+          for (final rect in controls) {
+            expect(rect.center.dy, closeTo(controls.first.center.dy, 1));
+            expect(rect.left, greaterThanOrEqualTo(panel.left));
+            expect(rect.right, lessThanOrEqualTo(panel.right));
+          }
+          for (var i = 1; i < controls.length; i++) {
+            expect(controls[i].left, greaterThan(controls[i - 1].right));
+          }
+          expect(controls.first.width, greaterThan(48));
+          expect(controls.last.size, const Size.square(WorkspaceSize.tabHeight));
+          expect(tester.takeException(), isNull);
+        }
+
+        for (final width in [560.0, 360.0, 300.0, 560.0, 300.0]) {
+          tester.view.physicalSize = Size(width, 800);
+          await tester.pumpAndSettle();
+          expectToolbar();
+          expect(
+            tester.widget<TextField>(find.byKey(const ValueKey('ai-agent-goal'))).controller!.text,
+            'Keep this task while resizing',
+          );
+        }
+        final permission = find.byKey(const ValueKey('ai-agent-permission'));
+        final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+        expect(
+          tester.widget<Tooltip>(find.descendant(of: permission, matching: find.byType(Tooltip))).message,
+          l.aiAgentPermissionConfirm,
+        );
+        expect(
+          tester
+              .widget<Tooltip>(
+                find.descendant(of: find.byKey(const ValueKey('ai-agent-model')), matching: find.byType(Tooltip)),
+              )
+              .message,
+          _profile.model,
+        );
+        await tester.tap(permission);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('ai-agent-permission-observe')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(of: find.byKey(const ValueKey('ai-agent-model')), matching: find.byType(TextButton)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('ai-model-option-alternate-model')));
+        await tester.pumpAndSettle();
+        expectToolbar();
+        await tester.tap(find.byKey(const ValueKey('ai-agent-send')));
+        await tester.pump();
+        expect(runtime.goal, 'Keep this task while resizing');
+        expect(runtime.sentScope!.permissionMode, AgentPermissionMode.observe);
+        expectToolbar();
+        await tester.tap(find.byKey(const ValueKey('ai-agent-stop')));
+        await tester.pumpAndSettle();
+        expectToolbar();
+      });
+    }
+  }
 
   for (final width in [300.0, 560.0]) {
     testWidgets('permission descriptions stay in the dropdown at width $width', (tester) async {

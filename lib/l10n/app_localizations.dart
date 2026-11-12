@@ -4574,6 +4574,54 @@ abstract class AppLocalizations {
   /// **'Fixed diagnostics'**
   String get aiAgentDiagnostics;
 
+  /// No description provided for @aiAgentToolHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'List hosts'**
+  String get aiAgentToolHosts;
+
+  /// No description provided for @aiAgentToolHostsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'View saved hosts by name and ID.'**
+  String get aiAgentToolHostsHint;
+
+  /// No description provided for @aiAgentToolDiagnostics.
+  ///
+  /// In en, this message translates to:
+  /// **'Collect diagnostics'**
+  String get aiAgentToolDiagnostics;
+
+  /// No description provided for @aiAgentToolDiagnosticsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Collect fixed system or disk diagnostics.'**
+  String get aiAgentToolDiagnosticsHint;
+
+  /// No description provided for @aiAgentToolExecute.
+  ///
+  /// In en, this message translates to:
+  /// **'Execute command'**
+  String get aiAgentToolExecute;
+
+  /// No description provided for @aiAgentToolExecuteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Run an authorized command through a separate SSH channel.'**
+  String get aiAgentToolExecuteHint;
+
+  /// No description provided for @aiAgentToolOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Read output'**
+  String get aiAgentToolOutput;
+
+  /// No description provided for @aiAgentToolOutputHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Read command output that has been approved for sharing.'**
+  String get aiAgentToolOutputHint;
+
   /// No description provided for @aiAgentDiagnosticScope.
   ///
   /// In en, this message translates to:

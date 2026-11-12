@@ -354,7 +354,12 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                           LayoutBuilder(
                             builder: (context, toolbar) {
                               final model = profile == null
-                                  ? Text(l.aiAgentConfigureAction, style: theme.textTheme.bodySmall)
+                                  ? Text(
+                                      l.aiAgentConfigureAction,
+                                      style: theme.textTheme.bodySmall,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    )
                                   : AiModelPicker(
                                       key: const ValueKey('ai-agent-model'),
                                       value: profile.model,
@@ -368,6 +373,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                     );
                               final usage = _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0);
                               final permission = _PermissionPicker(
+                                compact: toolbar.maxWidth < 280 * MediaQuery.textScalerOf(context).scale(1),
                                 mode: runtime.busy ? runtime.permissionMode : permissionMode,
                                 onChanged: !enabled || runtime.busy
                                     ? null
@@ -399,28 +405,6 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                       ),
                                       icon: const Icon(Icons.arrow_upward_rounded, size: 16),
                                     );
-                              if (toolbar.maxWidth < 280 * MediaQuery.textScalerOf(context).scale(1)) {
-                                return Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(child: model),
-                                        const SizedBox(width: Space.sm),
-                                        usage,
-                                      ],
-                                    ),
-                                    const SizedBox(height: Space.sm),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Align(alignment: Alignment.centerLeft, child: permission),
-                                        ),
-                                        action,
-                                      ],
-                                    ),
-                                  ],
-                                );
-                              }
                               return Row(
                                 children: [
                                   Expanded(child: model),
@@ -560,7 +544,8 @@ String _permissionHint(AppLocalizations l, AgentPermissionMode mode) => switch (
 };
 
 class _PermissionPicker extends StatelessWidget {
-  const _PermissionPicker({required this.mode, required this.onChanged});
+  const _PermissionPicker({required this.mode, required this.onChanged, this.compact = false});
+  final bool compact;
   final AgentPermissionMode mode;
   final ValueChanged<AgentPermissionMode>? onChanged;
 
@@ -630,15 +615,17 @@ class _PermissionPicker extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: Space.xs),
           foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_permissionIcon(mode), size: 16),
-            const SizedBox(width: Space.xs),
-            Text(_permissionLabel(l, mode)),
-            const SizedBox(width: Space.xs),
-            const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
-          ],
+        child: Tooltip(
+          message: _permissionLabel(l, mode),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_permissionIcon(mode), size: 16),
+              if (!compact) ...[const SizedBox(width: Space.xs), Text(_permissionLabel(l, mode))],
+              const SizedBox(width: Space.xs),
+              const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
+            ],
+          ),
         ),
       ),
     );
@@ -1023,7 +1010,16 @@ class _ExecutionCardState extends State<_ExecutionCard> {
     final unknown = execution.state == 'outcomeUnknown' || execution.state == 'interrupted';
     final running = execution.state == 'running' || execution.state == 'pending';
     final compact = execution.capability != 'agent.execute' && execution.capability != 'agent.diagnose';
-    final title = execution.toolName ?? l.aiAgentExecutionRecord;
+    final (title, description) = switch (execution.capability) {
+      'agent.hosts' => (l.aiAgentToolHosts, l.aiAgentToolHostsHint),
+      'agent.diagnose' => (l.aiAgentToolDiagnostics, l.aiAgentToolDiagnosticsHint),
+      'agent.execute' => (l.aiAgentToolExecute, l.aiAgentToolExecuteHint),
+      'agent.output' => (l.aiAgentToolOutput, l.aiAgentToolOutputHint),
+      _ => (l.aiAgentExecutionRecord, l.aiAgentExecutionRecord),
+    };
+    final label = execution.capability == 'agent.execute' && !execution.archived && execution.command.isNotEmpty
+        ? '$title · ${execution.command}'
+        : title;
     final status = failed
         ? compact || execution.command.isEmpty
               ? l.aiAgentFailed
@@ -1045,13 +1041,9 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                   icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 17),
                 ),
                 Expanded(
-                  child: Text(
-                    !compact && !execution.archived && execution.command.isNotEmpty
-                        ? '$title · ${execution.capability == 'agent.diagnose' ? l.aiAgentDiagnostics : execution.command}'
-                        : title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: mono(context, theme.textTheme.bodySmall),
+                  child: Tooltip(
+                    message: '$label\n$description',
+                    child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
                   ),
                 ),
                 const SizedBox(width: Space.sm),
@@ -1096,6 +1088,10 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                   const SizedBox(height: Space.sm),
                   Text(execution.sharedText!, style: mono(context, theme.textTheme.bodySmall)),
                 ],
+              ],
+              if (!execution.archived && execution.capability == 'agent.execute' && execution.command.isNotEmpty) ...[
+                const SizedBox(height: Space.sm),
+                Text(execution.command, style: mono(context, theme.textTheme.bodySmall)),
               ],
               if (!execution.archived && execution.cwd.isNotEmpty) ...[
                 const SizedBox(height: Space.sm),
