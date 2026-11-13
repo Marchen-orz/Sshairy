@@ -16,6 +16,7 @@ Lightweight SSH. Powered by AI. Flutter 桌面 SSH 客户端（Win/macOS/Linux�
 9. 不复制 Netcatty（GPL-3.0）的代码和品牌素材，只参考设计。
 10. 测试在作者的 Windows 和 Ubuntu 服务器上进行，遵守 `docs/TESTING.md` §2：需要时向作者要凭证，凭证不写入任何文件，不影响服务器现有服务。
 11. 设计变更先改 `docs/`，再改代码；待验证项不写成事实，未运行的测试不写成通过。
+12. 做最小更改，跑最小一组相关测试，处理问题要快：只改需求必需的部分，不顺手扩范围、不加极端负载测试、不为小事并行委派；有具体故障证据才扩大检查。
 
 ## 命令
 - `flutter run -d windows`
