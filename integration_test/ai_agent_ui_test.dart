@@ -63,8 +63,8 @@ Future<void> _start(WidgetTester tester, Directory dir, String endpoint) async {
       child: const SshairyApp(),
     ),
   );
-  await _until(tester, () => find.byTooltip('Airy').evaluate().isNotEmpty);
-  await tester.tap(find.byTooltip('Airy'));
+  await _until(tester, () => find.byTooltip('Airy Agent').evaluate().isNotEmpty);
+  await tester.tap(find.byTooltip('Airy Agent'));
   await tester.pump();
 }
 

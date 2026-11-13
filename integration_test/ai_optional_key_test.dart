@@ -111,8 +111,8 @@ void main() {
         child: const SshairyApp(),
       ),
     );
-    await _until(tester, () => find.byTooltip('Airy').evaluate().isNotEmpty);
-    await tester.tap(find.byTooltip('Airy'));
+    await _until(tester, () => find.byTooltip('Airy Agent').evaluate().isNotEmpty);
+    await tester.tap(find.byTooltip('Airy Agent'));
     await tester.pump();
     await tester.enterText(find.byKey(const ValueKey('ai-agent-goal')), 'say hello');
     await tester.pump();

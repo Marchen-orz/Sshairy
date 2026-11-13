@@ -176,6 +176,12 @@ abstract class AppLocalizations {
   /// **'OpenAI Chat Completions'**
   String get aiConfigOpenAi;
 
+  /// No description provided for @aiConfigResponses.
+  ///
+  /// In en, this message translates to:
+  /// **'OpenAI Responses'**
+  String get aiConfigResponses;
+
   /// No description provided for @aiConfigEndpoint.
   ///
   /// In en, this message translates to:
@@ -4513,6 +4519,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Airy'**
   String get aiAgentTitle;
+
+  /// No description provided for @aiAgentRail.
+  ///
+  /// In en, this message translates to:
+  /// **'Airy Agent'**
+  String get aiAgentRail;
 
   /// No description provided for @aiAgentClear.
   ///

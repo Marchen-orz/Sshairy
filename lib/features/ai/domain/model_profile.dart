@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 /// Each protocol has its own request and continuation format.
-enum ModelProtocol { anthropic, openai }
+enum ModelProtocol { anthropic, openai, responses }
 
 enum ReasoningEffort { modelDefault, low, medium, high }
 
@@ -58,7 +58,13 @@ class ModelProfile {
   /// Credentials and active continuation are tied to this exact destination.
   String get identity => jsonEncode([protocol.name, endpoint, model]);
 
-  Uri get requestUri => Uri.parse('$endpoint/${protocol == ModelProtocol.anthropic ? 'messages' : 'chat/completions'}');
+  Uri get requestUri => Uri.parse(
+    '$endpoint/${switch (protocol) {
+      ModelProtocol.anthropic => 'messages',
+      ModelProtocol.openai => 'chat/completions',
+      ModelProtocol.responses => 'responses',
+    }}',
+  );
 
   Map<String, Object?> toJson() => {
     'protocol': protocol.name,

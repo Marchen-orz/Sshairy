@@ -399,6 +399,92 @@ void main() {
     }
   });
 
+  test('Responses replays stateless history and completes only on response.completed', () async {
+    final p = profile(ModelProtocol.responses);
+    expect(p.requestUri.path, '/v1/responses');
+    final body = encodeModelRequest(
+      ModelRequest(
+        profile: p,
+        system: 'rules',
+        messages: [
+          ModelMessage(ModelRole.user, text: 'hi'),
+          ModelMessage(ModelRole.assistant, text: 'looking', calls: [ModelCall('one', 'host_list', const {})]),
+          ModelMessage(ModelRole.tool, text: '[]', toolCallId: 'one'),
+        ],
+        tools: [
+          ModelTool('host_list', 'd', const {'type': 'object'}),
+        ],
+      ),
+    );
+    expect(body['instructions'], 'rules');
+    expect(body['store'], false);
+    expect(body['input'], [
+      {'role': 'user', 'content': 'hi'},
+      {'role': 'assistant', 'content': 'looking'},
+      {'type': 'function_call', 'call_id': 'one', 'name': 'host_list', 'arguments': '{}'},
+      {'type': 'function_call_output', 'call_id': 'one', 'output': '[]'},
+    ]);
+    expect((body['tools'] as List).single, containsPair('strict', false));
+
+    String event(String type, Map<String, Object?> fields) => sse({'type': type, ...fields}, event: type);
+    final message = event('response.output_item.added', {
+      'output_index': 0,
+      'item': {'type': 'message', 'content': []},
+    });
+    final call = event('response.output_item.added', {
+      'output_index': 1,
+      'item': {'type': 'function_call', 'call_id': 'one', 'name': 'host_list', 'arguments': ''},
+    });
+    final wire =
+        event('response.created', {'response': {}}) +
+        message +
+        event('response.output_text.delta', {'output_index': 0, 'delta': '你好'}) +
+        event('response.output_item.done', {
+          'output_index': 0,
+          'item': {'type': 'message'},
+        }) +
+        call +
+        event('response.function_call_arguments.delta', {'output_index': 1, 'delta': '{"a":'}) +
+        event('response.function_call_arguments.delta', {'output_index': 1, 'delta': '1}'}) +
+        event('response.output_item.done', {
+          'output_index': 1,
+          'item': {'type': 'function_call', 'call_id': 'one', 'name': 'host_list', 'arguments': '{"a":1}'},
+        }) +
+        event('response.completed', {
+          'response': {
+            'status': 'completed',
+            'usage': {'input_tokens': 3, 'output_tokens': 5},
+          },
+        });
+    for (final width in [1, 7, utf8.encode(wire).length]) {
+      final events = await decodeModelStream(p, split(wire, width)).toList();
+      expect(events.whereType<ModelTextDelta>().map((e) => e.text).join(), '你好');
+      final done = events.whereType<ModelMessageComplete>().single.message;
+      expect(done.calls.single.name, 'host_list');
+      expect(done.calls.single.arguments, {'a': 1});
+    }
+    final cases = [
+      message + event('response.output_text.delta', {'output_index': 0, 'delta': 'partial'}),
+      call + event('response.completed', {'response': {}}),
+      message + event('response.incomplete', {'response': {}}),
+      event('response.failed', {'response': {}}),
+      event('response.output_item.added', {
+        'output_index': 0,
+        'item': {'type': 'web_search_call'},
+      }),
+    ];
+    for (final partial in cases) {
+      final completed = <ModelMessageComplete>[];
+      await expectLater(
+        decodeModelStream(p, split(partial, 1)).forEach((e) {
+          if (e is ModelMessageComplete) completed.add(e);
+        }),
+        throwsA(isA<ModelFailure>()),
+      );
+      expect(completed, isEmpty);
+    }
+  });
+
   test('tool arguments and assistant text have independent hard limits', () async {
     final tooLargeArguments =
         chunk({

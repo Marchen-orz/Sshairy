@@ -58,6 +58,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigOpenAi => 'OpenAI Chat Completions';
 
   @override
+  String get aiConfigResponses => 'OpenAI Responses';
+
+  @override
   String get aiConfigEndpoint => 'API 基础地址';
 
   @override
@@ -2344,6 +2347,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentTitle => 'Airy';
+
+  @override
+  String get aiAgentRail => 'Airy Agent';
 
   @override
   String get aiAgentClear => '清空对话';

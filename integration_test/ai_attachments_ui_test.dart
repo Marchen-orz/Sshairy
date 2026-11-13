@@ -101,8 +101,8 @@ void main() {
         child: const SshairyApp(),
       ),
     );
-    await _until(tester, () => find.byTooltip('Airy').evaluate().isNotEmpty);
-    await tester.tap(find.byTooltip('Airy'));
+    await _until(tester, () => find.byTooltip('Airy Agent').evaluate().isNotEmpty);
+    await tester.tap(find.byTooltip('Airy Agent'));
     await tester.pump();
     final container = ProviderScope.containerOf(tester.element(find.byType(AgentPanel)));
     final conversations = container.read(agentConversationsProvider);

@@ -54,7 +54,8 @@ String anthropicText() => [
 ].map((value) => 'event: ${value['type']}\ndata: ${jsonEncode(value)}\n\n').join();
 
 void main() {
-  for (final protocol in ModelProtocol.values) {
+  // Responses shares the Chat Completions wiring; its wire format is covered in ai_protocol_test.dart.
+  for (final protocol in [ModelProtocol.anthropic, ModelProtocol.openai]) {
     test('${protocol.name} HTTP sends the key only to its exact endpoint and streams split UTF-8', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final served = Completer<void>();

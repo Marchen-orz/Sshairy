@@ -335,7 +335,7 @@ Map<String, Object?> _encodeModelRequest(ModelRequest request) {
         for (final message in request.messages)
           {
             'role': message.role.name,
-            'content': message.attachments.isEmpty ? message.text : _attachmentContent(message, anthropic: false),
+            'content': message.attachments.isEmpty ? message.text : _attachmentContent(message, ModelProtocol.openai),
             if (message.role == ModelRole.tool) 'tool_call_id': message.toolCallId,
             if (message.calls.isNotEmpty)
               'tool_calls': [
@@ -357,8 +357,45 @@ Map<String, Object?> _encodeModelRequest(ModelRequest request) {
             },
         ],
     },
+    ModelProtocol.responses => {
+      'model': request.profile.model,
+      if (request.system.isNotEmpty) 'instructions': request.system,
+      'max_output_tokens': request.profile.maxOutputTokens,
+      if (request.profile.reasoningEffort != ReasoningEffort.modelDefault)
+        'reasoning': {'effort': request.profile.reasoningEffort.name},
+      'stream': true,
+      'store': false,
+      'input': _responsesInput(request.messages),
+      if (request.tools.isNotEmpty)
+        'tools': [
+          for (final tool in request.tools)
+            {
+              'type': 'function',
+              'name': tool.name,
+              'description': tool.description,
+              'parameters': tool.schema,
+              'strict': false,
+            },
+        ],
+    },
   };
 }
+
+// Stateless replay: calls carry no item ids, so reasoning items need not be sent back.
+List<Map<String, Object?>> _responsesInput(List<ModelMessage> messages) => [
+  for (final message in messages)
+    if (message.role == ModelRole.tool)
+      {'type': 'function_call_output', 'call_id': message.toolCallId, 'output': message.text}
+    else ...[
+      if (message.text.isNotEmpty || message.role == ModelRole.user)
+        {
+          'role': message.role.name,
+          'content': message.attachments.isEmpty ? message.text : _attachmentContent(message, ModelProtocol.responses),
+        },
+      for (final call in message.calls)
+        {'type': 'function_call', 'call_id': call.id, 'name': call.name, 'arguments': jsonEncode(call.arguments)},
+    ],
+];
 
 void _validateMessages(List<ModelMessage> messages, ModelProfile profile) {
   final pending = <String>{};
@@ -410,30 +447,37 @@ void _validateMessages(List<ModelMessage> messages, ModelProfile profile) {
   if (pending.isNotEmpty) throw const ModelFailure('invalidToolPairing');
 }
 
-List<Map<String, Object?>> _attachmentContent(ModelMessage message, {required bool anthropic}) => [
-  if (message.text.isNotEmpty) {'type': 'text', 'text': message.text},
-  for (final attachment in message.attachments) ...[
-    {
-      'type': 'text',
-      'text': jsonEncode({
-        'attachment': attachment.description,
-        'untrustedData': true,
-        if (!attachment.isImage) 'text': attachment.content,
-      }),
-    },
-    if (attachment.isImage)
-      if (anthropic)
-        {
-          'type': 'image',
-          'source': {'type': 'base64', 'media_type': attachment.mediaType, 'data': attachment.content},
-        }
-      else
-        {
-          'type': 'image_url',
-          'image_url': {'url': 'data:${attachment.mediaType};base64,${attachment.content}'},
+List<Map<String, Object?>> _attachmentContent(ModelMessage message, ModelProtocol protocol) {
+  final textType = protocol == ModelProtocol.responses ? 'input_text' : 'text';
+  return [
+    if (message.text.isNotEmpty) {'type': textType, 'text': message.text},
+    for (final attachment in message.attachments) ...[
+      {
+        'type': textType,
+        'text': jsonEncode({
+          'attachment': attachment.description,
+          'untrustedData': true,
+          if (!attachment.isImage) 'text': attachment.content,
+        }),
+      },
+      if (attachment.isImage)
+        switch (protocol) {
+          ModelProtocol.anthropic => {
+            'type': 'image',
+            'source': {'type': 'base64', 'media_type': attachment.mediaType, 'data': attachment.content},
+          },
+          ModelProtocol.openai => {
+            'type': 'image_url',
+            'image_url': {'url': 'data:${attachment.mediaType};base64,${attachment.content}'},
+          },
+          ModelProtocol.responses => {
+            'type': 'input_image',
+            'image_url': 'data:${attachment.mediaType};base64,${attachment.content}',
+          },
         },
-  ],
-];
+    ],
+  ];
+}
 
 List<Map<String, Object?>> _anthropicMessages(List<ModelMessage> messages, ModelProfile profile) {
   final encoded = <Map<String, Object?>>[];
@@ -461,7 +505,7 @@ List<Map<String, Object?>> _anthropicMessages(List<ModelMessage> messages, Model
     final content = continuation is _AnthropicContinuation
         ? continuation.blocks
         : <Map<String, Object?>>[
-            ..._attachmentContent(message, anthropic: true),
+            ..._attachmentContent(message, ModelProtocol.anthropic),
             for (final call in message.calls)
               {'type': 'tool_use', 'id': call.id, 'name': call.name, 'input': call.arguments},
           ];
@@ -471,9 +515,14 @@ List<Map<String, Object?>> _anthropicMessages(List<ModelMessage> messages, Model
 }
 
 Stream<ModelEvent> decodeModelStream(ModelProfile profile, Stream<List<int>> bytes) async* {
-  final parser = profile.protocol == ModelProtocol.anthropic
-      ? _AnthropicParser(profile.identity, summarize: profile.reasoningEffort != ReasoningEffort.modelDefault)
-      : _OpenAiParser();
+  final _ProtocolParser parser = switch (profile.protocol) {
+    ModelProtocol.anthropic => _AnthropicParser(
+      profile.identity,
+      summarize: profile.reasoningEffort != ReasoningEffort.modelDefault,
+    ),
+    ModelProtocol.openai => _OpenAiParser(),
+    ModelProtocol.responses => _ResponsesParser(),
+  };
   try {
     await for (final event in decodeSse(bytes)) {
       for (final result in parser.add(event)) {
@@ -789,6 +838,125 @@ class _OpenAiParser extends _ProtocolParser {
         throw ModelFailure(finished == 'length' ? 'modelTruncated' : 'unsupportedModelStop');
       }
       reason = finished;
+    }
+  }
+}
+
+class _ResponsesItem {
+  _ResponsesItem(this.type, {this.callId, this.name});
+  final String type;
+  String? callId, name;
+  final text = StringBuffer();
+  final arguments = StringBuffer();
+  var argumentBytes = 0;
+  var closed = false;
+}
+
+/// Only `response.completed` finishes a turn; unknown `response.*` progress events cannot change that.
+class _ResponsesParser extends _ProtocolParser {
+  final items = <int, _ResponsesItem>{};
+
+  _ResponsesItem _item(Map<String, Object?> value, String type) {
+    final index = value['output_index'];
+    final item = index is int ? items[index] : null;
+    if (item == null || item.type != type || item.closed) throw const ModelFailure('invalidModelStream');
+    return item;
+  }
+
+  String _delta(Map<String, Object?> value) {
+    final delta = value['delta'];
+    if (delta is! String) throw const ModelFailure('invalidModelStream');
+    count(delta);
+    return delta;
+  }
+
+  void _append(_ResponsesItem item, String fragment) {
+    item.argumentBytes += utf8.encode(fragment).length;
+    if (item.argumentBytes > _argumentLimit) throw const ModelFailure('modelArgumentsTooLarge');
+    item.arguments.write(fragment);
+  }
+
+  @override
+  Iterable<ModelEvent> add(SseEvent event) sync* {
+    if (event.data == '[DONE]') return;
+    final value = object(event.data);
+    switch (value['type']) {
+      case 'error' || 'response.failed':
+        throw const ModelFailure('modelStreamError');
+      case 'response.incomplete':
+        throw const ModelFailure('modelTruncated');
+      case 'response.refusal.delta':
+        throw const ModelFailure('modelRefused');
+      case 'response.output_item.added':
+        final index = value['output_index'];
+        final item = value['item'];
+        if (index is! int || index < 0 || index >= 64 || items.containsKey(index) || item is! Map) {
+          throw const ModelFailure('invalidModelStream');
+        }
+        final type = item['type'];
+        if (type is! String || !{'message', 'reasoning', 'function_call'}.contains(type)) {
+          throw const ModelFailure('unsupportedModelContent');
+        }
+        final callId = item['call_id'], name = item['name'];
+        final call = _ResponsesItem(type, callId: callId is String ? callId : null, name: name is String ? name : null);
+        if (item['arguments'] case final String arguments when arguments.isNotEmpty) _append(call, arguments);
+        items[index] = call;
+        if (type == 'reasoning') yield const ModelReasoningDelta();
+      case 'response.output_text.delta':
+        final item = _item(value, 'message');
+        final delta = _delta(value);
+        item.text.write(delta);
+        if (delta.isNotEmpty) yield ModelTextDelta(delta);
+      case 'response.reasoning_summary_text.delta' || 'response.reasoning_text.delta':
+        if (_delta(value).isNotEmpty) yield const ModelReasoningDelta();
+      case 'response.function_call_arguments.delta':
+        _append(_item(value, 'function_call'), _delta(value));
+      case 'response.output_item.done':
+        final done = value['item'];
+        if (done is! Map || done['type'] is! String) throw const ModelFailure('invalidModelStream');
+        final item = _item(value, done['type'] as String);
+        item.closed = true;
+        if (item.type == 'message' && item.text.isEmpty && done['content'] is List) {
+          for (final part in done['content'] as List) {
+            if (part is! Map) throw const ModelFailure('invalidModelStream');
+            if (part['type'] == 'refusal') throw const ModelFailure('modelRefused');
+            final text = part['text'];
+            if (part['type'] == 'output_text' && text is String && text.isNotEmpty) {
+              count(text);
+              item.text.write(text);
+              yield ModelTextDelta(text);
+            }
+          }
+        }
+        if (item.type == 'function_call') {
+          if (done['call_id'] is String) item.callId = done['call_id'] as String;
+          if (done['name'] is String) item.name = done['name'] as String;
+          if (done['arguments'] case final String arguments) {
+            item.arguments.clear();
+            item.argumentBytes = 0;
+            _append(item, arguments);
+          }
+        }
+      case 'response.completed':
+        final response = value['response'];
+        if (response is! Map || (response['status'] != null && response['status'] != 'completed')) {
+          throw const ModelFailure('invalidModelStream');
+        }
+        // Responses name token counts like Anthropic does.
+        if (response['usage'] case final Map usage) yield _usage(usage, anthropic: true);
+        if (items.values.any((item) => !item.closed)) throw const ModelFailure('incompleteModelStream');
+        final text = StringBuffer();
+        final calls = <ModelCall>[];
+        for (final index in items.keys.toList()..sort()) {
+          final item = items[index]!;
+          if (item.type == 'message') text.write(item.text);
+          if (item.type == 'function_call') {
+            calls.add(ModelCall(item.callId ?? '', item.name ?? '', _arguments(item.arguments.toString())));
+          }
+        }
+        _validateCalls(calls, calls.isNotEmpty);
+        complete = true;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: text.toString(), calls: calls));
     }
   }
 }

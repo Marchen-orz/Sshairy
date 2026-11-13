@@ -617,7 +617,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 [
                   RailItem(
                     icon: Icons.auto_awesome_outlined,
-                    label: l.aiAgentTitle,
+                    label: l.aiAgentRail,
                     selected: _agentOpen,
                     onTap: _toggleAgent,
                   ),

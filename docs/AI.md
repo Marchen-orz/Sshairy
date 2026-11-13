@@ -242,7 +242,7 @@ ai/presentation/  对话、附件、执行/审批/验证卡片
 
 ## 6. 模型配置与协议
 
-首批支持 Anthropic Messages 与 OpenAI-compatible Chat Completions；两者分别实现协议适配，不拿 Chat Completions 冒充 Responses API。Responses 后续确有需求再加。兼容端点逐个建立契约样例；只支持普通文本的模型可用于行内生成、补全以及程序直接创建的空 scope 文本调用。Airy 的聚焦与主机发现流程使用工具协议，有效 Agent profile 始终启用工具协议，旧配置中的关闭标志也会归一；不会依据目录 ID 猜测能力或自动降级为无工具执行模式，服务不支持时明确失败。轻量入口的结构化结果可用供应商 JSON 输出能力，缺此能力则校验文本 JSON；无论哪种都由本地严格校验，不能假装供应商保证了语义正确。
+支持 Anthropic Messages、OpenAI-compatible Chat Completions 与 OpenAI Responses；三者分别实现协议适配，不拿 Chat Completions 冒充 Responses API。Responses 请求无状态（`store=false`，每次重发完整历史，不用 previous_response_id），工具定义显式 `strict=false`，不接受托管工具类输出项。兼容端点逐个建立契约样例；只支持普通文本的模型可用于行内生成、补全以及程序直接创建的空 scope 文本调用。Airy 的聚焦与主机发现流程使用工具协议，有效 Agent profile 始终启用工具协议，旧配置中的关闭标志也会归一；不会依据目录 ID 猜测能力或自动降级为无工具执行模式，服务不支持时明确失败。轻量入口的结构化结果可用供应商 JSON 输出能力，缺此能力则校验文本 JSON；无论哪种都由本地严格校验，不能假装供应商保证了语义正确。
 
 用户可保存模型配置档：profileId、protocol、完整规范化 API 基址、model、contextWindow、maxOutputTokens、能力标志、timeouts 和 SecretRef。审批角色可另存同服务的可选 reviewModel；缺失或 null 时配置不提供独立审批 profile，由运行时跟随当前实际 Agent 模型。显式选择时构建无工具的审批 profile，沿用相同 endpoint、上下文与输出上限。该可选字段兼容现有 schema 2，不触发版本迁移；不合法的模型 ID 或无默认 profile 的独立模型仍按坏配置保护。型号由用户选择/填写，不在业务代码固定某个当时最新型号。模型发现和连通测试由用户显式触发；失败保留手填能力，不伪造模型可用。
 
@@ -255,6 +255,7 @@ ai/presentation/  对话、附件、执行/审批/验证卡片
 |---|---|
 | Anthropic | message/content block 的 index、input_json_delta、stop_reason 与 message_stop；tool_use_id 对应紧接的 tool_result，多个结果成组返回，错误用协议错误字段 |
 | OpenAI Chat Completions | choices/delta.tool_calls 按 index 聚合 id/name/arguments；role=tool 与 tool_call_id 配对；区分 stop/tool_calls/length/content_filter 与合法结束标记 |
+| OpenAI Responses | output_item 按 output_index 聚合 message/function_call，call_id 与 function_call_output 配对；仅 response.completed 视为完成，incomplete/failed/error、未闭合的调用或未知输出项都不执行工具 |
 | 统一事件 | textDelta、toolCallStart、toolArgumentsDelta、toolCallComplete、usage、messageComplete、error；provider 私有内容不塞进工具参数 |
 
 SSE 使用增量 UTF-8，支持跨 chunk 字符/空行、CRLF、多行 data、heartbeat、流内错误。忽略已知协议允许的未知事件需有界且不改变完成判定。只有完整 assistant message、所有工具参数完成且 schema 通过后才执行，半截 JSON/length 截断/EOF 都不能触发工具。finish reason 与协议结束共同判断，不把断网当任务自然完成。

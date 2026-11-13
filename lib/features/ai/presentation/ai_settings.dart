@@ -424,6 +424,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             options: [
               AppOption(ModelProtocol.anthropic, l.aiConfigAnthropic),
               AppOption(ModelProtocol.openai, l.aiConfigOpenAi),
+              AppOption(ModelProtocol.responses, l.aiConfigResponses),
             ],
             onChanged: blocked
                 ? null

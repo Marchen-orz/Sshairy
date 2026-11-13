@@ -641,7 +641,7 @@ void main() {
       final monitor = tester.state(find.byType(MonitorPanel));
       final filesDock = find.ancestor(of: find.byType(SideFilesPanel), matching: find.byType(DockPanel)).first;
       final dockState = tester.state(filesDock);
-      final agentToggle = find.descendant(of: find.byType(IconRail), matching: find.byTooltip('Airy'));
+      final agentToggle = find.descendant(of: find.byType(IconRail), matching: find.byTooltip('Airy Agent'));
       await tester.tap(agentToggle);
       await _frames(tester);
       expect(find.byType(AgentPanel), findsOneWidget);

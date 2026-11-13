@@ -187,7 +187,7 @@ void main() {
 
     Map<String, Object?> remote(String path) => {'hostId': host.id.value, 'path': path};
     try {
-      await t.tapAndPump(find.byTooltip('Airy'));
+      await t.tapAndPump(find.byTooltip('Airy Agent'));
       await scenario('Open the test server terminal.', [
         _Step('host_list', () => {}),
         _Step('session_open', () => {'hostId': host.id.value}),

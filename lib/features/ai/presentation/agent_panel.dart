@@ -1771,6 +1771,6 @@ String _error(AppLocalizations l, String? code) => switch (code) {
   'invalidModelContinuation' ||
   'invalidToolPairing' ||
   'unsupportedModelEvent' ||
-  'invalidModelArguments' => l.aiAgentErrorProtocol,
+  'invalidModelArguments' => '${l.aiAgentErrorProtocol} ($code)',
   _ => l.aiAgentFailed,
 };

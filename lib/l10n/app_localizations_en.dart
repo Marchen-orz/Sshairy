@@ -61,6 +61,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigOpenAi => 'OpenAI Chat Completions';
 
   @override
+  String get aiConfigResponses => 'OpenAI Responses';
+
+  @override
   String get aiConfigEndpoint => 'API base URL';
 
   @override
@@ -2421,6 +2424,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentTitle => 'Airy';
+
+  @override
+  String get aiAgentRail => 'Airy Agent';
 
   @override
   String get aiAgentClear => 'Clear conversation';
