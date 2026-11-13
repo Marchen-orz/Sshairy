@@ -19,7 +19,7 @@ python -I -X utf8 tool/readme/make_images.py
 
 [benchmarks.json](benchmarks.json) supplies the performance charts and stores versions, startup samples, memory, application folder sizes, download URLs and artifact hashes.
 
-Measurements taken on 2026-11-13, with Xshell added on 2026-11-14. Startup: one warm-up followed by five launches, median time to the first visible main window of at least 600 × 400. Memory: whole-process-tree USS 15 seconds after that window appears. Runs are sequential and use no remote SSH connections. Portable and Electron clients use separate profiles; Xshell uses the installed application described below. Default local tabs and bundled helper processes are included. Application folder sizes count extracted or installed application files; the README's Sshairy ZIP size refers to the original application bundle.
+Measurements taken on 2026-11-13. The invalid Xshell attempt on 2026-11-14 is documented below. Startup: one warm-up followed by five launches, median time to the first visible window of at least 600 × 400. Memory: whole-process-tree USS 15 seconds after that window appears. This automated size check cannot distinguish a usable main window from activation, login or onboarding; the Xshell correction does not validate the other clients' readiness. Runs are sequential and use no remote SSH connections. Portable and Electron clients use separate profiles. Default local tabs and bundled helper processes are included. Application folder sizes count extracted or installed application files; the README's Sshairy ZIP size refers to the original application bundle.
 
 | Client | Version | Startup | Idle USS | App folder | Processes |
 |---|---|---:|---:|---:|---:|
@@ -32,11 +32,10 @@ Measurements taken on 2026-11-13, with Xshell added on 2026-11-14. Startup: one 
 | Tabby | 1.0.238 | 1.913 s | 480.8 MiB | 481.4 MiB | 5 |
 | Termius | 10.4.1 | 0.784 s | 1670.8 MiB | 557.8 MiB | 7 |
 | MobaXterm | 26.6 | 3.545 s | 104.4 MiB | 47.1 MiB | 2 |
-| Xshell | 8.0.0120 | 0.242 s | 11.3 MiB | 102.6 MiB | 1 |
 
 Sshairy, Netcatty and FinalShell retain their earlier measurements. WindTerm, electerm, Wave, Tabby, Termius and MobaXterm were downloaded from official releases and run for this revision. WindTerm uses its fresh portable tree; the Electron clients use explicit user-data directories, redirected home/AppData paths and supported application-specific profile variables. Tabby and Termius are extracted from their official installers; Wave and electerm use portable archives. Termius is measured without signing in to an account. MobaXterm uses its Home portable release with an explicit temporary INI path. Test processes are closed after each run.
 
-Xshell was manually installed by the author from the official Windows distribution; the installed registry version is 8.0.0120. It is measured from `C:/Program Files (x86)/NetSarang/Xshell 8/Xshell.exe` after the author exited their existing instance. The documented `-newwin` option is used, and only benchmark-created processes are closed. Home/AppData environment paths are redirected, but no undocumented data-folder switch or independent Windows known-folder isolation is assumed. The previously downloaded [official installer](https://cdn.netsarang.net/bf4f1d11/Xshell-8.0.0120p.exe) is 47,636,296 bytes (SHA256 `bb33c314e281c6b32a16e1861d52173553979cb84267dafe96068bb08625d8ef`).
+Xshell was manually installed by the author; the installed registry version is 8.0.0120 and its application folder is 102.6 MiB. On 2026-11-14 the author confirmed that the timed window was the activation-code page. The reported 0.242 s startup and 11.3 MiB USS therefore describe that page, not the usable SSH client, and have been withdrawn from the dataset, README tables and performance charts. The temporary result is marked invalid so collection skips it. No valid Xshell startup or idle-memory baseline exists until legitimate activation is completed and the terminal main window is verified. Its folder size and download size remain valid. The [official installer](https://cdn.netsarang.net/bf4f1d11/Xshell-8.0.0120p.exe) is 47,636,296 bytes (SHA256 `bb33c314e281c6b32a16e1861d52173553979cb84267dafe96068bb08625d8ef`).
 
 The README's comparison to Netcatty rounds `1 - 131.3 / 446.8 = 70.6%` to 71% lower idle memory and `2.604 / 0.624 = 4.17` to 4× the startup speed.
 

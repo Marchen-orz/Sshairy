@@ -1,11 +1,12 @@
-"""Start time and idle memory of a desktop app, run with an empty profile.
+"""Window-appearance timing and process memory of a desktop app.
 
   python -I measure_startup.py <name> <profile_dir> <exe> [args...]
 
-Prints one JSON line: time from process creation to the first visible main window (median of the warm runs)
-and, on the last run, the memory of the whole process tree after it sat idle. The app is started with
-USERPROFILE/APPDATA/LOCALAPPDATA pointing at <profile_dir>, so it neither reads nor writes real user data.
-Only processes started here are closed.
+Prints time to the first visible window of at least 600 x 400 (median of warm runs)
+and whole-process-tree memory on the last run. Window size does not establish application
+readiness: activation, login and onboarding pages can match. Verify the usable main window
+before accepting results. USERPROFILE/APPDATA/LOCALAPPDATA are redirected; applications
+may still use Windows known folders or registry settings. Only processes started here are closed.
 """
 
 import ctypes
@@ -41,7 +42,7 @@ def main_windows(pids):
         if pid.value in pids and user32.IsWindowVisible(hwnd):
             rect = wintypes.RECT()
             user32.GetWindowRect(hwnd, ctypes.byref(rect))
-            # A splash screen is not the main window.
+            # This filters small windows, not large activation or login pages.
             if rect.right - rect.left >= 600 and rect.bottom - rect.top >= 400:
                 found.append(hwnd)
         return True
