@@ -4946,6 +4946,12 @@ abstract class AppLocalizations {
   /// **'Exit code: {code}'**
   String aiAgentExitCode(int code);
 
+  /// No description provided for @aiAgentExecutionTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Execution timeout: {seconds} s'**
+  String aiAgentExecutionTimeout(int seconds);
+
   /// No description provided for @aiAgentTruncated.
   ///
   /// In en, this message translates to:

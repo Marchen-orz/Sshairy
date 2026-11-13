@@ -822,6 +822,8 @@
   "aiAgentDiagnosticScope": "固定 Linux 诊断可向所选模型发送系统、内核、负载、内存、磁盘挂载点及容量，不含进程参数和环境变量。",
   "aiAgentExitCode": "退出码：{code}",
   "@aiAgentExitCode": {"placeholders": {"code": {"type": "int"}}},
+  "aiAgentExecutionTimeout": "执行超时：{seconds} 秒",
+  "@aiAgentExecutionTimeout": {"placeholders": {"seconds": {"type": "int"}}},
   "aiAgentTruncated": "输出已截断。",
   "aiAgentShowOutput": "查看本地输出",
   "aiAgentHideOutput": "收起输出",

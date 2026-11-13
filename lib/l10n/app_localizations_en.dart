@@ -2648,6 +2648,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String aiAgentExecutionTimeout(int seconds) {
+    return 'Execution timeout: $seconds s';
+  }
+
+  @override
   String get aiAgentTruncated => 'Output was truncated.';
 
   @override

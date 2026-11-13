@@ -20,7 +20,7 @@ const adapters = {
   'flutter_svg': ['lib/features/hosts/adapters/import_source_icon.dart'],
   'flutter_markdown_plus': ['lib/features/ai/adapters/markdown_view.dart'],
   'flutter_secure_storage': ['lib/features/credentials/adapters/'],
-  'desktop_drop': ['lib/features/files/adapters/'],
+  'desktop_drop': ['lib/features/files/adapters/', 'lib/features/ai/adapters/attachment_drop.dart'],
   'file_selector': [
     'lib/features/ai/adapters/attachments.dart',
     'lib/features/files/adapters/',

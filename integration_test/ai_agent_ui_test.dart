@@ -172,9 +172,15 @@ void main() {
     await _until(tester, () => tester.widget<IconButton>(closeSettings).onPressed != null);
     await tester.tap(closeSettings);
     await _until(tester, () => setting.evaluate().isEmpty);
-    await tester.tap(find.byKey(const ValueKey('ai-agent-reasoning')));
+    final modelButton = find.descendant(
+      of: find.byKey(const ValueKey('ai-agent-model')),
+      matching: find.byType(TextButton),
+    );
+    await tester.tap(modelButton);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-agent-reasoning-high')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(5, 5));
     await tester.pumpAndSettle();
     final panelElement = tester.element(find.byKey(const ValueKey('ai-agent-goal')));
     final container = ProviderScope.containerOf(panelElement);
@@ -189,7 +195,7 @@ void main() {
     expect(received?.containsKey('max_tokens'), isFalse);
     expect(find.text('Thinking…'), findsOneWidget);
     expect(find.textContaining('private-provider-reasoning'), findsNothing);
-    expect(tester.widget<TextButton>(find.byKey(const ValueKey('ai-agent-reasoning'))).onPressed, isNull);
+    expect(tester.widget<TextButton>(modelButton).onPressed, isNull);
     await tester.tap(
       find.byWidgetPredicate((widget) => widget is Icon && widget.icon == Icons.tune_outlined && widget.size == 17),
     );
@@ -202,7 +208,7 @@ void main() {
     finish.complete();
     await _until(tester, () => !container.read(agentRuntimeProvider).busy);
     await tester.pumpAndSettle();
-    expect(tester.widget<TextButton>(find.byKey(const ValueKey('ai-agent-reasoning'))).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(modelButton).onPressed, isNotNull);
     await tester.tap(find.byKey(const ValueKey('ai-agent-new-task')));
     await tester.pumpAndSettle();
     expect(container.read(effectiveAgentProfileProvider)!.reasoningEffort, ReasoningEffort.low);

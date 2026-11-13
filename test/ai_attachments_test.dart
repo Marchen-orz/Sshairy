@@ -129,6 +129,41 @@ void main() {
     expect(await AgentAttachmentPicker(pick: () async => []).choose(attachments), same(attachments));
   });
 
+  test('file paste and drop share picker validation without exposing paths', () async {
+    final directory = await Directory.systemTemp.createTemp('sshairy-file-inputs-');
+    addTearDown(() => directory.delete(recursive: true));
+    final text = File('${directory.path}/copy.txt');
+    await text.writeAsString('copied text 中文');
+    final picker = AgentAttachmentPicker(clipboard: () async => [text.path]);
+    final pasted = await picker.importFiles(await picker.clipboardFiles(), []);
+    final dropped = await picker.importFiles([text.path], []);
+    expect(pasted.single.content, dropped.single.content);
+    expect(pasted.single.name, 'copy.txt');
+    expect(jsonEncode(pasted.single.toJson()), isNot(contains(directory.path)));
+    final folder = await Directory('${directory.path}/folder.txt').create();
+    await expectLater(picker.importFiles([folder.path], pasted), throwsFormatException);
+    final unsupported = File('${directory.path}/document.pdf');
+    await unsupported.writeAsString('unsupported');
+    await expectLater(picker.importFiles([text.path, unsupported.path], pasted), throwsFormatException);
+    expect(pasted, hasLength(1), reason: 'A rejected batch does not modify existing attachments');
+    await text.writeAsString('TOKEN=synthetic-private');
+    await expectLater(picker.importFiles([text.path], pasted), throwsFormatException);
+    expect(await picker.importFiles([], pasted), same(pasted));
+  });
+
+  test('file clipboard count and path length are bounded before files are opened', () async {
+    await expectLater(
+      AgentAttachmentPicker(clipboard: () async => List.filled(5, 'ignored.txt')).clipboardFiles(),
+      throwsFormatException,
+    );
+    await expectLater(
+      AgentAttachmentPicker(clipboard: () async => ['x' * 32768]).clipboardFiles(),
+      throwsFormatException,
+    );
+    final picker = AgentAttachmentPicker();
+    await expectLater(picker.importFiles(List.filled(5, 'ignored.txt'), []), throwsFormatException);
+  });
+
   test('history round-trips attachment content and applies the existing whole-turn byte limit', () async {
     final directory = await Directory.systemTemp.createTemp('sshairy-attachment-store-');
     addTearDown(() => directory.delete(recursive: true));

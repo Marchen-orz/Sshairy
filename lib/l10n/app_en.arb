@@ -863,6 +863,8 @@
   "aiAgentDiagnosticScope": "Fixed Linux diagnostics may send OS, kernel, load, memory, disk mounts and capacity to the selected model. Process arguments and environment variables are excluded.",
   "aiAgentExitCode": "Exit code: {code}",
   "@aiAgentExitCode": {"placeholders": {"code": {"type": "int"}}},
+  "aiAgentExecutionTimeout": "Execution timeout: {seconds} s",
+  "@aiAgentExecutionTimeout": {"placeholders": {"seconds": {"type": "int"}}},
   "aiAgentTruncated": "Output was truncated.",
   "aiAgentShowOutput": "Show local output",
   "aiAgentHideOutput": "Hide output",

@@ -2,6 +2,7 @@
 
 #include <commctrl.h>
 #include <flutter/standard_method_codec.h>
+#include <shellapi.h>
 #include <windowsx.h>
 
 #include <cmath>
@@ -154,6 +155,47 @@ void FlutterWindow::HandleWindowMethod(
   }
   if (method == "fonts") {
     result->Success(flutter::EncodableValue(SystemFonts()));
+    return;
+  }
+  if (method == "clipboardFiles") {
+    if (!IsClipboardFormatAvailable(CF_HDROP)) {
+      result->Success(flutter::EncodableValue(flutter::EncodableList{}));
+      return;
+    }
+    if (!OpenClipboard(window)) {
+      result->Error("attachmentUnreadable", "Clipboard is unavailable");
+      return;
+    }
+    struct ClipboardGuard {
+      ~ClipboardGuard() { CloseClipboard(); }
+    } clipboard_guard;
+    const HDROP drop = static_cast<HDROP>(GetClipboardData(CF_HDROP));
+    if (drop == nullptr) {
+      result->Error("attachmentUnreadable", "File clipboard is unavailable");
+      return;
+    }
+    const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+    if (count > 4) {
+      result->Error("attachmentTooLarge", "Too many attachments");
+      return;
+    }
+    flutter::EncodableList files;
+    for (UINT i = 0; i < count; ++i) {
+      const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+      if (length == 0 || length > 32767) {
+        result->Error(length > 32767 ? "attachmentTooLarge" : "attachmentUnreadable",
+                      "Invalid file clipboard entry");
+        return;
+      }
+      std::wstring path(length + 1, L'\0');
+      if (DragQueryFileW(drop, i, path.data(), length + 1) != length) {
+        result->Error("attachmentUnreadable", "File clipboard changed");
+        return;
+      }
+      path.resize(length);
+      files.emplace_back(Utf8(path));
+    }
+    result->Success(flutter::EncodableValue(files));
     return;
   }
   if (method == "brandIcon") {

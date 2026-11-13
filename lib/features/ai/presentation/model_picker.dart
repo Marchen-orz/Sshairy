@@ -26,6 +26,7 @@ class AiModelPicker extends ConsumerStatefulWidget {
     this.draftKey,
     this.compact = false,
     this.label,
+    this.footer,
   });
 
   final String value, endpoint;
@@ -34,6 +35,9 @@ class AiModelPicker extends ConsumerStatefulWidget {
   final String? credentialIdentity, label;
   final Secret? draftKey;
   final bool compact;
+
+  /// Shown under the model list, for settings that belong to the chosen model.
+  final WidgetBuilder? footer;
 
   @override
   ConsumerState<AiModelPicker> createState() => _AiModelPickerState();
@@ -66,7 +70,7 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
     final cancel = CancellationToken();
     _cancel = cancel;
     final value = widget.value, protocol = widget.protocol, endpoint = widget.endpoint;
-    final credentialIdentity = widget.credentialIdentity, draftKey = widget.draftKey;
+    final credentialIdentity = widget.credentialIdentity, draftKey = widget.draftKey, footer = widget.footer;
     final catalog = ref.read(aiModelCatalogProvider);
     final anchor = anchorOf(_anchor.currentContext!);
     final selected = await showAnchoredPopup<String>(
@@ -82,6 +86,7 @@ class _AiModelPickerState extends ConsumerState<AiModelPicker> {
         credentialIdentity: credentialIdentity,
         draftKey: draftKey,
         cancel: cancel,
+        footer: footer,
       ),
     );
     if (mounted && !cancel.isCancelled && selected != null) {
@@ -177,8 +182,10 @@ class _Models extends StatefulWidget {
     required this.cancel,
     this.credentialIdentity,
     this.draftKey,
+    this.footer,
   });
 
+  final WidgetBuilder? footer;
   final ModelCatalog catalog;
   final String value, endpoint;
   final ModelProtocol protocol;
@@ -334,6 +341,7 @@ class _ModelsState extends State<_Models> {
             ),
             if (!_loading && matches.isEmpty && !custom)
               Padding(padding: const EdgeInsets.all(Space.sm), child: Text(l.aiModelsEmpty)),
+            if (widget.footer case final footer?) ...[const SizedBox(height: Space.xs), footer(context)],
           ],
         ),
       ),

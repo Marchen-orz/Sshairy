@@ -2562,6 +2562,11 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String aiAgentExecutionTimeout(int seconds) {
+    return '执行超时：$seconds 秒';
+  }
+
+  @override
   String get aiAgentTruncated => '输出已截断。';
 
   @override

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart' as selector;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/ids.dart';
@@ -13,21 +14,60 @@ import '../domain/attachment.dart';
 final agentAttachmentPickerProvider = Provider<AgentAttachmentPicker>((_) => AgentAttachmentPicker());
 
 class AgentAttachmentPicker {
-  AgentAttachmentPicker({Future<List<String>> Function()? pick}) : _pick = pick ?? _choose;
-  final Future<List<String>> Function() _pick;
+  AgentAttachmentPicker({Future<List<String>> Function()? pick, Future<List<String>> Function()? clipboard})
+    : _pick = pick ?? _choose,
+      _clipboard = clipboard ?? _clipboardFiles;
+  final Future<List<String>> Function() _pick, _clipboard;
+
+  static Future<List<String>> _clipboardFiles() async {
+    if (!Platform.isWindows) return const [];
+    try {
+      final paths = await const MethodChannel('sshairy/window').invokeListMethod<String>('clipboardFiles');
+      return paths ?? const [];
+    } on PlatformException catch (error) {
+      throw FormatException(error.code == 'attachmentTooLarge' ? error.code : 'attachmentUnreadable');
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
+  Future<List<String>> clipboardFiles() async {
+    final paths = await _clipboard();
+    _checkPaths(paths);
+    return paths;
+  }
+
+  static void _checkPaths(List<String> paths) {
+    if (paths.length > AgentAttachmentLimits.count || paths.any((path) => path.length > 32767)) {
+      throw const FormatException('attachmentTooLarge');
+    }
+  }
 
   static Future<List<String>> _choose() async => [for (final file in await selector.openFiles()) file.path];
 
-  /// Paths come only from the user-owned picker and are discarded once content has been read.
   Future<List<AgentAttachment>> choose(List<AgentAttachment> current) async {
     try {
-      final paths = await _pick();
+      return await importFiles(await _pick(), current);
+    } on FormatException {
+      rethrow;
+    } on Object {
+      throw const FormatException('attachmentUnreadable');
+    }
+  }
+
+  /// Paths come only from explicit picker, file paste or drop events and are discarded after reading.
+  Future<List<AgentAttachment>> importFiles(List<String> paths, List<AgentAttachment> current) async {
+    try {
+      _checkPaths(paths);
       if (paths.isEmpty) return current;
       if (paths.length + current.length > AgentAttachmentLimits.count) {
         throw const FormatException('attachmentTooLarge');
       }
       final added = <AgentAttachment>[];
       for (final path in paths) {
+        if (await FileSystemEntity.type(path) != FileSystemEntityType.file) {
+          throw const FormatException('attachmentUnsupported');
+        }
         final name = path.replaceAll('\\', '/').split('/').last;
         final extension = name.toLowerCase().split('.').last;
         final image = const {'png', 'jpg', 'jpeg', 'webp'}.contains(extension);

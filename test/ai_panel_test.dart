@@ -298,12 +298,16 @@ void main() {
   testWidgets('reasoning control is disabled while busy and returned summaries can expand', (tester) async {
     final runtime = _Runtime();
     final container = await _panel(tester, runtime);
-    final picker = find.byKey(const ValueKey('ai-agent-reasoning'));
+    final picker = find.descendant(of: find.byKey(const ValueKey('ai-agent-model')), matching: find.byType(TextButton));
     await tester.tap(picker);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-agent-reasoning-medium')));
     await tester.pumpAndSettle();
     expect(container.read(effectiveAgentProfileProvider)!.reasoningEffort, ReasoningEffort.medium);
+    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('ai-agent-reasoning-medium'))).selected, isTrue);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-agent-reasoning-medium')), findsNothing);
     final reply = AgentChatEntry('assistant', 'Answer')
       ..reasoningReceived = true
       ..reasoningActive = true
@@ -544,6 +548,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final locale in [const Locale('en'), const Locale('zh')]) {
+    testWidgets('approval shows the current execution timeout (${locale.languageCode})', (tester) async {
+      final runtime = _Runtime()
+        ..active = true
+        ..phase = AgentPhase.awaitingApproval;
+      await _panel(tester, runtime, locale: locale);
+      final prefix = locale.languageCode == 'zh' ? '执行超时：' : 'Execution timeout: ';
+      for (final seconds in [1, 300, null]) {
+        runtime.approval = AgentApproval(
+          'user@web.example',
+          'printf approved',
+          '/srv/app',
+          'agent.execute',
+          timeoutSeconds: seconds,
+        );
+        runtime.refresh();
+        await tester.pump();
+        expect(find.text('printf approved'), findsOneWidget);
+        expect(find.textContaining(prefix), seconds == null ? findsNothing : findsOneWidget);
+        if (seconds != null) {
+          final unit = locale.languageCode == 'zh' ? '秒' : 's';
+          expect(find.text('$prefix$seconds $unit'), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+
   testWidgets('read approval includes its bounded diagnostic result without another decision', (tester) async {
     final runtime = _Runtime()
       ..active = true
@@ -619,7 +651,7 @@ void main() {
     final history = tester.getRect(find.byKey(const ValueKey('ai-agent-history')));
     final send = tester.getRect(find.byKey(const ValueKey('ai-agent-send')));
     final model = tester.getRect(find.byKey(const ValueKey('ai-agent-model')));
-    final reasoning = tester.getRect(find.byKey(const ValueKey('ai-agent-reasoning')));
+    final attach = tester.getRect(find.byKey(const ValueKey('ai-agent-attach')));
     final context = tester.getRect(find.byKey(const ValueKey('ai-agent-context-usage')));
     final permission = tester.getRect(find.byKey(const ValueKey('ai-agent-permission')));
     expect(host.center.dy, closeTo(title.center.dy, 1));
@@ -628,12 +660,14 @@ void main() {
     expect(send.size, const Size.square(WorkspaceSize.tabHeight));
     final button = tester.widget<IconButton>(find.byKey(const ValueKey('ai-agent-send')));
     expect(button.style!.shape!.resolve({}), isA<RoundedRectangleBorder>());
-    expect(reasoning.center.dy, closeTo(model.center.dy, 1));
+    expect(attach.center.dy, closeTo(model.center.dy, 1));
+    expect(attach.left, lessThan(model.left));
+    expect(attach.top, greaterThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('ai-agent-goal'))).bottom));
     expect(context.center.dy, closeTo(model.center.dy, 1));
     expect(permission.center.dy, closeTo(model.center.dy, 1));
     expect(send.center.dy, closeTo(model.center.dy, 1));
-    expect(reasoning.left - model.right, closeTo(Space.xs, 1));
-    expect(context.left - reasoning.right, closeTo(Space.xs, 1));
+    expect(model.left - attach.right, closeTo(0, 1));
+    expect(context.left - model.right, closeTo(Space.xs, 1));
     expect(permission.left - context.right, closeTo(Space.sm, 1));
     expect(send.left - permission.right, closeTo(Space.sm, 1));
     expect(find.text('0%'), findsOneWidget);
@@ -660,8 +694,8 @@ void main() {
 
         void expectToolbar() {
           final controls = [
+            find.byKey(const ValueKey('ai-agent-attach')),
             find.byKey(const ValueKey('ai-agent-model')),
-            find.byKey(const ValueKey('ai-agent-reasoning')),
             find.byKey(const ValueKey('ai-agent-context-usage')),
             find.byKey(const ValueKey('ai-agent-permission')),
             find.byKey(ValueKey(runtime.busy ? 'ai-agent-stop' : 'ai-agent-send')),
@@ -673,9 +707,9 @@ void main() {
             expect(rect.right, lessThanOrEqualTo(panel.right));
           }
           for (var i = 1; i < controls.length; i++) {
-            expect(controls[i].left, greaterThan(controls[i - 1].right));
+            expect(controls[i].left, greaterThanOrEqualTo(controls[i - 1].right));
           }
-          expect(controls.first.width, greaterThan(48));
+          expect(controls[1].width, greaterThan(48));
           expect(controls.last.size, const Size.square(WorkspaceSize.tabHeight));
           expect(tester.takeException(), isNull);
         }

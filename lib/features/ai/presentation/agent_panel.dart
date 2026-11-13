@@ -22,6 +22,7 @@ import '../application/target.dart';
 import '../application/permission_mode.dart';
 import '../adapters/markdown_view.dart';
 import '../adapters/attachments.dart';
+import '../adapters/attachment_drop.dart';
 import '../domain/attachment.dart';
 import 'model_picker.dart';
 import '../application/runtime.dart';
@@ -38,7 +39,7 @@ class AgentPanel extends ConsumerStatefulWidget {
 
 class _AgentPanelState extends ConsumerState<AgentPanel> {
   late final _goal = TextEditingController(text: ref.read(agentComposerProvider).goal);
-  bool _startFailed = false, _historyExpanded = false, _pickingAttachment = false;
+  bool _startFailed = false, _historyExpanded = false, _pickingAttachment = false, _dropHover = false;
   String? _attachmentError;
   final _conversationKey = GlobalKey<_ConversationState>();
 
@@ -87,27 +88,72 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
     _goalChanged();
   }
 
-  Future<void> _attach() async {
+  bool get _attachmentEnabled {
+    final configuration = ref.read(aiConfigurationProvider);
+    final conversations = ref.read(agentConversationsProvider);
+    return configuration.enabled &&
+        configuration.profile != null &&
+        !configuration.loadFailed &&
+        !conversations.loading &&
+        !conversations.runtime.busy;
+  }
+
+  Future<void> _paste(VoidCallback pasteText) async {
     if (_pickingAttachment) return;
+    if (!_attachmentEnabled) {
+      pasteText();
+      return;
+    }
+    await _attach(clipboard: true, pasteText: pasteText);
+  }
+
+  Future<void> _attach({List<String>? paths, bool clipboard = false, VoidCallback? pasteText}) async {
+    if (_pickingAttachment || !_attachmentEnabled) return;
     final conversations = ref.read(agentConversationsProvider);
     final selected = conversations.selectedId;
     final draft = ref.read(agentComposerProvider);
+    final configuration = ref.read(aiConfigurationProvider);
+    final textValue = _goal.value;
     final picker = ref.read(agentAttachmentPickerProvider);
+    var invalidated = false;
+    bool current() =>
+        mounted &&
+        !invalidated &&
+        selected == conversations.selectedId &&
+        _attachmentEnabled &&
+        identical(ref.read(aiConfigurationProvider), configuration) &&
+        identical(ref.read(agentComposerProvider).attachments, draft.attachments);
+    void checkCurrent() {
+      if (!current()) invalidated = true;
+    }
+
+    conversations.addListener(checkCurrent);
+    conversations.runtime.addListener(checkCurrent);
     setState(() {
       _pickingAttachment = true;
+      _dropHover = false;
       _attachmentError = null;
     });
     try {
-      final attachments = await picker.choose(draft.attachments);
-      if (mounted &&
-          selected == conversations.selectedId &&
-          !conversations.runtime.busy &&
-          identical(ref.read(agentComposerProvider).attachments, draft.attachments)) {
-        ref.read(agentComposerProvider.notifier).setAttachments(attachments);
+      if (clipboard) {
+        paths = await picker.clipboardFiles();
+        if (!current()) return;
+        if (paths.isEmpty) {
+          if (_goal.value == textValue) pasteText?.call();
+          return;
+        }
       }
+      final attachments = paths == null
+          ? await picker.choose(draft.attachments)
+          : await picker.importFiles(paths, draft.attachments);
+      if (current()) ref.read(agentComposerProvider.notifier).setAttachments(attachments);
     } on FormatException catch (error) {
-      if (mounted) setState(() => _attachmentError = error.message);
+      if (current()) setState(() => _attachmentError = error.message);
+    } on Object {
+      if (current()) setState(() => _attachmentError = 'attachmentUnreadable');
     } finally {
+      conversations.removeListener(checkCurrent);
+      conversations.runtime.removeListener(checkCurrent);
       if (mounted) setState(() => _pickingAttachment = false);
     }
   }
@@ -189,334 +235,377 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.sm, Space.sm),
-                  child: Row(
-                    children: [
-                      Icon(Icons.auto_awesome_outlined, size: 18, color: theme.colorScheme.primary),
-                      const SizedBox(width: Space.xs),
-                      Text(l.aiAgentTitle, style: theme.textTheme.titleSmall),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        child: Tooltip(
-                          message: targetLabel,
-                          child: Text(
-                            targetLabel,
-                            key: const ValueKey('ai-agent-target'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(alpha: .55),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: Space.sm),
-                      Semantics(
-                        expanded: _historyExpanded,
-                        child: IconButton(
-                          key: const ValueKey('ai-agent-history'),
-                          tooltip: l.aiAgentHistory,
-                          onPressed: () => setState(() => _historyExpanded = !_historyExpanded),
-                          icon: const Icon(Icons.history_rounded, size: 17),
-                        ),
-                      ),
-                      IconButton(
-                        key: const ValueKey('ai-agent-new-task'),
-                        tooltip: l.aiAgentNewTask,
-                        onPressed: runtime.busy || conversations.loading
-                            ? null
-                            : () {
-                                if (conversations.newConversation()) {
-                                  _resetConversationUi();
-                                }
-                              },
-                        icon: const Icon(Icons.add_comment_outlined, size: 17),
-                      ),
-                      IconButton(
-                        tooltip: l.settings,
-                        onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
-                        icon: const Icon(Icons.tune_outlined, size: 17),
-                      ),
-                      if (widget.onClose != null)
-                        IconButton(
-                          tooltip: l.close,
-                          onPressed: widget.onClose,
-                          icon: const Icon(Icons.close, size: 17),
-                        ),
-                    ],
-                  ),
+            child: AgentAttachmentDropZone(
+              key: const ValueKey('ai-agent-file-drop'),
+              enabled: _attachmentEnabled && !_pickingAttachment,
+              onHover: (value) {
+                if (mounted && _dropHover != value) setState(() => _dropHover = value);
+              },
+              onDrop: (paths) => unawaited(_attach(paths: paths)),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: _dropHover && _attachmentEnabled && !_pickingAttachment
+                      ? Border.all(color: theme.colorScheme.primary)
+                      : null,
                 ),
-                const Divider(height: 1),
-                if (_historyExpanded)
-                  ConstrainedBox(
-                    key: const ValueKey('ai-agent-history-list'),
-                    constraints: BoxConstraints(maxHeight: min(240, constraints.maxHeight * .32)),
-                    child: _History(conversations: conversations, onChoice: _history),
-                  ),
-                Expanded(
-                  child: runtime.timeline.isEmpty && !runtime.busy
-                      ? _Welcome(
-                          enabled: enabled,
-                          failed: configuration.loadFailed,
-                          compact: compact,
-                          onExample: _replaceGoal,
-                        )
-                      : _Conversation(
-                          key: _conversationKey,
-                          runtime: runtime,
-                          conversationId: conversations.selectedId,
-                          canRegenerate: enabled && !changedBinding && conversations.canRegenerate,
-                          canWithdraw: conversations.canWithdraw,
-                          onRegenerate: () => _regenerate(selectedHost),
-                          onWithdraw: () {
-                            if (conversations.withdrawLastTurn()) {
-                              _resetConversationUi();
-                            }
-                          },
-                        ),
-                ),
-                if (runtime.error != null || _startFailed)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.md, 0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.error),
-                        const SizedBox(width: Space.sm),
-                        Expanded(
-                          child: Text(
-                            _error(l, runtime.error),
-                            maxLines: compact ? 2 : 4,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const Divider(key: ValueKey('ai-agent-composer-divider'), height: 1),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: max(112, constraints.maxHeight * (compact ? .58 : .46))),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.sm, Space.sm),
+                      child: Row(
                         children: [
-                          if (changedBinding && !runtime.busy)
-                            Row(
-                              children: [
-                                Expanded(child: Text(l.aiAgentHistoryTargetChanged, style: theme.textTheme.bodySmall)),
-                                TextButton(
-                                  key: const ValueKey('ai-agent-new-target'),
-                                  onPressed: conversations.loading
-                                      ? null
-                                      : () {
-                                          final goal = _goal.text;
-                                          if (!conversations.newConversation()) {
-                                            return;
-                                          }
-                                          _replaceGoal(goal);
-                                          _resetConversationUi();
-                                        },
-                                  child: Text(l.aiAgentNewTask),
+                          Icon(Icons.auto_awesome_outlined, size: 18, color: theme.colorScheme.primary),
+                          const SizedBox(width: Space.xs),
+                          Text(l.aiAgentTitle, style: theme.textTheme.titleSmall),
+                          const SizedBox(width: Space.sm),
+                          Expanded(
+                            child: Tooltip(
+                              message: targetLabel,
+                              child: Text(
+                                targetLabel,
+                                key: const ValueKey('ai-agent-target'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: .55),
                                 ),
-                              ],
-                            ),
-                          if (conversations.loadFailed || conversations.saveFailed)
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    conversations.loadFailed ? l.aiAgentHistoryLoadFailed : l.aiAgentHistorySaveFailed,
-                                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () =>
-                                      conversations.loadFailed ? conversations.reload() : conversations.retrySave(),
-                                  child: Text(l.aiAgentHistoryRetry),
-                                ),
-                              ],
-                            ),
-                          if (conversations.current?.historyTruncated ?? false)
-                            Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
-                          if (runtime.contextCompacted)
-                            Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
-                          Row(
-                            children: [
-                              IconButton(
-                                key: const ValueKey('ai-agent-attach'),
-                                tooltip: l.aiAgentAttach,
-                                onPressed: !enabled || runtime.busy || _pickingAttachment ? null : _attach,
-                                icon: const Icon(Icons.attach_file_rounded, size: 17),
                               ),
-                              if (_attachmentError != null)
-                                Expanded(
-                                  child: Text(switch (_attachmentError) {
-                                    'attachmentTooLarge' => l.aiAgentAttachmentTooLarge,
-                                    'attachmentUnsupported' => l.aiAgentAttachmentUnsupported,
-                                    _ => l.aiAgentAttachmentUnreadable,
-                                  }, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
-                                ),
-                            ],
-                          ),
-                          if (draft.attachments.isNotEmpty)
-                            _AttachmentList(
-                              attachments: draft.attachments,
-                              onRemove: runtime.busy
-                                  ? null
-                                  : (attachment) {
-                                      ref
-                                          .read(agentComposerProvider.notifier)
-                                          .setAttachments(
-                                            draft.attachments.where((value) => value.id != attachment.id),
-                                          );
-                                    },
-                            ),
-                          Focus(
-                            onKeyEvent: (_, event) {
-                              final keys = HardwareKeyboard.instance;
-                              final enter =
-                                  event.logicalKey == LogicalKeyboardKey.enter ||
-                                  event.logicalKey == LogicalKeyboardKey.numpadEnter;
-                              if (event is! KeyDownEvent ||
-                                  !enter ||
-                                  keys.isShiftPressed ||
-                                  keys.isControlPressed ||
-                                  keys.isAltPressed ||
-                                  keys.isMetaPressed ||
-                                  !_goal.value.composing.isCollapsed) {
-                                return KeyEventResult.ignored;
-                              }
-                              if (enabled &&
-                                  !runtime.busy &&
-                                  !conversations.loading &&
-                                  (_goal.text.trim().isNotEmpty || draft.attachments.isNotEmpty)) {
-                                unawaited(_send(runtime, selectedHost));
-                              }
-                              return KeyEventResult.handled;
-                            },
-                            child: TextField(
-                              key: const ValueKey('ai-agent-goal'),
-                              controller: _goal,
-                              enabled: enabled,
-                              minLines: compact ? 2 : 3,
-                              maxLines: compact ? 3 : 6,
-                              maxLength: 4096,
-                              decoration: InputDecoration(
-                                hintText: l.aiAgentGoal,
-                                counterText: '',
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                filled: false,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.xs),
-                              ),
-                              onChanged: (_) => _goalChanged(),
                             ),
                           ),
-                          const SizedBox(height: Space.sm),
-                          LayoutBuilder(
-                            builder: (context, toolbar) {
-                              final model = profile == null
-                                  ? Text(
-                                      l.aiAgentConfigureAction,
-                                      style: theme.textTheme.bodySmall,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    )
-                                  : AiModelPicker(
-                                      key: const ValueKey('ai-agent-model'),
-                                      value: profile.model,
-                                      protocol: profile.protocol,
-                                      endpoint: profile.endpoint,
-                                      credentialIdentity: configuration.profile?.identity,
-                                      compact: true,
-                                      onChanged: runtime.busy
-                                          ? null
-                                          : ref.read(selectedAgentModelProvider.notifier).select,
-                                    );
-                              final usage = _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0);
-                              final permission = _PermissionPicker(
-                                compact: toolbar.maxWidth < 480 * MediaQuery.textScalerOf(context).scale(1),
-                                mode: runtime.busy ? runtime.permissionMode : permissionMode,
-                                onChanged: !enabled || runtime.busy
-                                    ? null
-                                    : ref.read(selectedAgentPermissionModeProvider.notifier).select,
-                              );
-                              final actionStyle = IconButton.styleFrom(
-                                minimumSize: const Size.square(WorkspaceSize.tabHeight),
-                                fixedSize: const Size.square(WorkspaceSize.tabHeight),
-                                padding: EdgeInsets.zero,
-                                visualDensity: VisualDensity.standard,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
-                              );
-                              final action = runtime.busy
-                                  ? IconButton.filledTonal(
-                                      key: const ValueKey('ai-agent-stop'),
-                                      tooltip: l.stop,
-                                      onPressed: runtime.stop,
-                                      style: actionStyle,
-                                      icon: const Icon(Icons.stop_rounded, size: 16),
-                                    )
-                                  : IconButton.filled(
-                                      key: const ValueKey('ai-agent-send'),
-                                      tooltip: l.aiAgentSendShortcut,
-                                      onPressed:
-                                          !enabled ||
-                                              conversations.loading ||
-                                              _pickingAttachment ||
-                                              (draft.goal.trim().isEmpty && draft.attachments.isEmpty)
-                                          ? null
-                                          : () => _send(runtime, selectedHost),
-                                      style: actionStyle.merge(
-                                        IconButton.styleFrom(foregroundColor: theme.colorScheme.onPrimary),
-                                      ),
-                                      icon: const Icon(Icons.arrow_upward_rounded, size: 16),
-                                    );
-                              return Row(
-                                children: [
-                                  Expanded(child: model),
-                                  const SizedBox(width: Space.xs),
-                                  _ReasoningPicker(
-                                    effort: runtime.busy
-                                        ? runtime.reasoningEffort
-                                        : profile?.reasoningEffort ?? ReasoningEffort.modelDefault,
-                                    compact: toolbar.maxWidth < 600 * MediaQuery.textScalerOf(context).scale(1),
-                                    onChanged: !enabled || runtime.busy
-                                        ? null
-                                        : ref.read(selectedAgentReasoningProvider.notifier).select,
-                                  ),
-                                  const SizedBox(width: Space.xs),
-                                  usage,
-                                  const SizedBox(width: Space.sm),
-                                  permission,
-                                  const SizedBox(width: Space.sm),
-                                  action,
-                                ],
-                              );
-                            },
+                          const SizedBox(width: Space.sm),
+                          Semantics(
+                            expanded: _historyExpanded,
+                            child: IconButton(
+                              key: const ValueKey('ai-agent-history'),
+                              tooltip: l.aiAgentHistory,
+                              onPressed: () => setState(() => _historyExpanded = !_historyExpanded),
+                              icon: const Icon(Icons.history_rounded, size: 17),
+                            ),
                           ),
+                          IconButton(
+                            key: const ValueKey('ai-agent-new-task'),
+                            tooltip: l.aiAgentNewTask,
+                            onPressed: runtime.busy || conversations.loading
+                                ? null
+                                : () {
+                                    if (conversations.newConversation()) {
+                                      _resetConversationUi();
+                                    }
+                                  },
+                            icon: const Icon(Icons.add_comment_outlined, size: 17),
+                          ),
+                          IconButton(
+                            tooltip: l.settings,
+                            onPressed: () => showSettingsDialog(context, section: SettingsSectionId.ai),
+                            icon: const Icon(Icons.tune_outlined, size: 17),
+                          ),
+                          if (widget.onClose != null)
+                            IconButton(
+                              tooltip: l.close,
+                              onPressed: widget.onClose,
+                              icon: const Icon(Icons.close, size: 17),
+                            ),
                         ],
                       ),
                     ),
-                  ),
+                    const Divider(height: 1),
+                    if (_historyExpanded)
+                      ConstrainedBox(
+                        key: const ValueKey('ai-agent-history-list'),
+                        constraints: BoxConstraints(maxHeight: min(240, constraints.maxHeight * .32)),
+                        child: _History(conversations: conversations, onChoice: _history),
+                      ),
+                    Expanded(
+                      child: runtime.timeline.isEmpty && !runtime.busy
+                          ? _Welcome(
+                              enabled: enabled,
+                              failed: configuration.loadFailed,
+                              compact: compact,
+                              onExample: _replaceGoal,
+                            )
+                          : _Conversation(
+                              key: _conversationKey,
+                              runtime: runtime,
+                              conversationId: conversations.selectedId,
+                              canRegenerate: enabled && !changedBinding && conversations.canRegenerate,
+                              canWithdraw: conversations.canWithdraw,
+                              onRegenerate: () => _regenerate(selectedHost),
+                              onWithdraw: () {
+                                if (conversations.withdrawLastTurn()) {
+                                  _resetConversationUi();
+                                }
+                              },
+                            ),
+                    ),
+                    if (runtime.error != null || _startFailed)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.md, 0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.info_outline_rounded, size: 16, color: theme.colorScheme.error),
+                            const SizedBox(width: Space.sm),
+                            Expanded(
+                              child: Text(
+                                _error(l, runtime.error),
+                                maxLines: compact ? 2 : 4,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const Divider(key: ValueKey('ai-agent-composer-divider'), height: 1),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxHeight: max(112, constraints.maxHeight * (compact ? .58 : .46))),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (changedBinding && !runtime.busy)
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(l.aiAgentHistoryTargetChanged, style: theme.textTheme.bodySmall),
+                                    ),
+                                    TextButton(
+                                      key: const ValueKey('ai-agent-new-target'),
+                                      onPressed: conversations.loading
+                                          ? null
+                                          : () {
+                                              final goal = _goal.text;
+                                              if (!conversations.newConversation()) {
+                                                return;
+                                              }
+                                              _replaceGoal(goal);
+                                              _resetConversationUi();
+                                            },
+                                      child: Text(l.aiAgentNewTask),
+                                    ),
+                                  ],
+                                ),
+                              if (conversations.loadFailed || conversations.saveFailed)
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        conversations.loadFailed
+                                            ? l.aiAgentHistoryLoadFailed
+                                            : l.aiAgentHistorySaveFailed,
+                                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          conversations.loadFailed ? conversations.reload() : conversations.retrySave(),
+                                      child: Text(l.aiAgentHistoryRetry),
+                                    ),
+                                  ],
+                                ),
+                              if (conversations.current?.historyTruncated ?? false)
+                                Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
+                              if (runtime.contextCompacted)
+                                Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
+                              if (_attachmentError != null)
+                                Text(switch (_attachmentError) {
+                                  'attachmentTooLarge' => l.aiAgentAttachmentTooLarge,
+                                  'attachmentUnsupported' => l.aiAgentAttachmentUnsupported,
+                                  _ => l.aiAgentAttachmentUnreadable,
+                                }, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
+                              if (draft.attachments.isNotEmpty)
+                                _AttachmentList(
+                                  attachments: draft.attachments,
+                                  onRemove: runtime.busy
+                                      ? null
+                                      : (attachment) {
+                                          ref
+                                              .read(agentComposerProvider.notifier)
+                                              .setAttachments(
+                                                draft.attachments.where((value) => value.id != attachment.id),
+                                              );
+                                        },
+                                ),
+                              Focus(
+                                onKeyEvent: (_, event) {
+                                  final keys = HardwareKeyboard.instance;
+                                  final enter =
+                                      event.logicalKey == LogicalKeyboardKey.enter ||
+                                      event.logicalKey == LogicalKeyboardKey.numpadEnter;
+                                  if (event is! KeyDownEvent ||
+                                      !enter ||
+                                      keys.isShiftPressed ||
+                                      keys.isControlPressed ||
+                                      keys.isAltPressed ||
+                                      keys.isMetaPressed ||
+                                      !_goal.value.composing.isCollapsed) {
+                                    return KeyEventResult.ignored;
+                                  }
+                                  if (enabled &&
+                                      !runtime.busy &&
+                                      !conversations.loading &&
+                                      (_goal.text.trim().isNotEmpty || draft.attachments.isNotEmpty)) {
+                                    unawaited(_send(runtime, selectedHost));
+                                  }
+                                  return KeyEventResult.handled;
+                                },
+                                child: Actions(
+                                  actions: {PasteTextIntent: _AttachmentPasteAction(_paste)},
+                                  child: TextField(
+                                    key: const ValueKey('ai-agent-goal'),
+                                    controller: _goal,
+                                    enabled: enabled,
+                                    minLines: compact ? 2 : 3,
+                                    maxLines: compact ? 3 : 6,
+                                    maxLength: 4096,
+                                    contextMenuBuilder: (context, editable) {
+                                      final paste = ContextMenuButtonItem(
+                                        type: ContextMenuButtonType.paste,
+                                        onPressed: () {
+                                          editable.hideToolbar();
+                                          unawaited(_paste(() => editable.pasteText(SelectionChangedCause.toolbar)));
+                                        },
+                                      );
+                                      final items = [
+                                        for (final item in editable.contextMenuButtonItems)
+                                          item.type == ContextMenuButtonType.paste ? paste : item,
+                                      ];
+                                      if (!items.any((item) => item.type == ContextMenuButtonType.paste)) {
+                                        items.add(paste);
+                                      }
+                                      return AdaptiveTextSelectionToolbar.buttonItems(
+                                        anchors: editable.contextMenuAnchors,
+                                        buttonItems: items,
+                                      );
+                                    },
+                                    decoration: InputDecoration(
+                                      hintText: l.aiAgentGoal,
+                                      counterText: '',
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      disabledBorder: InputBorder.none,
+                                      filled: false,
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        vertical: Space.sm,
+                                        horizontal: Space.xs,
+                                      ),
+                                    ),
+                                    onChanged: (_) => _goalChanged(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: Space.sm),
+                              LayoutBuilder(
+                                builder: (context, toolbar) {
+                                  final model = profile == null
+                                      ? Text(
+                                          l.aiAgentConfigureAction,
+                                          style: theme.textTheme.bodySmall,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        )
+                                      : AiModelPicker(
+                                          key: const ValueKey('ai-agent-model'),
+                                          value: profile.model,
+                                          protocol: profile.protocol,
+                                          endpoint: profile.endpoint,
+                                          credentialIdentity: configuration.profile?.identity,
+                                          compact: true,
+                                          onChanged: runtime.busy
+                                              ? null
+                                              : ref.read(selectedAgentModelProvider.notifier).select,
+                                          footer: (_) => const _ReasoningOptions(),
+                                        );
+                                  final usage = _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0);
+                                  final permission = _PermissionPicker(
+                                    compact: toolbar.maxWidth < 480 * MediaQuery.textScalerOf(context).scale(1),
+                                    mode: runtime.busy ? runtime.permissionMode : permissionMode,
+                                    onChanged: !enabled || runtime.busy
+                                        ? null
+                                        : ref.read(selectedAgentPermissionModeProvider.notifier).select,
+                                  );
+                                  final actionStyle = IconButton.styleFrom(
+                                    minimumSize: const Size.square(WorkspaceSize.tabHeight),
+                                    fixedSize: const Size.square(WorkspaceSize.tabHeight),
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.standard,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
+                                  );
+                                  final action = runtime.busy
+                                      ? IconButton.filledTonal(
+                                          key: const ValueKey('ai-agent-stop'),
+                                          tooltip: l.stop,
+                                          onPressed: runtime.stop,
+                                          style: actionStyle,
+                                          icon: const Icon(Icons.stop_rounded, size: 16),
+                                        )
+                                      : IconButton.filled(
+                                          key: const ValueKey('ai-agent-send'),
+                                          tooltip: l.aiAgentSendShortcut,
+                                          onPressed:
+                                              !enabled ||
+                                                  conversations.loading ||
+                                                  _pickingAttachment ||
+                                                  (draft.goal.trim().isEmpty && draft.attachments.isEmpty)
+                                              ? null
+                                              : () => _send(runtime, selectedHost),
+                                          style: actionStyle.merge(
+                                            IconButton.styleFrom(foregroundColor: theme.colorScheme.onPrimary),
+                                          ),
+                                          icon: const Icon(Icons.arrow_upward_rounded, size: 16),
+                                        );
+                                  return Row(
+                                    children: [
+                                      IconButton(
+                                        key: const ValueKey('ai-agent-attach'),
+                                        tooltip: l.aiAgentAttach,
+                                        onPressed: !enabled || runtime.busy || _pickingAttachment ? null : _attach,
+                                        style: actionStyle,
+                                        icon: const Icon(Icons.attach_file_rounded, size: 17),
+                                      ),
+                                      Expanded(child: model),
+                                      const SizedBox(width: Space.xs),
+                                      usage,
+                                      const SizedBox(width: Space.sm),
+                                      permission,
+                                      const SizedBox(width: Space.sm),
+                                      action,
+                                    ],
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           );
         },
       ),
     );
+  }
+}
+
+class _AttachmentPasteAction extends Action<PasteTextIntent> {
+  _AttachmentPasteAction(this.paste);
+  final Future<void> Function(VoidCallback) paste;
+
+  @override
+  Object? invoke(PasteTextIntent intent) {
+    final fallback = callingAction;
+    unawaited(paste(() => fallback?.invoke(intent)));
+    return null;
   }
 }
 
@@ -620,66 +709,41 @@ String _reasoningLabel(AppLocalizations l, ReasoningEffort effort) => switch (ef
   ReasoningEffort.high => l.aiReasoningHigh,
 };
 
-class _ReasoningPicker extends StatelessWidget {
-  const _ReasoningPicker({required this.effort, required this.onChanged, this.compact = false});
-  final ReasoningEffort effort;
-  final ValueChanged<ReasoningEffort>? onChanged;
-  final bool compact;
+/// Lives in the model popup: the effort belongs to the chosen model and applies to the next turn.
+class _ReasoningOptions extends ConsumerWidget {
+  const _ReasoningOptions();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    return Builder(
-      builder: (anchorContext) => TextButton(
-        key: const ValueKey('ai-agent-reasoning'),
-        onPressed: onChanged == null
-            ? null
-            : () async {
-                final picked = await showAnchoredPopup<ReasoningEffort>(
-                  context: context,
-                  anchor: anchorOf(anchorContext),
-                  width: 180,
-                  builder: (context) => PopupSurface(
-                    padding: const EdgeInsets.symmetric(vertical: Space.xs),
-                    child: PopupKeys(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final option in ReasoningEffort.values)
-                            PopupRow(
-                              key: ValueKey('ai-agent-reasoning-${option.name}'),
-                              selected: option == effort,
-                              onTap: () => Navigator.pop(context, option),
-                              child: Row(
-                                children: [
-                                  Expanded(child: Text(_reasoningLabel(l, option))),
-                                  if (option == effort) const Icon(Icons.check_rounded, size: 16),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-                if (context.mounted && picked != null) onChanged?.call(picked);
-              },
-        style: TextButton.styleFrom(
-          minimumSize: const Size(WorkspaceSize.control, WorkspaceSize.control),
-          padding: const EdgeInsets.symmetric(horizontal: Space.xs),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    final effort = ref.watch(effectiveAgentProfileProvider)?.reasoningEffort ?? ReasoningEffort.modelDefault;
+    final locked = ref.watch(agentTurnActiveProvider);
+    return Row(
+      children: [
+        Tooltip(
+          message: l.aiReasoningEffort,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: Space.sm),
+            child: Icon(Icons.psychology_outlined, size: 16),
+          ),
         ),
-        child: Tooltip(
-          message: '${l.aiReasoningEffort}: ${_reasoningLabel(l, effort)}',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+        Expanded(
+          child: Wrap(
+            spacing: Space.xs,
             children: [
-              const Icon(Icons.psychology_outlined, size: 16),
-              if (!compact) ...[const SizedBox(width: Space.xs), Text(_reasoningLabel(l, effort), maxLines: 1)],
+              for (final option in ReasoningEffort.values)
+                ChoiceChip(
+                  key: ValueKey('ai-agent-reasoning-${option.name}'),
+                  label: Text(_reasoningLabel(l, option)),
+                  selected: option == effort,
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: locked ? null : (_) => ref.read(selectedAgentReasoningProvider.notifier).select(option),
+                ),
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -1570,6 +1634,10 @@ class _ApprovalCard extends StatelessWidget {
             if (approval.command.isNotEmpty) ...[
               const SizedBox(height: Space.md),
               Text(approval.command, style: mono(context, theme.textTheme.bodyMedium)),
+            ],
+            if (approval.timeoutSeconds != null) ...[
+              const SizedBox(height: Space.xs),
+              Text(l.aiAgentExecutionTimeout(approval.timeoutSeconds!), style: theme.textTheme.bodySmall),
             ],
             const SizedBox(height: Space.md),
             Text(
