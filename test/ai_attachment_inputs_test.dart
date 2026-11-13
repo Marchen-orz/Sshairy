@@ -191,6 +191,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('pasting six log files no longer hits the four-file or 64 KiB limits', (tester) async {
+    final file = await _file(tester, name: 'service.output', content: 'log line\n' * 10000);
+    final container = await _panel(tester, AgentAttachmentPicker(clipboard: () async => List.filled(6, file.path)));
+    await _paste(tester);
+    await _until(tester, () => container.read(agentComposerProvider).attachments.length == 6);
+    expect(container.read(agentComposerProvider).attachments.every((item) => item.bytes > 65536), isTrue);
+    expect(find.textContaining('64 KiB'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('plain text paste including a path uses the normal text editor', (tester) async {
     var clipboardReads = 0;
     final container = await _panel(
@@ -233,13 +243,15 @@ void main() {
     container.read(agentComposerProvider.notifier).setAttachments([existing]);
     await tester.pump();
     _drop(tester).onDrop([file.path]);
+    final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
     await _until(
       tester,
       () => find
-          .text(AppLocalizations.of(tester.element(find.byType(AgentPanel))).aiAgentAttachmentUnsupported)
+          .text(l.aiAgentAttachmentFileError('unsupported.pdf', l.aiAgentAttachmentUnsupported))
           .evaluate()
           .isNotEmpty,
     );
+    expect(find.textContaining(file.parent.path), findsNothing);
     expect(container.read(agentComposerProvider).attachments.single, same(existing));
   });
 

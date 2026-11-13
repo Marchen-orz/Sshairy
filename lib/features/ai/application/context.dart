@@ -52,7 +52,7 @@ class AgentContext {
   }) {
     int estimate(List<ModelMessage> messages) => _estimateBytes(messages, profile, system, tools, estimateBytes);
     const projectionLimit = 32 << 10;
-    final budget = ((profile.contextWindow - profile.maxOutputTokens - 2048) * 2).clamp(0, 2 << 20);
+    final budget = ModelInputBudget.availableBytes(profile);
     final size = estimate(_messages);
     if (size * 10 < budget * 7 && _projectionBytes(_messages) <= projectionLimit) return false;
     final groups = _completeGroups();
@@ -217,11 +217,27 @@ class AgentContext {
       return estimateBytes?.call(messages) ?? _estimate(messages, profile, system, tools);
     } on ModelFailure catch (failure) {
       if (failure.code != 'modelContextTooLarge' && failure.code != 'inputLimit') rethrow;
-      return (2 << 20) + 1;
+      return ModelInputBudget.availableBytes(profile) + 1;
     }
   }
 
   static int _estimate(List<ModelMessage> messages, ModelProfile profile, String system, List<ModelTool> tools) {
+    var messageBytes = 0, attachmentBytes = 0, imageBytes = 0, imagePayloadBytes = 0;
+    for (final message in messages) {
+      messageBytes += utf8.encode(message.text).length;
+      for (final call in message.calls) {
+        messageBytes += utf8.encode(jsonEncode(call.arguments)).length;
+      }
+      if (messageBytes > ModelInputBudget.maxMessageBytes) throw const ModelFailure('modelContextTooLarge');
+      for (final attachment in message.attachments) {
+        attachmentBytes += attachment.isImage ? attachment.content.length : attachment.bytes;
+        if (attachmentBytes > ModelInputBudget.maxWireBytes) throw const ModelFailure('modelContextTooLarge');
+        if (attachment.isImage) {
+          imageBytes += ModelInputBudget.imageBytes(attachment);
+          imagePayloadBytes += attachment.content.length;
+        }
+      }
+    }
     final encoded = jsonEncode({
       'model': profile.model,
       'system': system,
@@ -232,6 +248,19 @@ class AgentContext {
           {
             'role': message.role.name,
             'content': message.text,
+            if (message.attachments.isNotEmpty)
+              'attachments': [
+                for (final attachment in message.attachments)
+                  {
+                    'type': 'text',
+                    'text': jsonEncode({
+                      'attachment': attachment.description,
+                      'untrustedData': true,
+                      if (!attachment.isImage) 'text': attachment.content,
+                    }),
+                    if (attachment.isImage) 'image': attachment.content,
+                  },
+              ],
             if (message.toolCallId != null) 'tool_call_id': message.toolCallId,
             if (message.calls.isNotEmpty)
               'tool_calls': [
@@ -250,15 +279,13 @@ class AgentContext {
     });
     // Private continuation is deliberately opaque; reserve its full per-message cap, then let HTTP check exact bytes.
     final privateBytes = messages.where((message) => message.opaque != null).length * (1 << 20);
-    final attachmentBytes = messages.fold(
-      0,
-      (size, message) => size + message.attachments.fold(0, (sum, value) => sum + value.storedBytes),
-    );
-    return utf8.encode(encoded).length +
+    final wireBytes =
+        utf8.encode(encoded).length +
         privateBytes +
-        attachmentBytes +
         1024 +
-        messages.length * 256 +
+        messages.fold<int>(0, (size, message) => size + 256 + message.attachments.length * 256) +
         tools.length * 256;
+    if (wireBytes > ModelInputBudget.maxWireBytes) throw const ModelFailure('modelContextTooLarge');
+    return wireBytes - imagePayloadBytes + imageBytes;
   }
 }

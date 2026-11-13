@@ -16,8 +16,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentAttach => '添加文件';
 
   @override
-  String get aiAgentAttachmentTooLarge =>
-      '最多添加 4 个附件，合计 512 KiB；文本每个最多 64 KiB，处理后的图片每个最多 256 KiB。';
+  String get aiAgentAttachmentTooLarge => '文件过大，请选择较小的文件。';
+
+  @override
+  String aiAgentAttachmentTooMany(int count) {
+    return '一条消息最多添加 $count 个附件。';
+  }
+
+  @override
+  String aiAgentAttachmentTotalTooLarge(int size) {
+    return '本条消息的附件超过 $size MiB，请移除部分文件后重试。';
+  }
+
+  @override
+  String get aiAgentAttachmentImageTooLarge => '图片像素过高，请缩小图片后重试。';
+
+  @override
+  String aiAgentAttachmentFileError(String name, String reason) {
+    return '$name：$reason';
+  }
 
   @override
   String get aiAgentAttachmentUnsupported =>

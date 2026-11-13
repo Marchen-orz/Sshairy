@@ -1,13 +1,11 @@
 import 'dart:convert';
 
 class AgentAttachmentLimits {
-  static const count = 4;
-  static const textBytes = 64 << 10;
-  static const imageBytes = 256 << 10;
-  static const totalBytes = 512 << 10;
-  static const inputImageBytes = 8 << 20;
-  static const sourcePixels = 16 * 1024 * 1024;
-  static const longestSide = 1024;
+  static const count = 64;
+  static const totalBytes = 16 << 20;
+  static const inputImageBytes = 32 << 20;
+  static const sourcePixels = 64 * 1024 * 1024;
+  static const longestSide = 2048;
 }
 
 /// Explicitly selected content. A local path is never part of this value.
@@ -16,14 +14,13 @@ class AgentAttachment {
 
   factory AgentAttachment.text({required String id, required String name, required String text}) {
     final size = utf8.encode(text).length;
-    if (size > AgentAttachmentLimits.textBytes || !_safeText(text)) {
-      throw const FormatException('attachmentUnsupported');
-    }
+    if (size > AgentAttachmentLimits.totalBytes) throw const FormatException('attachmentTooLarge');
+    if (!_safeText(text)) throw const FormatException('attachmentUnsupported');
     return AgentAttachment._(_id(id), _name(name), 'text/plain', text, size);
   }
 
   factory AgentAttachment.image({required String id, required String name, required String base64}) {
-    if (base64.length > ((AgentAttachmentLimits.imageBytes + 2) ~/ 3) * 4) {
+    if (base64.length > ((AgentAttachmentLimits.totalBytes + 2) ~/ 3) * 4) {
       throw const FormatException('attachmentTooLarge');
     }
     final data = base64Decode(base64);
@@ -44,7 +41,7 @@ class AgentAttachment {
         height < 1 ||
         width > AgentAttachmentLimits.longestSide ||
         height > AgentAttachmentLimits.longestSide ||
-        data.length > AgentAttachmentLimits.imageBytes) {
+        data.length > AgentAttachmentLimits.totalBytes) {
       throw const FormatException('attachmentTooLarge');
     }
     return AgentAttachment._(_id(id), _name(name), 'image/png', base64Encode(data), data.length);

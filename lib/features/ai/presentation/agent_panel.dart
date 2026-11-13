@@ -40,7 +40,7 @@ class AgentPanel extends ConsumerStatefulWidget {
 class _AgentPanelState extends ConsumerState<AgentPanel> {
   late final _goal = TextEditingController(text: ref.read(agentComposerProvider).goal);
   bool _startFailed = false, _historyExpanded = false, _pickingAttachment = false, _dropHover = false;
-  String? _attachmentError;
+  FormatException? _attachmentError;
   final _conversationKey = GlobalKey<_ConversationState>();
 
   void _resetConversationUi() => setState(() {
@@ -148,14 +148,29 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
           : await picker.importFiles(paths, draft.attachments);
       if (current()) ref.read(agentComposerProvider.notifier).setAttachments(attachments);
     } on FormatException catch (error) {
-      if (current()) setState(() => _attachmentError = error.message);
+      if (current()) setState(() => _attachmentError = error);
     } on Object {
-      if (current()) setState(() => _attachmentError = 'attachmentUnreadable');
+      if (current()) setState(() => _attachmentError = const FormatException('attachmentUnreadable'));
     } finally {
       conversations.removeListener(checkCurrent);
       conversations.runtime.removeListener(checkCurrent);
       if (mounted) setState(() => _pickingAttachment = false);
     }
+  }
+
+  String _attachmentMessage(AppLocalizations l) {
+    final message = switch (_attachmentError?.message) {
+      'attachmentTooMany' => l.aiAgentAttachmentTooMany(AgentAttachmentLimits.count),
+      'attachmentTotalTooLarge' => l.aiAgentAttachmentTotalTooLarge(AgentAttachmentLimits.totalBytes >> 20),
+      'attachmentImageTooLarge' => l.aiAgentAttachmentImageTooLarge,
+      'attachmentTooLarge' => l.aiAgentAttachmentTooLarge,
+      'attachmentUnsupported' => l.aiAgentAttachmentUnsupported,
+      _ => l.aiAgentAttachmentUnreadable,
+    };
+    if (_attachmentError case AttachmentImportFailure(:final fileName)) {
+      return l.aiAgentAttachmentFileError(fileName, message);
+    }
+    return message;
   }
 
   Future<void> _send(AgentRuntime runtime, HostId? host) async {
@@ -413,11 +428,10 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                               if (runtime.contextCompacted)
                                 Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
                               if (_attachmentError != null)
-                                Text(switch (_attachmentError) {
-                                  'attachmentTooLarge' => l.aiAgentAttachmentTooLarge,
-                                  'attachmentUnsupported' => l.aiAgentAttachmentUnsupported,
-                                  _ => l.aiAgentAttachmentUnreadable,
-                                }, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
+                                Text(
+                                  _attachmentMessage(l),
+                                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                                ),
                               if (draft.attachments.isNotEmpty)
                                 _AttachmentList(
                                   attachments: draft.attachments,

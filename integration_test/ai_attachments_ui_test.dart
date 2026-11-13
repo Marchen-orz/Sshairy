@@ -74,7 +74,7 @@ void main() {
           'protocol': 'openai',
           'endpoint': 'http://127.0.0.1:${endpoint.port}/v1',
           'model': 'attachment-test',
-          'contextWindow': 256000,
+          'contextWindow': 1000000,
         },
         'inlineEnabled': false,
         'completionEnabled': false,
@@ -91,7 +91,9 @@ void main() {
             AgentAttachmentPicker(
               pick: () async {
                 picks++;
-                return [selectedFile.path];
+                if (picks == 1) return [selectedFile.path];
+                await selectedFile.writeAsString('selected attachment content 中文\n' * 3000);
+                return List.filled(6, selectedFile.path);
               },
             ),
           ),
@@ -126,11 +128,14 @@ void main() {
     expect(picks, 2);
     expect(jsonEncode(requests.single), contains('selected attachment content 中文'));
     expect(jsonEncode(requests.single), isNot(contains(directory.path)));
-    expect(conversations.current!.entries.first.attachments.single.name, 'notes.txt');
+    final attachments = conversations.current!.entries.first.attachments;
+    expect(attachments, hasLength(6));
+    expect(attachments.every((item) => item.bytes > 65536), isTrue);
+    expect(attachments.fold(0, (size, item) => size + item.bytes), greaterThan(512 << 10));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ai-agent-withdraw')));
     await tester.pump();
-    expect(container.read(agentComposerProvider).attachments.single.name, 'notes.txt');
+    expect(container.read(agentComposerProvider).attachments, hasLength(6));
     expect(picks, 2);
 
     final entries = [

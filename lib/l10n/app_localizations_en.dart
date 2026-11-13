@@ -17,7 +17,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentAttachmentTooLarge =>
-      'Choose up to 4 attachments, 512 KiB in total. Text is limited to 64 KiB per file and normalized images to 256 KiB.';
+      'This file is too large. Choose a smaller file.';
+
+  @override
+  String aiAgentAttachmentTooMany(int count) {
+    return 'A message can contain up to $count attachments.';
+  }
+
+  @override
+  String aiAgentAttachmentTotalTooLarge(int size) {
+    return 'Attachments in this message exceed $size MiB. Remove a file and try again.';
+  }
+
+  @override
+  String get aiAgentAttachmentImageTooLarge =>
+      'This image has too many pixels. Resize it and try again.';
+
+  @override
+  String aiAgentAttachmentFileError(String name, String reason) {
+    return '$name: $reason';
+  }
 
   @override
   String get aiAgentAttachmentUnsupported =>

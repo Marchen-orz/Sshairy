@@ -1,12 +1,33 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/ai/adapters/model_provider.dart';
 import 'package:sshairy/features/ai/application/context.dart';
+import 'package:sshairy/features/ai/domain/agent.dart';
 import 'package:sshairy/features/ai/domain/model.dart';
+import 'package:sshairy/foundation/cancellation.dart';
 
-ModelProfile _profile(ModelProtocol protocol) =>
-    ModelProfile(protocol: protocol, endpoint: 'https://model.invalid/v1', model: 'test');
+ModelProfile _profile(ModelProtocol protocol, {int contextWindow = 1000000, int maxOutputTokens = 4096}) =>
+    ModelProfile(
+      protocol: protocol,
+      endpoint: 'https://model.invalid/v1',
+      model: 'test',
+      contextWindow: contextWindow,
+      maxOutputTokens: maxOutputTokens,
+    );
+
+AgentAttachment _image(String id, {int bytes = 1 << 20, int width = 1920, int height = 1080}) {
+  final data = Uint8List(bytes);
+  data.setRange(0, 16, [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+  final header = ByteData.sublistView(data);
+  header.setUint32(16, width);
+  header.setUint32(20, height);
+  return AgentAttachment.image(id: id, name: '$id.png', base64: base64Encode(data));
+}
+
+final _contextLimit = throwsA(isA<AgentFailure>().having((failure) => failure.code, 'code', 'contextLimit'));
+final _wireLimit = throwsA(isA<ModelFailure>().having((failure) => failure.code, 'code', 'modelContextTooLarge'));
 
 int _estimate(ModelProfile profile, List<ModelMessage> messages) =>
     estimateModelRequestBytes(ModelRequest(profile: profile, system: 'fixed rules', messages: messages));
@@ -67,6 +88,190 @@ Future<ModelMessage> _signedMessage(ModelProfile profile, {String? callId}) asyn
 }
 
 void main() {
+  for (final protocol in ModelProtocol.values) {
+    test('${protocol.name} budgets multiple large screenshots by dimensions and keeps the complete wire payload', () {
+      final profile = _profile(protocol, contextWindow: 128000);
+      final images = [_image('first'), _image('second')];
+      final context = AgentContext(input: 'inspect screenshots', goalInput: 'inspect screenshots', attachments: images);
+      final request = ModelRequest(profile: profile, system: 'fixed rules', messages: context.messages);
+      final wire = jsonEncode(encodeModelRequest(request));
+      final wireBytes = utf8.encode(wire).length;
+      expect(wireBytes, greaterThan(2 << 20));
+      expect(wireBytes, lessThan(ModelInputBudget.maxWireBytes));
+      expect(wire, contains(images.first.content));
+      expect(wire, contains(images.last.content));
+      final imageBytes = images.fold(0, (size, image) => size + ModelInputBudget.imageBytes(image));
+      final payloadBytes = images.fold(0, (size, image) => size + image.content.length);
+      expect(estimateModelRequestBytes(request), wireBytes - payloadBytes + imageBytes);
+      expect(estimateModelRequestBytes(request), lessThan(ModelInputBudget.availableBytes(profile)));
+      for (final int Function(List<ModelMessage>)? estimate in [
+        null,
+        (List<ModelMessage> messages) => _estimate(profile, messages),
+      ]) {
+        expect(context.prepare(profile, 'fixed rules', [], estimateBytes: estimate), isFalse);
+        expect(context.estimatedTokens(profile, 'fixed rules', [], estimateBytes: estimate), lessThan(20000));
+      }
+      expect(context.messages.single.attachments, images);
+    });
+
+    test('${protocol.name} image budget follows dimensions rather than compressed payload size', () {
+      final small = _image('same', bytes: 400000, width: 32, height: 32);
+      final padded = _image('same', bytes: 800000, width: 32, height: 32);
+      final large = _image('same', bytes: 800000, width: 2048, height: 2048);
+      final profile = _profile(protocol);
+      int estimate(AgentAttachment image) => _estimate(profile, [
+        ModelMessage(ModelRole.user, attachments: [image]),
+      ]);
+      expect(estimate(small), estimate(padded));
+      expect(estimate(large) - estimate(padded), 4 * (64 * 64 - 1) * 2);
+    });
+
+    test(
+      '${protocol.name} a small window rejects accumulated images before reading a key or opening a client',
+      () async {
+        final profile = _profile(protocol, contextWindow: 16000, maxOutputTokens: 1000);
+        final images = [_image('first'), _image('second')];
+        final one = AgentContext(input: 'inspect', goalInput: 'inspect', attachments: images.take(1));
+        expect(one.prepare(profile, 'fixed rules', []), isFalse);
+        final context = AgentContext(input: 'inspect', goalInput: 'inspect', attachments: images);
+        for (final int Function(List<ModelMessage>)? estimate in [
+          null,
+          (List<ModelMessage> messages) => _estimate(profile, messages),
+        ]) {
+          expect(() => context.prepare(profile, 'fixed rules', [], estimateBytes: estimate), _contextLimit);
+        }
+        var reads = 0, clients = 0;
+        final provider = HttpModelProvider(
+          readKey: (_) async {
+            reads++;
+            throw StateError('unexpected key access');
+          },
+          clientFactory: () {
+            clients++;
+            throw StateError('unexpected network access');
+          },
+        );
+        addTearDown(provider.close);
+        await expectLater(
+          provider
+              .stream(
+                ModelRequest(profile: profile, system: 'fixed rules', messages: context.messages),
+                CancellationToken(),
+              )
+              .toList(),
+          throwsA(isA<ModelFailure>().having((failure) => failure.code, 'code', 'inputLimit')),
+        );
+        expect(reads, 0);
+        expect(clients, 0);
+      },
+    );
+
+    test('${protocol.name} text attachments can use a large window but retain escaped-text context costs', () {
+      final attachment = AgentAttachment.text(id: 'text', name: 'notes.txt', text: 'a' * (3 << 20));
+      final profile = _profile(protocol, contextWindow: 2000000);
+      final context = AgentContext(input: 'inspect', goalInput: 'inspect', attachments: [attachment]);
+      expect(_estimate(profile, context.messages), greaterThan(2 << 20));
+      expect(
+        context.prepare(profile, 'fixed rules', [], estimateBytes: (messages) => _estimate(profile, messages)),
+        isFalse,
+      );
+      final escaped = AgentAttachment.text(id: 'escaped', name: 'escaped.txt', text: '\\' * (600 << 10));
+      final escapedContext = AgentContext(input: 'inspect', goalInput: 'inspect', attachments: [escaped]);
+      final defaultProfile = _profile(protocol);
+      expect(escaped.bytes, lessThan(ModelInputBudget.availableBytes(defaultProfile)));
+      expect(
+        _estimate(defaultProfile, escapedContext.messages),
+        greaterThan(ModelInputBudget.availableBytes(defaultProfile)),
+      );
+      expect(() => escapedContext.prepare(defaultProfile, 'fixed rules', []), _contextLimit);
+      expect(
+        () => escapedContext.prepare(
+          defaultProfile,
+          'fixed rules',
+          [],
+          estimateBytes: (messages) => _estimate(defaultProfile, messages),
+        ),
+        _contextLimit,
+      );
+      final huge = AgentContext(
+        input: 'inspect',
+        goalInput: 'inspect',
+        attachments: [AgentAttachment.text(id: 'huge', name: 'huge.txt', text: 'a' * (5 << 20))],
+      );
+      expect(
+        () => huge.prepare(profile, 'fixed rules', [], estimateBytes: (messages) => _estimate(profile, messages)),
+        _contextLimit,
+      );
+    });
+
+    test('${protocol.name} a large configured window retains the independent ordinary-message cap', () {
+      final profile = _profile(protocol, contextWindow: 2000000);
+      final input = 'a' * ((2 << 20) + 1);
+      final context = AgentContext(input: input, goalInput: input);
+      expect(
+        () => encodeModelRequest(ModelRequest(profile: profile, system: '', messages: context.messages)),
+        _wireLimit,
+      );
+      expect(_estimate(profile, context.messages), greaterThan(ModelInputBudget.availableBytes(profile)));
+      expect(() => context.prepare(profile, '', []), _contextLimit);
+      expect(
+        () => context.prepare(profile, 'fixed rules', [], estimateBytes: (messages) => _estimate(profile, messages)),
+        _contextLimit,
+      );
+    });
+
+    test('${protocol.name} wire size stays bounded when image context alone would fit', () async {
+      final image = _image('image', bytes: 13 << 20, width: 32, height: 32);
+      final profile = _profile(protocol, contextWindow: 2000000);
+      final messages = [
+        ModelMessage(ModelRole.user, attachments: [image]),
+        ModelMessage(ModelRole.assistant, text: 'next'),
+        ModelMessage(ModelRole.user, attachments: [image]),
+      ];
+      final request = ModelRequest(profile: profile, system: 'fixed rules', messages: messages);
+      expect(2 * ModelInputBudget.imageBytes(image), lessThan(ModelInputBudget.availableBytes(profile)));
+      expect(() => encodeModelRequest(request), _wireLimit);
+      expect(estimateModelRequestBytes(request), greaterThan(ModelInputBudget.availableBytes(profile)));
+      final context = AgentContext(input: '', goalInput: '', attachments: [image]);
+      context.add(messages[1]);
+      context.add(messages[2]);
+      // Estimation also rejects the wire envelope before any compaction can parse later groups.
+      expect(
+        context.estimatedTokens(profile, 'fixed rules', []),
+        greaterThan(profile.contextWindow - profile.maxOutputTokens - 2048),
+      );
+      var reads = 0, clients = 0;
+      final provider = HttpModelProvider(
+        readKey: (_) async {
+          reads++;
+          throw StateError('unexpected key access');
+        },
+        clientFactory: () {
+          clients++;
+          throw StateError('unexpected network access');
+        },
+      );
+      addTearDown(provider.close);
+      await expectLater(provider.stream(request, CancellationToken()).toList(), _wireLimit);
+      expect(reads, 0);
+      expect(clients, 0);
+    });
+
+    test('${protocol.name} final JSON escaping is included in the wire bound', () {
+      final attachment = AgentAttachment.text(id: 'escaped', name: 'notes.txt', text: '\\' * (9 << 20));
+      final request = ModelRequest(
+        profile: _profile(protocol, contextWindow: 2000000),
+        system: '',
+        messages: [
+          ModelMessage(ModelRole.user, attachments: [attachment]),
+        ],
+      );
+      expect(attachment.bytes, lessThan(AgentAttachmentLimits.totalBytes));
+      expect(() => encodeModelRequest(request), _wireLimit);
+      expect(estimateModelRequestBytes(request), greaterThan(ModelInputBudget.availableBytes(request.profile)));
+    });
+  }
+
   test(
     'short Anthropic replies use the complete encoded estimate before and after adding opaque continuation',
     () async {

@@ -175,16 +175,15 @@ void FlutterWindow::HandleWindowMethod(
       return;
     }
     const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-    if (count > 4) {
-      result->Error("attachmentTooLarge", "Too many attachments");
+    if (count > 64) {
+      result->Error("attachmentTooMany", "Too many attachments");
       return;
     }
     flutter::EncodableList files;
     for (UINT i = 0; i < count; ++i) {
       const UINT length = DragQueryFileW(drop, i, nullptr, 0);
       if (length == 0 || length > 32767) {
-        result->Error(length > 32767 ? "attachmentTooLarge" : "attachmentUnreadable",
-                      "Invalid file clipboard entry");
+        result->Error("attachmentUnreadable", "Invalid file clipboard entry");
         return;
       }
       std::wstring path(length + 1, L'\0');

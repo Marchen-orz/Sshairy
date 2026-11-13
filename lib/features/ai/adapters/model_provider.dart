@@ -29,9 +29,9 @@ class HttpModelProvider implements ModelProvider {
   @override
   Stream<ModelEvent> stream(ModelRequest request, CancellationToken cancel) async* {
     if (_closed || cancel.isCancelled) throw const ModelFailure('cancelled');
-    final body = utf8.encode(jsonEncode(encodeModelRequest(request)));
-    final inputBytes = ((request.profile.contextWindow - request.profile.maxOutputTokens - 2048) * 2).clamp(0, 2 << 20);
-    if (body.length > inputBytes) throw const ModelFailure('inputLimit');
+    final prepared = _prepareModelRequest(request);
+    if (prepared.inputBytes > ModelInputBudget.availableBytes(request.profile)) throw const ModelFailure('inputLimit');
+    final body = prepared.body;
     final life = _RequestLife(cancel, idleTimeout);
     var complete = false;
     _active.add(life);
@@ -235,13 +235,28 @@ class _AnthropicContinuation {
       ]);
 }
 
+/// Text-equivalent context bytes, including image tokens rather than their base64 payload.
 int estimateModelRequestBytes(ModelRequest request) {
   try {
-    return utf8.encode(jsonEncode(encodeModelRequest(request))).length;
+    return _prepareModelRequest(request).inputBytes;
   } on ModelFailure catch (error) {
-    if (error.code == 'modelContextTooLarge') return (2 << 20) + 1;
+    if (error.code == 'modelContextTooLarge') return ModelInputBudget.availableBytes(request.profile) + 1;
     rethrow;
   }
+}
+
+({Map<String, Object?> encoded, List<int> body, int inputBytes}) _prepareModelRequest(ModelRequest request) {
+  final encoded = _encodeModelRequest(request);
+  final body = utf8.encode(jsonEncode(encoded));
+  if (body.length > ModelInputBudget.maxWireBytes) throw const ModelFailure('modelContextTooLarge');
+  var inputBytes = body.length;
+  for (final message in request.messages) {
+    for (final attachment in message.attachments.where((value) => value.isImage)) {
+      // Canonical base64 is ASCII and needs no JSON escaping; retain all surrounding metadata.
+      inputBytes += ModelInputBudget.imageBytes(attachment) - attachment.content.length;
+    }
+  }
+  return (encoded: encoded, body: body, inputBytes: inputBytes);
 }
 
 // Fixed compatibility set from the official thinking table; aliases outside it use model defaults.
@@ -273,7 +288,9 @@ Map<String, Object?> _anthropicReasoning(ModelProfile profile) {
   };
 }
 
-Map<String, Object?> encodeModelRequest(ModelRequest request) {
+Map<String, Object?> encodeModelRequest(ModelRequest request) => _prepareModelRequest(request).encoded;
+
+Map<String, Object?> _encodeModelRequest(ModelRequest request) {
   if (request.messages.isEmpty ||
       request.messages.length > 200 ||
       request.tools.length > 64 ||
@@ -346,9 +363,14 @@ Map<String, Object?> encodeModelRequest(ModelRequest request) {
 void _validateMessages(List<ModelMessage> messages, ModelProfile profile) {
   final pending = <String>{};
   final seen = <String>{};
-  var bytes = 0;
+  var bytes = 0, attachmentBytes = 0;
   for (final message in messages) {
-    bytes += utf8.encode(message.text).length + message.attachments.fold(0, (size, value) => size + value.storedBytes);
+    bytes += utf8.encode(message.text).length;
+    attachmentBytes += message.attachments.fold(
+      0,
+      (size, value) => size + (value.isImage ? value.content.length : value.bytes),
+    );
+    if (attachmentBytes > ModelInputBudget.maxWireBytes) throw const ModelFailure('modelContextTooLarge');
     if (message.attachments.isNotEmpty && message.role != ModelRole.user) {
       throw const ModelFailure('invalidModelRequest');
     }
@@ -383,7 +405,7 @@ void _validateMessages(List<ModelMessage> messages, ModelProfile profile) {
       pending.add(call.id);
       bytes += argumentBytes;
     }
-    if (bytes > 2 << 20) throw const ModelFailure('modelContextTooLarge');
+    if (bytes > ModelInputBudget.maxMessageBytes) throw const ModelFailure('modelContextTooLarge');
   }
   if (pending.isNotEmpty) throw const ModelFailure('invalidToolPairing');
 }

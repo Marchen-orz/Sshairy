@@ -113,8 +113,32 @@ abstract class AppLocalizations {
   /// No description provided for @aiAgentAttachmentTooLarge.
   ///
   /// In en, this message translates to:
-  /// **'Choose up to 4 attachments, 512 KiB in total. Text is limited to 64 KiB per file and normalized images to 256 KiB.'**
+  /// **'This file is too large. Choose a smaller file.'**
   String get aiAgentAttachmentTooLarge;
+
+  /// No description provided for @aiAgentAttachmentTooMany.
+  ///
+  /// In en, this message translates to:
+  /// **'A message can contain up to {count} attachments.'**
+  String aiAgentAttachmentTooMany(int count);
+
+  /// No description provided for @aiAgentAttachmentTotalTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Attachments in this message exceed {size} MiB. Remove a file and try again.'**
+  String aiAgentAttachmentTotalTooLarge(int size);
+
+  /// No description provided for @aiAgentAttachmentImageTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'This image has too many pixels. Resize it and try again.'**
+  String get aiAgentAttachmentImageTooLarge;
+
+  /// No description provided for @aiAgentAttachmentFileError.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}: {reason}'**
+  String aiAgentAttachmentFileError(String name, String reason);
 
   /// No description provided for @aiAgentAttachmentUnsupported.
   ///

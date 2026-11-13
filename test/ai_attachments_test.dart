@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/ai/adapters/attachments.dart';
@@ -14,6 +16,31 @@ const _png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHw
 
 AgentAttachment _text([String id = 'text']) => AgentAttachment.text(id: id, name: 'example.txt', text: 'hello 中文\n');
 
+Future<Uint8List> _noisePng() async {
+  const size = 640;
+  final random = Random(1);
+  final pixels = Uint8List(size * size * 4);
+  for (var i = 0; i < pixels.length; i += 4) {
+    pixels[i] = random.nextInt(256);
+    pixels[i + 1] = random.nextInt(256);
+    pixels[i + 2] = random.nextInt(256);
+    pixels[i + 3] = 255;
+  }
+  final buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
+  final descriptor = ui.ImageDescriptor.raw(buffer, width: size, height: size, pixelFormat: ui.PixelFormat.rgba8888);
+  final codec = await descriptor.instantiateCodec();
+  final image = (await codec.getNextFrame()).image;
+  try {
+    final data = (await image.toByteData(format: ui.ImageByteFormat.png))!;
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  } finally {
+    image.dispose();
+    codec.dispose();
+    descriptor.dispose();
+    buffer.dispose();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -22,11 +49,17 @@ void main() {
     for (final value in ['a\u0000b', 'PASSWORD=synthetic-private', '-----BEGIN PRIVATE KEY-----\nsynthetic']) {
       expect(() => AgentAttachment.text(id: 'one', name: 'example.txt', text: value), throwsFormatException);
     }
-    expect(() => AgentAttachment.text(id: 'one', name: 'example.txt', text: 'x' * (65536 + 1)), throwsFormatException);
+    expect(
+      () => AgentAttachment.text(id: 'one', name: 'example.txt', text: 'x' * (AgentAttachmentLimits.totalBytes + 1)),
+      throwsFormatException,
+    );
     expect(() => checkedAgentAttachments([_text(), _text()]), throwsFormatException);
-    expect(() => checkedAgentAttachments([for (var i = 0; i < 5; i++) _text('text-$i')]), throwsFormatException);
+    expect(
+      () => checkedAgentAttachments([for (var i = 0; i <= AgentAttachmentLimits.count; i++) _text('text-$i')]),
+      throwsFormatException,
+    );
     final image = base64Decode(_png);
-    image.setRange(16, 20, [0, 0, 8, 0]);
+    image.setRange(16, 20, [0, 0, 8, 1]);
     expect(
       () => AgentAttachment.image(id: 'image', name: 'image.png', base64: base64Encode(image)),
       throwsFormatException,
@@ -124,9 +157,62 @@ void main() {
       await file.writeAsBytes(Uint8List.fromList([255, 254, 0]));
       await expectLater(AgentAttachmentPicker(pick: () async => [file.path]).choose([]), throwsFormatException);
     }
-    await text.writeAsString('x' * (65536 + 1));
+    await text.writeAsString('x' * (AgentAttachmentLimits.totalBytes + 1));
     await expectLater(AgentAttachmentPicker(pick: () async => [text.path]).choose([]), throwsFormatException);
     expect(await AgentAttachmentPicker(pick: () async => []).choose(attachments), same(attachments));
+  });
+
+  test('ordinary image and log batches exceed the old limits and survive saving', () async {
+    final directory = await Directory.systemTemp.createTemp('sshairy-large-attachments-');
+    addTearDown(() => directory.delete(recursive: true));
+    final png = await _noisePng();
+    expect(png.length, greaterThan(256 << 10));
+    final paths = <String>[];
+    for (var i = 0; i < 5; i++) {
+      final file = File('${directory.path}/screenshot-$i.png');
+      await file.writeAsBytes(png);
+      paths.add(file.path);
+    }
+    final log = File('${directory.path}/application.custom-log');
+    await log.writeAsString('log line 中文\n' * 8000);
+    paths.add(log.path);
+    final attachments = await AgentAttachmentPicker().importFiles(paths, []);
+    expect(attachments, hasLength(6));
+    expect(attachments.last.bytes, greaterThan(64 << 10));
+    expect(attachments.fold(0, (size, item) => size + item.bytes), greaterThan(2 << 20));
+    final now = DateTime.now().toUtc();
+    final store = JsonConversationStore(directory.path);
+    await store.save([
+      AgentConversationRecord(
+        id: 'large',
+        title: 'Images and log',
+        createdAt: now,
+        updatedAt: now,
+        destination: '["openai","https://model.invalid/v1"]',
+        entries: [ConversationEntry(kind: ConversationEntryKind.user, text: 'inspect', attachments: attachments)],
+      ),
+    ]);
+    final restored = (await JsonConversationStore(directory.path).load()).single.entries.single.attachments;
+    expect(restored.map((a) => a.toJson()), attachments.map((a) => a.toJson()));
+    expect(restored.last.content, 'log line 中文\n' * 8000);
+  });
+
+  test('only the failing filename is reported and an over-budget batch stays atomic', () async {
+    final directory = await Directory.systemTemp.createTemp('sshairy-attachment-errors-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/over-budget.txt');
+    await file.writeAsString('x' * (9 << 20));
+    final current = [AgentAttachment.text(id: 'existing', name: 'previous.txt', text: 'x' * (8 << 20))];
+    await expectLater(
+      AgentAttachmentPicker().importFiles([file.path], current),
+      throwsA(
+        isA<AttachmentImportFailure>()
+            .having((error) => error.message, 'reason', 'attachmentTotalTooLarge')
+            .having((error) => error.fileName, 'name', 'over-budget.txt'),
+      ),
+    );
+    expect(current.single.name, 'previous.txt');
+    expect(current.single.bytes, 8 << 20);
   });
 
   test('file paste and drop share picker validation without exposing paths', () async {
@@ -153,7 +239,8 @@ void main() {
 
   test('file clipboard count and path length are bounded before files are opened', () async {
     await expectLater(
-      AgentAttachmentPicker(clipboard: () async => List.filled(5, 'ignored.txt')).clipboardFiles(),
+      AgentAttachmentPicker(clipboard: () async => List.filled(AgentAttachmentLimits.count + 1, 'ignored.txt'))
+          .clipboardFiles(),
       throwsFormatException,
     );
     await expectLater(
@@ -161,7 +248,10 @@ void main() {
       throwsFormatException,
     );
     final picker = AgentAttachmentPicker();
-    await expectLater(picker.importFiles(List.filled(5, 'ignored.txt'), []), throwsFormatException);
+    await expectLater(
+      picker.importFiles(List.filled(AgentAttachmentLimits.count + 1, 'ignored.txt'), []),
+      throwsFormatException,
+    );
   });
 
   test('history round-trips attachment content and applies the existing whole-turn byte limit', () async {
@@ -184,7 +274,7 @@ void main() {
     final restored = (await JsonConversationStore(directory.path).load()).single.entries.single.attachments;
     expect(restored.map((value) => value.toJson()), attachments.map((value) => value.toJson()));
     final large = [
-      for (var i = 0; i < 4; i++) AgentAttachment.text(id: 'large-$i', name: 'large.txt', text: 'x' * 65536),
+      for (var i = 0; i < 4; i++) AgentAttachment.text(id: 'large-$i', name: 'large.txt', text: 'x' * (2 << 20)),
     ];
     final bounded = boundedConversationRecords([
       record([

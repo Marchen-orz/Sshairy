@@ -8,7 +8,7 @@ import '../domain/attachment.dart';
 
 const maxAgentConversations = 100;
 const maxConversationEntries = 200;
-const maxConversationTextBytes = 1 << 20;
+const maxConversationTextBytes = 32 << 20;
 const maxConversationHistoryBytes = 50 << 20;
 const conversationHistoryAge = Duration(days: 30);
 
@@ -111,7 +111,7 @@ class JsonConversationStore implements ConversationStore {
     : path = '$directory/ai_conversations.json',
       _file = JsonFile('$directory/ai_conversations.json', validate: _validateDocument);
 
-  static const maxFileBytes = 64 << 20;
+  static const maxFileBytes = 128 << 20;
   final String path;
   final JsonFile _file;
   List<AgentConversationRecord>? _records;

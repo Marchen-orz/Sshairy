@@ -405,9 +405,10 @@ void main() {
           entries: [ConversationEntry(kind: ConversationEntryKind.user, text: large)],
         ),
     ], now: now);
-    expect(records, hasLength(50));
+    final retained = maxConversationHistoryBytes ~/ maxConversationTextBytes;
+    expect(records, hasLength(retained));
     expect(records.first.id, 'large-0');
-    expect(records.last.id, 'large-49');
+    expect(records.last.id, 'large-${retained - 1}');
   });
 
   test('invalid new metadata cannot overwrite accepted history', () async {
