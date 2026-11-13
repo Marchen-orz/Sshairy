@@ -4,7 +4,8 @@
 ![Desktop platforms](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-2E6EF7?style=flat-square&labelColor=60738C)
 [![Flutter](https://img.shields.io/badge/Flutter-native-2E6EF7?style=flat-square&labelColor=60738C)](https://flutter.dev)
 ![AI](https://img.shields.io/badge/AI-Airy-168A6A?style=flat-square&labelColor=60738C)
-[![中文](https://img.shields.io/badge/文档-中文-168A6A?style=flat-square&labelColor=60738C)](README.zh.md)
+[![English](https://img.shields.io/badge/docs-English-168A6A?style=flat-square&labelColor=60738C)](README.md)
+[![中文](https://img.shields.io/badge/docs-%E4%B8%AD%E6%96%87-168A6A?style=flat-square&labelColor=60738C)](README.zh.md)
 
 <img src="media/cover.png" alt="Sshairy. Lightweight SSH. Powered by AI. 0.62 s startup, 131 MiB idle memory, 27 MiB portable ZIP." width="100%">
 

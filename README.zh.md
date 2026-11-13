@@ -5,6 +5,7 @@
 [![Flutter](https://img.shields.io/badge/Flutter-native-2E6EF7?style=flat-square&labelColor=60738C)](https://flutter.dev)
 ![AI](https://img.shields.io/badge/AI-Airy-168A6A?style=flat-square&labelColor=60738C)
 [![English](https://img.shields.io/badge/docs-English-168A6A?style=flat-square&labelColor=60738C)](README.md)
+[![中文](https://img.shields.io/badge/docs-%E4%B8%AD%E6%96%87-168A6A?style=flat-square&labelColor=60738C)](README.zh.md)
 
 <img src="media/zh/cover.png" alt="Sshairy。轻量 SSH，由 AI 驱动。0.62 秒启动，131 MiB 空闲内存，27 MiB 便携 ZIP。" width="100%">
 
