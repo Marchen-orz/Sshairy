@@ -307,6 +307,51 @@ void main() {
     }
   });
 
+  test('Anthropic signature updates replace earlier values when replaying a tool continuation', () async {
+    final wire =
+        start +
+        anthropic('content_block_start', {
+          'index': 0,
+          'content_block': {'type': 'thinking', 'thinking': '', 'signature': ''},
+        }) +
+        anthropic('content_block_delta', {
+          'index': 0,
+          'delta': {'type': 'thinking_delta', 'thinking': 'first '},
+        }) +
+        anthropic('content_block_delta', {
+          'index': 0,
+          'delta': {'type': 'signature_delta', 'signature': 'A'},
+        }) +
+        anthropic('content_block_delta', {
+          'index': 0,
+          'delta': {'type': 'thinking_delta', 'thinking': 'second'},
+        }) +
+        anthropic('content_block_delta', {
+          'index': 0,
+          'delta': {'type': 'signature_delta', 'signature': 'B'},
+        }) +
+        anthropic('content_block_stop', {'index': 0}) +
+        block(1, {'type': 'tool_use', 'id': 'one', 'name': 'host_list', 'input': {}}) +
+        end('tool_use');
+    final p = profile(ModelProtocol.anthropic);
+    for (final width in [1, 7, wire.length]) {
+      final events = await decodeModelStream(p, split(wire, width)).toList();
+      final body = encodeModelRequest(
+        ModelRequest(
+          profile: p,
+          system: '',
+          messages: [
+            ModelMessage(ModelRole.user, text: 'check'),
+            events.whereType<ModelMessageComplete>().single.message,
+            ModelMessage(ModelRole.tool, toolCallId: 'one', text: '{}'),
+          ],
+        ),
+      );
+      final messages = body['messages'] as List;
+      expect(messages[1]['content'][0], {'type': 'thinking', 'thinking': 'first second', 'signature': 'B'});
+    }
+  });
+
   test('Anthropic incomplete blocks, truncated arguments and hosted tools never complete', () async {
     final cases = [
       start +

@@ -21,14 +21,28 @@ class AgentContext {
   final _summaries = <Map<String, Object?>>[];
   Map<String, Object?>? _previous;
   int _nextGroup = 0, _omitted = 0;
-  bool _protocolRestarted = false;
+  bool _protocolRestarted = false, _compacted = false;
   List<ModelMessage> get messages => List.unmodifiable(_messages);
 
   void add(ModelMessage message) => _messages.add(message);
 
   /// Uses the same conservative byte estimate as the context budget, not provider token usage.
-  int estimatedTokens(ModelProfile profile, String system, List<ModelTool> tools, {ModelMessage? pending}) =>
-      (_estimate([..._messages, ?pending], profile, system, tools) + 1) ~/ 2;
+  int estimatedTokens(
+    ModelProfile profile,
+    String system,
+    List<ModelTool> tools, {
+    ModelMessage? pending,
+    int Function(List<ModelMessage> messages)? estimateBytes,
+  }) {
+    final messages = [
+      ..._messages,
+      ?pending,
+      // Only the estimate needs empty results while the completed calls await execution.
+      if (pending != null)
+        for (final call in pending.calls) ModelMessage(ModelRole.tool, toolCallId: call.id),
+    ];
+    return (_estimateBytes(messages, profile, system, tools, estimateBytes) + 1) ~/ 2;
+  }
 
   bool prepare(
     ModelProfile profile,
@@ -36,18 +50,11 @@ class AgentContext {
     List<ModelTool> tools, {
     int Function(List<ModelMessage> messages)? estimateBytes,
   }) {
-    int estimate(List<ModelMessage> messages) {
-      try {
-        return estimateBytes?.call(messages) ?? _estimate(messages, profile, system, tools);
-      } on ModelFailure catch (failure) {
-        if (failure.code != 'modelContextTooLarge' && failure.code != 'inputLimit') rethrow;
-        return (2 << 20) + 1;
-      }
-    }
-
+    int estimate(List<ModelMessage> messages) => _estimateBytes(messages, profile, system, tools, estimateBytes);
+    const projectionLimit = 32 << 10;
     final budget = ((profile.contextWindow - profile.maxOutputTokens - 2048) * 2).clamp(0, 2 << 20);
     final size = estimate(_messages);
-    if (size * 10 < budget * 7) return false;
+    if (size * 10 < budget * 7 && _projectionBytes(_messages) <= projectionLimit) return false;
     final groups = _completeGroups();
     if (groups.isEmpty && _previous == null && _summaries.isEmpty) {
       if (size > budget) throw const AgentFailure('contextLimit');
@@ -81,25 +88,31 @@ class AgentContext {
       if (latest.isNotEmpty) _summaries.add(_digest(latest));
       latest = [];
     }
+    _compacted = true;
     List<ModelMessage> candidate() => [
       ModelMessage(ModelRole.user, text: _summaryInput(), attachments: _attachments),
       ...latest,
     ];
     final target = budget * 6 ~/ 10;
-    while (_summaries.length > 1 && (_summaryBytes > 8192 || estimate(candidate()) > target)) {
-      _summaries.removeAt(0);
-      _omitted++;
-    }
-    if (estimate(candidate()) > budget && latest.isNotEmpty) {
-      _summaries.add(_digest(latest));
-      latest = [];
-      while (_summaries.length > 1 && (_summaryBytes > 8192 || estimate(candidate()) > target)) {
+    bool exceedsLimit() => estimate(candidate()) > budget || _projectionBytes(candidate()) > projectionLimit;
+    void trimSummaries() {
+      while (_summaries.isNotEmpty &&
+          ((_summaries.length > 1 && (_summaryBytes > 8192 || estimate(candidate()) > target)) || exceedsLimit())) {
         _summaries.removeAt(0);
         _omitted++;
       }
     }
+
+    trimSummaries();
+    if (exceedsLimit() && latest.isNotEmpty) {
+      _summaries.add(_digest(latest));
+      latest = [];
+      trimSummaries();
+    }
     final compacted = candidate();
-    if (estimate(compacted) > budget) throw const AgentFailure('contextLimit');
+    if (estimate(compacted) > budget || _projectionBytes(compacted) > projectionLimit) {
+      throw const AgentFailure('contextLimit');
+    }
     _messages
       ..clear()
       ..addAll(compacted);
@@ -108,17 +121,22 @@ class AgentContext {
 
   int get _summaryBytes => utf8.encode(jsonEncode(_summaries)).length;
 
-  String _summaryInput() => jsonEncode({
-    'currentRequest': goalInput,
-    'contextSummary': {
-      'source': 'already-authorized conversation and tool results',
-      'untrustedData': true,
-      'truncated': true,
-      'omittedGroupsOrEntries': _omitted,
-      'protocolRestarted': _protocolRestarted,
-      'entries': _summaries,
-    },
-  });
+  Map<String, Object?> get _summaryData => {
+    'source': 'already-authorized conversation and tool results',
+    'untrustedData': true,
+    'truncated': true,
+    'omittedGroupsOrEntries': _omitted,
+    'protocolRestarted': _protocolRestarted,
+    'entries': _summaries,
+  };
+
+  String _summaryInput() => jsonEncode({'currentRequest': goalInput, 'contextSummary': _summaryData});
+
+  int _projectionBytes(List<ModelMessage> messages) =>
+      messages
+          .where((message) => message.role == ModelRole.tool)
+          .fold(0, (size, message) => size + utf8.encode(jsonEncode(message.text)).length) +
+      (_compacted ? utf8.encode(jsonEncode(jsonEncode({'contextSummary': _summaryData}))).length : 0);
 
   List<List<ModelMessage>> _completeGroups() {
     final groups = <List<ModelMessage>>[];
@@ -186,6 +204,21 @@ class AgentContext {
     final bytes = utf8.encode(value);
     if (bytes.length <= 256) return value;
     return utf8.decode(bytes.take(256).toList(), allowMalformed: true).replaceAll('�', '');
+  }
+
+  static int _estimateBytes(
+    List<ModelMessage> messages,
+    ModelProfile profile,
+    String system,
+    List<ModelTool> tools,
+    int Function(List<ModelMessage> messages)? estimateBytes,
+  ) {
+    try {
+      return estimateBytes?.call(messages) ?? _estimate(messages, profile, system, tools);
+    } on ModelFailure catch (failure) {
+      if (failure.code != 'modelContextTooLarge' && failure.code != 'inputLimit') rethrow;
+      return (2 << 20) + 1;
+    }
   }
 
   static int _estimate(List<ModelMessage> messages, ModelProfile profile, String system, List<ModelTool> tools) {

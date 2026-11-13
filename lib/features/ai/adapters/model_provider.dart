@@ -593,7 +593,7 @@ class _AnthropicParser extends _ProtocolParser {
         if (block.argumentBytes > _argumentLimit) throw const ModelFailure('modelArgumentsTooLarge');
         block.arguments.write(fragment);
       } else {
-        block.value[field] = '${block.value[field]}$fragment';
+        block.value[field] = field == 'signature' ? fragment : '${block.value[field]}$fragment';
         if (field == 'text') yield ModelTextDelta(fragment);
         if (field == 'thinking') yield ModelReasoningDelta(summarize ? fragment : '');
       }
