@@ -136,6 +136,9 @@ void main() {
           expect(configured['reasoning_effort'], effort.name);
           expect(configured['max_completion_tokens'], selected.maxOutputTokens);
           expect(configured.keys, isNot(contains('max_tokens')));
+        } else if (protocol == ModelProtocol.responses) {
+          expect(configured['reasoning'], {'effort': effort.name});
+          expect(configured['max_output_tokens'], selected.maxOutputTokens);
         } else {
           expect(configured['thinking'], {'type': 'adaptive', 'display': 'summarized'});
           expect(configured['output_config'], {'effort': effort.name});
@@ -152,6 +155,23 @@ void main() {
       () => encodeModelRequest(_request(unsupported)),
       throwsA(isA<ModelFailure>().having((e) => e.code, 'code', 'unsupportedReasoning')),
     );
+  });
+
+  test('off asks each protocol for no thinking without adaptive summaries', () {
+    final anthropic = _profile(
+      protocol: ModelProtocol.anthropic,
+      model: 'unknown-compat-alias',
+      effort: ReasoningEffort.off,
+    );
+    final body = encodeModelRequest(_request(anthropic));
+    expect(body['thinking'], {'type': 'disabled'});
+    expect(body.keys, isNot(contains('output_config')));
+    final chat = encodeModelRequest(_request(_profile(protocol: ModelProtocol.openai, effort: ReasoningEffort.off)));
+    expect(chat['reasoning_effort'], 'none');
+    final responses = encodeModelRequest(
+      _request(_profile(protocol: ModelProtocol.responses, effort: ReasoningEffort.off)),
+    );
+    expect(responses['reasoning'], {'effort': 'none'});
   });
 
   test('only explicitly requested Anthropic summaries are emitted and opaque material stays private', () async {
@@ -262,8 +282,8 @@ void main() {
     expect(container.read(selectedAgentReasoningProvider), isNull);
     expect(container.read(effectiveAgentProfileProvider)!.reasoningEffort, ReasoningEffort.low);
     final config = AiConfiguration(profile: profile, reviewModel: 'reviewer');
-    expect(config.profileForInline!.reasoningEffort, ReasoningEffort.modelDefault);
-    expect(config.profileForCompletion!.reasoningEffort, ReasoningEffort.modelDefault);
+    expect(config.profileForInline!.reasoningEffort, ReasoningEffort.off);
+    expect(config.profileForCompletion!.reasoningEffort, ReasoningEffort.off);
     expect(config.profileForReview!.reasoningEffort, ReasoningEffort.modelDefault);
   });
 }

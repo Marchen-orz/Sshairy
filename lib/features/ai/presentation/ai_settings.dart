@@ -529,6 +529,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                 value: _reasoningEffort,
                 options: [
                   AppOption(ReasoningEffort.modelDefault, l.aiReasoningDefault),
+                  AppOption(ReasoningEffort.off, l.aiReasoningOff),
                   AppOption(ReasoningEffort.low, l.aiReasoningLow),
                   AppOption(ReasoningEffort.medium, l.aiReasoningMedium),
                   AppOption(ReasoningEffort.high, l.aiReasoningHigh),

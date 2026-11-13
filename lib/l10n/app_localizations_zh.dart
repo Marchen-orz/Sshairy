@@ -2699,6 +2699,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiReasoningDefault => '跟随模型';
 
   @override
+  String get aiReasoningOff => '关闭';
+
+  @override
   String get aiReasoningLow => '低';
 
   @override

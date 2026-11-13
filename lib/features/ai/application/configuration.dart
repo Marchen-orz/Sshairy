@@ -41,12 +41,9 @@ class AiConfiguration {
       ? null
       : profile?.withModel(reviewModel!, tools: false, reasoningEffort: ReasoningEffort.modelDefault);
   ModelProfile? get profileForInline =>
-      profile?.withModel(inlineModel ?? profile!.model, tools: false, reasoningEffort: ReasoningEffort.modelDefault);
-  ModelProfile? get profileForCompletion => profile?.withModel(
-    completionModel ?? profile!.model,
-    tools: false,
-    reasoningEffort: ReasoningEffort.modelDefault,
-  );
+      profile?.withModel(inlineModel ?? profile!.model, tools: false, reasoningEffort: ReasoningEffort.off);
+  ModelProfile? get profileForCompletion =>
+      profile?.withModel(completionModel ?? profile!.model, tools: false, reasoningEffort: ReasoningEffort.off);
 }
 
 final aiConfigurationProvider = NotifierProvider<AiConfigurationController, AiConfiguration>(

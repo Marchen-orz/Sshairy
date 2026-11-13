@@ -5204,6 +5204,12 @@ abstract class AppLocalizations {
   /// **'Model default'**
   String get aiReasoningDefault;
 
+  /// No description provided for @aiReasoningOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get aiReasoningOff;
+
   /// No description provided for @aiReasoningLow.
   ///
   /// In en, this message translates to:

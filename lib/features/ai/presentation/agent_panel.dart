@@ -718,6 +718,7 @@ class _ContextUsage extends StatelessWidget {
 
 String _reasoningLabel(AppLocalizations l, ReasoningEffort effort) => switch (effort) {
   ReasoningEffort.modelDefault => l.aiReasoningDefault,
+  ReasoningEffort.off => l.aiReasoningOff,
   ReasoningEffort.low => l.aiReasoningLow,
   ReasoningEffort.medium => l.aiReasoningMedium,
   ReasoningEffort.high => l.aiReasoningHigh,

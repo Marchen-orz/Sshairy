@@ -869,6 +869,7 @@
   "aiAgentErrorUnsupported": "当前命令适配器不支持这台主机。",
   "aiReasoningEffort": "思考强度",
   "aiReasoningDefault": "跟随模型",
+  "aiReasoningOff": "关闭",
   "aiReasoningLow": "低",
   "aiReasoningMedium": "中",
   "aiReasoningHigh": "高",

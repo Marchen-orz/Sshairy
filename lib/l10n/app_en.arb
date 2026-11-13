@@ -910,6 +910,7 @@
   "aiAgentErrorUnsupported": "This server does not support the current command adapter.",
   "aiReasoningEffort": "Reasoning effort",
   "aiReasoningDefault": "Model default",
+  "aiReasoningOff": "Off",
   "aiReasoningLow": "Low",
   "aiReasoningMedium": "Medium",
   "aiReasoningHigh": "High",

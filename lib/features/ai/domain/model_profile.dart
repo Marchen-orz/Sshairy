@@ -3,7 +3,8 @@ import 'dart:convert';
 /// Each protocol has its own request and continuation format.
 enum ModelProtocol { anthropic, openai, responses }
 
-enum ReasoningEffort { modelDefault, low, medium, high }
+/// [off] sends the protocol's explicit "no thinking" request; [modelDefault] sends nothing.
+enum ReasoningEffort { modelDefault, off, low, medium, high }
 
 String? terminalModelDestination(ModelProfile? profile, String? inlineModel, String? completionModel) {
   if (profile == null) return null;

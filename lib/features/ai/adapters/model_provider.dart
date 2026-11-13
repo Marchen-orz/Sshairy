@@ -281,12 +281,19 @@ const _adaptiveThinkingModels = {
 
 Map<String, Object?> _anthropicReasoning(ModelProfile profile) {
   if (profile.reasoningEffort == ReasoningEffort.modelDefault) return const {};
+  if (profile.reasoningEffort == ReasoningEffort.off) {
+    return const {
+      'thinking': {'type': 'disabled'},
+    };
+  }
   if (!_adaptiveThinkingModels.contains(profile.model)) throw const ModelFailure('unsupportedReasoning');
   return {
     'thinking': {'type': 'adaptive', 'display': 'summarized'},
     'output_config': {'effort': profile.reasoningEffort.name},
   };
 }
+
+String _openAiEffort(ReasoningEffort effort) => effort == ReasoningEffort.off ? 'none' : effort.name;
 
 Map<String, Object?> encodeModelRequest(ModelRequest request) => _prepareModelRequest(request).encoded;
 
@@ -327,7 +334,7 @@ Map<String, Object?> _encodeModelRequest(ModelRequest request) {
         'max_tokens': request.profile.maxOutputTokens
       else ...{
         'max_completion_tokens': request.profile.maxOutputTokens,
-        'reasoning_effort': request.profile.reasoningEffort.name,
+        'reasoning_effort': _openAiEffort(request.profile.reasoningEffort),
       },
       'stream': true,
       'messages': [
@@ -362,7 +369,7 @@ Map<String, Object?> _encodeModelRequest(ModelRequest request) {
       if (request.system.isNotEmpty) 'instructions': request.system,
       'max_output_tokens': request.profile.maxOutputTokens,
       if (request.profile.reasoningEffort != ReasoningEffort.modelDefault)
-        'reasoning': {'effort': request.profile.reasoningEffort.name},
+        'reasoning': {'effort': _openAiEffort(request.profile.reasoningEffort)},
       'stream': true,
       'store': false,
       'input': _responsesInput(request.messages),
@@ -518,7 +525,7 @@ Stream<ModelEvent> decodeModelStream(ModelProfile profile, Stream<List<int>> byt
   final _ProtocolParser parser = switch (profile.protocol) {
     ModelProtocol.anthropic => _AnthropicParser(
       profile.identity,
-      summarize: profile.reasoningEffort != ReasoningEffort.modelDefault,
+      summarize: !{ReasoningEffort.modelDefault, ReasoningEffort.off}.contains(profile.reasoningEffort),
     ),
     ModelProtocol.openai => _OpenAiParser(),
     ModelProtocol.responses => _ResponsesParser(),

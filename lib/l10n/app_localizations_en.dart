@@ -2802,6 +2802,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiReasoningDefault => 'Model default';
 
   @override
+  String get aiReasoningOff => 'Off';
+
+  @override
   String get aiReasoningLow => 'Low';
 
   @override
