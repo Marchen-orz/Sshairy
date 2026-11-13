@@ -180,7 +180,7 @@ running → pausing → paused → preparing（M3 增量）
 
 当前规则存 forwards.json，规则对象没有独立 revision 字段。运行中的规则持有 purpose 为 forward 的租约，与终端、SFTP 共用连接，关闭终端不影响转发；本地与动态监听走 `ForwardRuntime`（dart:io 只在 `adapters/`），远端监听用 tcpip-forward，停止时等服务器确认取消，确认不了显示 stopFailed。默认绑定 127.0.0.1，其他地址在表单和列表标出“对外开放”，保存前确认（已保存且地址未变不重复询问）。动态转发仅为无认证的 SOCKS5 CONNECT，支持域名、IPv4、IPv6。`Forwards.autoStart()` 在启动时调用一次；`autoReconnect` 仅连接断开时按 1/2/4/8/16 s 重试 5 次，手动停止、认证失败和主机密钥问题不重试。
 
-约束：每条规则最多接收 128 个并发连接（包括握手和拨号中的连接），超出的直接关闭并记 limit；SOCKS5 握手及本机目标 TCP 拨号最多等待 15 s。错误发生在单个转发连接时只关闭该连接，规则继续监听并保留最近错误。停止确认失败时保留转发租约与失败状态，禁止直接重新启动、编辑或删除规则；只有确认解除监听或 SSH transport 已断开后才释放租约，断开后再次停止即可收尾。转发能力（forward.list/save/delete/start/stop）均不向 AI 开放（`agentExposed` 为 false）。
+约束：每条规则最多接收 128 个并发连接（包括握手和拨号中的连接），超出的直接关闭并记 limit；SOCKS5 握手及本机目标 TCP 拨号最多等待 15 s。错误发生在单个转发连接时只关闭该连接，规则继续监听并保留最近错误。停止确认失败时保留转发租约与失败状态，禁止直接重新启动、编辑或删除规则；只有确认解除监听或 SSH transport 已断开后才释放租约，断开后再次停止即可收尾。转发能力（forward.list/save/delete/start/stop）已通过受审目录向 Agent 开放，调用与权限边界见 AI §7，当前审核缺口见 ROADMAP。
 
 规则管理入口、命令面板、退出 `shutdown()` 与启动 `autoStart()` 由组合层接入。本进程内重复监听的 Dart 错误码 -1 也归类为端口占用，不能只识别操作系统错误码。验证覆盖 SOCKS5 解析、relay 半关闭与挂断、租约与状态生命周期、有界重连、连接上限、暴露确认、持久化和退出协调；真实 L/R/D 通路及尚未验证的界面/断线重连见 TESTING，模拟通道不代替实网验收。
 
