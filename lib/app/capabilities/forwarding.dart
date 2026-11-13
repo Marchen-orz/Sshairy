@@ -109,7 +109,14 @@ List<Capability> forwardCapabilities(Ref ref) {
         if (host != null && known.rule.hostId != HostId(host)) {
           throw const ForwardError(ForwardErrors.unknown);
         }
-        return outcome(await forwards().start(id));
+        return outcome(
+          await forwards().start(
+            id,
+            cancel: context.cancellation,
+            deadline: context.deadline,
+            isCurrent: () => context.isCurrent,
+          ),
+        );
       }),
       inputSchema: const {
         'type': 'object',

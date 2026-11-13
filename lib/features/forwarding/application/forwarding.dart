@@ -128,8 +128,28 @@ class Forwards extends Notifier<List<ForwardState>> {
   }
 
   /// Starts the rule and returns once it listens or has failed; the result says which. A rule that already runs is
-  /// left alone. Throws [ForwardError] when the rule is unknown or still stopping.
-  Future<ForwardState> start(ForwardId id) async {
+  /// left alone. Request cancellation owns only a new startup, until its listener is handed to this manager.
+  Future<ForwardState> start(
+    ForwardId id, {
+    CancellationToken? cancel,
+    DateTime? deadline,
+    bool Function()? isCurrent,
+  }) async {
+    void checkRequest() {
+      if (cancel?.isCancelled ?? false) throw const ForwardError('cancelled');
+      if (deadline != null && !DateTime.now().isBefore(deadline)) {
+        throw const ForwardError('deadlineExceeded');
+      }
+      var current = false;
+      try {
+        current = isCurrent?.call() ?? true;
+      } on Object {
+        // A failed authority check cannot allow a listener to be created.
+      }
+      if (!current) throw const ForwardError('scopeChanged');
+    }
+
+    checkRequest();
     if (_closing) throw const ForwardError(ForwardErrors.busy);
     final known = byId(id) ?? (throw const ForwardError(ForwardErrors.unknown));
     final existing = _runs[id];
@@ -137,14 +157,51 @@ class Forwards extends Notifier<List<ForwardState>> {
       if (existing.phase == ForwardPhase.stopping || existing.phase == ForwardPhase.stopFailed) {
         throw const ForwardError(ForwardErrors.busy);
       }
-      await existing.opening;
+      final waiting = cancel == null
+          ? existing.opening ?? Future<void>.value()
+          : Future.any<void>([
+              existing.opening ?? Future<void>.value(),
+              cancel.whenCancelled.then<void>((_) => throw const ForwardError('cancelled')),
+            ]);
+      await (deadline == null
+          ? waiting
+          : waiting.timeout(
+              deadline.difference(DateTime.now()),
+              onTimeout: () => throw const ForwardError('deadlineExceeded'),
+            ));
+      checkRequest();
       return byId(id) ?? known;
     }
     final run = _Run(known.rule);
+    var handedOff = false;
+    void cancelStartup() {
+      if (!handedOff) run.cancel.cancel();
+    }
+
+    final cancellation = cancel?.whenCancelled.asStream().listen((_) => cancelStartup());
+    final timer = deadline == null ? null : Timer(deadline.difference(DateTime.now()), cancelStartup);
     _runs[id] = run;
     _go(run, ForwardPhase.starting);
-    await (run.opening = _open(run));
-    return byId(id) ?? known;
+    try {
+      await (run.opening = _open(
+        run,
+        checkRequest: () {
+          checkRequest();
+          if (isCurrent != null && run.lease?.isCurrent == false) throw const ForwardError('scopeChanged');
+        },
+        onStarted: () => handedOff = true,
+      ));
+      if (!handedOff) checkRequest();
+      return byId(id) ?? known;
+    } on Object {
+      if (_runs[id] == run && run.cancel.isCancelled) {
+        await (run.stopping ??= _stop(run).whenComplete(() => run.stopping = null));
+      }
+      rethrow;
+    } finally {
+      timer?.cancel();
+      await cancellation?.cancel();
+    }
   }
 
   /// Stops the rule and returns once its listener is confirmed released and the lease is returned. When the server
@@ -187,9 +244,10 @@ class Forwards extends Notifier<List<ForwardState>> {
     }
   }
 
-  Future<void> _open(_Run run) async {
+  Future<void> _open(_Run run, {void Function()? checkRequest, void Function()? onStarted}) async {
     final rule = run.rule;
     try {
+      checkRequest?.call();
       final host =
           ref.read(hostsProvider.notifier).byId(rule.hostId) ?? (throw const ForwardError(ForwardErrors.hostMissing));
       final lease = await ref
@@ -197,19 +255,23 @@ class Forwards extends Notifier<List<ForwardState>> {
           .acquire(host, prompts, purpose: LeasePurpose.forward, cancel: run.cancel);
       run.lease = lease;
       if (run.cancel.isCancelled) return;
+      checkRequest?.call();
       if (rule.kind == ForwardKind.remote) {
         final remote = run.remote = await lease.listen(rule.listenAddress, rule.listenPort);
         if (run.cancel.isCancelled) return;
+        checkRequest?.call();
         run.port = remote.port;
         run.accepting = remote.connections.listen((tunnel) => unawaited(_serveRemote(run, tunnel)));
       } else {
         final listener = run.listener = await _runtime.listen(rule.listenAddress, rule.listenPort);
         if (run.cancel.isCancelled) return;
+        checkRequest?.call();
         run.port = listener.port;
         run.accepting = listener.connections.listen((local) => unawaited(_serveLocal(run, local)));
       }
       run.attempt = 0;
       run.reconnecting = false;
+      onStarted?.call();
       _go(run, ForwardPhase.running, port: run.port);
       lease.done.whenComplete(() => _lost(run, lease)).ignore();
     } on Object catch (e) {

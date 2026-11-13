@@ -99,9 +99,13 @@ class FakeRuntime implements ForwardRuntime {
   final dials = <(String, int)>[];
   final targets = <FakeLocal>[];
   Object? listenError, connectError;
+  Completer<void>? listenGate;
+  var listenRequests = 0;
 
   @override
   Future<LocalListener> listen(String address, int port) async {
+    listenRequests++;
+    await listenGate?.future;
     if (listenError case final e?) throw e;
     final listener = FakeListener(port == 0 ? 40000 : port);
     listeners.add(listener);
@@ -169,6 +173,8 @@ class ServerConnection implements Transport {
 
   @override
   Future<RemoteListener> listen(String host, int port) async {
+    server.listenRequests++;
+    await server.listenGate?.future;
     if (server.listenError case final e?) throw e;
     return remote = FakeRemote(server, port == 0 ? 4000 : port);
   }
@@ -191,13 +197,15 @@ class ServerConnection implements Transport {
 /// What the server does, for every connection made to it.
 class Server {
   final connections = <ServerConnection>[];
-  Completer<void>? dialGate, openGate;
+  Completer<void>? dialGate, openGate, listenGate;
   Object? dialError, listenError, openError;
   var remoteCloses = true;
+  var dialRequests = 0, listenRequests = 0;
 
   ServerConnection get connection => connections.last;
 
   Future<Transport> dial(Host host, ConnectPrompts prompts, CancellationToken cancel) async {
+    dialRequests++;
     await dialGate?.future;
     if (dialError case final e?) throw e;
     final connection = ServerConnection(this);
@@ -461,6 +469,194 @@ void main() {
       expect(runtime.listeners.single.closed, isTrue);
       expect((client.destroyed, tunnel.destroyed), (true, true));
       expect(server.connection.isClosed, isTrue);
+    });
+
+    test('Agent Stop during a shared dial never creates a listener or cancels the other waiter', () async {
+      final gate = server.dialGate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      await forwards.save(rule('l'));
+      final terminalWaiting = manager.acquire(_host, _NoPrompts());
+      final cancel = CancellationToken();
+      final capability = container
+          .read(Provider((ref) => forwardCapabilities(ref)))
+          .firstWhere((value) => value.id == 'forward.start');
+      final starting = capability.invoke({
+        'id': 'l',
+        'hostId': 'h',
+      }, RequestContext(Origin.agent, cancellation: cancel));
+      await until(() => server.dialRequests == 1);
+      cancel.cancel();
+      expect(await starting, isA<Err<Object?>>().having((result) => result.error.code, 'code', 'cancelled'));
+      expect(stateOf('l').phase, ForwardPhase.stopped);
+      expect(runtime.listenRequests, 0);
+      gate.complete();
+      final terminal = await terminalWaiting;
+      expect(server.connections, hasLength(1));
+      expect(server.connection.isClosed, isFalse);
+      expect(runtime.listeners, isEmpty);
+      terminal.release();
+    });
+
+    for (final kind in [ForwardKind.local, ForwardKind.remote]) {
+      test('a revoked $kind startup checks authority after acquiring its connection', () async {
+        final gate = server.dialGate = Completer<void>();
+        addTearDown(() {
+          if (!gate.isCompleted) gate.complete();
+        });
+        await forwards.save(rule('r', kind: kind));
+        var current = true;
+        final starting = forwards.start(const ForwardId('r'), isCurrent: () => current);
+        final rejected = expectLater(starting, forwardError('scopeChanged'));
+        await until(() => server.dialRequests == 1);
+        current = false;
+        gate.complete();
+        await rejected;
+        expect(runtime.listenRequests, 0);
+        expect(server.listenRequests, 0);
+        expect(stateOf('r').phase, ForwardPhase.failed);
+        expect(stateOf('r').error, 'scopeChanged');
+        expect(server.connection.isClosed, isTrue);
+      });
+
+      for (final revoke in [false, true]) {
+        test('$kind startup releases a late listener after ${revoke ? 'revocation' : 'Stop'}', () async {
+          final terminal = await manager.acquire(_host, _NoPrompts());
+          final gate = Completer<void>();
+          if (kind == ForwardKind.remote) {
+            server.listenGate = gate;
+          } else {
+            runtime.listenGate = gate;
+          }
+          addTearDown(() {
+            if (!gate.isCompleted) gate.complete();
+            terminal.release();
+          });
+          await forwards.save(rule('r', kind: kind));
+          final cancel = CancellationToken();
+          var current = true;
+          final starting = forwards.start(const ForwardId('r'), cancel: cancel, isCurrent: () => current);
+          final rejected = expectLater(starting, forwardError(revoke ? 'scopeChanged' : 'cancelled'));
+          await until(() => kind == ForwardKind.remote ? server.listenRequests == 1 : runtime.listenRequests == 1);
+          if (revoke) {
+            current = false;
+          } else {
+            cancel.cancel();
+          }
+          gate.complete();
+          await rejected;
+          if (kind == ForwardKind.remote) {
+            expect(server.connection.remote!.closes, 1);
+          } else {
+            expect(runtime.listeners.single.closed, isTrue);
+          }
+          expect(stateOf('r').active, isFalse);
+          expect(server.connection.isClosed, isFalse, reason: 'The terminal still owns the shared transport');
+        });
+      }
+
+      test('a handed-off $kind listener outlives its startup cancellation, authority and deadline', () async {
+        await forwards.save(rule('r', kind: kind));
+        final cancel = CancellationToken();
+        var current = true;
+        final started = await forwards.start(
+          const ForwardId('r'),
+          cancel: cancel,
+          deadline: DateTime.now().add(const Duration(milliseconds: 100)),
+          isCurrent: () => current,
+        );
+        expect(started.phase, ForwardPhase.running);
+        cancel.cancel();
+        current = false;
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        expect(stateOf('r').phase, ForwardPhase.running);
+        expect(server.connection.isClosed, isFalse);
+        if (kind == ForwardKind.remote) {
+          expect(server.connection.remote!.closes, 0);
+        } else {
+          expect(runtime.listeners.single.closed, isFalse);
+        }
+        await forwards.stop(const ForwardId('r'));
+      });
+    }
+
+    test('an expired or failed startup authority check is rejected before dialing', () async {
+      await forwards.save(rule('l'));
+      await expectLater(
+        forwards.start(const ForwardId('l'), deadline: DateTime.now().subtract(const Duration(seconds: 1))),
+        forwardError('deadlineExceeded'),
+      );
+      await expectLater(
+        forwards.start(const ForwardId('l'), isCurrent: () => throw StateError('unavailable authority')),
+        forwardError('scopeChanged'),
+      );
+      expect(server.dialRequests, 0);
+      expect(runtime.listenRequests, 0);
+      expect(stateOf('l').phase, ForwardPhase.stopped);
+    });
+
+    test('a startup deadline expires during dialing without dispatching a listener', () async {
+      final gate = server.dialGate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      await forwards.save(rule('l'));
+      await expectLater(
+        forwards.start(const ForwardId('l'), deadline: DateTime.now().add(const Duration(milliseconds: 50))),
+        forwardError('deadlineExceeded'),
+      );
+      expect(stateOf('l').phase, ForwardPhase.stopped);
+      expect(runtime.listenRequests, 0);
+      gate.complete();
+      await until(() => server.connections.isNotEmpty);
+      expect(server.connection.isClosed, isTrue);
+    });
+
+    for (final expire in [false, true]) {
+      test('a secondary startup ${expire ? 'deadline' : 'cancellation'} leaves the owner startup running', () async {
+        final gate = server.dialGate = Completer<void>();
+        addTearDown(() {
+          if (!gate.isCompleted) gate.complete();
+        });
+        await forwards.save(rule('l'));
+        final owner = forwards.start(const ForwardId('l'));
+        await until(() => server.dialRequests == 1);
+        final cancel = CancellationToken();
+        final waiting = forwards.start(
+          const ForwardId('l'),
+          cancel: cancel,
+          deadline: expire ? DateTime.now().add(const Duration(milliseconds: 50)) : null,
+        );
+        final rejected = expectLater(waiting, forwardError(expire ? 'deadlineExceeded' : 'cancelled'));
+        if (!expire) cancel.cancel();
+        await rejected;
+        expect(stateOf('l').phase, ForwardPhase.starting);
+        gate.complete();
+        expect((await owner).phase, ForwardPhase.running);
+        expect(server.connections, hasLength(1));
+        expect(runtime.listeners, hasLength(1));
+        expect(runtime.listeners.single.closed, isFalse);
+      });
+    }
+
+    test('a revoked secondary startup cannot stop the owner listener', () async {
+      final gate = server.dialGate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      await forwards.save(rule('l'));
+      final owner = forwards.start(const ForwardId('l'));
+      await until(() => server.dialRequests == 1);
+      var current = true;
+      final waiting = forwards.start(const ForwardId('l'), isCurrent: () => current);
+      final rejected = expectLater(waiting, forwardError('scopeChanged'));
+      current = false;
+      gate.complete();
+      expect((await owner).phase, ForwardPhase.running);
+      await rejected;
+      expect(stateOf('l').phase, ForwardPhase.running);
+      expect(runtime.listeners.single.closed, isFalse);
     });
 
     test('starting twice uses one listener and one connection', () async {
