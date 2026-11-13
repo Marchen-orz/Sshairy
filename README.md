@@ -1,29 +1,145 @@
-# sshairy
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/hero-dark.png">
+    <img src="media/hero-light.png" alt="sshairy — lightweight SSH, powered by AI" width="100%">
+  </picture>
+</p>
 
-Lightweight SSH. Powered by AI.
+sshairy is a desktop SSH client that treats your RAM and your attention as scarce. It is written in Dart, compiled ahead of time and drawn by Flutter's own engine — the model of a native app, not a browser in a trench coat. It opens its window in about half a second, idles at roughly 131 MB, downloads as a 27 MB zip and runs as a single process.
 
-基于 Flutter 的桌面 SSH 客户端，提供侧栏助手 Airy、行内命令生成与 AI 提示补全。Airy 根据任务自行选择回答、固定诊断或提出命令，默认执行前逐次确认，可切换观察或自动权限模式。AI 默认关闭，真实模型和服务器闭环仍待实测；完整目标与完成范围见 [ROADMAP](docs/ROADMAP.md)。
+It also ships with **Airy**, an agent that can inspect a server, read the terminal, move files and run commands — after showing you exactly what it is about to do.
 
-主要供作者自用，处于开发阶段，不提供兼容性、可用性或数据恢复保障。目标平台为 Windows、macOS、Linux；目前只在作者的 Windows 11 和 Ubuntu 24.04 服务器上实际测试，macOS 和 Linux 桌面尚未验证。
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/stats-dark.png">
+    <img src="media/stats-light.png" alt="0.62 s to first window, 131 MB idle, 27 MB download, one process" width="100%">
+  </picture>
+</p>
 
-- 主机库：分组、标签、搜索、置顶、最近连接；密码与密钥认证，导入与生成 Ed25519 密钥。
-- 终端：多标签、分屏、搜索、复制粘贴、重连、布局恢复；关闭标签不会关闭其他通道。
-- 文件：双栏 SFTP、终端侧栏、上传下载、队列、冲突处理、外部编辑。
-- 片段：搜索、标签、编辑与持久化；插入焦点终端或确认后运行，断线重连使旧确认失效。
-- 外观：六套浅深品牌主题、界面缩放与独立背景图片。Windows 默认 Skia，可在设置中切换 Impeller，重启生效。
-- 连接扩展：跳板链、SOCKS5／HTTP CONNECT 代理、按主机启用旧版算法。实际验证范围见 [ROADMAP](docs/ROADMAP.md)。
-- AI：设置中配置 Anthropic Messages 或 OpenAI-compatible Chat Completions；导航或 Ctrl/Cmd+Shift+A 打开 Airy，发送时使用聚焦的 SSH 主机；无聚焦目标时根据对话明确主机，未指明则追问。顶部历史入口在侧栏内展开，可查看、切换和删除本地会话，各会话保留内存草稿；再次发送历史需明确确认，旧批准和执行不会恢复。配置并启用 AI 后，行内生成与自动补全默认开启，可分别关闭，并在各自折叠的高级设置筛选可用主机；两者包含有限同会话命令历史，命令先预览或填入，按 Enter 才执行；Airy 按所选权限模式执行命令，执行输出另选发送。
+## Why another SSH client
 
-密码与私钥只存系统安全存储。连接先检查主机密钥，变化时默认阻断；不修改系统 SSH 配置或 `known_hosts`。Airy 历史只保存有界文字、执行状态和已允许发送的输出投影，文字仍可能含敏感业务信息，辅助脱敏不保证识别任意秘密；恢复与发送限制见 [AI §4.1](docs/AI.md#41-侧边栏-agent-助手)。
+Most "modern" SSH clients are web apps in a desktop shell. They bundle Chromium, Node.js and a renderer, then spend the first two seconds of every launch booting a browser so that you can type into a terminal.
 
-## 开发
+sshairy takes the native route: AOT-compiled Dart for the app, Flutter's Skia/Impeller renderer for pixels, and no web runtime anywhere in the package. The result is a client that feels like a system utility — it is there before your hands leave the keyboard, and it stays out of the task manager.
 
-当前工具链：Flutter 3.47.9 stable、Dart 3.13.7。Windows 需要 Visual Studio 的 C++ 桌面开发工具。
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/hosts-dark.png">
+    <img src="media/hosts-light.png" alt="sshairy host library with groups, tags and pinned hosts" width="100%">
+  </picture>
+</p>
+
+## What is inside
+
+- **Host library** — groups, tags, pins, search, recent connections, password and key auth, Ed25519 key generation.
+- **Terminal** — tabs, splits, search, copy/paste, reconnect, restored layout. Closing a tab never closes the other channels.
+- **SFTP** — dual-pane browser, queue, conflict handling, external editor, uploads from the terminal.
+- **Port forwarding** — local, remote and dynamic forwards with running-forward status.
+- **Server monitor** — CPU, memory and disk from `/proc`, without installing anything on the server.
+- **Snippets** — searchable, tagged, insert or run with an explicit confirmation that dies with the connection.
+- **Command completion** — 1,453 shell completion specs bundled, so the completion popup knows real commands, flags and paths.
+- **Credentials** — passwords and keys live only in the OS secure store. Host keys are pinned on first use and a changed key blocks the connection until you replace it.
+- **Six themes, each in light and dark** — Ice Blue · Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue, Sakura Pink. English and Chinese UI, with a renderer switch if you want Impeller.
+
+## An agent with brakes
+
+Airy is not a chat box bolted onto a terminal. It drives a fixed catalog of **39 typed tools** through the same `CapabilityDispatcher` the command palette uses — it can list hosts, read screens, run diagnostics, start commands, transfer files, edit settings and manage forwards, but it cannot invent a capability that does not exist.
+
+Every approval is bound to the exact arguments, the target host route and the current model. If any of them change, the approval is void. Four permission modes:
+
+| Mode | What it does |
+|---|---|
+| Observe | Read-only tools; you approve reads |
+| Confirm | You approve reads and commands — the default |
+| Auto confirm | A second model reviews each action and asks you when it is unsure |
+| Full auto | Reads, commands and result sharing run without a prompt |
+
+Secrets never enter the conversation. Commands run in the visible terminal, and only a bounded projection of their output is sent back to the model.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/agent-dark.png">
+    <img src="media/agent-light.png" alt="Airy asks before it gains access to a host" width="100%">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/approval-dark.png">
+    <img src="media/approval-light.png" alt="Airy shows the exact action and arguments before executing" width="100%">
+  </picture>
+</p>
+
+## Fast by construction
+
+Two clients measured on the same machine, same empty profile, same warm cache. sshairy does not win by tuning — it wins by not loading a browser.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/start-dark.png">
+    <img src="media/start-light.png" alt="Time to first window: sshairy 0.62 s, Netcatty 2.60 s, FinalShell 7.55 s" width="100%">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/memory-dark.png">
+    <img src="media/memory-light.png" alt="Idle memory: sshairy 131 MB, FinalShell 334 MB, Netcatty 447 MB" width="100%">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/architecture-dark.png">
+    <img src="media/architecture-light.png" alt="Electron clients run five processes; sshairy runs one" width="100%">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/download-dark.png">
+    <img src="media/download-light.png" alt="Windows download size compared with other SSH clients" width="100%">
+  </picture>
+</p>
+
+Most of the on-disk size is not code: 1,453 shell completion specs are the largest single piece of the 97 MB folder, and the whole download compresses to 27 MB.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/inside-dark.png">
+    <img src="media/inside-light.png" alt="What is inside the app folder" width="100%">
+  </picture>
+</p>
+
+## How it compares
+
+Feature lists are from each project's own documentation in November 2026. Start time and idle memory were measured only for clients installed on the test machine; download sizes are public release files.
+
+| Client | Built with | Built-in AI | Windows download | Start¹ | Idle RAM¹ | License |
+|---|---|---:|---:|---:|---:|---|
+| **sshairy** | Dart + Flutter (native) | Agent, 39 tools | **27 MB** | **0.62 s** | **131 MB** | open source, license TBD |
+| Netcatty | Electron + React | Agent | 127 MB | 2.60 s | 447 MB | GPL-3.0 |
+| Wave Terminal | Electron + Go | Wave AI | 156 MB | — | — | Apache-2.0 |
+| Termius | Electron | Command AI, agent beta | 328 MB | — | — | proprietary |
+| Tabby | Electron + Angular | no | 162 MB | — | — | MIT |
+| electerm | Electron | Assistant with agent mode | 115 MB | — | — | MIT |
+| FinalShell | Java, bundled JRE | no | — | 7.55 s | 334 MB | proprietary |
+| MobaXterm | native | no | 42 MB | — | — | proprietary (free Home) |
+| Xshell | native | no | 50 MB | — | — | proprietary (free Home) |
+| WindTerm | C, native | no | 31 MB | — | — | partly open source |
+
+¹ Measured 2026-11-13 on Windows 11, Ryzen 7 8845HS: median of 5 warm launches to the first visible window, then unique set size of the whole process tree 15 s after launch, no sessions open. sshairy and Netcatty were run from their own installs; FinalShell from a data-free copy of its install folder. Only the three installed clients have numbers; the rest were not downloaded or run.
+
+## Build and run
+
+Requires Flutter 3.47.9 / Dart 3.13.7 and Visual Studio's Desktop development with C++ workload on Windows.
 
 ```sh
 flutter pub get
 flutter run -d windows
 ```
+
+Checks:
 
 ```sh
 flutter analyze
@@ -31,28 +147,34 @@ dart run tool/check_imports.dart
 flutter test
 ```
 
-服务器集成测试的配置见 [integration_test/app_test.dart](integration_test/app_test.dart)，凭据只通过环境变量传入。测试必须遵守 [TESTING §2](docs/TESTING.md)：文件操作限于 `~/sshairy-test/`，不得影响已有服务；没有实际运行的场景不得当作已通过。
-
-## Windows 本地打包
-
-在可执行 `flutter`、`dart` 的 PowerShell 中运行：
+Package a portable Windows folder, ZIP and SHA256:
 
 ```powershell
 ./tool/package_windows.ps1
 ```
 
-输出在 `dist/`：完整运行目录、ZIP 和 SHA256 校验文件。已有 Release 构建可加 `-SkipBuild`。必须分发整个目录，不能只复制 EXE；包未签名，没有安装器或自动更新。脚本保留依赖许可证，缺失时会终止打包。
+The whole folder is the app — do not copy the exe alone.
 
-## 扩展
+## Status
 
-采用按功能划分的模块化单体；跨模块仅通过 `api.dart`，第三方库封装在适配层，连接、终端和传输分别持有自己的资源。业务行为通过 typed 用例，命令面板经 `CapabilityDispatcher` 调用；新能力默认不向 AI 暴露。
+sshairy is young and honest about it. It is primarily built for its author, has hundreds of commits in its first days, and ships without guarantees.
 
-首批 Agent 经同一调度器调用审核过的能力，绑定实际连接身份并在执行前重验。行内生成和补全共用无工具的模型端口，各自限制发送范围和请求寿命。后续按工具扩展 Capability 和窄端口，无需重写 SSH/SFTP 核心；凭据与信任授权始终由确定性代码控制，完整应用/多机工具继续按阶段推进。设计入口：[DESIGN](docs/DESIGN.md)、[CONTRACTS](docs/CONTRACTS.md)、[SECURITY](docs/SECURITY.md)、[AI](docs/AI.md)。
+- **Platforms:** developed and tested on Windows 11. macOS and Linux are goals, not verified builds yet.
+- **Unsigned:** no installer, no auto-update; SmartScreen will warn.
+- **AI is opt-in:** configure an Anthropic Messages or OpenAI-compatible endpoint in Settings. No key, no AI.
+- **License:** not chosen yet. It will be open source, but do not assume MIT today.
+- **Long sessions:** the idle figures above are after launch with no sessions. Memory under heavy multi-tab load is still being profiled.
+- **Tests:** ~1,730 unit and widget tests; no CI yet.
 
-学习 AI Agent 可从 [项目导读](docs/AI_AGENT_GUIDE.md) 开始：当前功能、任务循环、工具调用、权限与数据发送边界，以及源码阅读路线和练习。
+## Reproduce the numbers
 
-## 许可证
+```sh
+python tool/readme/measure_startup.py sshairy <empty-profile-dir> "build/windows/x64/runner/Release/sshairy.exe"
+python tool/readme/fetch_release_sizes.py wavetermdev/waveterm Eugeny/tabby electerm/electerm
+```
 
-计划开源，项目许可证尚未确定，当前不声明 MIT 授权。发行前还需完成许可证选择与完整依赖审计。第三方组件保留各自许可，说明见 [DEPENDENCIES](docs/DEPENDENCIES.md)。
+`measure_startup.py` redirects `USERPROFILE`, `APPDATA` and `LOCALAPPDATA` for the child process, so it never reads or writes your real profile. `fetch_release_sizes.py` reads the latest public GitHub release.
 
-界面使用作者提供的六套品牌主题（冰蓝薄荷、薄荷绿、紫罗兰、日落橙、深海蓝、樱花粉），每套都有浅色、深色和对应 Logo；在设置的“配色方案”中切换。来源、资源导入和图标说明见 [BRAND](docs/BRAND.md)。只参考 Netcatty 的产品设计，未采用其 GPL 代码或品牌素材。
+The screenshots are generated by `integration_test/readme_shots_test.dart` from made-up hosts, a local PowerShell session and a scripted stand-in for the model — no server is contacted and no real model answers.
+
+<p align="center"><sub>English · <a href="README.zh.md">中文</a></sub></p>
