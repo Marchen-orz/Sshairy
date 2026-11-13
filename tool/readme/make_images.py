@@ -5,6 +5,7 @@ See SOURCES.md for the illustration prompt, measurements and screenshot provenan
 """
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -27,10 +28,11 @@ THEMES = [
     ('05-DeepSeaBlue', 'deepSea', 'Deep Sea Blue', '深海蓝'),
     ('06-SakuraPink', 'pink', 'Sakura Pink', '樱花粉'),
 ]
-START = [('Sshairy', .624), ('Netcatty', 2.604), ('FinalShell', 7.548)]
-MEMORY = [('Sshairy', 131.3), ('Netcatty', 446.8), ('FinalShell', 333.9)]
+BENCHMARKS = json.loads((REPO / 'tool/readme/benchmarks.json').read_text(encoding='utf-8'))['clients']
+START = [(row['name'], row['startup_seconds']) for row in BENCHMARKS]
+MEMORY = [(row['name'], row['idle_mib']) for row in BENCHMARKS]
 DOWNLOAD = [
-    ('Sshairy', 27.2), ('WindTerm', 31.2), ('electerm', 114.6),
+    ('Sshairy', 27.2), ('WindTerm', 31.2), ('MobaXterm', 42.2), ('Xshell', 45.4), ('electerm', 114.6),
     ('Netcatty', 126.9), ('Wave Terminal', 156.2), ('Tabby', 161.9), ('Termius', 327.9),
 ]
 # Rounded MiB; the tiny files are grouped so the displayed parts total 97.4.
@@ -39,7 +41,7 @@ TEXT = {
     'en': dict(
         hero=['Lightweight SSH.', 'Powered by AI.'],
         sub='A modern, native SSH workspace.',
-        metrics=[('0.62 s', 'to first window'), ('131 MiB', 'idle memory'),
+        metrics=[('0.62 s', 'to open'), ('131 MiB', 'idle memory'),
                  ('27 MiB', 'portable ZIP'), ('Native', 'no browser engine')],
         hosts='Your host library.', host_note='Groups / Tags / Pins / Search',
         default='Ice Blue / Mint · the default theme',
@@ -47,28 +49,24 @@ TEXT = {
         airy_points=[('39 tools', 'Hosts, files, commands and more.'),
                      ('4 permission modes', 'Confirm before acting, by default.'),
                      ('Your model', 'Anthropic or an OpenAI-compatible API.')],
-        airy_note='Real interface · scripted demo',
         themes='Six ways to feel at home.', themes_note='Light palettes shown',
         perf='Less waiting. More working.',
-        perf_sub='Measured on the same Windows 11 PC, with no sessions open.',
-        start='Time to first window', memory='Idle memory',
-        start_unit='seconds · lower is better', mem_unit='MiB, process-tree USS · lower is better',
-        perf_note='Ryzen 7 8845HS · 5 warm starts, median · memory after 15 s · 2026-11-13',
+        perf_sub='A quick start. A lighter desktop.',
+        start='Startup', memory='Idle memory',
+        start_unit='seconds', mem_unit='MiB',
         footprint='Travel light.',
         foot_sub='A small download. A native app. Plenty of tools.',
-        download='Windows download', download_unit='MiB · public release files',
+        download='Windows download', download_unit='MiB',
         unpacked='unpacked', content_title='Inside the app folder',
         contents=['Shell completions', 'Flutter engine', 'App code · AOT', 'Brand artwork', 'Other files'],
         specs='1,453 shell completion specs',
         native=['Dart AOT', 'Flutter', 'Desktop OS'],
-
         native_note='One app process. No Chromium or WebView.',
-        foot_note='Release snapshot · 2026-11-13 · ZIPs and installers differ; see the README for formats.',
     ),
     'zh': dict(
         hero=['轻量 SSH。', '由 AI 驱动。'],
         sub='现代、清爽的原生 SSH 工作区。',
-        metrics=[('0.62 秒', '到首个窗口'), ('131 MiB', '空闲内存'),
+        metrics=[('0.62 秒', '启动'), ('131 MiB', '空闲内存'),
                  ('27 MiB', '便携 ZIP'), ('原生', '无需浏览器内核')],
         hosts='主机，一目了然。', host_note='分组 / 标签 / 置顶 / 搜索',
         default='冰蓝薄荷 · 默认主题',
@@ -76,23 +74,19 @@ TEXT = {
         airy_points=[('39 个工具', '主机、文件、命令，都能帮上忙。'),
                      ('4 档权限', '默认在操作前，由你确认。'),
                      ('自选模型', '支持 Anthropic 与 OpenAI 兼容接口。')],
-        airy_note='真实界面 · 脚本化演示',
         themes='六种配色，换个心情。', themes_note='浅色主题展示',
         perf='打开就用。',
-        perf_sub='同一台 Windows 11 电脑实测，均未打开会话。',
-        start='到首个窗口', memory='空闲内存',
-        start_unit='秒 · 越短越好', mem_unit='MiB，进程树独占内存 · 越低越好',
-        perf_note='Ryzen 7 8845HS · 5 次预热启动取中位数 · 启动 15 秒后测内存 · 2026-11-13',
+        perf_sub='启动更快，桌面更轻。',
+        start='启动', memory='空闲内存',
+        start_unit='秒', mem_unit='MiB',
         footprint='轻装上阵。',
         foot_sub='小巧的下载体积，完整的原生工具。',
-        download='Windows 下载体积', download_unit='MiB · 公开发布文件',
+        download='Windows 下载体积', download_unit='MiB',
         unpacked='解压后', content_title='包里装了什么',
         contents=['Shell 补全规格', 'Flutter 引擎', 'AOT 应用代码', '品牌素材', '其余文件'],
         specs='内置 1,453 个 Shell 补全规格',
         native=['Dart AOT', 'Flutter', 'Desktop OS'],
-
         native_note='单个应用进程，无 Chromium 或 WebView。',
-        foot_note='2026-11-13 发布快照 · ZIP 与安装器格式不同，具体版本及格式见 README。',
     ),
 }
 
@@ -199,7 +193,6 @@ def airy(lang):
         text(image, (114, y + 80), sub, 33, zh=zh, fill=MUTED)
     shot = Image.open(OUT / f'approval-{lang}-light.png').crop((1838, 90, 2560, 1176))
     frame(image, shot, (1390, 80), 830)
-    text(image, (2220, 1368), t['airy_note'], 28, zh=zh, fill=MUTED, anchor='rt')
     return image
 
 
@@ -247,25 +240,31 @@ def bars(image, rows, x, y, width, maximum, ticks, unit, digits, step=140, label
 
 def performance(lang):
     t, zh = TEXT[lang], lang == 'zh'
-    image = canvas(1140, SURFACE)
+    height = 750 + (len(START) - 1) * 104
+    image = canvas(height, SURFACE)
     text(image, (112, 74), t['perf'], 86, 'bold', zh)
     text(image, (116, 204), t['perf_sub'], 35, zh=zh, fill=MUTED)
-    ImageDraw.Draw(image).line((1200, 365, 1200, 970), fill=LINE, width=2)
+    ImageDraw.Draw(image).line((1200, 350, 1200, height - 80), fill=LINE, width=2)
     for x, title, subtitle in ((112, t['start'], t['start_unit']), (1300, t['memory'], t['mem_unit'])):
-        text(image, (x, 360), title, 48, 'semibold', zh)
-        text(image, (x, 435), subtitle, 29, zh=zh, fill=MUTED)
-    bars(image, START, 112, 595, 990, 8, [0, 2, 4, 6, 8], ' s', 2)
-    bars(image, MEMORY, 1300, 595, 988, 500, [0, 100, 200, 300, 400, 500], '', 1)
-    text(image, (112, 1048), t['perf_note'], 29, zh=zh, fill=MUTED)
+        text(image, (x, 350), title, 48, 'semibold', zh)
+        text(image, (x, 425), subtitle, 29, zh=zh, fill=MUTED)
+    start_limit = math.ceil(max(value for _, value in START) / 2) * 2
+    memory_step = 500 if max(value for _, value in MEMORY) > 800 else 200
+    memory_limit = math.ceil(max(value for _, value in MEMORY) / memory_step) * memory_step
+    bars(image, START, 112, 570, 990, start_limit, range(0, start_limit + 1, 2), ' s', 2,
+         step=104, label_width=260)
+    bars(image, MEMORY, 1300, 570, 988, memory_limit, range(0, memory_limit + 1, memory_step), '', 1,
+         step=104, label_width=260)
     return image
 
 
 def footprint(lang):
     t, zh = TEXT[lang], lang == 'zh'
-    image = canvas(1490)
+    height = max(1410, 708 + (len(DOWNLOAD) - 1) * 107)
+    image = canvas(height)
     text(image, (112, 60), t['footprint'], 94, 'bold', zh)
     text(image, (116, 204), t['foot_sub'], 35, zh=zh, fill=MUTED)
-    ImageDraw.Draw(image).line((1260, 360, 1260, 1340), fill=LINE, width=2)
+    ImageDraw.Draw(image).line((1260, 360, 1260, height - 70), fill=LINE, width=2)
     text(image, (112, 340), t['download'], 48, 'semibold', zh)
     text(image, (116, 418), t['download_unit'], 29, zh=zh, fill=MUTED)
     bars(image, DOWNLOAD, 112, 558, 1068, 350, [0, 100, 200, 300], '', 1, step=107,
@@ -292,7 +291,6 @@ def footprint(lang):
         if i < 2:
             text(image, (x + 283, 1254), '›', 34, anchor='mm', fill=MUTED)
     text(image, (1384, 1325), t['native_note'], 29, zh=zh, fill=MUTED)
-    text(image, (112, 1410), t['foot_note'], 28, zh=zh, fill=MUTED)
     return image
 
 

@@ -13,11 +13,9 @@
 
 </div>
 
-**Sshairy** 是一款面向 **Windows、macOS、Linux** 的轻量跨平台 SSH 客户端，使用 Dart 与 Flutter 构建。终端、SFTP、端口转发、服务器监控，都在一个现代、清爽的原生界面里，不依赖 Chromium 或 WebView。
+**Sshairy** 是一款面向 **Windows、macOS、Linux** 的轻量 SSH 客户端。终端、SFTP、端口转发、服务器监控，收进一个现代、清爽的原生界面，使用 Dart 与 Flutter 构建。
 
-初衷很简单：先做好日常使用的 SSH 客户端，让它启动快、占用少、操作流畅，再让 AI 帮忙。SSH 功能独立可用；需要时，再打开 Airy 助手、行内命令生成和 AI 补全。
-
-在 Windows 测试机上，**0.62 秒**打开窗口，空闲内存 **131 MiB**，下载体积 **27 MiB**。
+先做好 SSH，再让 AI 帮忙。习惯的终端操作照常，需要时让 Airy 处理任务，或把一句话变成命令。不依赖 Chromium，不套 WebView，轻快地完成日常服务器工作。
 
 <img src="media/zh/workspace.png" alt="默认冰蓝薄荷主题下的主机库，支持分组、置顶与搜索。" width="100%">
 
@@ -25,66 +23,56 @@
 
 | | |
 |---|---|
-| **连接** | 主机分组、标签、置顶、搜索；密码与密钥认证，生成 Ed25519 密钥。 |
-| **终端** | 多标签、分屏、本地 Shell、搜索、重连与布局恢复。 |
-| **文件** | 双栏 SFTP、传输队列、冲突处理、外部编辑器。 |
-| **监控** | 通过 SSH 查看 CPU、内存与磁盘，服务器无需安装额外软件。 |
+| **连接** | 主机分组、标签、置顶、搜索；密码与密钥认证，生成 Ed25519 密钥，支持跳板与代理。 |
+| **终端** | 多标签、拖放分屏、本地 Shell、搜索、重连与布局恢复。 |
+| **文件** | 双栏 SFTP、传输队列、单文件断点续传、冲突处理与外部编辑器。 |
+| **监控** | 通过 SSH 查看 CPU、内存、磁盘与进程，服务器无需安装额外软件。 |
 | **工具** | 本地、远程、动态端口转发；命令片段，1,453 个 Shell 补全规格。 |
-| **安全** | 认证前校验主机密钥，密钥变化默认阻断；密码和私钥只存系统安全存储。 |
+| **体验** | 主机密钥校验、系统凭据存储、中英界面与自定义快捷键。 |
 
 ## Airy
 
-在终端旁说出要做的事。Airy 通过 **39 个内置工具**查看主机、处理远端文件、执行命令、辅助排查问题。模型由你选择，支持 Anthropic 与 OpenAI 兼容接口；配置前 AI 默认关闭。
+终端旁的 AI 助手，通过 **39 个工具**管理主机、远端文件、命令、会话、布局与设置。接入你选择的 Anthropic 或 OpenAI 兼容模型，决定哪些工作交给它。
 
-默认的**确认**模式会在操作前展示目标和具体内容，由你批准或拒绝。也可以选只读的**观察**、交给第二个模型审核的**自动确认**，或在选定范围内不再弹出动作审批的**完全自动**。
+- **Agent**：说出任务，让 Airy 分步处理。
+- **行内命令**：把自然语言需求变成可编辑的命令。
+- **AI 补全**：随输入给出建议，与 Shell 规格和命令历史一起使用。
 
-<img src="media/zh/airy.png" alt="Airy 与放大的真实操作审批面板。演示任务是把 gpu-box 移到 Staging 分组。" width="100%">
+四档权限适应不同工作方式：**观察、确认、自动确认、完全自动**。默认采用确认模式，目标与操作内容直接展示，由你批准。
 
-Sshairy 保存的密码和私钥不会发给模型。工具只返回有界结果；分享前，请留意输出中包含的内容。
-
-<sub>界面图取自运行中的软件，使用虚构主机、本地 PowerShell 和脚本化模型回复；演示未连接远端服务器。</sub>
+<img src="media/zh/airy.png" alt="Airy 与操作审批面板。" width="100%">
 
 ## 主题
 
-默认冰蓝薄荷，另有五套配色。背景、侧栏、控件和 Airy 素材一起换，每套也都有深色版本；下面展示浅色配色。
+冰蓝薄荷、薄荷绿、紫罗兰、落日橙、深海蓝、樱花粉。背景、控件、终端和 Airy 素材一起换，每套都有浅色与深色外观。
 
-<img src="media/zh/themes.png" alt="六套浅色主题：冰蓝薄荷、薄荷绿、紫罗兰、落日橙、深海蓝、樱花粉。展示真实界面局部与各自的 Airy 角色。" width="100%">
+<img src="media/zh/themes.png" alt="六套主题及各自的界面配色与 Airy 素材。" width="100%">
 
 ## 性能
 
-打开快，空闲占用低。在同一台电脑上，Sshairy 的空闲内存比 Netcatty 低约 **71%**，首个窗口出现约快 **4 倍**。
+**0.62 秒打开，空闲内存 131 MiB。** 相比 Netcatty，空闲内存低约 **71%**，启动约快 **4 倍**。
 
-<img src="media/zh/performance.png" alt="启动：Sshairy 0.62 秒，Netcatty 2.60 秒，FinalShell 7.55 秒。进程树空闲独占内存：Sshairy 131.3 MiB，Netcatty 446.8 MiB，FinalShell 333.9 MiB。" width="100%">
+<img src="media/zh/performance.png" alt="各 SSH 客户端的启动速度与空闲内存对比。" width="100%">
 
-Dart 提前编译，Flutter 原生绘制。实测 Windows 构建只有**一个应用进程**，解压后 **97.4 MiB**，其中最大的一部分是内置的 Shell 补全库。
+<!-- benchmark-table -->
 
-<img src="media/zh/footprint.png" alt="Windows 下载体积与 Sshairy 包内构成。Sshairy 27.2 MiB，WindTerm 31.2，electerm 114.6，Netcatty 126.9，Wave Terminal 156.2，Tabby 161.9，Termius 327.9。Sshairy 解压后 97.4 MiB，其中 Shell 补全占 52.7 MiB。" width="100%">
+| 客户端 | 启动 | 空闲内存 | 磁盘占用 |
+|---|---:|---:|---:|
+| **Sshairy** | **0.62 秒** | **131.3 MiB** | **97.4 MiB** |
+| Netcatty | 2.60 秒 | 446.8 MiB | 471.8 MiB |
+| FinalShell | 7.55 秒 | 333.9 MiB | 189.4 MiB |
+| WindTerm | 1.33 秒 | 73.9 MiB | 75.8 MiB |
+| electerm | 0.40 秒 | 476.0 MiB | 365.9 MiB |
+| Wave Terminal | 2.34 秒 | 500.2 MiB | 616.1 MiB |
+| Tabby | 1.91 秒 | 480.8 MiB | 481.4 MiB |
+| Termius | 0.78 秒 | 1670.8 MiB | 557.8 MiB |
+| MobaXterm | 3.54 秒 | 104.4 MiB | 47.1 MiB |
 
-<details>
-<summary>测量方法、版本与其他客户端</summary>
+<!-- /benchmark-table -->
 
-Windows 11、Ryzen 7 8845HS、24 GB 内存，测量日期 2026-11-13。启动时间为 5 次预热启动的中位数，从进程创建计时到首个可见窗口；内存为启动 15 秒后、未开会话时整个进程树的独占内存。Sshairy 和 Netcatty 使用隔离配置，FinalShell 使用不含用户数据的安装副本。这些是启动与空闲数据，活动会话会增加内存占用。
+**27 MiB 下载，97.4 MiB 解压体积，单个原生应用进程。** 内置 **1,453 个 Shell 补全规格**。
 
-| 客户端 | 技术栈 | 内置 AI | Windows 下载 | 启动 | 空闲内存 |
-|---|---|---|---:|---:|---:|
-| **Sshairy 0.1.0** | Dart + Flutter | Airy Agent | **27.2 MiB ZIP** | **0.62 秒** | **131.3 MiB** |
-| Netcatty 1.1.90 | Electron + React | Agent | 126.9 MiB 便携 EXE | 2.60 秒 | 446.8 MiB |
-| FinalShell¹ | Java + 自带 JRE | 未列出 | — | 7.55 秒 | 333.9 MiB |
-| WindTerm 2.7.0 | 原生 / C | 未列出 | 31.2 MiB ZIP | — | — |
-| electerm 5.10.0 | Electron | 助手 / Agent 模式 | 114.6 MiB 安装器 | — | — |
-| Wave Terminal 0.14.5 | Electron + Go | Wave AI | 156.2 MiB EXE | — | — |
-| Tabby 1.0.238 | Electron + Angular | 未列出 | 161.9 MiB 安装器 | — | — |
-| Termius | Electron | 命令 AI / Agent 内测 | 327.9 MiB 安装器 | — | — |
-| MobaXterm 26.6 | 原生 | 未列出 | 约 42.2 MB 便携包² | — | — |
-| Xshell 8 build 0107 | 原生 | 未列出 | 约 49.9 MB 安装器² | — | — |
-
-只运行了 Sshairy、Netcatty 和 FinalShell。其余下载体积来自公开发布信息，ZIP 与安装器的压缩、封装不同，表中已注明格式。“未列出”指查阅的文档未介绍内置 AI，不代表未来版本也没有。
-
-¹ FinalShell 未取得确切版本号；JAR 日期为 2025-04-08，自带 JRE 17.0.7。² 第三方下载目录的 MB 数值，未放入 MiB 图表。
-
-[来源、原始数据与图片制作说明](tool/readme/SOURCES.md)。27.2 MiB ZIP 是测量时的应用包，增加文档或配图会改变压缩包体积。
-
-</details>
+<img src="media/zh/footprint.png" alt="下载体积对比与 Sshairy 包内构成。" width="100%">
 
 ## 构建
 
@@ -101,13 +89,7 @@ flutter run -d windows
 ./tool/package_windows.ps1
 ```
 
-请保留完整 Release 文件夹，包括 DLL 和 data 目录，不能只复制 exe。
-
-## 项目现状
-
-Sshairy 是一个面向 **Windows、macOS、Linux** 的早期个人项目。目前验证集中在 Windows 11 桌面客户端和 Ubuntu SSH 服务器；macOS、Linux 桌面构建仍待验证。本地终端当前使用 Windows ConPTY，Unix 本地 PTY 尚待适配。Windows 包未签名，暂时没有安装器和自动更新。
-
-项目已确定开源，具体许可证尚待选择。主要供作者自用，不提供兼容性和可用性保障。目前没有 CI，长时间多会话运行的内存占用仍需继续改善。
+保留完整 Release 文件夹，连同 DLL 和 data 目录一起运行 `sshairy.exe`。
 
 <div align="center">
 
