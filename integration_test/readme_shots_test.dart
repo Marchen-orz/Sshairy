@@ -183,12 +183,15 @@ Future<void> _shot(WidgetTester tester, String name) async {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  for (final (lang, mode, accent) in [
-    ('en', 'light', 'blue'),
-    ('en', 'dark', 'violet'),
-    ('zh', 'light', 'blue'),
-    ('zh', 'dark', 'violet'),
-  ]) {
+  const accents = <(String, String)>[
+    ('blue', 'Ice Blue / Mint'),
+    ('green', 'Mint Green'),
+    ('violet', 'Violet'),
+    ('orange', 'Sunset Orange'),
+    ('deepSea', 'Deep Sea Blue'),
+    ('pink', 'Sakura Pink'),
+  ];
+  for (final (lang, mode, accent) in [('en', 'light', 'blue'), ('zh', 'light', 'blue')]) {
     testWidgets('README screenshots, $lang $mode', skip: _shots == null, (tester) async {
       tester.testTextInput.register();
       final dir = await Directory.systemTemp.createTemp('sshairy-readme-shots');
@@ -282,6 +285,50 @@ void main() {
         'the turn to end',
         () => find.text(lang == 'zh' ? '没有执行任何改动。' : 'Nothing was changed.').evaluate().isNotEmpty,
       );
+    });
+  }
+
+  for (final (accent, name) in accents) {
+    testWidgets('theme tile, $accent', skip: _shots == null, (tester) async {
+      final dir = await Directory.systemTemp.createTemp('sshairy-readme-theme');
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(seconds: 1));
+        for (var i = 0; i < 20 && await dir.exists(); i++) {
+          try {
+            await dir.delete(recursive: true);
+          } on FileSystemException {
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+          }
+        }
+      });
+      await File('${dir.path}/settings.json').writeAsString(
+        jsonEncode({
+          'locale': 'en',
+          'importOffered': true,
+          'themeMode': 'light',
+          'accent': accent,
+          'confirmQuit': false,
+        }),
+      );
+      await File('${dir.path}/hosts.json').writeAsString(jsonEncode({'schemaVersion': 1, 'hosts': _hosts}));
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: _boundary,
+          child: ProviderScope(
+            key: UniqueKey(),
+            overrides: [
+              dataDirProvider.overrideWithValue(dir.path),
+              runningRendererProvider.overrideWithValue(Renderer.skia),
+              ...appOverrides(),
+              secretStoreProvider.overrideWithValue(EphemeralSecretStore()),
+            ],
+            child: const SshairyApp(),
+          ),
+        ),
+      );
+      await _until(tester, name, () => find.text('db-primary').evaluate().isNotEmpty);
+      await _shot(tester, 'theme-$accent');
     });
   }
 }

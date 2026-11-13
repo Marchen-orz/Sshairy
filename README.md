@@ -1,108 +1,126 @@
+<div align="center">
+
+![Version](https://img.shields.io/badge/version-0.1.0--1-2E6EF7?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Windows%2011-1F3A5F?style=flat-square)
+[![Flutter](https://img.shields.io/badge/Flutter-3.47-5AB6FF?style=flat-square)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.13-7CC9FF?style=flat-square)](https://dart.dev)
+![Engine](https://img.shields.io/badge/no%20Chromium-native-9EE9D3?style=flat-square&labelColor=E6FBF6)
+[![i18n](https://img.shields.io/badge/i18n-English%20%7C%20%E4%B8%AD%E6%96%87-60738C?style=flat-square)](README.zh.md)
+
+</div>
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="media/hero-dark.png">
-    <img src="media/hero-light.png" alt="sshairy — lightweight SSH, powered by AI" width="100%">
+    <img src="media/hero-light.png" alt="Sshairy — an SSH client that gets out of your way" width="100%">
   </picture>
 </p>
 
-sshairy is a desktop SSH client that treats your RAM and your attention as scarce. It is written in Dart, compiled ahead of time and drawn by Flutter's own engine — the model of a native app, not a browser in a trench coat. It opens its window in about half a second, idles at roughly 131 MB, downloads as a 27 MB zip and runs as a single process.
+**sshairy** is a desktop SSH client written in Dart and drawn by Flutter. It opens in about half a second, idles at 131 MB and ships as a 27 MB portable ZIP. There is no bundled browser and no WebView: the app is compiled ahead of time and runs as a single process.
 
-It also ships with **Airy**, an agent that can inspect a server, read the terminal, move files and run commands — after showing you exactly what it is about to do.
+Airy, the built-in agent, can inspect hosts, read the terminal, run diagnostics, move files and execute commands. It works with a fixed set of 39 typed tools and asks before it acts.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="media/stats-dark.png">
-    <img src="media/stats-light.png" alt="0.62 s to first window, 131 MB idle, 27 MB download, one process" width="100%">
+    <img src="media/stats-light.png" alt="0.62 s to first window, 131 MB idle, 27 MB download, zero browser engines" width="100%">
   </picture>
 </p>
 
-## Why another SSH client
+<p align="center"><sub>Measured on Windows 11, Ryzen 7 8845HS, 2026-11-13. Details below.</sub></p>
 
-Most "modern" SSH clients are web apps in a desktop shell. They bundle Chromium, Node.js and a renderer, then spend the first two seconds of every launch booting a browser so that you can type into a terminal.
+## Contents
 
-sshairy takes the native route: AOT-compiled Dart for the app, Flutter's Skia/Impeller renderer for pixels, and no web runtime anywhere in the package. The result is a client that feels like a system utility — it is there before your hands leave the keyboard, and it stays out of the task manager.
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Airy](#airy)
+- [Performance](#performance)
+- [Comparison](#comparison)
+- [Getting started](#getting-started)
+- [Project status](#project-status)
+
+## Screenshots
+
+<p align="center">
+  <img src="media/hosts-en-light.png" alt="Host library" width="100%">
+</p>
+
+The default Ice Blue / Mint theme on a light surface. Hosts are grouped, tagged, pinned and searchable.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/hosts-dark.png">
-    <img src="media/hosts-light.png" alt="sshairy host library with groups, tags and pinned hosts" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="media/themes-dark.png">
+    <img src="media/themes-light.png" alt="Six color themes" width="100%">
   </picture>
 </p>
 
-## What is inside
+Six color themes, each with its own light and dark palette, logo and artwork: Ice Blue / Mint (the official identity), Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pink.
 
-- **Host library** — groups, tags, pins, search, recent connections, password and key auth, Ed25519 key generation.
-- **Terminal** — tabs, splits, search, copy/paste, reconnect, restored layout. Closing a tab never closes the other channels.
-- **SFTP** — dual-pane browser, queue, conflict handling, external editor, uploads from the terminal.
-- **Port forwarding** — local, remote and dynamic forwards with running-forward status.
-- **Server monitor** — CPU, memory and disk from `/proc`, without installing anything on the server.
-- **Snippets** — searchable, tagged, insert or run with an explicit confirmation that dies with the connection.
-- **Command completion** — 1,453 shell completion specs bundled, so the completion popup knows real commands, flags and paths.
-- **Credentials** — passwords and keys live only in the OS secure store. Host keys are pinned on first use and a changed key blocks the connection until you replace it.
-- **Six themes, each in light and dark** — Ice Blue · Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue, Sakura Pink. English and Chinese UI, with a renderer switch if you want Impeller.
+## Features
 
-## An agent with brakes
-
-Airy is not a chat box bolted onto a terminal. It drives a fixed catalog of **39 typed tools** through the same `CapabilityDispatcher` the command palette uses — it can list hosts, read screens, run diagnostics, start commands, transfer files, edit settings and manage forwards, but it cannot invent a capability that does not exist.
-
-Every approval is bound to the exact arguments, the target host route and the current model. If any of them change, the approval is void. Four permission modes:
-
-| Mode | What it does |
+| | |
 |---|---|
-| Observe | Read-only tools; you approve reads |
-| Confirm | You approve reads and commands — the default |
-| Auto confirm | A second model reviews each action and asks you when it is unsure |
-| Full auto | Reads, commands and result sharing run without a prompt |
+| **Hosts** | Groups, tags, pins, search, recent connections; password and key auth; Ed25519 key generation |
+| **Terminal** | Tabs, splits, search, copy/paste, reconnect, restored layout |
+| **Files** | Dual-pane SFTP, queue, conflict handling, external editor |
+| **Forwarding** | Local, remote and dynamic forwards with running-forward status |
+| **Monitor** | CPU, memory and disk read from `/proc`, nothing installed on the server |
+| **Snippets** | Searchable, tagged; insert or run after an explicit confirmation |
+| **Completion** | 1,453 bundled shell completion specs |
+| **Appearance** | Six themes × light/dark, English / Chinese UI, Skia or Impeller |
+| **Security** | Secrets only in the OS secure store; host keys pinned on first use; a changed key blocks the connection |
 
-Secrets never enter the conversation. Commands run in the visible terminal, and only a bounded projection of their output is sent back to the model.
+## Airy
+
+Airy drives the same typed use cases and `CapabilityDispatcher` as the command palette. It cannot invent a capability, and an approval is bound to the exact arguments, target host route and model — if any of them change, the approval is void.
+
+Four permission modes: Observe (read-only, approve reads), Confirm (approve reads and commands, the default), Auto confirm (a second model reviews each action) and Full auto (no prompts). Passwords and private keys never enter the conversation, and only a bounded projection of command output is sent back to the model.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/agent-dark.png">
-    <img src="media/agent-light.png" alt="Airy asks before it gains access to a host" width="100%">
-  </picture>
+  <img src="media/agent-en-light.png" alt="Airy asks before accessing a host" width="100%">
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/approval-dark.png">
-    <img src="media/approval-light.png" alt="Airy shows the exact action and arguments before executing" width="100%">
-  </picture>
+  <img src="media/approval-en-light.png" alt="Airy shows the exact action before executing" width="100%">
 </p>
 
-## Fast by construction
+The screenshots above use demo hosts, a local PowerShell session and a scripted stand-in for the model. No server is contacted.
 
-Two clients measured on the same machine, same empty profile, same warm cache. sshairy does not win by tuning — it wins by not loading a browser.
+## Performance
+
+All three clients were measured on the same machine with an empty profile. Start time is the median of five warm runs from process creation to the first visible window; memory is the unique set size of the whole process tree 15 seconds after launch, with no sessions open.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="media/start-dark.png">
-    <img src="media/start-light.png" alt="Time to first window: sshairy 0.62 s, Netcatty 2.60 s, FinalShell 7.55 s" width="100%">
+    <img src="media/start-light.png" alt="Startup comparison" width="100%">
   </picture>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="media/memory-dark.png">
-    <img src="media/memory-light.png" alt="Idle memory: sshairy 131 MB, FinalShell 334 MB, Netcatty 447 MB" width="100%">
+    <img src="media/memory-light.png" alt="Idle memory comparison" width="100%">
   </picture>
 </p>
+
+The reason is architectural. An Electron client boots Chromium, Node.js, a GPU process, a network process and utilities; sshairy loads one AOT-compiled Dart binary and the Flutter engine.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="media/architecture-dark.png">
-    <img src="media/architecture-light.png" alt="Electron clients run five processes; sshairy runs one" width="100%">
+    <img src="media/architecture-light.png" alt="Process architecture comparison" width="100%">
   </picture>
 </p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="media/download-dark.png">
-    <img src="media/download-light.png" alt="Windows download size compared with other SSH clients" width="100%">
+    <img src="media/download-light.png" alt="Windows download size comparison" width="100%">
   </picture>
 </p>
 
-Most of the on-disk size is not code: 1,453 shell completion specs are the largest single piece of the 97 MB folder, and the whole download compresses to 27 MB.
+Most of the 97 MB unpacked folder is content, not overhead: 1,453 shell completion specs are the largest single piece.
 
 <p align="center">
   <picture>
@@ -111,9 +129,9 @@ Most of the on-disk size is not code: 1,453 shell completion specs are the large
   </picture>
 </p>
 
-## How it compares
+## Comparison
 
-Feature lists are from each project's own documentation in November 2026. Start time and idle memory were measured only for clients installed on the test machine; download sizes are public release files.
+Feature information comes from each project's own documentation, November 2026. Start time and idle memory were measured only for clients installed on the test machine; download sizes come from public release files.
 
 | Client | Built with | Built-in AI | Windows download | Start¹ | Idle RAM¹ | License |
 |---|---|---:|---:|---:|---:|---|
@@ -128,18 +146,18 @@ Feature lists are from each project's own documentation in November 2026. Start 
 | Xshell | native | no | 50 MB | — | — | proprietary (free Home) |
 | WindTerm | C, native | no | 31 MB | — | — | partly open source |
 
-¹ Measured 2026-11-13 on Windows 11, Ryzen 7 8845HS: median of 5 warm launches to the first visible window, then unique set size of the whole process tree 15 s after launch, no sessions open. sshairy and Netcatty were run from their own installs; FinalShell from a data-free copy of its install folder. Only the three installed clients have numbers; the rest were not downloaded or run.
+¹ Windows 11, Ryzen 7 8845HS, 2026-11-13. sshairy and Netcatty from their own installs; FinalShell from a data-free copy of its install folder. The other clients were not downloaded or run.
 
-## Build and run
+## Getting started
 
-Requires Flutter 3.47.9 / Dart 3.13.7 and Visual Studio's Desktop development with C++ workload on Windows.
+Requires Flutter 3.47.9 / Dart 3.13.7 and, on Windows, Visual Studio's Desktop development with C++ workload.
 
 ```sh
 flutter pub get
 flutter run -d windows
 ```
 
-Checks:
+Checks and packaging:
 
 ```sh
 flutter analyze
@@ -147,34 +165,33 @@ dart run tool/check_imports.dart
 flutter test
 ```
 
-Package a portable Windows folder, ZIP and SHA256:
-
 ```powershell
 ./tool/package_windows.ps1
 ```
 
 The whole folder is the app — do not copy the exe alone.
 
-## Status
-
-sshairy is young and honest about it. It is primarily built for its author, has hundreds of commits in its first days, and ships without guarantees.
-
-- **Platforms:** developed and tested on Windows 11. macOS and Linux are goals, not verified builds yet.
-- **Unsigned:** no installer, no auto-update; SmartScreen will warn.
-- **AI is opt-in:** configure an Anthropic Messages or OpenAI-compatible endpoint in Settings. No key, no AI.
-- **License:** not chosen yet. It will be open source, but do not assume MIT today.
-- **Long sessions:** the idle figures above are after launch with no sessions. Memory under heavy multi-tab load is still being profiled.
-- **Tests:** ~1,730 unit and widget tests; no CI yet.
-
-## Reproduce the numbers
+To reproduce the figures:
 
 ```sh
 python tool/readme/measure_startup.py sshairy <empty-profile-dir> "build/windows/x64/runner/Release/sshairy.exe"
 python tool/readme/fetch_release_sizes.py wavetermdev/waveterm Eugeny/tabby electerm/electerm
+python tool/readme/make_images.py Sshairy-Brand-Asset-Pack media
 ```
 
-`measure_startup.py` redirects `USERPROFILE`, `APPDATA` and `LOCALAPPDATA` for the child process, so it never reads or writes your real profile. `fetch_release_sizes.py` reads the latest public GitHub release.
+`measure_startup.py` redirects `USERPROFILE`, `APPDATA` and `LOCALAPPDATA` for the child process, so it never reads or writes your real profile. Screenshots are generated by `integration_test/readme_shots_test.dart`; the six-theme board is assembled from those real application screenshots by `make_images.py`.
 
-The screenshots are generated by `integration_test/readme_shots_test.dart` from made-up hosts, a local PowerShell session and a scripted stand-in for the model — no server is contacted and no real model answers.
+## Project status
 
-<p align="center"><sub>English · <a href="README.zh.md">中文</a></sub></p>
+- Developed and tested on Windows 11. macOS and Linux are goals, not verified builds.
+- The package is unsigned: no installer, no auto-update; SmartScreen will warn.
+- AI is opt-in. Configure an Anthropic Messages or OpenAI-compatible endpoint in Settings.
+- The license has not been chosen yet. It will be open source, but do not assume MIT today.
+- The idle figures above are after launch with no sessions. Memory under heavy multi-tab load is still being profiled.
+- ~1,730 unit and widget tests; no CI yet.
+
+<div align="center">
+
+[English](README.md) · [中文](README.zh.md)
+
+</div>
