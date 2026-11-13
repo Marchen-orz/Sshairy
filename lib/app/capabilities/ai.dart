@@ -25,9 +25,11 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.hosts',
       Effect.query,
-      (_, c) => call(c, (r) async => r.listHosts()),
+      (a, c) => call(c, (r) async => r.listHosts(a.raw)),
       agentExposed: true,
-      inputSchema: schema({}, []),
+      inputSchema: schema({
+        'offset': {'type': 'integer', 'minimum': 0},
+      }, []),
     ),
     FunctionCapability(
       'agent.terminals',

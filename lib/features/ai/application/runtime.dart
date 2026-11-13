@@ -68,6 +68,7 @@ class _AgentJob {
     this.record,
     this.turnToken,
     this.owner,
+    this.execution,
   ) {
     stdout = const Utf8Decoder(allowMalformed: true)
         .startChunkedConversion(_JobTextSink((text) => _append(false, text), () => projectionFiltered = true));
@@ -80,6 +81,8 @@ class _AgentJob {
   final CancellationToken cancel, turnToken;
   final Duration timeout;
   final OperationRecord record;
+  final AgentExecution execution;
+  late final Future<void> settled;
   final started = DateTime.now();
   final projection = BytesBuilder(copy: false);
   late final ByteConversionSink stdout, stderr;
@@ -162,9 +165,10 @@ class _JobTextSink implements Sink<String> {
 }
 
 class AgentApproval {
-  AgentApproval(this.target, this.command, this.cwd, this.capability, {this.template});
+  AgentApproval(this.target, this.command, this.cwd, this.capability, {this.template, this.timeoutSeconds});
   final String target, command, cwd, capability;
   final String? template;
+  final int? timeoutSeconds;
 }
 
 class AgentHostApproval {
@@ -238,7 +242,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   final _prepared = <OperationId, _Prepared>{};
   final _jobs = <String, _AgentJob>{};
   final _targets = <HostId, AgentTarget>{};
-  final _denied = <String>{}, _approvedReads = <String>{};
+  final _denied = <String>{};
+  final _activeCalls = <OperationId, List<HostId>>{};
   CancellationToken? _cancel;
   Completer<bool>? _approvalResult, _hostApprovalResult;
   Future<void>? _working;
@@ -534,7 +539,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     _deadline = DateTime.now().add(const Duration(minutes: 15));
     _uncertain = false;
     _denied.clear();
-    _approvedReads.clear();
+    _activeCalls.clear();
     error = null;
     contextCompacted = false;
     // Restored entries are plain text only; every turn gets new protocol state and output ownership.
@@ -643,20 +648,16 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         _check();
         if (_modelRequests >= 20) throw const AgentFailure('stepLimit');
         final profile = _profile!;
-        if (history.prepare(
-          profile,
-          _system,
-          tools,
-          estimateBytes: estimateInputBytes == null
-              ? null
-              : (messages) => estimateInputBytes!(
-                  ModelRequest(profile: profile, system: _system, messages: messages, tools: tools),
-                ),
-        )) {
+        final int Function(List<ModelMessage>)? estimate = estimateInputBytes == null
+            ? null
+            : (messages) => estimateInputBytes!(
+                ModelRequest(profile: profile, system: _system, messages: messages, tools: tools),
+              );
+        if (history.prepare(profile, _system, tools, estimateBytes: estimate)) {
           contextCompacted = true;
           _emit();
         }
-        final inputTokens = history.estimatedTokens(profile, _system, tools);
+        final inputTokens = history.estimatedTokens(profile, _system, tools, estimateBytes: estimate);
         contextUsedTokens = inputTokens;
         _phase(AgentPhase.streaming);
         final visible = AgentChatEntry('assistant', '');
@@ -699,7 +700,13 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         }
         visible.text = complete.text;
         visible.reasoningActive = false;
-        contextUsedTokens = history.estimatedTokens(profile, _system, tools, pending: complete);
+        contextUsedTokens = history.estimatedTokens(
+          profile,
+          _system,
+          tools,
+          pending: complete,
+          estimateBytes: estimate,
+        );
         _queueEmit();
         if (complete.calls.length > 8 || toolCount + complete.calls.length > 64 || messageCount >= 200) {
           throw const AgentFailure('toolLimit');
@@ -733,7 +740,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           _timeline.add(execution);
         }
         _emit();
-        var resultBytes = 0;
         for (final (:call, :context) in calls) {
           _check();
           toolCount++;
@@ -771,8 +777,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
             Ok(:final value) => value,
             Err(:final error) => {'error': error.code},
           });
-          resultBytes += utf8.encode(text).length;
-          if (resultBytes > 32768) throw const AgentFailure('outputLimit');
+          if (utf8.encode(text).length > 262144) throw const AgentFailure('outputLimit');
           history.add(ModelMessage(ModelRole.tool, text: text, toolCallId: call.id, isError: result is Err));
         }
       }
@@ -793,14 +798,22 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     } finally {
       timer.cancel();
       validity.cancel();
+      final jobs = _jobs.values.toList();
+      for (final job in jobs) {
+        job.cancel.cancel();
+      }
+      await Future.wait(jobs.map((job) => job.settled));
+      _uncertain |= jobs.any((job) => job.state == 'outcomeUnknown');
+      if (_uncertain) {
+        phase = AgentPhase.outcomeUnknown;
+      } else if (jobs.any((job) => job.execution.failure == 'journalFailed')) {
+        phase = AgentPhase.failed;
+      }
       for (final target in _targets.values) {
         target.release();
       }
       _targets.clear();
       _prepared.clear();
-      for (final job in _jobs.values) {
-        job.cancel.cancel();
-      }
       for (final execution in _executions) {
         if (execution.state != 'pending' && execution.state != 'running') continue;
         execution.state = cancel.isCancelled ? 'cancelled' : 'interrupted';
@@ -852,7 +865,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'A zero command exit code alone does not prove a repair worked. Request one exact command when needed; do not ask for credentials. '
       'Answer directly; cite returned executionIds in backticks only when useful, and never invent evidence. '
       'Do not append an evidence section or bare IDs to every answer. '
-      'When responseMode is answerOnly, use only supplied readable history and shared projections, with no tools or replayed work. '
+      'When responseMode is answerOnly, answer the supplied goal again using only readable history and shared projections, with no tools or replayed work. '
       'Independent exec does not inherit the user terminal environment.';
 
   TerminalHistorySession? _terminal(Map<String, Object?> args) {
@@ -1050,16 +1063,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     return jsonEncode({...args, if (resource != null) 'affected': resource.details});
   }
 
-  String _approvalKey(AgentTool tool, Map<String, Object?> args, List<HostId> hosts, Capability capability) {
-    if (capability.effect != Effect.query) return '';
-    return jsonEncode([
-      tool.capability,
-      [for (final host in hosts) host.value],
-      args['path'],
-      args['sessionId'],
-    ]);
-  }
-
   @override
   Future<Result<void>> authorize(Capability capability, Map<String, Object?> args, RequestContext context) async {
     final token = _cancel, owner = _owner;
@@ -1193,24 +1196,20 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           return const Err(AppError('denied'));
         }
       } else if (tool.approval) {
-        final key = _approvalKey(tool, args, hosts, capability);
-        if (key.isEmpty || !_approvedReads.contains(key)) {
-          final labels = [
-            for (final host in hosts) _bounded(_availableHosts.firstWhere((entry) => entry.id == host).label, 256),
-          ];
-          final accepted = await _approveAction(
-            labels.join(', '),
-            _approvalSummary(tool, args, resource),
-            '',
-            capability,
-            host: hosts.firstOrNull,
-          );
-          currentTurn();
-          if (!accepted) {
-            _denied.add(binding);
-            return const Err(AppError('denied'));
-          }
-          if (key.isNotEmpty) _approvedReads.add(key);
+        final labels = [
+          for (final host in hosts) _bounded(_availableHosts.firstWhere((entry) => entry.id == host).label, 256),
+        ];
+        final accepted = await _approveAction(
+          labels.join(', '),
+          _approvalSummary(tool, args, resource),
+          '',
+          capability,
+          host: hosts.firstOrNull,
+        );
+        currentTurn();
+        if (!accepted) {
+          _denied.add(binding);
+          return const Err(AppError('denied'));
         }
       }
       if (target != null) {
@@ -1284,18 +1283,95 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     }
   }
 
-  Result<Object?> listHosts() {
+  Result<Object?> listHosts([Map<String, Object?> args = const {}]) {
     _check();
-    _hostsListed = true;
+    final offset = (args['offset'] as num?)?.toInt() ?? 0;
     final currentHosts = backend.hosts.map((host) => host.id).toSet();
-    return Ok([
+    final hosts = [
       for (final host in _availableHosts)
-        if (currentHosts.contains(host.id)) {'id': host.id.value, 'alias': _bounded(host.label, 256)},
-    ]);
+        if (currentHosts.contains(host.id)) host,
+    ];
+    if (offset < 0 || offset > hosts.length) return const Err(AppError('invalidArgument', detail: 'offset'));
+    final page = <Map<String, Object?>>[];
+    Map<String, Object?> data() => {
+      'hosts': page,
+      'total': hosts.length,
+      'nextOffset': offset + page.length < hosts.length ? offset + page.length : null,
+    };
+    for (final host in hosts.skip(offset).take(32)) {
+      page.add({'id': host.id.value, 'alias': _bounded(host.label, 256)});
+      if (utf8.encode(jsonEncode(data())).length > 4096) {
+        page.removeLast();
+        break;
+      }
+    }
+    _hostsListed = true;
+    return Ok(data());
   }
 
   @override
   Future<Result<Object?>> invokeAuthorized(
+    Capability capability,
+    Map<String, Object?> args,
+    RequestContext context,
+  ) async {
+    _check();
+    final tool = _toolFor(capability.id);
+    final resource = agentResourceCapabilities.contains(capability.id) ? resources?.resolve(capability.id, args) : null;
+    final hosts = tool == null ? null : _hostsFor(tool, args, resource: resource);
+    if (hosts == null) return const Err(AppError('outsideScope'));
+    final routes = {for (final host in hosts) host: hostRoutes()[host]};
+    final configRevision = _configRevision, profile = _profile!, deadline = _deadline!;
+    final token = _cancel!;
+    final reviewer = permissionMode == AgentPermissionMode.review ? _reviewProfile?.identity : null;
+    final guarded = context.withAuthorization(() {
+      if (_disposed || token.isCancelled || !DateTime.now().isBefore(deadline)) return false;
+      final current = configuration();
+      if (!current.enabled ||
+          current.revision != configRevision ||
+          current.profile?.identity != profile.identity ||
+          current.profile?.reasoningEffort != profile.reasoningEffort) {
+        return false;
+      }
+      if (reviewer != null && reviewer != (reviewProfile?.call() ?? current.profile)?.identity) return false;
+      final currentRoutes = hostRoutes(), currentHosts = backend.hosts.map((host) => host.id).toSet();
+      return routes.entries.every(
+        (entry) => currentHosts.contains(entry.key) && currentRoutes[entry.key] == entry.value,
+      );
+    });
+    const controls = {
+      'agent.hosts',
+      'agent.output',
+      'agent.terminals',
+      'agent.terminalHistory',
+      'agent.terminalScreen',
+      'agent.jobs.read',
+      'agent.jobs.status',
+      'agent.jobs.stop',
+      'transfer.list',
+      'transfer.cancel',
+      'forward.stop',
+    };
+    if (controls.contains(capability.id)) return _invokeAuthorized(capability, args, guarded);
+    final jobs = _jobs.values.where((job) => !job.done);
+    final exclusive = capability.effect != Effect.query && capability.id != 'agent.diagnose';
+    final activeCount =
+        _activeCalls.length + jobs.where((job) => !_activeCalls.containsKey(OperationId(job.id))).length;
+    if (activeCount >= 3 ||
+        exclusive &&
+            (jobs.any((job) => hosts.contains(job.target.hostId)) ||
+                _activeCalls.values.any((active) => active.any(hosts.contains)))) {
+      return const Err(AppError('busy'));
+    }
+    _activeCalls[context.operationId] = exclusive ? hosts : const [];
+    try {
+      return await _invokeAuthorized(capability, args, guarded);
+    } finally {
+      _activeCalls.remove(context.operationId);
+    }
+  }
+
+  Future<Result<Object?>> _invokeAuthorized(
     Capability capability,
     Map<String, Object?> args,
     RequestContext context,
@@ -1423,12 +1499,18 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     if (_jobs.values.any((job) => identical(job.target, target) && !job.done)) {
       return const Err(AppError('jobActive'));
     }
-    final execution = _executions.where((entry) => entry.id == context.operationId.value).firstOrNull;
+    final execution =
+        _executions.where((entry) => entry.id == context.operationId.value).firstOrNull ??
+        AgentExecution(context.operationId.value, 'agent.jobs.start', '', '', '');
     execution
-      ?..target = target.display
+      ..target = target.display
       ..command = command
       ..cwd = cwd;
-    final jobId = newId(), id = OperationId(jobId);
+    if (!_executions.contains(execution)) {
+      _executions.add(execution);
+      _timeline.add(execution);
+    }
+    final jobId = context.operationId.value, id = context.operationId;
     final cancel = CancellationToken();
     unawaited(token!.whenCancelled.then((_) => cancel.cancel()));
     final output = outputs.create(owner, target.hostId, _profile!.identity, _scope!.revision);
@@ -1460,9 +1542,12 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       record,
       token,
       owner,
+      execution,
     );
+    execution.output = output;
+    execution.state = 'running';
     _jobs[jobId] = job;
-    unawaited(_runJob(job));
+    job.settled = _runJob(job);
     return Ok({'jobId': jobId, 'state': job.state});
   }
 
@@ -1505,7 +1590,12 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       watch?.cancel();
       job.stdout.close();
       job.stderr.close();
-      job.done = true;
+      job.execution
+        ..state = job.state
+        ..exitCode = job.exitCode
+        ..sharedText = _bounded(utf8.decode(job.projection.toBytes()), 8192)
+        ..historyTruncated = job.output.truncated || job.projectionTruncated || job.projection.length > 8192
+        ..outputFiltered = job.projectionFiltered;
       try {
         await journal.record(
           job.record.withState(
@@ -1517,8 +1607,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           ),
         );
       } on Object {
+        job.execution.failure = 'journalFailed';
         if (currentTurn()) error = 'journalFailed';
       }
+      job.done = true;
       if (currentTurn()) _emit();
     }
   }
@@ -1532,17 +1624,30 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     if (offset < 0 || offset > all.length || offset < all.length && (all[offset] & 0xc0) == 0x80) {
       return const Err(AppError('invalidArgument', detail: 'offset'));
     }
-    var end = min(all.length, offset + 16384);
-    while (end < all.length && (all[end] & 0xc0) == 0x80) {
-      end--;
-    }
-    return Ok({
+    var end = offset;
+    Map<String, Object?> data() => {
       ..._jobData(job),
       'text': utf8.decode(all.sublist(offset, end)),
       'offset': offset,
       'nextOffset': end < all.length || !job.done ? end : null,
       'eof': job.done && end == all.length,
-    });
+    };
+    var bytes = utf8.encode(jsonEncode(data())).length;
+    while (end < all.length) {
+      final start = end;
+      end++;
+      while (end < all.length && (all[end] & 0xc0) == 0x80) {
+        end++;
+      }
+      final character = utf8.decode(all.sublist(start, end));
+      bytes += utf8.encode(jsonEncode(character)).length - 2;
+      // Reserve the largest possible offset/eof envelope change as this page grows.
+      if (bytes > 4000) {
+        end = start;
+        break;
+      }
+    }
+    return Ok(data());
   }
 
   Result<Object?> jobStatus(Map<String, Object?> args) {
@@ -1818,7 +1923,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       if (decision != AgentReviewDecision.ask) return decision == AgentReviewDecision.allow;
     }
     _checkTurn(token, owner);
-    final pending = approval = AgentApproval(target, command, cwd, capability.id, template: template);
+    final pending = approval = AgentApproval(
+      target,
+      command,
+      cwd,
+      capability.id,
+      template: template,
+      timeoutSeconds: timeoutSeconds,
+    );
     final result = _approvalResult = Completer<bool>();
     _phase(AgentPhase.awaitingApproval);
     try {

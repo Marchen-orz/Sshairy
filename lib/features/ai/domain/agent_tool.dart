@@ -26,7 +26,7 @@ const agentTools = <AgentTool>[
   AgentTool(
     'host_list',
     'agent.hosts',
-    'List all saved host IDs and aliases. Listing grants no operation permission; another host needs local conversation approval before any connection.',
+    'List saved host IDs and aliases in pages with hosts, total and nextOffset. Continue using offset=nextOffset to see all hosts. Listing grants no operation permission; another host needs local conversation approval before any connection.',
     readOnly: true,
     approval: false,
   ),
@@ -165,25 +165,25 @@ const agentTools = <AgentTool>[
   AgentTool(
     'session_close',
     'session.close',
-    'Close the focused pane or one tab. Transport and forwarding leases follow their own owners.',
+    'Close an exact pane using tabId/paneId, or a whole tab using tabId alone; omitting both closes the focused pane. Invalid explicit panes are refused. Transport and forwarding leases follow their own owners.',
     approval: true,
   ),
   AgentTool(
     'session_reconnect',
     'session.reconnect',
-    'Reconnect the focused pane of a tab, or the active tab. Never replays old input or commands.',
+    'Reconnect an exact SSH pane using tabId/paneId; omit paneId for the focused pane of the selected or active tab. Never replays old input or commands.',
     approval: true,
   ),
   AgentTool(
     'workspace_focus',
     'workspace.focus',
-    'Switch to one tab, the host vault or the files page.',
+    'Focus an exact pane using tabId/paneId, switch to one tab, the host vault or the files page. Explicit pane targets must still exist in the specified tab.',
     approval: false,
   ),
   AgentTool(
     'workspace_split',
     'workspace.split',
-    'Split one SSH pane horizontally or vertically, opening a fresh authorized remote shell. Omit tabId and paneId for the focused pane. Local shells cannot be duplicated by the agent.',
+    'Split one SSH pane horizontally or vertically, opening a fresh authorized remote shell and returning the new tabId/paneId. Omit tabId and paneId for the focused pane. Local shells cannot be duplicated by the agent.',
     approval: true,
   ),
   AgentTool(

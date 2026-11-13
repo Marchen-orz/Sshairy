@@ -210,7 +210,7 @@ class _Journal implements OperationJournal {
   final records = <OperationRecord>[];
   var loads = 0;
   bool failIntent = false, failLoad = false, failTerminal = false;
-  Completer<void>? pendingIntent;
+  Completer<void>? pendingIntent, pendingTerminal;
   var intentAttempts = 0, terminalAttempts = 0;
 
   @override
@@ -228,6 +228,7 @@ class _Journal implements OperationJournal {
       if (failIntent) throw StateError('simulated disk failure');
     } else {
       terminalAttempts++;
+      if (pendingTerminal case final pending?) await pending.future;
       if (failTerminal) throw StateError('simulated terminal journal failure');
     }
     records.add(record);
@@ -266,9 +267,11 @@ class _Harness {
       FunctionCapability(
         'agent.hosts',
         Effect.query,
-        (_, _) async => runtime.listHosts(),
+        (args, _) async => runtime.listHosts(args.raw),
         agentExposed: true,
-        inputSchema: _schema({}, []),
+        inputSchema: _schema({
+          'offset': {'type': 'integer', 'minimum': 0, 'maximum': 1000},
+        }, []),
       ),
       FunctionCapability(
         'agent.terminals',
@@ -428,6 +431,12 @@ class _Harness {
 
   Future<void> start({Iterable<HostId> hosts = const [_host]}) =>
       runtime.start('check the selected host', AgentScope(hosts: hosts));
+
+  Future<Result<Object?>> dispatch(String capability, Map<String, Object?> args) => runtime.dispatcher.dispatch(
+    capability,
+    args,
+    RequestContext(Origin.agent, authority: runtime, cancellation: model.cancellations.last),
+  );
 
   Future<void> close() async {
     runtime.stop();
@@ -756,6 +765,109 @@ void main() {
       if (failIntent) expect(h.model.requests.last.messages.last.text, contains('journalFailed'));
       if (!failIntent) expect(h.journal.records.map((r) => r.state), [OperationState.intent, OperationState.completed]);
     });
+  }
+
+  test('each file page needs its own approval even for the same path and repeated offset', () async {
+    const offsets = [0, 16, 0];
+    final reads = <int>[];
+    final h = _Harness(
+      (_, _, index) async* {
+        if (index < offsets.length) {
+          yield ModelMessageComplete(
+            _call('files_read', {
+              'hostId': _host.value,
+              'path': '/tmp/page.txt',
+              'offset': offsets[index],
+            }, 'read-$index'),
+          );
+        } else {
+          yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+        }
+      },
+      extraCapabilities: [
+        FunctionCapability(
+          'file.read',
+          Effect.query,
+          (args, _) async {
+            reads.add(args.require<int>('offset'));
+            return const Ok({'text': 'page'});
+          },
+          agentExposed: true,
+          inputSchema: _schema(
+            {
+              'hostId': {'type': 'string'},
+              'path': {'type': 'string'},
+              'offset': {'type': 'integer', 'minimum': 0},
+            },
+            ['hostId', 'path', 'offset'],
+          ),
+        ),
+      ],
+    );
+    addTearDown(h.close);
+    final work = h.start();
+    AgentApproval? previous;
+    for (final (index, offset) in offsets.indexed) {
+      await _until(() => h.runtime.approval != null && !identical(h.runtime.approval, previous));
+      final pending = h.runtime.approval!;
+      expect(pending.capability, 'file.read');
+      expect(jsonDecode(pending.command), containsPair('offset', offset));
+      expect(reads, offsets.take(index));
+      previous = pending;
+      h.runtime.approve(true, expected: pending);
+    }
+    await work;
+    expect(reads, offsets);
+    expect(h.runtime.phase, AgentPhase.completed);
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  for (final capability in ['file.write', 'transfer.enqueue']) {
+    for (final invalidation in ['route', 'configuration', 'cancellation']) {
+      test('$capability keeps frozen authority after completion until $invalidation changes', () async {
+        final transfer = capability == 'transfer.enqueue';
+        final args = transfer
+            ? {'fromHostId': _host.value, 'toHostId': _host.value, 'from': '/tmp/a', 'to': '/tmp/b'}
+            : {'hostId': _host.value, 'path': '/tmp/a', 'text': 'bounded text'};
+        RequestContext? captured;
+        final h = _Harness(
+          (_, _, index) => _oneCall(_call(transfer ? 'transfer_enqueue' : 'files_write', args), index),
+          extraCapabilities: [
+            FunctionCapability(
+              capability,
+              Effect.remoteWrite,
+              (_, context) async {
+                captured = context;
+                expect(context.isCurrent, isTrue);
+                return const Ok({'accepted': true});
+              },
+              agentExposed: true,
+              inputSchema: _schema({
+                for (final key in args.keys) key: {'type': 'string'},
+              }, args.keys.toList()),
+            ),
+          ],
+        );
+        addTearDown(h.close);
+        await h.runtime.start(
+          'accept queued work',
+          AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto),
+        );
+        expect(h.runtime.busy, isFalse);
+        expect(h.runtime.phase, AgentPhase.completed);
+        expect(captured, isNotNull);
+        expect(captured!.authorizationIsCurrent, isNotNull);
+        expect(captured!.isCurrent, isTrue, reason: 'natural completion does not revoke accepted work');
+        if (invalidation == 'route') {
+          h.routes[_host] = 'changed-route';
+        } else if (invalidation == 'configuration') {
+          h.revision++;
+        } else {
+          captured!.cancellation!.cancel();
+        }
+        expect(captured!.isCurrent, isFalse);
+      });
+    }
   }
 
   test('current terminal context is shared by default and focus changes do not retarget reads', () async {
@@ -2570,6 +2682,7 @@ void main() {
     addTearDown(h.close);
     final turn = h.start();
     await _until(() => h.runtime.approval != null);
+    expect(h.runtime.approval!.timeoutSeconds, 1);
     h.runtime.approve(true, expected: h.runtime.approval!);
     await turn;
     expect(h.backend.target.commands, hasLength(1));
@@ -2578,6 +2691,23 @@ void main() {
     expect(h.journal.records.last.state, OperationState.completed);
     expect(_result(h.model.requests.last), containsPair('exitCode', 0));
   });
+
+  for (final tool in ['command_execute', 'job_start']) {
+    for (final seconds in [1, 300, null]) {
+      test('$tool manual approval displays normalized timeout ${seconds ?? 60}', () async {
+        final h = _Harness((_, _, index) => _oneCall(_call(tool, {..._command(), 'timeoutSeconds': ?seconds}), index));
+        addTearDown(h.close);
+        final work = h.start();
+        await _until(() => h.runtime.approval != null);
+        expect(h.runtime.approval!.command, 'printf result');
+        expect(h.runtime.approval!.timeoutSeconds, seconds ?? 60);
+        expect(h.backend.target.commands, isEmpty);
+        h.runtime.approve(true, expected: h.runtime.approval!);
+        await work;
+        expect(h.backend.target.deadlines.single, Duration(seconds: seconds ?? 60));
+      });
+    }
+  }
 
   test('approval callbacks from a prior turn cannot approve a newer request', () async {
     final call = _call('command_execute', _command());
@@ -2993,10 +3123,14 @@ void main() {
     expect(input['targetSelection'], 'discoverFromUserRequest');
     expect(input['authorizedHosts'], isEmpty);
     expect(request.system, contains('ask the user rather than guess a host'));
-    expect(jsonDecode(_results(h.model.requests.last).single.text), [
-      {'id': 'host-a', 'alias': 'selected host'},
-      {'id': 'host-b', 'alias': 'unselected host'},
-    ]);
+    expect(_result(h.model.requests.last), {
+      'hosts': [
+        {'id': 'host-a', 'alias': 'selected host'},
+        {'id': 'host-b', 'alias': 'unselected host'},
+      ],
+      'total': 2,
+      'nextOffset': null,
+    });
     expect(h.runtime.resolvedHost, isNull);
     expect(h.backend.prepared, isEmpty);
     expect(h.runtime.phase, AgentPhase.completed);
@@ -3095,10 +3229,14 @@ void main() {
     });
     addTearDown(h.close);
     await h.runtime.start('use new host', AgentScope(discoverHosts: true));
-    expect(jsonDecode(_results(h.model.requests[1]).single.text), [
-      {'id': 'host-a', 'alias': 'selected host'},
-      {'id': 'host-b', 'alias': 'unselected host'},
-    ]);
+    expect(_result(h.model.requests[1]), {
+      'hosts': [
+        {'id': 'host-a', 'alias': 'selected host'},
+        {'id': 'host-b', 'alias': 'unselected host'},
+      ],
+      'total': 2,
+      'nextOffset': null,
+    });
     expect(_result(h.model.requests.last, 1), {'error': 'outsideScope'});
     expect(_result(h.model.requests.last, 2), {'error': 'outsideScope'});
     expect(h.runtime.resolvedHost, isNull);
@@ -3140,14 +3278,65 @@ void main() {
     final h = _Harness((_, _, index) => _oneCall(call, index));
     addTearDown(h.close);
     await h.start();
-    final data = jsonDecode(_results(h.model.requests.last).single.text);
-    expect(data, [
-      {'id': 'host-a', 'alias': 'selected host'},
-      {'id': 'host-b', 'alias': 'unselected host'},
-    ]);
+    expect(_result(h.model.requests.last), {
+      'hosts': [
+        {'id': 'host-a', 'alias': 'selected host'},
+        {'id': 'host-b', 'alias': 'unselected host'},
+      ],
+      'total': 2,
+      'nextOffset': null,
+    });
     expect(h.runtime.hostApproval, isNull);
     expect(h.backend.prepared, isEmpty);
   });
+
+  for (final escaped in [false, true]) {
+    test('host pages preserve all 1000 aliases within the encoded budget, escaped=$escaped', () async {
+      final ready = Completer<void>(), finish = Completer<void>();
+      final h = _Harness((_, _, _) async* {
+        ready.complete();
+        await finish.future;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      });
+      addTearDown(h.close);
+      addTearDown(() {
+        if (!finish.isCompleted) finish.complete();
+      });
+      h.backend.hosts = [
+        for (var index = 0; index < 1000; index++)
+          AgentHost(HostId('host-$index'), escaped ? '${r'\"' * 110}中-$index' : 'host $index'),
+      ];
+      final work = h.runtime.start('list saved hosts', AgentScope(discoverHosts: true));
+      await ready.future;
+      final found = <Object?>[];
+      var offset = 0, pages = 0;
+      while (true) {
+        final result = await h.dispatch('agent.hosts', {'offset': offset});
+        expect(result, isA<Ok<Object?>>());
+        final data = ((result as Ok<Object?>).value as Map).cast<String, Object?>();
+        final page = data['hosts'] as List;
+        expect(page, isNotEmpty);
+        expect(page.length, lessThanOrEqualTo(32));
+        expect(utf8.encode(jsonEncode(data)).length, lessThanOrEqualTo(4096));
+        expect(data['total'], 1000);
+        found.addAll(page);
+        pages++;
+        expect(pages, lessThanOrEqualTo(1000));
+        if (data['nextOffset'] == null) break;
+        expect(data['nextOffset'], offset + page.length);
+        offset = data['nextOffset'] as int;
+      }
+      expect(found, [
+        for (final host in h.backend.hosts) {'id': host.id.value, 'alias': host.label},
+      ]);
+      expect(pages, greaterThan(1));
+      expect(h.backend.prepared, isEmpty);
+      expect(h.runtime.hostApproval, isNull);
+      finish.complete();
+      await work;
+      expect(h.runtime.phase, AgentPhase.completed);
+    });
+  }
 
   test('chat without a selected host has no tools and disabled AI sends nothing', () async {
     final h = _Harness((_, _, _) async* {
@@ -3448,6 +3637,165 @@ void main() {
     expect(h.backend.target.commands, isEmpty);
   });
 
+  test('jobs and active tools share three slots while job controls remain available', () async {
+    const third = HostId('host-c');
+    final ready = Completer<void>(), finishTurn = Completer<void>(), finishRead = Completer<void>();
+    final finishJobs = [for (var index = 0; index < 3; index++) Completer<int?>()];
+    var reads = 0;
+    final h = _Harness(
+      (_, _, _) async* {
+        ready.complete();
+        await finishTurn.future;
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+      },
+      extraCapabilities: [
+        FunctionCapability(
+          'file.read',
+          Effect.query,
+          (_, _) async {
+            reads++;
+            await finishRead.future;
+            return const Ok({'text': 'page'});
+          },
+          agentExposed: true,
+          inputSchema: _schema(
+            {
+              'hostId': {'type': 'string'},
+              'path': {'type': 'string'},
+            },
+            ['hostId', 'path'],
+          ),
+        ),
+      ],
+    );
+    addTearDown(h.close);
+    addTearDown(() {
+      if (!finishRead.isCompleted) finishRead.complete();
+      if (!finishTurn.isCompleted) finishTurn.complete();
+      for (final finish in finishJobs) {
+        if (!finish.isCompleted) finish.complete(0);
+      }
+    });
+    h.backend.hosts = const [AgentHost(_host, 'a'), AgentHost(_other, 'b'), AgentHost(third, 'c')];
+    h.routes[third] = 'route-c';
+    final targets = [h.backend.target, _Target(_other), _Target(third)];
+    for (final (index, target) in targets.indexed) {
+      target.pendingExecution = finishJobs[index].future;
+      if (target.hostId != _host) h.backend.others[target.hostId] = target;
+    }
+    final work = h.runtime.start(
+      'run bounded work',
+      AgentScope(hosts: const [_host, _other, third], permissionMode: AgentPermissionMode.auto),
+    );
+    await ready.future;
+    final jobs = <String>[];
+    for (final host in [_host, _other]) {
+      final result = await h.dispatch('agent.jobs.start', _command(host: host.value));
+      expect(result, isA<Ok<Object?>>());
+      jobs.add(((result as Ok<Object?>).value as Map)['jobId'] as String);
+    }
+    final reading = h.dispatch('file.read', {'hostId': third.value, 'path': '/tmp/a'});
+    await _until(() => reads == 1);
+    final fourth = await h.dispatch('agent.jobs.start', _command(host: third.value));
+    expect((fourth as Err<Object?>).error.code, 'busy');
+    expect(targets.last.commands, isEmpty);
+    final extraRead = await h.dispatch('file.read', {'hostId': third.value, 'path': '/tmp/b'});
+    expect((extraRead as Err<Object?>).error.code, 'busy');
+    expect(reads, 1);
+    for (final capability in ['agent.jobs.read', 'agent.jobs.status', 'agent.jobs.stop']) {
+      expect(await h.dispatch(capability, {'jobId': jobs.first}), isA<Ok<Object?>>());
+    }
+    expect(targets.first.tokens.single.isCancelled, isTrue);
+    finishRead.complete();
+    expect(await reading, isA<Ok<Object?>>());
+    expect(await h.dispatch('agent.jobs.start', _command(host: third.value)), isA<Ok<Object?>>());
+    expect(targets.last.commands, hasLength(1));
+    final full = await h.dispatch('file.read', {'hostId': third.value, 'path': '/tmp/c'});
+    expect((full as Err<Object?>).error.code, 'busy');
+    for (final finish in finishJobs) {
+      finish.complete(0);
+    }
+    await _until(() => h.journal.terminalAttempts == 3);
+    finishTurn.complete();
+    await work;
+    expect(targets.every((target) => target.releases == 1), isTrue);
+  });
+
+  for (final blocker in ['agent.execute', 'agent.jobs.start', 'file.write']) {
+    for (final contender in ['agent.execute', 'file.write']) {
+      test('$blocker blocks concurrent $contender on the same host', () async {
+        final ready = Completer<void>(), finishTurn = Completer<void>();
+        final finishCommand = Completer<int?>(), finishWrite = Completer<void>();
+        var writes = 0;
+        final h = _Harness(
+          (_, _, _) async* {
+            ready.complete();
+            await finishTurn.future;
+            yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
+          },
+          extraCapabilities: [
+            FunctionCapability(
+              'file.write',
+              Effect.remoteWrite,
+              (_, _) async {
+                writes++;
+                await finishWrite.future;
+                return const Ok(null);
+              },
+              agentExposed: true,
+              inputSchema: _schema(
+                {
+                  'hostId': {'type': 'string'},
+                  'path': {'type': 'string'},
+                  'text': {'type': 'string'},
+                },
+                ['hostId', 'path', 'text'],
+              ),
+            ),
+          ],
+        );
+        addTearDown(h.close);
+        addTearDown(() {
+          if (!finishCommand.isCompleted) finishCommand.complete(0);
+          if (!finishWrite.isCompleted) finishWrite.complete();
+          if (!finishTurn.isCompleted) finishTurn.complete();
+        });
+        h.backend.target.pendingExecution = finishCommand.future;
+        final work = h.runtime.start(
+          'serialize host writes',
+          AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto),
+        );
+        await ready.future;
+        Map<String, Object?> arguments(String capability) =>
+            capability == 'file.write' ? {'hostId': _host.value, 'path': '/tmp/a', 'text': 'bounded'} : _command();
+        final first = h.dispatch(blocker, arguments(blocker));
+        await _until(() => blocker == 'file.write' ? writes == 1 : h.backend.target.commands.length == 1);
+        final result = await h.dispatch(contender, arguments(contender));
+        expect((result as Err<Object?>).error.code, 'busy');
+        expect(writes, blocker == 'file.write' ? 1 : 0);
+        expect(h.backend.target.commands, hasLength(blocker == 'file.write' ? 0 : 1));
+        finishCommand.complete(0);
+        finishWrite.complete();
+        expect(await first, isA<Ok<Object?>>());
+        finishTurn.complete();
+        await work;
+        expect(h.runtime.phase, AgentPhase.completed);
+      });
+    }
+  }
+
+  test('a known job exit with a failed final journal is not reported as a completed turn', () async {
+    final h = _Harness((_, _, index) => _oneCall(_call('job_start', _command()), index));
+    addTearDown(h.close);
+    h.journal.failTerminal = true;
+    await h.runtime.start('run a job', _conversationScope(mode: AgentPermissionMode.auto));
+    expect(h.runtime.phase, AgentPhase.failed);
+    expect(h.runtime.error, 'journalFailed');
+    expect(h.runtime.executions.single.state, 'completed');
+    expect(h.runtime.executions.single.exitCode, 0);
+    expect(h.runtime.executions.single.failure, 'journalFailed');
+  });
+
   test('background job runs one approved command and shares bounded output', () async {
     final h = _Harness((request, _, index) async* {
       if (index == 0) {
@@ -3486,6 +3834,11 @@ void main() {
     expect(read['eof'], isTrue);
     expect(read['nextOffset'], isNull);
     expect(_result(h.model.requests.last, 2)['bytes'], utf8.encode(_privateOutput).length);
+    final execution = h.runtime.executions.singleWhere((entry) => entry.capability == 'agent.jobs.start');
+    expect(execution.output!.stdout, _privateOutput);
+    expect(execution.state, 'completed');
+    expect(execution.exitCode, 0);
+    expect(execution.sharedText, _privateOutput);
     expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.completed]);
   });
 
@@ -3609,7 +3962,7 @@ void main() {
     final page = read();
     expect(page['truncated'], isTrue);
     expect(page['bytes'] as int, lessThanOrEqualTo(65536));
-    expect(utf8.encode(page['text'] as String).length, lessThanOrEqualTo(16384));
+    expect(utf8.encode(jsonEncode(page)).length, lessThanOrEqualTo(4096));
     expect(page['text'], isNot(contains('�')));
     final offset = page['nextOffset'] as int;
     expect(utf8.encode(page['text'] as String).length, offset);
@@ -3664,7 +4017,7 @@ void main() {
     expect(h.journal.records.map((r) => r.state), [OperationState.intent, OperationState.failed]);
   });
 
-  test('late job completion and journal failure cannot change the next turn', () async {
+  test('job exit and journal failure settle before a clean next turn can start', () async {
     final finish = Completer<int?>(), started = Completer<void>(), release = Completer<void>();
     final h = _Harness((request, _, index) async* {
       if (index == 0) {
@@ -3678,24 +4031,89 @@ void main() {
       }
     });
     addTearDown(h.close);
+    addTearDown(() {
+      if (!finish.isCompleted) finish.complete(0);
+      if (!release.isCompleted) release.complete();
+    });
     h.backend.target.pendingExecution = finish.future;
     final first = h.runtime.start('start a job', _conversationScope(mode: AgentPermissionMode.auto));
+    var settled = false;
+    unawaited(
+      first.then((_) {
+        settled = true;
+      }),
+    );
     await started.future;
-    await first;
-    final second = h.runtime.start('a new question', _conversationScope(mode: AgentPermissionMode.auto));
-    await _until(() => h.model.requests.length == 3);
+    await _until(() => h.backend.target.tokens.single.isCancelled);
+    expect(settled, isFalse);
+    expect(h.runtime.busy, isTrue);
+    expect(h.backend.target.releases, 0);
+    await h.runtime.start('too early', _conversationScope(mode: AgentPermissionMode.auto));
+    expect(h.model.requests, hasLength(2));
     h.journal.failTerminal = true;
     finish.completeError(StateError('late transport loss'));
-    await _until(() => h.journal.terminalAttempts == 1);
-    await Future<void>.delayed(Duration.zero);
+    await first;
+    expect(h.journal.terminalAttempts, 1);
+    expect(h.runtime.error, 'journalFailed');
+    expect(h.runtime.phase, AgentPhase.outcomeUnknown);
+    expect(h.runtime.executions.single.failure, 'journalFailed');
+    expect(h.backend.target.releases, 1);
+    h.journal.failTerminal = false;
+    final second = h.runtime.start('a new question', _conversationScope(mode: AgentPermissionMode.auto));
+    await _until(() => h.model.requests.length == 3);
     expect(h.runtime.busy, isTrue);
     expect(h.runtime.error, isNull);
-    expect(h.runtime.messages.last.text, isNot('job started'));
+    expect(h.runtime.executions, isEmpty);
     release.complete();
     await second;
     expect(h.runtime.error, isNull);
     expect(h.runtime.messages.last.text, 'new answer');
     expect(h.backend.target.commands, hasLength(1));
+  });
+
+  test('settled waits for job exit and terminal journal before releasing its target', () async {
+    final finish = Completer<int?>(), persist = Completer<void>();
+    final h = _Harness((_, _, index) => _oneCall(_call('job_start', _command(), 'job'), index));
+    addTearDown(h.close);
+    addTearDown(() {
+      if (!finish.isCompleted) finish.complete(0);
+      if (!persist.isCompleted) persist.complete();
+    });
+    h.backend.target
+      ..stdout = 'known job output\n'
+      ..pendingExecution = finish.future;
+    h.journal.pendingTerminal = persist;
+    final work = h.runtime.start('finish and persist', _conversationScope(mode: AgentPermissionMode.auto));
+    var settled = false;
+    unawaited(
+      h.runtime.settled.then((_) {
+        settled = true;
+      }),
+    );
+    await _until(() => h.backend.target.tokens.isNotEmpty && h.backend.target.tokens.single.isCancelled);
+    final execution = h.runtime.executions.single;
+    expect(execution.output, isNotNull);
+    expect(execution.state, 'running');
+    expect(h.runtime.busy, isTrue);
+    expect(settled, isFalse);
+    expect(h.backend.target.releases, 0);
+    finish.completeError(StateError('channel closed after cancellation'));
+    await _until(() => h.journal.terminalAttempts == 1);
+    expect(execution.state, 'outcomeUnknown');
+    expect(execution.sharedText, 'known job output\n');
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent]);
+    expect(h.runtime.busy, isTrue);
+    expect(settled, isFalse);
+    expect(h.backend.target.releases, 0);
+    persist.complete();
+    await work;
+    await h.runtime.settled;
+    expect(settled, isTrue);
+    expect(h.journal.records.map((record) => record.state), [OperationState.intent, OperationState.outcomeUnknown]);
+    expect(h.runtime.executions.single, same(execution));
+    expect(h.runtime.phase, AgentPhase.outcomeUnknown);
+    expect(h.runtime.busy, isFalse);
+    expect(h.backend.target.releases, 1);
   });
 
   test('stopping a background job cancels its command without replaying it', () async {

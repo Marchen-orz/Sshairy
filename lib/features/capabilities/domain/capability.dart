@@ -9,8 +9,14 @@ enum Effect { query, localChange, connect, remoteWrite, security }
 enum Origin { ui, palette, agent }
 
 class RequestContext {
-  RequestContext(this.origin, {OperationId? operationId, this.cancellation, this.deadline, this.authority})
-    : operationId = operationId ?? OperationId(newId());
+  RequestContext(
+    this.origin, {
+    OperationId? operationId,
+    this.cancellation,
+    this.deadline,
+    this.authority,
+    this.authorizationIsCurrent,
+  }) : operationId = operationId ?? OperationId(newId());
 
   final Origin origin;
   final OperationId operationId;
@@ -19,6 +25,28 @@ class RequestContext {
 
   /// Supplied by application wiring, never decoded from tool arguments.
   final AgentAuthority? authority;
+
+  /// Frozen invocation authority; may outlive the turn when a business owner accepts queued work.
+  final bool Function()? authorizationIsCurrent;
+
+  bool get isCurrent {
+    try {
+      return !(cancellation?.isCancelled ?? false) &&
+          (deadline == null || DateTime.now().isBefore(deadline!)) &&
+          (authorizationIsCurrent?.call() ?? true);
+    } on Object {
+      return false;
+    }
+  }
+
+  RequestContext withAuthorization(bool Function() current) => RequestContext(
+    origin,
+    operationId: operationId,
+    cancellation: cancellation,
+    deadline: deadline,
+    authority: authority,
+    authorizationIsCurrent: () => (authorizationIsCurrent?.call() ?? true) && current(),
+  );
 }
 
 /// Owns the actor, scope and approval bindings for one agent turn. Approval must bind the capability version,

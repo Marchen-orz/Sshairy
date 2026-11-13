@@ -78,6 +78,35 @@ String? _code(Result<Object?> result) => switch (result) {
 };
 
 void main() {
+  test('request guards compose, preserve identity and fail closed', () {
+    final cancel = CancellationToken();
+    var routeCurrent = true, leaseCurrent = true;
+    final original = RequestContext(
+      Origin.agent,
+      cancellation: cancel,
+      deadline: DateTime.now().add(const Duration(minutes: 1)),
+      authorizationIsCurrent: () => routeCurrent,
+    );
+    final guarded = original.withAuthorization(() => leaseCurrent);
+    expect(guarded.operationId, original.operationId);
+    expect(guarded.cancellation, same(cancel));
+    expect(guarded.deadline, original.deadline);
+    expect(guarded.isCurrent, isTrue);
+    routeCurrent = false;
+    expect(guarded.isCurrent, isFalse);
+    routeCurrent = true;
+    leaseCurrent = false;
+    expect(guarded.isCurrent, isFalse);
+    leaseCurrent = true;
+    cancel.cancel();
+    expect(guarded.isCurrent, isFalse);
+    expect(RequestContext(Origin.agent, authorizationIsCurrent: () => throw StateError('stale')).isCurrent, isFalse);
+    expect(
+      RequestContext(Origin.agent, deadline: DateTime.now().subtract(const Duration(seconds: 1))).isCurrent,
+      isFalse,
+    );
+  });
+
   group('agent authorization', () {
     late _Authority authority;
     late CapabilityDispatcher dispatcher;
@@ -153,6 +182,21 @@ void main() {
       final options = invokedArgs!['options'] as Map<String, Object?>;
       expect(() => options['samples'] = 3, throwsUnsupportedError);
       expect(() => (options['fields'] as List).add('memory'), throwsUnsupportedError);
+    });
+
+    test('revoked request guard after approval blocks dispatch', () async {
+      final approval = Completer<Result<void>>();
+      var current = true;
+      authority.approval = () => approval.future;
+      final work = dispatcher.dispatch(
+        'diagnostics.collect',
+        _valid(),
+        RequestContext(Origin.agent, authority: authority, authorizationIsCurrent: () => current),
+      );
+      current = false;
+      approval.complete(const Ok(null));
+      expect(_code(await work), 'scopeChanged');
+      expect(invoked, 0);
     });
 
     test('caller mutations during approval cannot change approved arguments', () async {

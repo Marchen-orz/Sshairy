@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/features/ai/adapters/conversation_store.dart';
+import 'package:sshairy/features/ai/adapters/model_provider.dart' show encodeModelRequest;
 import 'package:sshairy/features/ai/application/composer.dart';
 import 'package:sshairy/features/ai/application/conversations.dart';
 import 'package:sshairy/features/ai/application/providers.dart';
@@ -971,6 +972,109 @@ void main() {
     await h.conversations.flush();
     expect(h.store.records.single.entries[1].executionId, '0123456789abcdef0123456789abcdef');
   });
+
+  test('failed regeneration saves the restored answer before returning and preserves the draft and failure', () async {
+    final h = await _create(
+      initial: [_record('regen-failed')],
+      script: (_, _) async* {
+        yield const ModelTextDelta('partial replacement');
+        throw const ModelFailure('network');
+      },
+    );
+    h.conversations.select('regen-failed');
+    await h.conversations.saved;
+    final attachment = AgentAttachment.text(id: 'unsent', name: 'draft.txt', text: 'unsent attachment');
+    h.composer.restore(AgentComposerState(goal: 'unsent follow-up', host: _hostB, attachments: [attachment]));
+    expect(await h.conversations.regenerate(_hostA), isFalse);
+    expect(h.runtime.error, 'network');
+    expect(h.runtime.phase, AgentPhase.failed);
+    expect(h.runtime.messages.map((entry) => entry.text), ['earlier user regen-failed', 'earlier answer regen-failed']);
+    expect(h.draft.goal, 'unsent follow-up');
+    expect(h.draft.host, _hostB);
+    expect(h.draft.attachments.single, same(attachment));
+    expect(h.conversations.saveFailed, isFalse);
+    await h.conversations.saved;
+    expect(h.store.records.single.entries.map((entry) => entry.text), [
+      'earlier user regen-failed',
+      'earlier answer regen-failed',
+    ]);
+    final reopened = await _create(initial: h.store.records);
+    reopened.conversations.select('regen-failed');
+    expect(reopened.runtime.messages.map((entry) => entry.text), [
+      'earlier user regen-failed',
+      'earlier answer regen-failed',
+    ]);
+    expect(h.model.requests, hasLength(1));
+    expect(h.backend.prepared, isEmpty);
+    expect(reopened.model.requests, isEmpty);
+  });
+
+  test('rejected regeneration persists the original answer and keeps the failure and draft', () async {
+    final h = await _create(initial: [_record('regen-rejected')]);
+    h.conversations.select('regen-rejected');
+    await h.conversations.saved;
+    final saves = h.store.attempts;
+    h.enabled = false;
+    h.composer.setGoal('keep this draft');
+    expect(await h.conversations.regenerate(_hostA), isFalse);
+    expect(h.runtime.error, 'notConfigured');
+    expect(h.runtime.phase, AgentPhase.failed);
+    expect(h.draft.goal, 'keep this draft');
+    expect(h.store.attempts, greaterThan(saves));
+    expect(h.store.records.single.entries.map((entry) => entry.text), [
+      'earlier user regen-rejected',
+      'earlier answer regen-rejected',
+    ]);
+    expect(h.model.requests, isEmpty);
+    expect(h.backend.prepared, isEmpty);
+  });
+
+  for (final protocol in ModelProtocol.values) {
+    for (final largeResult in [false, true]) {
+      test('regeneration keeps the real goal in encoded ${protocol.name} requests with '
+          '${largeResult ? 'oversized shared output' : 'a 16 KiB question'}', () async {
+        final question = largeResult ? 'Explain the shared load result' : 'q' * 16384;
+        final shared = largeResult ? 'old shared output ' * 1024 : 'shared load result';
+        final attachment = AgentAttachment.text(id: 'question', name: 'question.txt', text: 'question attachment');
+        final h = await _create(
+          initial: [
+            _record(
+              'regen-bounded',
+              destination: _profile(protocol: protocol).identity,
+              entries: [
+                ConversationEntry(kind: ConversationEntryKind.user, text: question, attachments: [attachment]),
+                ConversationEntry(
+                  kind: ConversationEntryKind.execution,
+                  capability: 'agent.diagnose',
+                  state: 'completed',
+                  text: shared,
+                ),
+                const ConversationEntry(kind: ConversationEntryKind.assistant, text: 'old answer'),
+              ],
+            ),
+          ],
+        );
+        h.profile = _profile(protocol: protocol);
+        h.conversations.select('regen-bounded');
+        expect(await h.conversations.regenerate(_hostA), isTrue);
+        final request = h.model.requests.single;
+        final encoded = jsonDecode(jsonEncode(encodeModelRequest(request))) as Map;
+        final blocks = ((encoded['messages'] as List).last as Map)['content'] as List;
+        final input = jsonDecode((blocks.first as Map)['text'] as String) as Map;
+        expect(input['goal'], question);
+        expect(input['responseMode'], 'answerOnly');
+        final history = input['conversationHistory'] as Map;
+        expect(history['truncated'], isTrue);
+        expect((history['entries'] as List).every((entry) => entry['text'] != question), isTrue);
+        expect(request.messages.single.attachments.single, same(attachment));
+        expect(jsonDecode((blocks[1] as Map)['text'] as String)['text'], attachment.content);
+        expect(request.tools, isEmpty);
+        expect(h.backend.prepared, isEmpty);
+        expect(h.runtime.messages.map((entry) => entry.text), [question, 'A safe answer']);
+        expect(h.conversations.current!.entries.map((entry) => entry.text), [question, shared, 'A safe answer']);
+      });
+    }
+  }
 
   test('withdraw restores the last question and keeps executed records out of the next context', () async {
     final h = await _create(

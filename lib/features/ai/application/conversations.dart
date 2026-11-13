@@ -429,9 +429,6 @@ class AgentConversations extends ChangeNotifier {
     return true;
   }
 
-  static const _regenerateGoal =
-      'Answer the last user message in conversationHistory again. Do not repeat the question.';
-
   /// Produces a new answer without tools, private outputs, approvals or remote work.
   Future<bool> regenerate(HostId? host) async {
     final record = current;
@@ -441,12 +438,13 @@ class AgentConversations extends ChangeNotifier {
     final assistant = _lastAssistantIndex;
     if (assistant < 0) return false;
     final previous = record.entries;
+    final question = previous[_lastUserIndex];
     _records[_records.indexOf(record)] = _withEntries(record, [...previous]..removeAt(assistant));
     runtime.discardLastAnswer();
     final sendingId = record.id;
     _turnConversation = sendingId;
     final work = runtime.startConversation(
-      _regenerateGoal,
+      question.text,
       AgentScope(
         hosts: [?host],
         discoverHosts: false,
@@ -458,11 +456,13 @@ class AgentConversations extends ChangeNotifier {
       previous.sublist(0, assistant),
       answerOnly: true,
       appendGoal: false,
+      attachments: question.attachments,
     );
     _wasBusy = runtime.busy;
     if (!runtime.busy) {
       _replaceRecord(record, previous);
       runtime.restoreConversation(previous, failure: runtime.error);
+      await _persist();
       _emit();
       return false;
     }
@@ -471,6 +471,7 @@ class AgentConversations extends ChangeNotifier {
     if (runtime.error != null) {
       _replaceRecord(record, previous);
       runtime.restoreConversation(previous, failure: runtime.error);
+      await _persist();
       _emit();
       return false;
     }

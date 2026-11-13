@@ -60,6 +60,7 @@ AppError? _stopped(RequestContext context) {
   if (context.deadline case final deadline? when !DateTime.now().isBefore(deadline)) {
     return const AppError('deadlineExceeded');
   }
+  if (!context.isCurrent) return const AppError('scopeChanged');
   return null;
 }
 
