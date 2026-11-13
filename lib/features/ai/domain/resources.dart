@@ -5,6 +5,7 @@ const agentResourceCapabilities = {
   'session.close',
   'session.reconnect',
   'workspace.split',
+  'workspace.focus',
   'workspace.renameTab',
   'workspace.closeTabs',
   'transfer.cancel',

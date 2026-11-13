@@ -127,17 +127,24 @@ class AppAgentResources implements AgentResourceReader {
 
   AgentResourceSnapshot? _workspace(String capability, Map<String, Object?> args) {
     final state = workspace(), current = sessions();
-    final rawTab = args['tabId'];
+    final rawTab = args['tabId'], rawPane = args['paneId'];
+    final focus = capability == 'workspace.focus';
+    if (focus && rawTab == null && rawPane == null) {
+      return AgentResourceSnapshot(
+        hosts: const [],
+        binding: jsonEncode(['view', args['view'] ?? 'vault']),
+        details: {'view': args['view'] ?? 'vault'},
+      );
+    }
     final tab = rawTab is String ? state.tabs.where((t) => t.id == TabId(rawTab)).firstOrNull : state.activeTab;
     if (tab == null) return null;
     final tabTargets = capability == 'workspace.closeTabs'
         ? state.tabsToClose(tab.id, TabCloseScope.values.asNameMap()[args['scope']] ?? TabCloseScope.others)
         : [tab];
     final leafTargets = <Leaf>[];
-    if (capability == 'workspace.closeTabs' || capability == 'session.close' && rawTab != null) {
+    if (capability == 'workspace.closeTabs' || capability == 'session.close' && rawTab != null && rawPane == null) {
       leafTargets.addAll(tabTargets.expand((t) => t.layout.leaves));
     } else {
-      final rawPane = args['paneId'];
       final leaf = rawPane is String
           ? tab.layout.leaves.where((l) => l.pane == PaneId(rawPane)).firstOrNull
           : tab.layout.focusedLeaf;
@@ -153,7 +160,7 @@ class AppAgentResources implements AgentResourceReader {
       final createsShell = capability == 'workspace.split' || capability == 'session.reconnect';
       if (createsShell && session.isLocal) return null;
       final host = session.sshHost;
-      if (host != null) {
+      if (host != null && !focus) {
         final saved = hosts().where((h) => h.id == host.id).firstOrNull;
         if (saved == null || host.transient) return null;
         if (createsShell && ConnectionManager.keyOf(host) != ConnectionManager.keyOf(saved)) return null;

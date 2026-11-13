@@ -98,6 +98,48 @@ void main() {
     expect(resources.resolve('session.close', {})!.binding, isNot(split.binding));
   });
 
+  test('explicit pane actions bind only that pane and reject stale or mismatched IDs', () {
+    final first = state.tabs.first;
+    state = WorkspaceState(
+      tabs: [
+        first.withLayout(first.layout.split(const PaneId('pa'), SplitAxis.horizontal, const PaneId('pb'), b.id)!),
+        ...state.tabs.skip(1),
+      ],
+      active: first.id,
+    );
+    final args = <String, Object?>{'tabId': 'a', 'paneId': 'pa'};
+    final close = resources.resolve('session.close', args)!;
+    expect(close.hosts, [_a.id]);
+    expect((close.details['sessions'] as List).single['paneId'], 'pa');
+    expect(resources.resolve('session.close', {'tabId': 'a'})!.hosts, [_a.id, _b.id]);
+    for (final capability in ['session.close', 'session.reconnect', 'workspace.split', 'workspace.focus']) {
+      expect(resources.resolve(capability, {'tabId': 'b', 'paneId': 'pa'}), isNull);
+      expect(resources.resolve(capability, {'tabId': 'a', 'paneId': 'gone'}), isNull);
+    }
+    b.status = SessionStatus.failed;
+    final before = resources.resolve('session.reconnect', {'tabId': 'a', 'paneId': 'pb'})!;
+    b.status = SessionStatus.idle;
+    expect(resources.resolve('session.reconnect', {'tabId': 'a', 'paneId': 'pb'})!.binding, isNot(before.binding));
+    state = WorkspaceState(tabs: [first, ...state.tabs.skip(1)], active: first.id);
+    expect(resources.resolve('session.reconnect', {'tabId': 'a', 'paneId': 'pb'}), isNull);
+  });
+
+  test('focus binds the target without granting SSH access and page focus works with no active tab', () {
+    final args = <String, Object?>{'tabId': 'b', 'paneId': 'pb'};
+    final before = resources.resolve('workspace.focus', args)!;
+    expect(before.hosts, isEmpty);
+    expect((before.details['sessions'] as List).single['sessionId'], b.id.value);
+    b.status = SessionStatus.failed;
+    expect(resources.resolve('workspace.focus', args)!.binding, isNot(before.binding));
+    state = const WorkspaceState();
+    final vault = resources.resolve('workspace.focus', {})!;
+    final files = resources.resolve('workspace.focus', {'view': 'files'})!;
+    expect(vault.hosts, isEmpty);
+    expect(files.hosts, isEmpty);
+    expect(vault.binding, isNot(files.binding));
+    expect(resources.resolve('workspace.focus', {'paneId': 'pb'}), isNull);
+  });
+
   test('close tabs binds every affected host and the tab order', () {
     final args = <String, Object?>{'tabId': 'a', 'scope': 'right'};
     final before = resources.resolve('workspace.closeTabs', args)!;
@@ -127,6 +169,7 @@ void main() {
   test('Agent cannot split or reconnect a local terminal', () {
     for (final capability in ['workspace.split', 'session.reconnect']) {
       expect(resources.resolve(capability, {'tabId': 'local'}), isNull);
+      expect(resources.resolve(capability, {'tabId': 'local', 'paneId': 'pl'}), isNull);
       expect(resources.resolve(capability, {'tabId': 'b'})!.hosts, [_b.id]);
     }
   });

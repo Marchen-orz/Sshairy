@@ -55,12 +55,24 @@ List<Capability> workspaceCapabilities(Ref ref) {
         'type': 'object',
         'properties': {
           'tabId': {'type': 'string'},
+          'paneId': {'type': 'string'},
         },
       },
       agentExposed: true,
       (a, _) async {
-        final id = a.optional<String>('tabId');
-        id == null ? workspace().closeFocused() : workspace().closeTab(TabId(id));
+        final id = a.optional<String>('tabId'), pane = a.optional<String>('paneId');
+        if (pane != null) {
+          final tab = id == null ? ref.read(workspaceProvider).activeTab : _tab(ref, TabId(id));
+          if (tab == null) return const Err(AppError('notFound', detail: 'tab'));
+          final leaf = _leaf(tab, pane);
+          if (leaf == null) return const Err(AppError('notFound', detail: 'pane'));
+          workspace().closePane(tab.id, leaf.pane);
+        } else if (id == null) {
+          workspace().closeFocused();
+        } else {
+          if (_tab(ref, TabId(id)) == null) return const Err(AppError('notFound', detail: 'tab'));
+          workspace().closeTab(TabId(id));
+        }
         return const Ok(null);
       },
     ),
@@ -71,6 +83,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         'type': 'object',
         'properties': {
           'tabId': {'type': 'string', 'description': 'omit for the host vault or the view'},
+          'paneId': {'type': 'string'},
           'view': {
             'type': 'string',
             'enum': ['vault', 'files'],
@@ -80,10 +93,14 @@ List<Capability> workspaceCapabilities(Ref ref) {
       },
       agentExposed: true,
       (a, _) async {
-        final id = a.optional<String>('tabId');
-        if (id != null) {
-          if (_tab(ref, TabId(id)) == null) return const Err(AppError('notFound', detail: 'tab'));
-          workspace().activate(TabId(id));
+        final id = a.optional<String>('tabId'), pane = a.optional<String>('paneId');
+        if (id != null || pane != null) {
+          final tab = id == null ? ref.read(workspaceProvider).activeTab : _tab(ref, TabId(id));
+          if (tab == null) return const Err(AppError('notFound', detail: 'tab'));
+          final leaf = _leaf(tab, pane);
+          if (leaf == null) return const Err(AppError('notFound', detail: 'pane'));
+          workspace().focusPane(tab.id, leaf.pane);
+          workspace().activate(tab.id);
         } else if (a.optional<String>('view') == 'files') {
           workspace().showFiles();
         } else {
@@ -111,7 +128,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
       },
       agentExposed: true,
-      (a, _) async {
+      (a, context) async {
         final rawAxis = a.optional<String>('axis'), rawSide = a.optional<String>('side');
         final axis = SplitAxis.values.asNameMap()[rawAxis], side = PaneSide.values.asNameMap()[rawSide];
         if ((rawAxis != null && axis == null) || (rawSide == null && axis == null)) {
@@ -121,13 +138,17 @@ List<Capability> workspaceCapabilities(Ref ref) {
         final id = a.optional<String>('tabId');
         final tab = id == null ? ref.read(workspaceProvider).activeTab : _tab(ref, TabId(id));
         if (tab == null) return const Err(AppError('cannotSplit'));
-        final pane = a.optional<String>('paneId');
+        final leaf = _leaf(tab, a.optional<String>('paneId'));
+        if (leaf == null) return const Err(AppError('notFound', detail: 'pane'));
+        if (context.origin == Origin.agent && workspace().session(leaf.session)?.isLocal == true) {
+          return const Err(AppError('notExposed'));
+        }
         final added = workspace().splitPane(
           tab.id,
-          pane == null ? tab.layout.focused : PaneId(pane),
+          leaf.pane,
           side ?? (axis == SplitAxis.horizontal ? PaneSide.right : PaneSide.bottom),
         );
-        return added == null ? const Err(AppError('cannotSplit')) : const Ok(null);
+        return added == null ? const Err(AppError('cannotSplit')) : Ok({'tabId': tab.id.value, 'paneId': added.value});
       },
     ),
     FunctionCapability(
@@ -189,14 +210,19 @@ List<Capability> workspaceCapabilities(Ref ref) {
         'type': 'object',
         'properties': {
           'tabId': {'type': 'string', 'description': 'omit for the active tab'},
+          'paneId': {'type': 'string'},
         },
       },
       agentExposed: true,
-      (a, _) async {
+      (a, context) async {
         final id = a.optional<String>('tabId');
         final tab = id == null ? ref.read(workspaceProvider).activeTab : _tab(ref, TabId(id));
-        final s = tab == null ? null : workspace().session(tab.layout.focusedLeaf.session);
-        if (s == null) return const Err(AppError('notFound', detail: 'tab'));
+        if (tab == null) return const Err(AppError('notFound', detail: 'tab'));
+        final leaf = _leaf(tab, a.optional<String>('paneId'));
+        if (leaf == null) return const Err(AppError('notFound', detail: 'pane'));
+        final s = workspace().session(leaf.session);
+        if (s == null) return const Err(AppError('notFound', detail: 'session'));
+        if (context.origin == Origin.agent && s.isLocal) return const Err(AppError('notExposed'));
         if (!s.canReconnect) return const Err(AppError('cannotReconnect'));
         unawaited(s.connect());
         return const Ok(null);
@@ -267,6 +293,9 @@ List<Capability> workspaceCapabilities(Ref ref) {
 }
 
 WorkspaceTab? _tab(Ref ref, TabId id) => ref.read(workspaceProvider).tabs.where((t) => t.id == id).firstOrNull;
+
+Leaf? _leaf(WorkspaceTab tab, String? pane) =>
+    pane == null ? tab.layout.focusedLeaf : tab.layout.leaves.where((leaf) => leaf.pane == PaneId(pane)).firstOrNull;
 
 List<PaletteEntry> workspacePaletteEntries(PaletteContext c) {
   final l = c.l;

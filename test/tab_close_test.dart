@@ -1,17 +1,47 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/capabilities/workspace.dart';
+import 'package:sshairy/app/ai_resources.dart';
 import 'package:sshairy/features/capabilities/api.dart';
+import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/workspace/api.dart';
-import 'package:sshairy/features/workspace/domain/layout.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
 import 'package:sshairy/foundation/result.dart';
+
+class _Prompts implements ConnectPrompts {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError('No authentication prompts expected');
+}
+
+class _NoPty implements LocalPtyFactory {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError('No local process may start');
+}
+
+class _PendingApproval implements AgentAuthority {
+  _PendingApproval(this.resolveBinding);
+  final String? Function() resolveBinding;
+  final approval = Completer<void>();
+  String? binding;
+
+  @override
+  Future<Result<void>> authorize(Capability capability, Map<String, Object?> args, RequestContext context) async {
+    binding = resolveBinding();
+    await approval.future;
+    return const Ok(null);
+  }
+
+  @override
+  Future<Result<void>> revalidate(Capability capability, Map<String, Object?> args, RequestContext context) async =>
+      binding != null && binding == resolveBinding() ? const Ok(null) : const Err(AppError('scopeChanged'));
+}
 
 void main() {
   late Directory dir;
@@ -203,6 +233,150 @@ void main() {
       expect(state.tabs.map((t) => sessions[t.layout.focusedLeaf.session]!.host.id), [hostOf[ids[3]], hostOf[ids[4]]]);
       expect(sessions.values.every((s) => s.status == SessionStatus.idle && !s.autoConnect), isTrue);
     });
+  });
+
+  test('split returns its pane, focus selects that exact pane and close preserves its sibling', () async {
+    final c = container();
+    final ws = c.read(workspaceProvider.notifier);
+    final target = ws.openHost(c.read(hostsProvider).first);
+    final left = c.read(workspaceProvider).activeTab!.layout.focusedLeaf;
+    final dispatcher = CapabilityDispatcher(c.read(Provider((ref) => workspaceCapabilities(ref))));
+    Future<Result<Object?>> call(String id, Map<String, Object?> args) =>
+        dispatcher.dispatch(id, args, RequestContext(Origin.palette));
+    final result =
+        (await call('workspace.split', {
+              'tabId': target.value,
+              'paneId': left.pane.value,
+              'axis': 'horizontal',
+            }) as Ok<Object?>).value
+            as Map;
+    expect(result['tabId'], target.value);
+    final right = c.read(workspaceProvider).activeTab!.layout.focusedLeaf;
+    expect(result['paneId'], right.pane.value);
+    expect(right.pane, isNot(left.pane));
+    final other = ws.openHost(c.read(hostsProvider).last);
+    expect(await call('workspace.focus', {'tabId': target.value, 'paneId': left.pane.value}), isA<Ok<Object?>>());
+    expect(c.read(workspaceProvider).active, target);
+    expect(c.read(workspaceProvider).activeTab!.layout.focused, left.pane);
+    expect(await call('session.close', {'paneId': right.pane.value}), isA<Ok<Object?>>());
+    expect(c.read(workspaceProvider).tabs.map((tab) => tab.id), [target, other]);
+    expect(c.read(workspaceProvider).activeTab!.layout.leaves.single.session, left.session);
+    expect(ws.session(left.session), isNotNull);
+    expect(ws.session(right.session), isNull);
+    expect(await call('session.close', {'tabId': other.value}), isA<Ok<Object?>>());
+    expect(c.read(workspaceProvider).tabs.single.id, target);
+  });
+
+  test('explicit missing or foreign panes never fall back to the focused pane', () async {
+    final c = container();
+    final ids = openTabs(c);
+    final state = c.read(workspaceProvider), sessions = c.read(terminalSessionsProvider);
+    final foreign = state.tabs.first.layout.focused.value;
+    final dispatcher = CapabilityDispatcher(c.read(Provider((ref) => workspaceCapabilities(ref))));
+    for (final capability in ['session.close', 'session.reconnect', 'workspace.focus', 'workspace.split']) {
+      for (final pane in ['gone', foreign]) {
+        final result = await dispatcher.dispatch(capability, {
+          'tabId': ids[2].value,
+          'paneId': pane,
+          if (capability == 'workspace.split') 'axis': 'horizontal',
+        }, RequestContext(Origin.palette));
+        expect((result as Err<Object?>).error.code, 'notFound');
+        expect(c.read(workspaceProvider), same(state));
+        expect(c.read(terminalSessionsProvider), same(sessions));
+      }
+    }
+  });
+
+  test('closing an approved pane while approval waits cannot close its surviving sibling', () async {
+    final c = container();
+    final ws = c.read(workspaceProvider.notifier);
+    final tab = ws.openHost(c.read(hostsProvider).first);
+    final left = c.read(workspaceProvider).activeTab!.layout.focusedLeaf;
+    expect(ws.split(SplitAxis.horizontal), isTrue);
+    final right = c.read(workspaceProvider).activeTab!.layout.focusedLeaf;
+    ws.focusPane(tab, left.pane);
+    final args = <String, Object?>{'tabId': tab.value, 'paneId': right.pane.value};
+    final resources = AppAgentResources(
+      workspace: () => c.read(workspaceProvider),
+      sessions: () => c.read(terminalSessionsProvider),
+      forwards: () => const [],
+      forwardBinding: (_) => null,
+      transfers: () => const [],
+      transferBinding: (_) => null,
+      hosts: () => c.read(hostsProvider),
+      hostRevision: () => 0,
+    );
+    final authority = _PendingApproval(() => resources.resolve('session.close', args)?.binding);
+    final dispatcher = CapabilityDispatcher(c.read(Provider((ref) => workspaceCapabilities(ref))));
+    final work = dispatcher.dispatch('session.close', args, RequestContext(Origin.agent, authority: authority));
+    expect(authority.binding, isNotNull);
+    ws.closePane(tab, right.pane);
+    authority.approval.complete();
+    expect(((await work) as Err<Object?>).error.code, 'scopeChanged');
+    expect(c.read(workspaceProvider).activeTab!.layout.leaves.single.session, left.session);
+    expect(ws.session(left.session), isNotNull);
+  });
+
+  test('reconnect targets an unfocused SSH pane without reconnecting its sibling', () async {
+    var dials = 0;
+    final manager = ConnectionManager((_, _, _) async {
+      dials++;
+      throw const ConnectError(ConnectFailure.auth);
+    });
+    final c = ProviderContainer(
+      overrides: [dataDirProvider.overrideWithValue(dir.path), connectionManagerProvider.overrideWithValue(manager)],
+    );
+    addTearDown(() async {
+      await settle(c);
+      c.dispose();
+      manager.closeAll();
+    });
+    final ws = c.read(workspaceProvider.notifier);
+    final tab = ws.openHost(c.read(hostsProvider).first);
+    final left = c.read(workspaceProvider).activeTab!.layout.focusedLeaf;
+    expect(ws.split(SplitAxis.horizontal), isTrue);
+    final right = c.read(workspaceProvider).activeTab!.layout.focusedLeaf;
+    final leftSession = ws.session(left.session)!, rightSession = ws.session(right.session)!;
+    await rightSession.connect(_Prompts());
+    expect(rightSession.canReconnect, isTrue);
+    expect(leftSession.canReconnect, isFalse);
+    ws.focusPane(tab, left.pane);
+    final dispatcher = CapabilityDispatcher(c.read(Provider((ref) => workspaceCapabilities(ref))));
+    final result = await dispatcher.dispatch('session.reconnect', {
+      'tabId': tab.value,
+      'paneId': right.pane.value,
+    }, RequestContext(Origin.palette));
+    expect(result, isA<Ok<Object?>>());
+    for (var i = 0; i < 20 && dials < 2; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(dials, 2);
+    expect(leftSession.status, SessionStatus.idle);
+    expect(c.read(workspaceProvider).activeTab!.layout.focused, left.pane);
+  });
+
+  test('Agent pane handlers cannot create or reconnect a local shell', () async {
+    final c = ProviderContainer(
+      overrides: [dataDirProvider.overrideWithValue(dir.path), localPtyProvider.overrideWithValue(_NoPty())],
+    );
+    addTearDown(() async {
+      await settle(c);
+      c.dispose();
+    });
+    final ws = c.read(workspaceProvider.notifier);
+    final tab = ws.openLocal(const LocalShell(kind: LocalShellKind.cmd, executable: r'C:\Windows\System32\cmd.exe'));
+    final pane = c.read(workspaceProvider).activeTab!.layout.focused;
+    final capabilities = c.read(Provider((ref) => workspaceCapabilities(ref)));
+    final before = c.read(terminalSessionsProvider);
+    for (final capability in ['workspace.split', 'session.reconnect']) {
+      final result = await capabilities.firstWhere((entry) => entry.id == capability).invoke({
+        'tabId': tab.value,
+        'paneId': pane.value,
+        if (capability == 'workspace.split') 'axis': 'horizontal',
+      }, RequestContext(Origin.agent));
+      expect((result as Err<Object?>).error.code, 'notExposed');
+      expect(c.read(terminalSessionsProvider), same(before));
+    }
   });
 
   test('workspace.closeTabs serves the palette and the agent, and rejects bad input', () async {
