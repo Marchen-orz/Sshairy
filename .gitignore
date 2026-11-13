@@ -56,3 +56,7 @@ app.*.map.json
 
 # Design notes and working logs stay local.
 /docs/
+
+# Agent instructions stay local.
+/CLAUDE.md
+/AGENTS.md
