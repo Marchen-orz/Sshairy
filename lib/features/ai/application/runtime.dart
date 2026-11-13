@@ -34,6 +34,11 @@ class AgentChatEntry extends AgentTimelineEntry {
   bool reasoningReceived = false, reasoningActive = false;
 }
 
+/// Marks where earlier context was compacted; display only, never saved or sent to the model.
+class AgentContextNotice extends AgentTimelineEntry {
+  AgentContextNotice();
+}
+
 class AgentExecution extends AgentTimelineEntry {
   AgentExecution(this.id, this.capability, this.target, this.command, this.cwd);
   final String id, capability;
@@ -655,6 +660,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
               );
         if (history.prepare(profile, _system, tools, estimateBytes: estimate)) {
           contextCompacted = true;
+          _timeline.add(AgentContextNotice());
           _emit();
         }
         final inputTokens = history.estimatedTokens(profile, _system, tools, estimateBytes: estimate);

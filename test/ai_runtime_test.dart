@@ -2186,6 +2186,10 @@ void main() {
 
     expect(h.runtime.phase, AgentPhase.completed);
     expect(h.runtime.contextCompacted, isTrue);
+    final timeline = h.runtime.timeline, notice = timeline.indexWhere((entry) => entry is AgentContextNotice);
+    expect(timeline.whereType<AgentContextNotice>(), hasLength(1));
+    expect(timeline[notice - 1], isA<AgentExecution>());
+    expect((timeline[notice + 1] as AgentChatEntry).text, 'result preserved');
     expect(h.runtime.contextUsedTokens, greaterThan(0));
     expect(h.runtime.contextUsageRatio, inInclusiveRange(0, 1));
     expect(compactNotifications, greaterThan(0));
@@ -2409,8 +2413,9 @@ void main() {
             state: state,
             exitCode: exitCode,
           ),
+          AgentContextNotice() => null,
         },
-    ];
+    ].nonNulls.toList();
 
     h.runtime.restoreConversation(entries);
     h.runtime.approve(true, expected: oldApproval);

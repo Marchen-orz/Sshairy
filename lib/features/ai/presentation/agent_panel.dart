@@ -425,8 +425,6 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                 ),
                               if (conversations.current?.historyTruncated ?? false)
                                 Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
-                              if (runtime.contextCompacted)
-                                Text(l.aiAgentContextCompacted, style: theme.textTheme.bodySmall),
                               if (_attachmentError != null)
                                 Text(
                                   _attachmentMessage(l),
@@ -1235,6 +1233,15 @@ class _ConversationState extends State<_Conversation> {
                 key: ValueKey(entry.id),
                 execution: entry,
                 revealVersion: _highlighted == entry.id ? _revealVersion : 0,
+              );
+            } else if (entry is AgentContextNotice) {
+              row = Padding(
+                key: const ValueKey('ai-agent-context-compacted'),
+                padding: const EdgeInsets.only(bottom: Space.sm),
+                child: Text(
+                  AppLocalizations.of(context).aiAgentContextCompacted,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               );
             } else {
               final message = entry as AgentChatEntry;

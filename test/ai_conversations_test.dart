@@ -1059,7 +1059,8 @@ void main() {
         expect(await h.conversations.regenerate(_hostA), isTrue);
         final request = h.model.requests.single;
         final encoded = jsonDecode(jsonEncode(encodeModelRequest(request))) as Map;
-        final blocks = ((encoded['messages'] as List).last as Map)['content'] as List;
+        final wire = encoded[protocol == ModelProtocol.responses ? 'input' : 'messages'] as List;
+        final blocks = (wire.last as Map)['content'] as List;
         final input = jsonDecode((blocks.first as Map)['text'] as String) as Map;
         expect(input['goal'], question);
         expect(input['responseMode'], 'answerOnly');

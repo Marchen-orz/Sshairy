@@ -336,6 +336,26 @@ void main() {
     expect(tester.widget<TextButton>(picker).onPressed, isNotNull);
   });
 
+  testWidgets('context compaction notice sits in the conversation where it happened', (tester) async {
+    final runtime = _Runtime();
+    await _panel(tester, runtime);
+    runtime.entries.addAll([
+      AgentChatEntry('user', 'First'),
+      AgentContextNotice(),
+      AgentChatEntry('user', 'Second'),
+      AgentContextNotice(),
+    ]);
+    runtime.refresh();
+    await tester.pumpAndSettle();
+    final notice = find.byKey(const ValueKey('ai-agent-context-compacted'));
+    expect(notice, findsNWidgets(2));
+    expect(find.text('Earlier context was compacted to stay within the model limit.'), findsNWidgets(2));
+    final first = tester.getTopLeft(find.text('First')).dy, second = tester.getTopLeft(find.text('Second')).dy;
+    // The conversation list is reversed, so the finder lists the newest row first.
+    expect(tester.getTopLeft(notice.last).dy, inExclusiveRange(first, second));
+    expect(tester.getTopLeft(notice.first).dy, greaterThan(second));
+  });
+
   testWidgets('disabled AI has a brand welcome and no request or mode selector', (tester) async {
     final runtime = _Runtime();
     await _panel(tester, runtime, enabled: false);
