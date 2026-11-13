@@ -743,19 +743,27 @@ class _ReasoningOptions extends ConsumerWidget {
           ),
         ),
         Expanded(
-          child: Wrap(
-            spacing: Space.xs,
-            children: [
-              for (final option in ReasoningEffort.values)
-                ChoiceChip(
-                  key: ValueKey('ai-agent-reasoning-${option.name}'),
-                  label: Text(_reasoningLabel(l, option)),
-                  selected: option == effort,
-                  showCheckmark: false,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: locked ? null : (_) => ref.read(selectedAgentReasoningProvider.notifier).select(option),
-                ),
-            ],
+          // One row at any width: the options shrink together instead of wrapping.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final option in ReasoningEffort.values) ...[
+                  if (option != ReasoningEffort.values.first) const SizedBox(width: Space.xs),
+                  ChoiceChip(
+                    key: ValueKey('ai-agent-reasoning-${option.name}'),
+                    label: Text(_reasoningLabel(l, option)),
+                    labelPadding: const EdgeInsets.symmetric(horizontal: Space.xs),
+                    selected: option == effort,
+                    showCheckmark: false,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: locked ? null : (_) => ref.read(selectedAgentReasoningProvider.notifier).select(option),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ],

@@ -10,7 +10,7 @@
 | 工具链 | Flutter 3.47.9 stable（c197ca5199）、Dart 3.13.7；Windows 11 客户端与作者 Ubuntu 服务器 |
 | 最近验证 | 自动回归、真实 SSH/SFTP、原生窗口与 Profile 的结果和各自边界统一见 TESTING §6 |
 | 当前问题 | 同首页 Release 历史 RSS 峰值 593.3 MiB，完整分配路径未定位；隔离预算对照没有证实修复，见 [MEMORY_USAGE](MEMORY_USAGE.md) |
-| 当前包 | `dist/sshairy-0.1.0+1-windows-x64-20261113-180206-104.zip`；校验使用同名 `.zip.sha256`，构建与内容验证见 TESTING §6 |
+| 当前包 | `dist/sshairy-0.1.0+1-windows-x64-20261113-181908-962.zip`；校验使用同名 `.zip.sha256`，构建与内容验证见 TESTING §6 |
 
 ## 优先待办
 
@@ -80,7 +80,7 @@
 - [x] [Agent 学习导读](AI_AGENT_GUIDE.md)：以 2026-11-13 代码完整重写，覆盖架构取舍、39 项工具、一次 turn 时序、分层审批、资源绑定/TOCTOU、协议完整性、intent/未知结果、上下文/附件/轻量入口；附源码路线、面试介绍、追问与练习。实现、限制、规划与测试证据分开陈述。
 - [x] 首批模型接入：独立配置/窄凭据、Anthropic Messages 与 OpenAI-compatible Chat Completions、增量 SSE/取消、有界请求和侧栏文本解释。
 - [x] 增加 OpenAI Responses 协议（无状态、仅函数工具、仅 `response.completed` 视为完成）；协议类错误提示附带具体错误码以便定位；左侧栏入口显示“Airy Agent”。
-- [x] 思考强度增加“关闭”；行内生成与补全固定关闭思考以降低响应时间（Anthropic `thinking.type=disabled`，OpenAI 系 `none`），审批仍跟随模型。
+- [x] 思考强度增加“关闭”；行内生成与补全固定关闭思考以降低响应时间（Anthropic `thinking.type=disabled`，OpenAI 系 `none`），审批仍跟随模型；模型弹层里的思考强度选项固定单行，窄时整体缩小而不换行。
 - [x] 首批确定性授权：schema/能力目录、scope/revision/deadline、精确批准对象、实际连接身份绑定和执行前重验；取消/改配置/改 Key/连接身份变化使旧授权失效。
 - [x] 首批执行与数据：真实双流独立 exec、持久 intent/未知恢复、固定 system/storage 投影、有界 OutputStore、批准动作包含有界结果使用、原始缓冲与共享投影隔离、应用级 Stop/退出接线；终端上下文/快照/草稿窄端口已建立。
 - [ ] 首批真实模型效果验收：本轮以隔离配置、脚本化模型和真实 SSH 验证工具闭环；尚未重测真实模型的诊断、行内生成与历史 AI 补全质量，以及 AI 开关同条件 Release 资源。旧评测不能作为模型效果评分，见 TESTING §6。

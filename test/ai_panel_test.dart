@@ -301,6 +301,10 @@ void main() {
     final picker = find.descendant(of: find.byKey(const ValueKey('ai-agent-model')), matching: find.byType(TextButton));
     await tester.tap(picker);
     await tester.pumpAndSettle();
+    expect({
+      for (final effort in ReasoningEffort.values)
+        tester.getTopLeft(find.byKey(ValueKey('ai-agent-reasoning-${effort.name}'))).dy,
+    }, hasLength(1));
     await tester.tap(find.byKey(const ValueKey('ai-agent-reasoning-medium')));
     await tester.pumpAndSettle();
     expect(container.read(effectiveAgentProfileProvider)!.reasoningEffort, ReasoningEffort.medium);
