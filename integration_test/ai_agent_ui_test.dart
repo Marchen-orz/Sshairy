@@ -119,8 +119,15 @@ void main() {
       await _close(tester, dir);
     });
     server.listen((request) async {
-      received = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
       final response = request.response;
+      if (request.method == 'GET') {
+        // The model menu lists models when it opens; the chat stream below is only for POST.
+        response.headers.contentType = ContentType.json;
+        response.write(jsonEncode({'data': <Object>[]}));
+        await response.close();
+        return;
+      }
+      received = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
       response.bufferOutput = false;
       response.headers.contentType = ContentType('text', 'event-stream', charset: 'utf-8');
       response.write(
