@@ -67,6 +67,7 @@ Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pin
 | Tabby | 1.91 s | 480.8 MiB | 481.4 MiB |
 | Termius | 0.78 s | 1670.8 MiB | 557.8 MiB |
 | MobaXterm | 3.54 s | 104.4 MiB | 47.1 MiB |
+| Xshell | 0.24 s | 11.3 MiB | 102.6 MiB |
 
 <!-- /benchmark-table -->
 

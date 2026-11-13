@@ -19,7 +19,7 @@ python -I -X utf8 tool/readme/make_images.py
 
 [benchmarks.json](benchmarks.json) supplies the performance charts and stores versions, startup samples, memory, application folder sizes, download URLs and artifact hashes.
 
-Measurements taken on 2026-11-13. Startup: one warm-up followed by five launches, median time to the first visible main window of at least 600 × 400. Memory: whole-process-tree USS 15 seconds after that window appears. Runs are sequential, with separate profiles and no remote SSH connections. Default local tabs and bundled helper processes are included. Application folder sizes count the extracted application files; the README's Sshairy ZIP size refers to the original application bundle.
+Measurements taken on 2026-11-13, with Xshell added on 2026-11-14. Startup: one warm-up followed by five launches, median time to the first visible main window of at least 600 × 400. Memory: whole-process-tree USS 15 seconds after that window appears. Runs are sequential and use no remote SSH connections. Portable and Electron clients use separate profiles; Xshell uses the installed application described below. Default local tabs and bundled helper processes are included. Application folder sizes count extracted or installed application files; the README's Sshairy ZIP size refers to the original application bundle.
 
 | Client | Version | Startup | Idle USS | App folder | Processes |
 |---|---|---:|---:|---:|---:|
@@ -32,10 +32,11 @@ Measurements taken on 2026-11-13. Startup: one warm-up followed by five launches
 | Tabby | 1.0.238 | 1.913 s | 480.8 MiB | 481.4 MiB | 5 |
 | Termius | 10.4.1 | 0.784 s | 1670.8 MiB | 557.8 MiB | 7 |
 | MobaXterm | 26.6 | 3.545 s | 104.4 MiB | 47.1 MiB | 2 |
+| Xshell | 8.0.0120 | 0.242 s | 11.3 MiB | 102.6 MiB | 1 |
 
 Sshairy, Netcatty and FinalShell retain their earlier measurements. WindTerm, electerm, Wave, Tabby, Termius and MobaXterm were downloaded from official releases and run for this revision. WindTerm uses its fresh portable tree; the Electron clients use explicit user-data directories, redirected home/AppData paths and supported application-specific profile variables. Tabby and Termius are extracted from their official installers; Wave and electerm use portable archives. Termius is measured without signing in to an account. MobaXterm uses its Home portable release with an explicit temporary INI path. Test processes are closed after each run.
 
-Xshell Free 8.0.0120p was downloaded from the [official vendor CDN](https://cdn.netsarang.net/bf4f1d11/Xshell-8.0.0120p.exe) (47,636,296 bytes; SHA256 `bb33c314e281c6b32a16e1861d52173553979cb84267dafe96068bb08625d8ef`). Its InstallShield installer reported `1152: Error extracting to the temporary location`; neither extraction nor a second administrative extraction attempt produced an application folder. Only its actual download size is used. There are no startup or idle-memory values for Xshell in the README comparison.
+Xshell was manually installed by the author from the official Windows distribution; the installed registry version is 8.0.0120. It is measured from `C:/Program Files (x86)/NetSarang/Xshell 8/Xshell.exe` after the author exited their existing instance. The documented `-newwin` option is used, and only benchmark-created processes are closed. Home/AppData environment paths are redirected, but no undocumented data-folder switch or independent Windows known-folder isolation is assumed. The previously downloaded [official installer](https://cdn.netsarang.net/bf4f1d11/Xshell-8.0.0120p.exe) is 47,636,296 bytes (SHA256 `bb33c314e281c6b32a16e1861d52173553979cb84267dafe96068bb08625d8ef`).
 
 The README's comparison to Netcatty rounds `1 - 131.3 / 446.8 = 70.6%` to 71% lower idle memory and `2.604 / 0.624 = 4.17` to 4× the startup speed.
 
@@ -46,7 +47,7 @@ The baseline harness is [measure_startup.py](measure_startup.py). For Electron c
 - Wave: `WAVETERM_DATA_HOME`, `WAVETERM_CONFIG_HOME`, `WAVETERM_NOCONFIRMQUIT=1`.
 - electerm: `ELECTERM_REGISTER_PROTOCOLS=false`.
 - MobaXterm: `-i <temporary-profile>/MobaXterm.ini` ([official command-line documentation](https://mobaxterm.mobatek.net/documentation.html)).
-- Xshell's [official folder documentation](https://netsarang.atlassian.net/wiki/spaces/ENSUP/pages/177471571/Changing%2Bthe%2BUser%2BData%2BFolder%2B-%2BXshell) describes a setting in the UI; no undocumented profile switch was assumed.
+- Xshell uses the documented [`-newwin` option](https://netsarang.atlassian.net/wiki/spaces/ENSUP/pages/2237306095/Xshell+Command+Line+Options). Its [folder documentation](https://netsarang.atlassian.net/wiki/spaces/ENSUP/pages/177471571/Changing%2Bthe%2BUser%2BData%2BFolder%2B-%2BXshell) describes a setting in the UI; no undocumented profile switch was assumed.
 
 ## Downloads and folder contents
 

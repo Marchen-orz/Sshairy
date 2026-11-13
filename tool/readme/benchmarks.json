@@ -143,6 +143,25 @@
       ],
       "artifact_url": "https://download.mobatek.net/2662026100713843/MobaXterm_Portable_v26.6.zip",
       "artifact_sha256": "03c827c3467518de45542acba8caae63d951aede4b479962bf065b4df0d8a845"
+    },
+    {
+      "name": "Xshell",
+      "version": "8.0.0120",
+      "startup_seconds": 0.242,
+      "idle_mib": 11.3,
+      "unpacked_mib": 102.6,
+      "download_mib": 45.4,
+      "processes": 1,
+      "startup_samples": [
+        0.26,
+        0.242,
+        0.229,
+        0.238,
+        0.249
+      ],
+      "artifact_url": "https://cdn.netsarang.net/bf4f1d11/Xshell-8.0.0120p.exe",
+      "artifact_sha256": "bb33c314e281c6b32a16e1861d52173553979cb84267dafe96068bb08625d8ef",
+      "measured_on": "2026-11-14"
     }
   ]
 }

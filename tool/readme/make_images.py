@@ -233,7 +233,7 @@ def bars(image, rows, x, y, width, maximum, ticks, unit, digits, step=140, label
         end = left + plot_width * value / maximum
         draw.rounded_rectangle((left, cy - 11, end, cy + 11), 8,
                                fill=BLUE if name == 'Sshairy' else NEUTRAL)
-        draw.rectangle((left, cy - 11, left + 7, cy + 11), fill=BLUE if name == 'Sshairy' else NEUTRAL)
+        draw.rectangle((left, cy - 11, min(left + 7, end), cy + 11), fill=BLUE if name == 'Sshairy' else NEUTRAL)
         label = f'{value:.{digits}f}{unit}'
         text(image, (end + 20, cy), label, 34, 'semibold' if name == 'Sshairy' else 'regular', anchor='lm')
 
