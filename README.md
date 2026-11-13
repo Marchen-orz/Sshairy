@@ -62,11 +62,12 @@ Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pin
 | Netcatty | 2.60 s | 446.8 MiB | 471.8 MiB |
 | FinalShell | 7.55 s | 333.9 MiB | 189.4 MiB |
 | WindTerm | 1.33 s | 73.9 MiB | 75.8 MiB |
-| electerm | 0.40 s | 476.0 MiB | 365.9 MiB |
+| electerm | 2.98 s | 414.6 MiB | 365.9 MiB |
 | Wave Terminal | 2.34 s | 500.2 MiB | 616.1 MiB |
 | Tabby | 1.91 s | 480.8 MiB | 481.4 MiB |
-| Termius | 0.78 s | 1670.8 MiB | 557.8 MiB |
+| Termius | 9.74 s | 1115.3 MiB | 557.8 MiB |
 | MobaXterm | 3.54 s | 104.4 MiB | 47.1 MiB |
+| Xshell | 3.01 s | 35.8 MiB | 102.6 MiB |
 
 <!-- /benchmark-table -->
 
