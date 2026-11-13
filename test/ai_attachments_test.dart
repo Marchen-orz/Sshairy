@@ -76,10 +76,14 @@ void main() {
         messages: [ModelMessage(ModelRole.user, text: 'inspect attachments', attachments: attachments)],
       );
       final encoded = encodeModelRequest(request);
-      final content = ((encoded['messages'] as List).single as Map)['content'] as List;
-      expect(content.where((value) => (value as Map)['type'] == 'text'), hasLength(3));
+      final responses = protocol == ModelProtocol.responses;
+      final content = ((encoded[responses ? 'input' : 'messages'] as List).single as Map)['content'] as List;
+      expect(content.where((value) => (value as Map)['type'] == (responses ? 'input_text' : 'text')), hasLength(3));
       final image = content.last as Map;
-      if (protocol == ModelProtocol.openai) {
+      if (responses) {
+        expect(image['type'], 'input_image');
+        expect(image['image_url'], startsWith('data:image/png;base64,'));
+      } else if (protocol == ModelProtocol.openai) {
         expect(image['type'], 'image_url');
         expect((image['image_url'] as Map)['url'], startsWith('data:image/png;base64,'));
       } else {
