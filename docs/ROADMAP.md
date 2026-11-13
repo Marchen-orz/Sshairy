@@ -6,11 +6,11 @@
 
 | 项 | 状态 |
 |---|---|
-| 阶段 | M1–M3 主干已有实现，一期验收与部分原计划功能仍未收齐；M4 的 39 项工具及此前 Windows/Ubuntu 脚本化模型闭环已有验证。本轮完成全局审核与学习导读重写，发现批准后异步边界、Stop、job 和对话/协议问题，尚未修复，见下方审核待办 |
+| 阶段 | M1–M3 主干已有实现，一期验收与部分原计划功能仍未收齐；M4 的 39 项工具及此前 Windows/Ubuntu 脚本化模型闭环已有验证。本轮全局审核发现的批准后异步边界、Stop、job、对话与协议问题已逐项修复并补定向回归，真实 SFTP、原生剪贴板/拖入与真实模型仍未验，见下方审核记录与 TESTING §6 |
 | 工具链 | Flutter 3.47.9 stable（c197ca5199）、Dart 3.13.7；Windows 11 客户端与作者 Ubuntu 服务器 |
 | 最近验证 | 自动回归、真实 SSH/SFTP、原生窗口与 Profile 的结果和各自边界统一见 TESTING §6 |
 | 当前问题 | 同首页 Release 历史 RSS 峰值 593.3 MiB，完整分配路径未定位；隔离预算对照没有证实修复，见 [MEMORY_USAGE](MEMORY_USAGE.md) |
-| 当前包 | `dist/sshairy-0.1.0+1-windows-x64-20261113-014541-639.zip`；校验使用同名 `.zip.sha256`，构建与内容验证见 TESTING §6 |
+| 当前包 | `dist/sshairy-0.1.0+1-windows-x64-20261113-141910-884.zip`；校验使用同名 `.zip.sha256`，构建与内容验证见 TESTING §6 |
 
 ## 优先待办
 
@@ -24,22 +24,22 @@
 
 ## Agent 全局审核（2026-11-13）
 
-结论：模块分工合理，39 项模型工具均有实际 handler，主要业务入口已接通；审批的主机/窗口/动作分层明确，但批准后的异步等待和任务交接仍有实现缺口。以下全部尚未修复。P1 优先处理授权与取消，P2 处理可靠性与体验；源码路径已静态复核，动态复现范围只以 TESTING §6 为准。不能由此前常规流程通过推定这些竞态已覆盖。
+结论：模块分工合理，39 项模型工具均有实际 handler，主要业务入口已接通；审批的主机/窗口/动作分层明确。下列缺口已逐项修复并补定向回归，结果与未覆盖范围见 TESTING §6；每条末尾为修复状态，位置为审核时的旧行号。
 
-- [ ] **P1 传输等待期间可能改用新服务器配置。** `transfer.enqueue` 没有把批准的路由身份交给任务，只保存 HostId/路径；排队后修改同 HostId 的地址/账号/跳板，执行时会读取新配置。应把授权绑定传到真正 acquire/复制的入口；同时明确接受任务后取消权怎样交接，不把应用队列自有令牌当作原 turn 的令牌。位置：`lib/app/capabilities/files.dart:248`、`lib/features/files/application/transfers.dart:107/245`。
-- [ ] **P1 文件工具等待 SFTP 后未重新核对批准路由。** 连接池发现旧租约失效会按当前主机配置重试，handler 取得文件系统后仅查取消/期限；可能在 200 ms 轮询撤权前按新路由执行旧批准。应核对实际取得的租约与批准身份，不能只在 handler 外重验。位置：`lib/app/capabilities/files.dart:59/76`、`lib/features/files/application/file_systems.dart:75/99`。
-- [ ] **P1 Stop 后在途转发仍可能首次创建监听。** `forward.start` 未把 RequestContext 的取消/期限传入 Forwards，等待连接后只看独立 `_Run.cancel`。应支持启动阶段取消，区分已交接的持久隧道与尚未完成的启动。位置：`lib/app/capabilities/forwarding.dart:105`、`lib/features/forwarding/application/forwarding.dart:195`。
-- [ ] **P1 Stop 后 SFTP 仍可能发送新的重命名/发布请求。** `rename` 内部 await 目标 stat 后没有取消检查；取消发生在等待中，随后仍发 RENAME，新文件发布也经过此路径。应把取消传到复合操作内部的最后派发点。位置：`lib/features/connections/adapters/sftp_fs.dart:109`、`lib/app/capabilities/files.dart:555`。
-- [ ] **P2 后台 job 未统一参与配额与同主机串行。** 只拦同 target 的第二个 job，不拦同主机普通 exec/写入，也没有全局 3 个活动工具/job 的限制。需统一名额与资源互斥，read/status/Stop 不得被名额阻塞。位置：`lib/features/ai/application/runtime.dart:1423/1465/1569`。
-- [ ] **P2 后台 job 的真实结束状态缺少可查记录。** turn finally 只取消、不等待 job 退出与终态落盘，先释放 target；job 的 exit/unknown 未关联执行历史，下一 turn 清表。应保留“启动已接受”和“任务最终结果”两种状态，settled 等待自有工作收束。位置：`lib/features/ai/application/runtime.dart:553/793/1469`。
-- [ ] **P2 文件读取批准比卡片展示的范围更宽。** query 缓存键不含 offset/内容身份，同路径后续页及外部改档后的读取会复用批准。应逐项审批，或明确整文件授权与内容基线失效。位置：`lib/features/ai/application/runtime.dart:1053/1195`。
-- [ ] **P2 人工命令卡没有显示执行超时。** 参数绑定与审批模型包含 timeout，AgentApproval/人工卡却丢失该字段，相同命令的 1 秒/300 秒请求无法区分。位置：`lib/features/ai/application/runtime.dart:164/1821`、`lib/features/ai/presentation/agent_panel.dart:1561`。
-- [ ] **P2 重新生成失败后，磁盘未同步恢复原回答。** busy→false 先保存失败快照，随后只回滚内存，直到后续保存/正常退出 flush 才可能补救；崩溃或强退会暴露差异。位置：`lib/features/ai/application/conversations.dart:215/471`。
-- [ ] **P2 重新生成可能丢掉真正要回答的问题。** 只把固定重答指令作为 goal，真实问题留在逆序 16 KiB 历史中；长结果或刚好 16,384 字节的问题可被裁掉。应先固定保留最后真实问题与附件，再裁其他历史。位置：`lib/features/ai/application/conversations.dart:432/448`、`lib/features/ai/application/runtime.dart:428`。
-- [ ] **P2 结果生成与最终编码/累计预算不一致。** host_list 无分页、job_read 按原始文本取页，合法结果可能超过整组 32 KiB，触发 outputLimit；各工具组分别计数，又未检查下一请求携带的全部旧结果。应按最终编码分页，并统一每请求累计投影限额。位置：`lib/features/ai/application/runtime.dart:736/774/1287/1535`。
-- [ ] **P2 Anthropic 连续签名更新被拼接。** 官方 signature_delta 为替换，当前与文字一起追加，后续工具续聊可能携带无效签名。已用实际解析器/编码器复现，尚未修复。位置：`lib/features/ai/adapters/model_provider.dart:581/596`。
-- [ ] **P2 Anthropic 对话用量显示虚高。** 显示估算为每条 opaque 预留 1 MiB，实际 prepare 走编码估算；短回复就可显示满格。应共用预算估算路径，不能把预留上限当已使用。已用真实解析器生成的短回复复现。位置：`lib/features/ai/application/context.dart:30/219`、`lib/features/ai/application/runtime.dart:659/702`。
-- [ ] **功能缺口：精确管理另一分屏。** terminal_list 返回 paneId，focus/close/reconnect 却缺少完整的 pane 目标参数，split 也未返回新 PaneId；模型无法可靠完成“保留左侧，只重连右侧”。位置：`lib/app/capabilities/workspace.dart:51/68/125/186`。
+- [x] **P1 传输等待期间可能改用新服务器配置。** `transfer.enqueue` 没有把批准的路由身份交给任务，只保存 HostId/路径；排队后修改同 HostId 的地址/账号/跳板，执行时会读取新配置。应把授权绑定传到真正 acquire/复制的入口；同时明确接受任务后取消权怎样交接，不把应用队列自有令牌当作原 turn 的令牌。位置：`lib/app/capabilities/files.dart:248`、`lib/features/files/application/transfers.dart:107/245`。 已修：Agent 入队带冻结授权/取消/期限，复制、冲突、发布与 .part 清理每步重验；已接收任务不随 turn 自然结束取消，重启不重放。
+- [x] **P1 文件工具等待 SFTP 后未重新核对批准路由。** 连接池发现旧租约失效会按当前主机配置重试，handler 取得文件系统后仅查取消/期限；可能在 200 ms 轮询撤权前按新路由执行旧批准。应核对实际取得的租约与批准身份，不能只在 handler 外重验。位置：`lib/app/capabilities/files.dart:59/76`、`lib/features/files/application/file_systems.dart:75/99`。 已修：取得文件系统时与取得后、每个新副作用前都核对批准路由，旧租约重试不再沿用旧批准。
+- [x] **P1 Stop 后在途转发仍可能首次创建监听。** `forward.start` 未把 RequestContext 的取消/期限传入 Forwards，等待连接后只看独立 `_Run.cancel`。应支持启动阶段取消，区分已交接的持久隧道与尚未完成的启动。位置：`lib/app/capabilities/forwarding.dart:105`、`lib/features/forwarding/application/forwarding.dart:195`。 已修：启动请求继承取消/期限/授权，监听成功后才把持久隧道交给转发管理器。
+- [x] **P1 Stop 后 SFTP 仍可能发送新的重命名/发布请求。** `rename` 内部 await 目标 stat 后没有取消检查；取消发生在等待中，随后仍发 RENAME，新文件发布也经过此路径。应把取消传到复合操作内部的最后派发点。位置：`lib/features/connections/adapters/sftp_fs.dart:109`、`lib/app/capabilities/files.dart:555`。 已修：rename/replace/create/append 在每次 await 后、请求发出前重验。SFTP 层只经本地与假文件系统回归，未用真实 SFTP 复测。
+- [x] **P2 后台 job 未统一参与配额与同主机串行。** 只拦同 target 的第二个 job，不拦同主机普通 exec/写入，也没有全局 3 个活动工具/job 的限制。需统一名额与资源互斥，read/status/Stop 不得被名额阻塞。位置：`lib/features/ai/application/runtime.dart:1423/1465/1569`。 已修：job 与活动工具共享 3 个名额，同主机的 shell/写入互斥，read/status/Stop 不受名额阻塞。
+- [x] **P2 后台 job 的真实结束状态缺少可查记录。** turn finally 只取消、不等待 job 退出与终态落盘，先释放 target；job 的 exit/unknown 未关联执行历史，下一 turn 清表。应保留“启动已接受”和“任务最终结果”两种状态，settled 等待自有工作收束。位置：`lib/features/ai/application/runtime.dart:553/793/1469`。 已修：turn 结束先取消并等待 job 退出与终态落盘再释放 target，jobId 关联原执行卡。
+- [x] **P2 文件读取批准比卡片展示的范围更宽。** query 缓存键不含 offset/内容身份，同路径后续页及外部改档后的读取会复用批准。应逐项审批，或明确整文件授权与内容基线失效。位置：`lib/features/ai/application/runtime.dart:1053/1195`。 已修：每次读取按完整参数逐项审批，不再按路径缓存。
+- [x] **P2 人工命令卡没有显示执行超时。** 参数绑定与审批模型包含 timeout，AgentApproval/人工卡却丢失该字段，相同命令的 1 秒/300 秒请求无法区分。位置：`lib/features/ai/application/runtime.dart:164/1821`、`lib/features/ai/presentation/agent_panel.dart:1561`。 已修：审批卡显示执行超时。
+- [x] **P2 重新生成失败后，磁盘未同步恢复原回答。** busy→false 先保存失败快照，随后只回滚内存，直到后续保存/正常退出 flush 才可能补救；崩溃或强退会暴露差异。位置：`lib/features/ai/application/conversations.dart:215/471`。 已修：回滚后等待保存完成再返回。
+- [x] **P2 重新生成可能丢掉真正要回答的问题。** 只把固定重答指令作为 goal，真实问题留在逆序 16 KiB 历史中；长结果或刚好 16,384 字节的问题可被裁掉。应先固定保留最后真实问题与附件，再裁其他历史。位置：`lib/features/ai/application/conversations.dart:432/448`、`lib/features/ai/application/runtime.dart:428`。 已修：以真实问题和附件重答，不再依赖历史里的问题。
+- [x] **P2 结果生成与最终编码/累计预算不一致。** host_list 无分页、job_read 按原始文本取页，合法结果可能超过整组 32 KiB，触发 outputLimit；各工具组分别计数，又未检查下一请求携带的全部旧结果。应按最终编码分页，并统一每请求累计投影限额。位置：`lib/features/ai/application/runtime.dart:736/774/1287/1535`。 已修：host_list 分页、job_read 按最终编码分页，累计 32 KiB 交给上下文整理。
+- [x] **P2 Anthropic 连续签名更新被拼接。** 官方 signature_delta 为替换，当前与文字一起追加，后续工具续聊可能携带无效签名。审核时已用实际解析器/编码器复现。位置：`lib/features/ai/adapters/model_provider.dart:581/596`。 已修：签名按替换处理。
+- [x] **P2 Anthropic 对话用量显示虚高。** 显示估算为每条 opaque 预留 1 MiB，实际 prepare 走编码估算；短回复就可显示满格。应共用预算估算路径，不能把预留上限当已使用。已用真实解析器生成的短回复复现。位置：`lib/features/ai/application/context.dart:30/219`、`lib/features/ai/application/runtime.dart:659/702`。 已修：显示估算与预算共用编码估算。
+- [x] **功能缺口：精确管理另一分屏。** terminal_list 返回 paneId，focus/close/reconnect 却缺少完整的 pane 目标参数，split 也未返回新 PaneId；模型无法可靠完成“保留左侧，只重连右侧”。位置：`lib/app/capabilities/workspace.dart:51/68/125/186`。 已修：focus/close/reconnect 可带 paneId，split 返回 tabId/paneId，显式无效 pane 拒绝而不回退。
 
 已区分的限制：新主机/新终端下一 turn 才进入冻结目录、关闭已共享窗口导致旧上下文失效、session accepted 不等于 connected，均不是本轮新越权漏洞。typed 文本写入的 256 KiB 仍受整个模型参数 JSON 64 KiB 上限约束；OpenAI 默认 max_tokens 的既定策略对不支持该字段的官方 o 系列有兼容性限制，轻量/审批不能靠 Agent 强度覆盖解决。任意获批 shell 非服务器沙箱，SFTP 无通用 CAS，Stop 不保证远端进程树终止；这些限制不能靠客户端文案或审批模型消除。此前已列的 Evidence、验证工作流、撤销、导出、流程保存与真实模型评测继续保留，不混入已实现能力。
 
@@ -104,6 +104,7 @@
 - [x] 终端窗口上下文已接入四种模式：发送时冻结当前聚焦窗口并默认共享已知目录、提示符及近期命令/可靠结果；`terminal_list` 列出本 turn 全部已连接标签/分屏（含后台与本地 PTY，按 SessionId 分列、32 项分页）；`terminal_history_read` 重读当前窗口或经人工批准读取其他窗口，审批模型与全自动不能替代跨窗许可。读取不 prepare/探测/新开连接/执行，SSH 主机许可与本地会话许可分开；关闭/断线/重连/代次/历史修订/binding 变化使旧上下文失效，秘密整条过滤、未知结果不猜。上述回归与 M4d 定向回归已运行，见 TESTING §6。
 - [ ] 其余环境验收：跨窗审批的完整真实窗口组合（同主机多分屏、运行中/TUI、本地 PTY）、真实模型四档审批/五类诊断与轻量 JSON 效果、安全行尾图标、原生代码选择。默认窗口/屏幕及设置/文件/转发/布局已完成本轮实网通路；失效/拒绝/Stop/改配置与跨 turn 边界由定向自动回归覆盖，不能据此代替剩余原生与真实模型验收。
 - [x] Agent 显式附件：UTF-8 文本/代码/配置与 PNG/JPEG/WebP 图片，预览、移除、发送、草稿与撤回恢复、两协议编码及历史预算已有自动验证；Windows 软件内交互与发送置底通过，系统原生文件选择器待验。
+- [x] Agent 附件补充复制文件后粘贴（Ctrl+V，Windows 原生读 CF_HDROP）与拖入识别，三个入口共用既有校验和预览，普通文字粘贴不变，目录与不支持类型拒绝；附件按钮移到输入区左下角，思考强度移入模型弹层底部。自动回归与 Windows 软件内通过；原生剪贴板文件与真实鼠标拖入未做原生交互验证，见 TESTING §6。
 - [x] 思考强度设置默认值与 Agent 当前会话覆盖、运行中冻结、兼容协议参数、真实返回的有界摘要/活动状态；自动验证已运行，Windows 软件内验证见 TESTING §6。
 - [x] 设置工具返回界面语言中的字段与选项名称，公开键 schema 与 revision 校验恢复修改审批；复制/重试/撤回在整轮完成后显示，发送消息后滚动到底部，生成中手动翻历史不反复拉回。
 - [ ] M4a-1 其余：选区发送预览；M4a-2/3 的作者原生输入法/快捷键、真实模型与 SSH 输入环境验收。
@@ -123,4 +124,4 @@
 
 ## 最近交接
 
-2026-11-13：完成 Agent 全局只读审核与学习导读完整重写，39 项工具都有真实 handler，主要 ID 链可连接；设计方向合理，批准后的异步路由绑定、取消交接和 job 收束尚有缺口。按上方审核记录优先处理 P1，再处理对话重新生成、编码预算、协议签名和用量显示等 P2；本轮没有修改运行代码，待办未勾选为修复。临时纯 Dart 脚本调用真实解析/编码/预算函数，复现签名追加错误和 Anthropic 短回复用量虚高，并计算合法列表/历史的编码超限；其余竞态只作源码控制流复核，动态复现未跑。模块 imports 与文档检查见 TESTING §6，未重跑此前 507 项或 5 项软件内集成、未连接服务器/付费模型、未访问真实用户配置；原 zz_probe 未纳入。纯文档沿用现有包，不重新构建。导读包含通俗解释、完整任务时序、工具与审批矩阵、真实缺陷的设计教训、源码路线，以及面试介绍、追问和练习。
+2026-11-13：审核记录里的 P1/P2 与精确分屏缺口已全部修复并按主题提交：批准身份与取消/期限在传输、文件、转发、job 中逐步重验，重新生成、协议签名、用量估算同步修正；另加 Agent 附件粘贴/拖入，附件按钮移到输入区左下角，思考强度移入模型弹层底部。自动回归与 Windows 软件内集成已跑，数字与未覆盖范围见 TESTING §6。仍未验：真实 SFTP 对文件/传输/重命名的授权重验、Windows 原生剪贴板文件与真实拖入、真实服务器与付费模型；HEAD 上已有的 ai_reviewer_test 挂起与两项终端测试失败未调查。原 zz_probe 未纳入。已从原 Release 目录重建并校验新包。

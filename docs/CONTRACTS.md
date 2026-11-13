@@ -72,7 +72,7 @@ v0.2。本文定义应保持稳定的语义，不提供假装可编译的 Dart �
 - effect 分为查询、本地可逆变更、连接/执行、远程写入、秘密/安全管理；不能只用一项静态 low/high 判断全部参数。
 - 默认不向 AI 暴露。M4 经人工审阅选入工具目录；只导出安全 DTO，绝不通用序列化所有对象。
 - Typed UI façade 与 dispatcher 最终调用同一 application handler。校验和必要授权不能只写在 Widget 或 prompt 中。
-- RequestContext 来自应用装配：origin、operationId、deadline、cancellation 与 AgentAuthority；scope/目的地/精确批准由运行时绑定，模型参数不能伪造 origin=ui、authority、grant 或 approval。
+- RequestContext 来自应用装配：origin、operationId、deadline、cancellation 与 AgentAuthority；scope/目的地/精确批准由运行时绑定，模型参数不能伪造 origin=ui、authority、grant 或 approval。Agent 实际调用还携带本地同步存活检查，捕获批准时的模型配置和受影响主机完整路由/安全修订；业务用例在异步取得资源后、每次新副作用派发前检查，不从原 operation 的临时 prepared 表恢复授权。转发启动在监听成功前继承该请求取消/期限，完成后由 Forwards 拥有；传输入队后由 TransferManager 拥有，但仍保留该次明确 Stop、期限及批准路由失效检查，不能跟随 HostId 自动改用新连接。自然结束 turn 不撤销已交接的传输，重启后不得无批准自动重放 Agent 排队任务。
 - Agent 调度先按受限 schema 校验并深拷贝为不可变参数，拒绝未知字段/超预算；缺失 authority、未开放能力与安全管理能力直接拒绝。流程：解析与校验 → 解析实际目标/版本 → 策略 → 预览/审批（若需要）→ 执行前再次校验范围与修订 → handler → 安全结果/审计。
 - 审批绑定 capability/version、规范参数摘要、目标 ID、scope revision、有效期；参数或目标变化需要新批准，不能用 host label 替代 ID。主机变更在 handler 入口捕获库修订并传入 typed 用例的 expectedRevision，转发保存/删除捕获当前规则对象并在保存队列内比对；排在已有 UI 保存之后的旧操作返回 conflict，不能覆盖刚提交的新值。按路径移动主机时，创建分组与移动在同一主机库修订提交。
 - 并行读按资源限流；同一路径写入、同终端受控命令串行。同主机不同只读通道可并行，不设阻塞全应用的总锁。
@@ -84,7 +84,7 @@ M4d 向 Agent 开放的现有能力为：file.list/stat/read/write/mkdir/rename/
 
 Agent 文件读取先校验绝对路径与规范化后的真实路径，拒绝已知密钥/凭据/环境秘密位置；完整小文件严格解码 UTF-8 并做辅助秘密过滤后才分页，返回全文件 `sha256`。覆盖必须提供该值为 `expectedSha256`，暂存前及原子发布前均重读比对，变化返回 conflict；SFTP 检查与提交之间仍无原子 CAS。暂存文件先空建、设为 0600 并核验后才写内容，替换保留原权限；取消/期限在取得文件句柄、读取、目录递归及发布前重验，Stop 后不继续派发新删除或发布；递归删除至多 64 层、20,000 项，符号链接不跟随，超限保留未删部分。SFTP 池只给新操作复用 `isCurrent` 租约，配置变化时旧活动句柄保留至各自释放，不能关闭用户正在使用的通道；单个等待者取消只释放自身占用，晚到通道无人持有时立即关闭。Agent 目录列表最多扫描 10,000 项并明确 incomplete，分页不宣称完整目录快照。
 
-`workspace.split` 保留 axis（horizontal/vertical，向右/下分屏），可提供 tabId、paneId 与 side（left/right/top/bottom）固定目标和方向；typed UI 同样复用该用例，可带 expectedLayout 拒绝过期拖放。为命中 pane 的同一目标新建一个 shell，校验缺失/超限在创建前完成，布局单次发布/保存；新会话继续走原信任/认证或本地 PTY 流程，原会话不重启。
+`session.close/reconnect`、`workspace.focus` 可用 tabId/paneId 精确指定分屏，显式 pane 缺失或不属于该标签时拒绝，不回退到当前焦点；close 只关闭指定 pane，省略 pane 的原标签行为保留。`workspace.split` 返回新 tabId/paneId，保留 axis（horizontal/vertical，向右/下分屏），可提供 tabId、paneId 与 side（left/right/top/bottom）固定目标和方向；typed UI 同样复用该用例，可带 expectedLayout 拒绝过期拖放。为命中 pane 的同一目标新建一个 shell，校验缺失/超限在创建前完成，布局单次发布/保存；新会话继续走原信任/认证或本地 PTY 流程，原会话不重启。
 
 `workspace.moveTerminal` 接收 sourceTabId、可选 sourcePaneId、targetTabId、targetPaneId 与 side（left/right/top/bottom），搬移整个标签树或一个 pane，typed UI 可另带源/目标布局身份以拒绝过期拖放。`workspace.detachPane` 接收 tabId、paneId 与插入标签索引，将 pane 移到独立标签；均为 localChange，复用同一确定性布局校验，缺失/自包含/超限整次拒绝，不打开或关闭会话，不向 Agent 开放。几何可用性在 UI 检查，松开时重验；移动后资源所有者仍为 TerminalSessionManager。
 
