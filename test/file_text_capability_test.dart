@@ -70,6 +70,7 @@ class _Fs implements FileSystem, BoundedFileListing {
     Stream<Uint8List> data, {
     void Function(int written)? onProgress,
     CancellationToken? cancel,
+    void Function()? checkCurrent,
   }) async {
     if (files.containsKey(path)) throw const FsError(FsFailure.exists);
     final builder = BytesBuilder();
@@ -88,6 +89,7 @@ class _Fs implements FileSystem, BoundedFileListing {
     required int offset,
     void Function(int written)? onProgress,
     CancellationToken? cancel,
+    void Function()? checkCurrent,
   }) async {
     contentModes.add(modes[path]!);
     final builder = BytesBuilder()..add(files[path]!);
@@ -103,7 +105,8 @@ class _Fs implements FileSystem, BoundedFileListing {
   Future<void> chmod(String path, int mode) async => modes[path] = mode;
 
   @override
-  Future<void> rename(String from, String to) async {
+  Future<void> rename(String from, String to, {void Function()? checkCurrent}) async {
+    checkCurrent?.call();
     if (!files.containsKey(from)) throw const FsError(FsFailure.notFound);
     if (files.containsKey(to)) throw const FsError(FsFailure.exists);
     published.add(to);
@@ -112,7 +115,8 @@ class _Fs implements FileSystem, BoundedFileListing {
   }
 
   @override
-  Future<void> replace(String from, String to) async {
+  Future<void> replace(String from, String to, {void Function()? checkCurrent}) async {
+    checkCurrent?.call();
     if (!canReplace) throw const FsError(FsFailure.unsupported, 'atomicReplace');
     if (!files.containsKey(to)) throw const FsError(FsFailure.notFound);
     published.add(to);
@@ -147,6 +151,7 @@ class _Fs implements FileSystem, BoundedFileListing {
     required int maxScanned,
     bool Function(String name)? accept,
     CancellationToken? cancel,
+    void Function()? checkCurrent,
   }) async {
     scans++;
     scanLimit = maxScanned;

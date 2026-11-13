@@ -51,6 +51,7 @@ class TransferManager extends Notifier<List<Transfer>> {
 
   TransferUi? ui;
   final _jobs = <TransferId, _Job>{};
+  final _authorities = <TransferId, _TransferAuthority>{};
   final _policy = <String, Map<ConflictKind, ConflictChoice>>{};
   Future<void> _asking = Future.value();
   Timer? _flushTimer;
@@ -94,8 +95,15 @@ class TransferManager extends Notifier<List<Transfer>> {
     required List<String> paths,
     required Host? to,
     required String targetDir,
+    CancellationToken? cancel,
+    DateTime? deadline,
+    bool Function()? isAuthorized,
   }) {
     if (_closing || paths.isEmpty) return const [];
+    final authority = cancel == null && deadline == null && isAuthorized == null
+        ? null
+        : _TransferAuthority(cancel, deadline, isAuthorized);
+    if (authority != null && !authority.current) throw const OpFailure('scopeChanged');
     for (final h in [?from, ?to]) {
       _pool.remember(h);
     }
@@ -110,8 +118,14 @@ class TransferManager extends Notifier<List<Transfer>> {
           source: FileEnd(from?.id, p, label: from?.title ?? ''),
           target: FileEnd(to?.id, dstStyle.join(targetDir, srcStyle.name(p)), label: to?.title ?? ''),
           created: now,
+          needsAuthorization: isAuthorized != null,
         ),
     ];
+    if (authority != null) {
+      for (final transfer in added) {
+        _authorities[transfer.id] = authority;
+      }
+    }
     _set([...state, ...added]);
     _pump();
     return [for (final t in added) t.id];
@@ -228,7 +242,15 @@ class TransferManager extends Notifier<List<Transfer>> {
     final limit = ref.read(settingsProvider).get(SettingKeys.transferConcurrency);
     for (final id in runnable(state, global: limit, perHost: perHostTransfers)) {
       final t = byId(id)!;
-      final job = _Job(t.copyWith(state: TransferState.running));
+      final authority = _authorities[id];
+      if (t.needsAuthorization && authority == null || authority != null && !authority.current) {
+        _update(
+          id,
+          (t) => t.copyWith(state: TransferState.failed, error: () => 'scopeChanged', finished: () => DateTime.now()),
+        );
+        continue;
+      }
+      final job = _Job(t.copyWith(state: TransferState.running), authority);
       _jobs[id] = job;
       _replace(job.snapshot());
       _run(job);
@@ -241,14 +263,36 @@ class TransferManager extends Notifier<List<Transfer>> {
     FsHandle? src, dst;
     FileEntry? entry;
     final prompts = ui?.prompts ?? const NoPrompts();
+    Timer? validity;
     try {
-      src = await _pool.acquire(t.source.host, prompts);
       job.check();
-      dst = await _pool.acquire(t.target.host, prompts);
+      if (job.authority case final authority?) {
+        validity = Timer.periodic(const Duration(milliseconds: 200), (_) {
+          if (!authority.current) job.stop.cancel();
+        });
+      }
+      src = await _pool.acquire(
+        t.source.host,
+        prompts,
+        cancel: job.stop,
+        deadline: job.authority?.deadline,
+        isAuthorized: job.authority == null ? null : () => job.authority!.current,
+      );
+      job.currentHandles = () => src!.isCurrent;
+      job.check();
+      dst = await _pool.acquire(
+        t.target.host,
+        prompts,
+        cancel: job.stop,
+        deadline: job.authority?.deadline,
+        isAuthorized: job.authority == null ? null : () => job.authority!.current && src!.isCurrent,
+      );
+      job.currentHandles = () => src!.isCurrent && dst!.isCurrent;
       job.check();
       // Started only now: connecting may wait on a password dialog for as long as the user likes.
       job.startWatchdog(_touch);
       entry = await src.fs.stat(t.source.path);
+      job.check();
       if (entry == null) throw const OpFailure('sourceMissing');
       final copy = _Copy(this, job, src.fs, dst.fs);
       if (t.checkpoint case final cp?) {
@@ -289,6 +333,7 @@ class TransferManager extends Notifier<List<Transfer>> {
     } on Object catch (e) {
       _finish(job, TransferState.failed, error: 'failed', detail: '$e');
     } finally {
+      validity?.cancel();
       job.stopWatchdog();
       src?.release();
       dst?.release();
@@ -339,11 +384,20 @@ class TransferManager extends Notifier<List<Transfer>> {
   Future<bool> _cleanupPart(Transfer t) async {
     final cp = t.checkpoint;
     if (cp == null) return true;
+    final authority = _authorities[t.id];
+    if (t.needsAuthorization && authority == null || authority != null && !authority.current) return false;
     if (!partDerived(t, cp, styleOf(t.target.host))) return false;
     FsHandle? dst;
     try {
-      dst = await _pool.acquire(t.target.host, ui?.prompts ?? const NoPrompts());
+      dst = await _pool.acquire(
+        t.target.host,
+        ui?.prompts ?? const NoPrompts(),
+        cancel: authority?.cancel,
+        deadline: authority?.deadline,
+        isAuthorized: authority == null ? null : () => authority.current,
+      );
       if (await dst.fs.stat(cp.part) == null) return true;
+      if (authority != null && (!authority.current || !dst.isCurrent)) return false;
       await dst.fs.delete(cp.part);
       return true;
     } on Object {
@@ -464,10 +518,32 @@ class TransferManager extends Notifier<List<Transfer>> {
         if (t.state.active || t.checkpoint != null) t.batch,
     };
     _policy.removeWhere((batch, _) => !liveBatches.contains(batch));
+    final authorized = {
+      for (final t in kept)
+        if (t.state.active || t.checkpoint != null) t.id,
+    };
+    _authorities.removeWhere((id, authority) => !authorized.contains(id) || !authority.current);
     _file.write({
       'schemaVersion': 1,
       'transfers': [for (final t in kept) t.toJson()],
     });
+  }
+}
+
+class _TransferAuthority {
+  _TransferAuthority(this.cancel, this.deadline, this.isAuthorized);
+  final CancellationToken? cancel;
+  final DateTime? deadline;
+  final bool Function()? isAuthorized;
+
+  bool get current {
+    try {
+      return !(cancel?.isCancelled ?? false) &&
+          (deadline == null || DateTime.now().isBefore(deadline!)) &&
+          (isAuthorized?.call() ?? true);
+    } on Object {
+      return false;
+    }
   }
 }
 
@@ -485,7 +561,7 @@ class _PausedAt implements Exception {
 
 /// The mutable side of a running transfer; [snapshot] turns it into the immutable value listeners see.
 class _Job {
-  _Job(this.transfer)
+  _Job(this.transfer, this.authority)
     : state = transfer.state,
       total = transfer.total,
       totalFiles = transfer.totalFiles,
@@ -493,6 +569,8 @@ class _Job {
       checkpoint = transfer.checkpoint;
 
   final Transfer transfer;
+  final _TransferAuthority? authority;
+  bool Function()? currentHandles;
   final stop = CancellationToken();
 
   /// Stopping the source stream parks the copy; only single files may be parked.
@@ -514,6 +592,9 @@ class _Job {
 
   void check() {
     if (stop.isCancelled) throw const _Stopped();
+    if (authority != null && (!authority!.current || currentHandles?.call() == false)) {
+      throw const OpFailure('scopeChanged');
+    }
   }
 
   void progressed([int? to]) {
@@ -581,7 +662,9 @@ class _Copy {
     _job.progressed();
     var path = to;
     FileEntry? baseline;
+    _job.check();
     final existing = await _dst.stat(path);
+    _job.check();
     if (existing != null) {
       final kind = existing.isDir ? ConflictKind.fileOnDir : ConflictKind.file;
       switch (await _manager._decide(_job, Conflict(kind, path, existing, incoming))) {
@@ -590,7 +673,7 @@ class _Copy {
           _job.progressed(_job.bytes + (incoming.size ?? 0));
           return;
         case ConflictChoice.keepBoth:
-          path = await freeName(_dst, path, directory: false);
+          path = await freeName(_dst, path, directory: false, checkCurrent: _job.check);
         case ConflictChoice.replace:
           if (!_dst.canReplace) throw const OpFailure('replaceUnsupported');
           baseline = existing;
@@ -617,6 +700,7 @@ class _Copy {
         onProgress: (n) => _job.progressed(base + n),
         onPhase: (p) => _job.phase = p,
         cancel: _job.stop,
+        checkCurrent: _job.check,
         // A file inside a directory copy must not park mid-way, even if pause was asked for before the
         // source turned out to be a directory.
         pause: _job.singleFile == true ? _job.pause : null,
@@ -650,6 +734,7 @@ class _Copy {
           offset: cp.offset,
           onProgress: (n) => _job.progressed(cp.offset + n),
           cancel: _job.stop,
+          checkCurrent: _job.check,
         );
       } on FsError catch (e) {
         // append refuses a part whose length moved: the checkpoint is stale.
@@ -671,9 +756,9 @@ class _Copy {
     if (cp.replacing case final baseline?) {
       final now = await _dst.stat(cp.target);
       if (now == null || !now.sameAs(baseline)) throw const OpFailure('targetChanged');
-      await _dst.replace(cp.part, cp.target);
+      await _dst.replace(cp.part, cp.target, checkCurrent: _job.check);
     } else {
-      await _dst.rename(cp.part, cp.target);
+      await _dst.rename(cp.part, cp.target, checkCurrent: _job.check);
     }
     _job.check();
     _job.files++;
@@ -686,7 +771,9 @@ class _Copy {
     _job.phase = TransferPhase.scanning;
     _job.progressed();
     var root = to;
+    _job.check();
     final existing = await _dst.stat(root);
+    _job.check();
     if (existing != null) {
       final kind = existing.isDir ? ConflictKind.directory : ConflictKind.fileOnDir;
       final incoming = FileEntry(_src.style.name(from), FileKind.directory);
@@ -694,7 +781,7 @@ class _Copy {
         case ConflictChoice.merge:
           break;
         case ConflictChoice.keepBoth:
-          root = await freeName(_dst, root, directory: true);
+          root = await freeName(_dst, root, directory: true, checkCurrent: _job.check);
         case ConflictChoice.skip:
           _job.skipped++;
           return;
@@ -733,14 +820,19 @@ class _Copy {
     }
 
     _job.phase = TransferPhase.copying;
-    if (await _dst.stat(root) == null) await _dst.mkdir(root);
+    _job.check();
+    final rootEntry = await _dst.stat(root);
+    _job.check();
+    if (rootEntry == null) await _dst.mkdir(root);
     // A file standing where a directory should be keeps everything under it out.
     final blocked = <String>[];
     bool under(List<String> rel) => blocked.any((b) => rel.join('/').startsWith('$b/') || rel.join('/') == b);
     for (final rel in dirs) {
       if (under(rel)) continue;
       final path = _join(_dst.style, root, rel);
+      _job.check();
       final there = await _dst.stat(path);
+      _job.check();
       if (there == null) {
         await _dst.mkdir(path);
       } else if (!there.isDir) {
@@ -769,6 +861,7 @@ class _Copy {
   Stream<Uint8List> _until(Stream<Uint8List> data, {bool parkable = false}) async* {
     await for (final chunk in data) {
       if (_job.stop.isCancelled || (parkable && _job.pause.isCancelled)) return;
+      _job.check();
       yield chunk;
     }
   }

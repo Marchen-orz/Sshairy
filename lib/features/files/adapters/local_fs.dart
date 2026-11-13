@@ -64,9 +64,13 @@ class LocalFileSystem implements FileSystem {
   });
 
   @override
-  Future<void> rename(String from, String to) => _guard(() async {
-    if (await stat(to) != null) throw const FsError(FsFailure.exists);
+  Future<void> rename(String from, String to, {void Function()? checkCurrent}) => _guard(() async {
+    checkCurrent?.call();
+    final existing = await stat(to);
+    checkCurrent?.call();
+    if (existing != null) throw const FsError(FsFailure.exists);
     final type = await FileSystemEntity.type(from, followLinks: false);
+    checkCurrent?.call();
     await switch (type) {
       FileSystemEntityType.directory => Directory(from).rename(to),
       FileSystemEntityType.link => Link(from).rename(to),
@@ -79,7 +83,10 @@ class LocalFileSystem implements FileSystem {
 
   /// File.rename replaces the target in one step on Windows (MoveFileEx) and POSIX (rename).
   @override
-  Future<void> replace(String from, String to) => _guard(() => File(from).rename(to));
+  Future<void> replace(String from, String to, {void Function()? checkCurrent}) {
+    checkCurrent?.call();
+    return _guard(() => File(from).rename(to));
+  }
 
   @override
   Future<void> delete(String path) => _guard(() async {
@@ -113,14 +120,24 @@ class LocalFileSystem implements FileSystem {
     Stream<Uint8List> data, {
     void Function(int written)? onProgress,
     CancellationToken? cancel,
+    void Function()? checkCurrent,
   }) => _guard(() async {
+    void check() {
+      if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
+      checkCurrent?.call();
+    }
+
+    check();
     final file = File(path);
     await file.create(exclusive: true);
+    check();
     final raf = await file.open(mode: FileMode.writeOnly);
     var written = 0;
     try {
+      check();
       await for (final chunk in data) {
         if (cancel?.isCancelled ?? false) break;
+        checkCurrent?.call();
         await raf.writeFrom(chunk);
         written += chunk.length;
         onProgress?.call(written);
@@ -143,19 +160,29 @@ class LocalFileSystem implements FileSystem {
     required int offset,
     void Function(int written)? onProgress,
     CancellationToken? cancel,
+    void Function()? checkCurrent,
   }) => _guard(() async {
+    void check() {
+      if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
+      checkCurrent?.call();
+    }
+
+    check();
     final file = File(path);
     if (!await file.exists()) throw const FsError(FsFailure.notFound);
-    if (await file.length() != offset) {
-      throw FsError(FsFailure.partInvalid, '${await file.length()}/$offset');
-    }
+    check();
+    final length = await file.length();
+    check();
+    if (length != offset) throw FsError(FsFailure.partInvalid, '$length/$offset');
     // FileMode.append is the only non-truncating random-access write mode; writeOnly would zero the part.
     final raf = await file.open(mode: FileMode.append);
     var written = 0;
     try {
+      check();
       await raf.setPosition(offset);
       await for (final chunk in data) {
         if (cancel?.isCancelled ?? false) break;
+        checkCurrent?.call();
         await raf.writeFrom(chunk);
         written += chunk.length;
         onProgress?.call(written);

@@ -40,17 +40,28 @@ Future<int> writeVerified(
   void Function(TransferPhase phase)? onPhase,
   CancellationToken? cancel,
   CancellationToken? pause,
+  void Function()? checkCurrent,
 }) async {
   if (replacing != null && !fs.canReplace) throw const OpFailure('replaceUnsupported');
   final style = fs.style;
   final partPath = part ?? style.join(style.parent(path), '.${style.name(path)}.${newId().substring(0, 6)}.part');
-  var published = false, paused = false;
+  var published = false, paused = false, owned = true;
   try {
-    final written = await fs.create(partPath, data, onProgress: onProgress, cancel: cancel);
+    checkCurrent?.call();
+    final int written;
+    try {
+      written = await fs.create(partPath, data, onProgress: onProgress, cancel: cancel, checkCurrent: checkCurrent);
+    } on FsError catch (e) {
+      // A refused exclusive create means the name was somebody else's; anything later is ours to clean up.
+      if (e.kind == FsFailure.exists) owned = false;
+      rethrow;
+    }
     if (cancel?.isCancelled ?? false) return written;
+    checkCurrent?.call();
     if (pause?.isCancelled ?? false) {
       // A settled length, not an aborted write: whatever the file system confirmed is on disk.
       final settled = await fs.stat(partPath);
+      checkCurrent?.call();
       if (settled == null || settled.kind != FileKind.file || settled.size != written) {
         throw const OpFailure('partInvalid');
       }
@@ -59,6 +70,7 @@ Future<int> writeVerified(
     }
     onPhase?.call(TransferPhase.verifying);
     final copied = await fs.stat(partPath);
+    checkCurrent?.call();
     // A length check catches truncation, not corruption; it is not a hash.
     if (copied?.size != written || (expectedSize != null && written != expectedSize)) {
       throw OpFailure('sizeMismatch', '$written/${expectedSize ?? '?'}');
@@ -66,27 +78,31 @@ Future<int> writeVerified(
     onPhase?.call(TransferPhase.publishing);
     if (replacing != null) {
       final now = await fs.stat(path);
+      checkCurrent?.call();
       if (now == null || !now.sameAs(replacing)) throw const OpFailure('targetChanged');
-      await fs.replace(partPath, path);
+      await fs.replace(partPath, path, checkCurrent: checkCurrent);
     } else {
-      await fs.rename(partPath, path);
+      await fs.rename(partPath, path, checkCurrent: checkCurrent);
     }
     published = true;
     return written;
   } finally {
-    if (!published && !paused) {
+    if (owned && !published && !paused) {
       await fs.delete(partPath).timeout(const Duration(seconds: 5)).then((_) {}, onError: (Object _) {});
     }
   }
 }
 
 /// The first `name (n)` beside [path] that is free.
-Future<String> freeName(FileSystem fs, String path, {required bool directory}) async {
+Future<String> freeName(FileSystem fs, String path, {required bool directory, void Function()? checkCurrent}) async {
   final style = fs.style;
   final dir = style.parent(path), name = style.name(path);
   for (var n = 1; n < 1000; n++) {
     final candidate = style.join(dir, keepBothName(name, n, directory: directory));
-    if (await fs.stat(candidate) == null) return candidate;
+    checkCurrent?.call();
+    final existing = await fs.stat(candidate);
+    checkCurrent?.call();
+    if (existing == null) return candidate;
   }
   throw const OpFailure('exists');
 }
@@ -123,11 +139,13 @@ Future<void> deleteTree(
   FileEntry entry, {
   CancellationToken? cancel,
   DateTime? deadline,
+  void Function()? checkCurrent,
 }) async {
   var visited = 0;
   void check() {
     if (cancel?.isCancelled ?? false) throw const OpFailure('cancelled');
     if (deadline != null && !DateTime.now().isBefore(deadline)) throw const OpFailure('deadlineExceeded');
+    checkCurrent?.call();
   }
 
   Future<void> remove(String at, FileEntry item, int depth) async {

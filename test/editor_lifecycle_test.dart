@@ -1,4 +1,7 @@
 import 'dart:async';
+
+import 'package:sshairy/foundation/cancellation.dart';
+
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,7 +45,13 @@ class _Pool extends FileSystems {
   @override
   Host? host(HostId id) => hostValue;
   @override
-  Future<FsHandle> acquire(HostId? id, ConnectPrompts prompts) async {
+  Future<FsHandle> acquire(
+    HostId? id,
+    ConnectPrompts prompts, {
+    CancellationToken? cancel,
+    DateTime? deadline,
+    bool Function()? isAuthorized,
+  }) async {
     if (offline) throw const FsError(FsFailure.lost);
     return FsHandle(const LocalFileSystem(), () {});
   }

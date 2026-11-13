@@ -175,6 +175,7 @@ class Transfer {
     this.conflict,
     this.directory = false,
     this.checkpoint,
+    this.needsAuthorization = false,
   });
 
   final TransferId id;
@@ -209,6 +210,9 @@ class Transfer {
 
   /// Where a paused or interrupted single-file transfer stopped.
   final TransferCheckpoint? checkpoint;
+
+  /// An Agent approval is kept only in memory; restored tasks need a new explicit submission.
+  final bool needsAuthorization;
 
   bool get upload => source.local && !target.local;
   bool get download => !source.local && target.local;
@@ -249,10 +253,18 @@ class Transfer {
     conflict: conflict == null ? this.conflict : conflict(),
     directory: directory ?? this.directory,
     checkpoint: checkpoint == null ? this.checkpoint : checkpoint(),
+    needsAuthorization: needsAuthorization,
   );
 
   /// A fresh attempt from the start, in a batch of its own so earlier "apply to all" answers do not carry over.
-  Transfer restart(String batch) => Transfer(id: id, batch: batch, source: source, target: target, created: created);
+  Transfer restart(String batch) => Transfer(
+    id: id,
+    batch: batch,
+    source: source,
+    target: target,
+    created: created,
+    needsAuthorization: needsAuthorization,
+  );
 
   /// Only what history needs: no handles, no secrets, no conflict in progress.
   Map<String, Object?> toJson() => {
@@ -272,6 +284,7 @@ class Transfer {
     if (finished != null) 'finished': finished!.toIso8601String(),
     if (directory) 'directory': true,
     if (checkpoint != null) 'checkpoint': checkpoint!.toJson(),
+    if (needsAuthorization) 'needsAuthorization': true,
   };
 
   /// A transfer that was still active when saved did not finish: it comes back interrupted, never running.
@@ -295,6 +308,7 @@ class Transfer {
       detail: j['detail'] as String? ?? '',
       finished: j['finished'] == null ? null : DateTime.parse(j['finished'] as String),
       directory: j['directory'] as bool? ?? false,
+      needsAuthorization: j['needsAuthorization'] as bool? ?? false,
       checkpoint: j['checkpoint'] == null
           ? null
           : TransferCheckpoint.fromJson((j['checkpoint'] as Map).cast<String, dynamic>()),

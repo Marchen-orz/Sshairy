@@ -106,21 +106,25 @@ class SftpFileSystem implements FileSystem, BoundedFileListing {
   Future<void> mkdir(String path) => _guard(() => _sftp.mkdir(path));
 
   @override
-  Future<void> rename(String from, String to) => _guard(() async {
+  Future<void> rename(String from, String to, {void Function()? checkCurrent}) async {
+    checkCurrent?.call();
     // dartssh2 renames with posix-rename where the server has it, which replaces silently. Checking first
     // leaves a window between the two requests; SFTP has no compare-and-swap to close it (SECURITY §5).
-    if (await stat(to) != null) throw const FsError(FsFailure.exists);
-    await _sftp.rename(from, to);
-  });
+    final existing = await stat(to);
+    checkCurrent?.call();
+    if (existing != null) throw const FsError(FsFailure.exists);
+    await _guard(() => _sftp.rename(from, to));
+  }
 
   @override
   bool get canReplace => _posixRename;
 
   @override
-  Future<void> replace(String from, String to) => _guard(() async {
+  Future<void> replace(String from, String to, {void Function()? checkCurrent}) async {
     if (!_posixRename) throw const FsError(FsFailure.unsupported, 'posix-rename');
-    await _sftp.rename(from, to);
-  });
+    checkCurrent?.call();
+    await _guard(() => _sftp.rename(from, to));
+  }
 
   @override
   Future<void> delete(String path) => _guard(() => _sftp.remove(path));
@@ -160,11 +164,20 @@ class SftpFileSystem implements FileSystem, BoundedFileListing {
     required int offset,
     void Function(int written)? onProgress,
     CancellationToken? cancel,
-  }) => _guard(() async {
+    void Function()? checkCurrent,
+  }) async {
+    void check() {
+      if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
+      checkCurrent?.call();
+    }
+
+    check();
     // Without truncate this opens the existing file and leaves its bytes alone.
-    final file = await _sftp.open(path, mode: SftpFileOpenMode.write);
+    final file = await _guard(() => _sftp.open(path, mode: SftpFileOpenMode.write));
     try {
-      final size = (await file.stat()).size;
+      check();
+      final size = (await _guard(file.stat)).size;
+      check();
       if (size != offset) throw FsError(FsFailure.partInvalid, '$size/$offset');
       final writer = file.write(
         data,
@@ -174,12 +187,12 @@ class SftpFileSystem implements FileSystem, BoundedFileListing {
         maxPendingRequests: _inFlight,
       );
       cancel?.whenCancelled.then((_) => writer.abort()).ignore();
-      await writer.done;
+      await _guard(() => writer.done);
       return writer.progress;
     } finally {
       await file.close().catchError((_) {});
     }
-  });
+  }
 
   @override
   Future<int> create(
@@ -187,20 +200,27 @@ class SftpFileSystem implements FileSystem, BoundedFileListing {
     Stream<Uint8List> data, {
     void Function(int written)? onProgress,
     CancellationToken? cancel,
-  }) => _guard(() async {
-    final file = await _sftp.open(
-      path,
-      mode: SftpFileOpenMode.create | SftpFileOpenMode.exclusive | SftpFileOpenMode.write,
+    void Function()? checkCurrent,
+  }) async {
+    void check() {
+      if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
+      checkCurrent?.call();
+    }
+
+    check();
+    final file = await _guard(
+      () => _sftp.open(path, mode: SftpFileOpenMode.create | SftpFileOpenMode.exclusive | SftpFileOpenMode.write),
     );
     try {
+      check();
       final writer = file.write(data, onProgress: onProgress, chunkSize: _chunk, maxPendingRequests: _inFlight);
       cancel?.whenCancelled.then((_) => writer.abort()).ignore();
-      await writer.done;
+      await _guard(() => writer.done);
       return writer.progress;
     } finally {
       await file.close().catchError((_) {});
     }
-  });
+  }
 
   @override
   Future<void> close() => _sftp.close().catchError((_) {});

@@ -119,14 +119,14 @@ abstract interface class FileSystem {
 
   Future<void> mkdir(String path);
 
-  /// Refuses to replace an existing [to].
-  Future<void> rename(String from, String to);
+  /// Refuses to replace an existing [to]. [checkCurrent] runs before each request, including after awaits.
+  Future<void> rename(String from, String to, {void Function()? checkCurrent});
 
   /// Whether [replace] can swap a file in one step.
   bool get canReplace;
 
   /// Replaces [to] with [from] atomically; throws [FsFailure.unsupported] where it cannot.
-  Future<void> replace(String from, String to);
+  Future<void> replace(String from, String to, {void Function()? checkCurrent});
 
   /// A file or link; directories go through [rmdir].
   Future<void> delete(String path);
@@ -146,6 +146,7 @@ abstract interface class FileSystem {
     Stream<Uint8List> data, {
     void Function(int written)? onProgress,
     CancellationToken? cancel,
+    void Function()? checkCurrent,
   });
 
   /// Continues an existing regular file whose length must equal [offset]; never truncates it.
@@ -156,6 +157,7 @@ abstract interface class FileSystem {
     required int offset,
     void Function(int written)? onProgress,
     CancellationToken? cancel,
+    void Function()? checkCurrent,
   });
 
   Future<void> close();

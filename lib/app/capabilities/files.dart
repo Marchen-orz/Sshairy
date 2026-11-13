@@ -45,7 +45,11 @@ List<Capability> fileCapabilities(Ref ref) {
   TransferManager transfers() => ref.read(transfersProvider.notifier);
 
   /// Runs [body] on the file system of `hostId` (none for this computer), mapping file errors to results.
-  Future<Result<Object?>> on(Args a, RequestContext c, Future<Object?> Function(FileSystem fs) body) async {
+  Future<Result<Object?>> on(
+    Args a,
+    RequestContext c,
+    Future<Object?> Function(FileSystem fs, RequestContext current) body,
+  ) async {
     try {
       _checkRequest(c);
     } on OpFailure catch (e) {
@@ -61,6 +65,7 @@ List<Capability> fileCapabilities(Ref ref) {
         transfers().ui?.prompts ?? const NoPrompts(),
         cancel: c.cancellation,
         deadline: c.deadline,
+        isAuthorized: () => c.isCurrent,
       );
     } on FsError catch (e) {
       try {
@@ -72,16 +77,17 @@ List<Capability> fileCapabilities(Ref ref) {
     } on Object catch (e) {
       return Err(AppError('connect', detail: c.origin == Origin.agent ? '' : '$e'));
     }
+    final current = c.origin == Origin.agent ? c.withAuthorization(() => handle.isCurrent) : c;
     try {
-      _checkRequest(c);
+      _checkRequest(current);
       if (c.origin == Origin.agent) {
         for (final key in ['path', 'from', 'to']) {
           final path = a.optional<String>(key);
-          if (path != null) await _checkedPath(handle.fs, path, context: c, mayBeMissing: true);
+          if (path != null) await _checkedPath(handle.fs, path, context: current, mayBeMissing: true);
         }
       }
-      _checkRequest(c);
-      return Ok(await body(handle.fs));
+      _checkRequest(current);
+      return Ok(await body(handle.fs, current));
     } on FsError catch (e) {
       return Err(
         AppError(e.kind.name, detail: c.origin == Origin.agent ? '' : e.detail, retryable: e.kind == FsFailure.lost),
@@ -114,7 +120,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, c) => on(a, c, (fs) => listFiles(fs, a, c)),
+      (a, c) => on(a, c, (fs, c) => listFiles(fs, a, c)),
     ),
     FunctionCapability(
       'file.stat',
@@ -125,7 +131,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, c) => on(a, c, (fs) async {
+      (a, c) => on(a, c, (fs, c) async {
         final e = await fs.stat(a.require<String>('path'));
         return e == null ? null : fileEntryDto(e);
       }),
@@ -143,7 +149,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, c) => on(a, c, (fs) => readTextFile(fs, a, context: c)),
+      (a, c) => on(a, c, (fs, c) => readTextFile(fs, a, context: c)),
     ),
     FunctionCapability(
       'file.write',
@@ -166,7 +172,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path', 'text'],
       },
       agentExposed: true,
-      (a, c) => on(a, c, (fs) => writeTextFile(fs, a, context: c)),
+      (a, c) => on(a, c, (fs, c) => writeTextFile(fs, a, context: c)),
     ),
     FunctionCapability(
       'file.mkdir',
@@ -177,7 +183,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, c) => on(a, c, (fs) => fs.mkdir(a.require<String>('path'))),
+      (a, c) => on(a, c, (fs, c) => fs.mkdir(a.require<String>('path'))),
     ),
     FunctionCapability(
       'file.rename',
@@ -188,7 +194,11 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['from', 'to'],
       },
       agentExposed: true,
-      (a, c) => on(a, c, (fs) => fs.rename(a.require<String>('from'), a.require<String>('to'))),
+      (a, c) => on(
+        a,
+        c,
+        (fs, c) => fs.rename(a.require<String>('from'), a.require<String>('to'), checkCurrent: () => _checkRequest(c)),
+      ),
     ),
     FunctionCapability(
       'file.delete',
@@ -199,12 +209,19 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
-      (a, c) => on(a, c, (fs) async {
+      (a, c) => on(a, c, (fs, c) async {
         final path = a.require<String>('path');
         final e = await fs.stat(path);
         if (e == null) throw const FsError(FsFailure.notFound);
         _checkRequest(c);
-        await deleteTree(fs, path, e, cancel: c.cancellation, deadline: c.deadline);
+        await deleteTree(
+          fs,
+          path,
+          e,
+          cancel: c.cancellation,
+          deadline: c.deadline,
+          checkCurrent: () => _checkRequest(c),
+        );
         return null;
       }),
     ),
@@ -245,7 +262,8 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['paths', 'targetDir'],
       },
       agentExposed: true,
-      (a, _) async {
+      (a, c) async {
+        _checkRequest(c);
         final from = hostArg(a, 'fromHostId'), to = hostArg(a, 'toHostId');
         if ((a.has('fromHostId') && from == null) || (a.has('toHostId') && to == null)) {
           return const Err(AppError('notFound', detail: 'host'));
@@ -257,6 +275,9 @@ List<Capability> fileCapabilities(Ref ref) {
           paths: paths.cast<String>(),
           to: to,
           targetDir: a.require<String>('targetDir'),
+          cancel: c.origin == Origin.agent ? c.cancellation : null,
+          deadline: c.origin == Origin.agent ? c.deadline : null,
+          isAuthorized: c.origin == Origin.agent ? () => c.isCurrent : null,
         );
         return Ok({
           'transferIds': [for (final id in ids) id.value],
@@ -351,6 +372,7 @@ void _checkRequest(RequestContext? context) {
   if (context?.deadline case final deadline? when !DateTime.now().isBefore(deadline)) {
     throw const OpFailure('deadlineExceeded');
   }
+  if (context != null && !context.isCurrent) throw const OpFailure('scopeChanged');
 }
 
 void _checkAgentPath(String path) {
@@ -525,11 +547,16 @@ Future<Object?> writeTextFile(FileSystem fs, Args a, {RequestContext? context}) 
 
   await checkBaseline();
   final temp = '$canonical.sshairy-tmp-${newId()}';
-  var owned = false;
+  // The unique name makes anything created under it ours, even when a revoked check interrupts the create.
+  var owned = true;
   try {
     _checkRequest(context);
-    await fs.create(temp, const Stream<Uint8List>.empty(), cancel: context?.cancellation);
-    owned = true;
+    await fs.create(
+      temp,
+      const Stream<Uint8List>.empty(),
+      cancel: context?.cancellation,
+      checkCurrent: () => _checkRequest(context),
+    );
     _checkRequest(context);
     await fs.chmod(temp, 0x180);
     final private = await fs.stat(temp);
@@ -540,6 +567,7 @@ Future<Object?> writeTextFile(FileSystem fs, Args a, {RequestContext? context}) 
       Stream.value(Uint8List.fromList(bytes)),
       offset: 0,
       cancel: context?.cancellation,
+      checkCurrent: () => _checkRequest(context),
     );
     _checkRequest(context);
     final staged = await fs.stat(temp);
@@ -552,9 +580,9 @@ Future<Object?> writeTextFile(FileSystem fs, Args a, {RequestContext? context}) 
     await checkBaseline();
     _checkRequest(context);
     if (existing == null) {
-      await fs.rename(temp, canonical);
+      await fs.rename(temp, canonical, checkCurrent: () => _checkRequest(context));
     } else {
-      await fs.replace(temp, canonical);
+      await fs.replace(temp, canonical, checkCurrent: () => _checkRequest(context));
     }
     owned = false;
     return {'path': path, 'bytes': bytes.length, 'created': existing == null, 'sha256': fileTextSha256(bytes)};

@@ -602,6 +602,59 @@ void main() {
       expect(t.error, 'sourceMissing');
     });
 
+    test('an Agent transfer refused at enqueue never queues', () {
+      expect(
+        () => manager().enqueue(
+          from: null,
+          paths: [at('src/a.txt')],
+          to: null,
+          targetDir: at('dst'),
+          isAuthorized: () => false,
+        ),
+        throwsA(isA<OpFailure>().having((e) => e.code, 'code', 'scopeChanged')),
+      );
+      expect(manager().state, isEmpty);
+    });
+
+    test('an Agent transfer revoked right after queueing fails without writing', () async {
+      var authorized = true;
+      final id = manager()
+          .enqueue(from: null, paths: [at('src/a.txt')], to: null, targetDir: at('dst'), isAuthorized: () => authorized)
+          .single;
+      authorized = false;
+      final t = await waitFor(id, TransferState.failed);
+      expect('${t.error} ${t.detail}', contains('scopeChanged'));
+      expect(Directory(at('dst')).listSync(), isEmpty, reason: 'no target and no part left behind');
+    });
+
+    test('an Agent transfer revoked once its part exists removes the part', () async {
+      File(at('src/big.bin')).writeAsBytesSync(List<int>.filled(2000000, 7));
+      bool partExists() => Directory(at('dst')).listSync().any((e) => e.path.endsWith('.part'));
+      final id = manager()
+          .enqueue(
+            from: null,
+            paths: [at('src/big.bin')],
+            to: null,
+            targetDir: at('dst'),
+            isAuthorized: () => !partExists(),
+          )
+          .single;
+      final t = await waitFor(id, TransferState.failed);
+      expect('${t.error} ${t.detail}', contains('scopeChanged'));
+      expect(Directory(at('dst')).listSync(), isEmpty);
+    });
+
+    test('cancelling the request token stops an Agent transfer and leaves nothing', () async {
+      final turn = CancellationToken();
+      final id = manager()
+          .enqueue(from: null, paths: [at('src/sub')], to: null, targetDir: at('dst'), cancel: turn)
+          .single;
+      turn.cancel();
+      final done = (await settle()).singleWhere((t) => t.id == id);
+      expect(done.state, anyOf(TransferState.cancelled, TransferState.failed));
+      expect(Directory(at('dst')).listSync(), isEmpty);
+    });
+
     test('pause parks a file at a stable length; resume finishes it', () async {
       final bytes = List<int>.generate(300000, (i) => i & 0xff);
       File(at('src/big.bin')).writeAsBytesSync(bytes);

@@ -13,11 +13,15 @@ const localFiles = LocalFileSystem();
 
 /// A file system in use; [release] once done with it.
 class FsHandle {
-  FsHandle(this.fs, this._release);
+  FsHandle(this.fs, this._release, {bool Function()? isCurrent})
+    : _isCurrent = isCurrent; // ignore: prefer_initializing_formals
 
   final FileSystem fs;
   final void Function() _release;
+  final bool Function()? _isCurrent;
   var _released = false;
+
+  bool get isCurrent => !_released && (_isCurrent?.call() ?? true);
 
   void release() {
     if (_released) return;
@@ -64,14 +68,26 @@ class FileSystems {
 
   Host? host(HostId id) => _known[id] ?? _savedHost(id);
 
-  Future<FsHandle> acquire(HostId? id, ConnectPrompts prompts, {CancellationToken? cancel, DateTime? deadline}) async {
-    if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
-    if (deadline != null && !DateTime.now().isBefore(deadline)) {
-      throw const FsError(FsFailure.failed, 'deadlineExceeded');
+  Future<FsHandle> acquire(
+    HostId? id,
+    ConnectPrompts prompts, {
+    CancellationToken? cancel,
+    DateTime? deadline,
+    bool Function()? isAuthorized,
+  }) async {
+    void check() {
+      if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
+      if (deadline != null && !DateTime.now().isBefore(deadline)) {
+        throw const FsError(FsFailure.failed, 'deadlineExceeded');
+      }
+      if (isAuthorized?.call() == false) throw const FsError(FsFailure.failed, 'scopeChanged');
+      if (_closed) throw const FsError(FsFailure.lost);
     }
-    if (_closed) throw const FsError(FsFailure.lost);
+
+    check();
     if (id == null) return FsHandle(localFiles, () {});
     for (var attempt = 0; attempt < 3; attempt++) {
+      check();
       final host = this.host(id);
       if (host == null) throw const FsError(FsFailure.notFound, 'host');
       var link = _links[id];
@@ -95,13 +111,13 @@ class FileSystems {
                 deadline.difference(DateTime.now()),
                 onTimeout: () => throw const FsError(FsFailure.failed, 'deadlineExceeded'),
               );
-        if (_closed) throw const FsError(FsFailure.lost);
+        check();
         if (acquired.lease?.isCurrent != true) {
           _retire(id, acquired);
           _release(id, acquired);
           continue;
         }
-        return FsHandle(fs, () => _release(id, acquired));
+        return FsHandle(fs, () => _release(id, acquired), isCurrent: () => acquired.lease?.isCurrent == true);
       } on Object {
         _release(id, acquired);
         rethrow;
