@@ -1,0 +1,105 @@
+<!doctype html>
+<!-- Sshairy film. Open to preview with sound (click to play), ?lang=zh for Chinese, ?t=12.5 for one frame.
+     render.py steps window.seek(t) frame by frame. Scene lengths are in bars of the soundtrack (see film.js). -->
+<html lang="en" data-theme="blue">
+<meta charset="utf-8">
+<title>Sshairy film</title>
+<link rel="stylesheet" href="../../site/fonts.css">
+<link rel="stylesheet" href="../../site/themes.css">
+<link rel="stylesheet" href="../../site/mock.css">
+<link rel="stylesheet" href="../../site/kit.css">
+<link rel="stylesheet" href="film.css">
+<body>
+<div id="stage">
+
+<section class="scene" id="intro" data-len="8">
+  <div class="air"></div>
+  <img class="wm" data-brand="wordmark" data-in="1.2" data-fx="up" alt="">
+  <h1><span data-in="2.9" data-fx="up" data-t="h1a"></span><br><span class="k-grad" data-in="4.5" data-fx="up" data-t="h1b"></span></h1>
+  <p class="lede" data-in="6.1" data-fx="up" data-t="lede"></p>
+  <img class="mascot" data-brand="default" alt="">
+</section>
+
+<section class="scene wash" id="stats" data-tr="zoom" data-bars="2">
+  <img class="zoom" data-brand="speed" alt="">
+  <div class="big"><b><span data-count="0.62" data-digits="2"></span><small data-t="sec"></small></b><span data-t="s0"></span></div>
+  <div class="big"><b><span data-count="131" data-digits="0"></span><small>MiB</small></b><span data-t="s1"></span></div>
+  <div class="big"><b><span data-count="27" data-digits="0"></span><small>MiB</small></b><span data-t="s2"></span></div>
+  <div class="big"><b>1<small data-t="proc"></small></b><span data-t="s3"></span></div>
+</section>
+
+<section class="scene wash" id="work" data-bars="2">
+  <h2 data-in="0" data-fx="up" data-t="work"></h2>
+  <div class="win k-win" data-in="0.05" data-fx="rise" data-d="0.9" data-scene="terminal" data-opts='{"h":680}'></div>
+  <div class="float mon" data-in="2.18" data-fx="pop" data-d="0.5"><div class="sa-part" data-part="monitor" data-opts='{"count":3}'></div></div>
+  <div class="float que" data-in="3.0" data-fx="pop" data-d="0.5"><div class="sa-part" data-part="queue"></div></div>
+</section>
+
+<section class="scene wash feat" id="f1" data-bars="1">
+  <div class="cap"><h2 data-in="0" data-fx="up" data-t="f1"></h2><p data-in="0.12" data-fx="up" data-t="f1p"></p><img class="pose" data-in="0.3" data-fx="pop" data-d="0.5" data-brand="ssh-connected" alt=""></div>
+  <div class="ui"><div class="float" data-in="0.05" data-fx="rise"><div class="sa-part" data-part="hosts" data-opts='{"cols":3,"mascot":false}'></div></div></div>
+</section>
+
+<section class="scene mint feat" id="f2" data-bars="1">
+  <div class="cap"><h2 data-in="0" data-fx="up" data-t="f2"></h2><p data-in="0.12" data-fx="up" data-t="f2p"></p><img class="pose" data-in="0.3" data-fx="pop" data-d="0.5" data-brand="coding-focus" alt=""></div>
+  <div class="ui"><div class="float" data-in="0.05" data-fx="rise"><div class="sa-part" data-mode="dark" id="cmp"></div></div></div>
+</section>
+
+<section class="scene wash feat" id="f3" data-bars="1">
+  <div class="cap"><h2 data-in="0" data-fx="up" data-t="f3"></h2><p data-in="0.12" data-fx="up" data-t="f3p"></p><img class="pose" data-in="0.3" data-fx="pop" data-d="0.5" data-brand="sftp-transfer" alt=""></div>
+  <div class="ui"><div class="float" data-in="0.05" data-fx="rise"><div class="sa-part" data-part="files"></div></div></div>
+</section>
+
+<section class="scene mint feat" id="f4" data-bars="1">
+  <div class="cap"><h2 data-in="0" data-fx="up" data-t="f4"></h2><p data-in="0.12" data-fx="up" data-t="f4p"></p><img class="pose" data-in="0.3" data-fx="pop" data-d="0.5" data-brand="security" alt=""></div>
+  <div class="ui"><div class="float m" data-in="0.05" data-fx="rise"><div class="sa-part" data-part="monitor"></div></div><div class="float f" data-in="0.2" data-fx="rise"><div class="sa-part" data-part="forwards"></div></div></div>
+</section>
+
+<section class="scene mint" id="airy" data-tr="zoom" data-bars="4">
+  <h2 data-in="0" data-fx="up" data-t="airy"></h2>
+  <p class="lede" data-in="0.3" data-fx="up" data-t="airyLede"></p>
+  <div class="tiles" id="tiles"></div>
+  <div class="modes" id="modes" data-fx="up"></div>
+  <img class="mascot" data-brand="thinking-ai" alt=""><img class="mascot" data-brand="success" alt="">
+  <div class="float panel" data-in="0.1" data-fx="rise" data-d="0.9"><div class="sa-part" data-part="airy"></div><div class="sa-part" data-part="airy" data-opts='{"state":"done"}'></div></div>
+</section>
+
+<section class="scene wash" id="themes" data-bars="3">
+  <h2 data-in="0" data-fx="up" data-t="themes"></h2>
+  <p class="lede" id="themeName" data-in="0.2" data-fx="fade"></p>
+  <div class="win k-win" data-in="0" data-fx="rise" data-scene="hosts" data-opts='{"h":600,"mascot":false}'></div>
+  <div class="pals" id="pals"></div>
+</section>
+
+<section class="scene" id="brk" data-tr="zoom" data-bars="1">
+  <h1><span data-in="0.05" data-fx="blur" data-t="b1"></span><br><span class="k-grad" data-in="1.09" data-fx="blur" data-t="b2"></span></h1>
+</section>
+
+<section class="scene wash perf" id="p1" data-tr="zoom" data-bars="2">
+  <div class="hero" data-in="0" data-fx="up"><b><span data-count="0.62" data-digits="2"></span><small data-t="sec"></small></b><span data-t="s0"></span></div>
+  <div class="k-bars" data-chart="startup" data-unit="s" data-digits="2"></div>
+</section>
+
+<section class="scene wash perf" id="p2" data-bars="1">
+  <div class="hero" data-in="0" data-fx="up"><b><span data-count="131" data-digits="0"></span><small>MiB</small></b><span data-t="s1"></span></div>
+  <div class="k-bars" data-chart="memory" data-unit="MiB" data-digits="1"></div>
+</section>
+
+<section class="scene wash perf" id="p3" data-bars="1.5">
+  <div class="hero" data-in="0" data-fx="up"><b><span data-count="27" data-digits="0"></span><small>MiB</small></b><span data-t="s2"></span></div>
+  <div class="k-bars" data-chart="download" data-unit="MiB" data-digits="1"></div>
+</section>
+
+<section class="scene wash" id="outro" data-tr="zoom" data-len="4.26">
+  <img class="mascot" data-brand="happy" alt="">
+  <img class="wm" data-brand="wordmark" data-in="0.25" data-fx="up" alt="">
+  <p class="tag" data-in="0.6" data-fx="up" data-t="tag"></p>
+  <p class="os" data-in="1.0" data-fx="up">Windows · macOS · Linux</p>
+</section>
+
+<div id="fade"></div>
+</div>
+<script src="../../site/assets/data.js"></script>
+<script src="../../site/mock.js"></script>
+<script src="../../site/charts.js"></script>
+<script src="film.js"></script>

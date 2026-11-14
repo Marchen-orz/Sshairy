@@ -1,0 +1,35 @@
+/* Shared tokens, type, window shells and charts for the landing page, README spreads and film. */
+:root{--ink:#1F3A5F;--muted:#60738C;--faint:#8FA0B5;--line:rgba(31,58,95,.1);--paper:#fff;--neutral:#B9C6D6;
+  --sans:'Inter','Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  --serif:'Instrument Serif','Noto Serif SC','Songti SC',Georgia,serif;
+  --mono:'JetBrains Mono','Cascadia Code',Consolas,monospace;
+  --grad:linear-gradient(100deg,var(--b-primary) 8%,var(--b-sky) 72%,color-mix(in srgb,var(--b-accent) 45%,var(--b-sky)))}
+.k-grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;padding:0 .06em .14em 0;margin:0 -.06em -.14em 0;display:inline-block}
+.k-serif{font-family:var(--serif);font-style:italic;font-weight:400;letter-spacing:-.015em}
+:lang(zh) .k-serif{font-family:inherit;font-style:normal;font-weight:inherit;letter-spacing:inherit}
+
+/* A drawn app window scaled to its container: set --z (zoom). */
+.k-win{zoom:var(--z,1);border-radius:12px;box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 30px 70px -24px color-mix(in srgb,var(--b-primary) 38%,rgba(31,58,95,.5)),0 8px 24px -12px rgba(31,58,95,.25)}
+.k-win>.sa{box-shadow:0 0 0 1px color-mix(in srgb,var(--border-subtle) 80%,transparent)}
+
+/* Bars: one measure, sorted, direct labels; only Sshairy carries the accent. */
+.k-bars{display:grid;gap:var(--gap,9px);font-variant-numeric:tabular-nums}
+.k-bar{display:grid;grid-template-columns:var(--name,116px) minmax(0,1fr);align-items:center;gap:14px;height:var(--row,22px);border-radius:8px;position:relative}
+.k-bar .n{text-align:right;font-size:var(--fs,14px);color:var(--muted);white-space:nowrap}
+.k-bar .t{display:flex;align-items:center;gap:10px;min-width:0}
+.k-bar .t i{flex:none;height:var(--thick,8px);min-width:3px;width:calc((100% - var(--label,84px)) * var(--v) * var(--grow,1));border-radius:2px 4px 4px 2px;background:var(--neutral)}
+.k-bar .t b{font-size:var(--fs,14px);font-weight:500;color:var(--ink);white-space:nowrap}
+.k-bar .t b small{font-size:.86em;font-weight:400;color:var(--muted);margin-left:.25em}
+.k-bar.me::before{content:'';position:absolute;inset:-5px -10px;border-radius:10px;background:color-mix(in srgb,var(--b-primary) 8%,transparent)}
+.k-bar.me>*{position:relative}
+.k-bar.me .n{color:var(--ink);font-weight:650}
+.k-bar.me .t i{background:var(--b-primary)}
+.k-bar.me .t b{font-weight:700}
+.k-bar .x{position:absolute;right:0;top:50%;translate:0 -50%;font-size:12px;color:var(--muted);opacity:0;transition:opacity .2s;pointer-events:none}
+.k-bars.live .k-bar:hover .x{opacity:1}
+.k-bars.live .k-bar:not(.me):hover .t i{background:color-mix(in srgb,var(--neutral) 60%,var(--ink))}
+
+.k-stack{display:flex;gap:2px;height:14px}
+.k-stack i{flex:var(--v) 0 0;background:var(--neutral);border-radius:2px;opacity:var(--o,1)}
+.k-stack i:first-child{background:var(--b-primary);border-radius:4px 2px 2px 4px}
+.k-stack i:last-child{border-radius:2px 4px 4px 2px}

@@ -1,58 +1,61 @@
 <div align="center">
 
-![Preview](https://img.shields.io/badge/preview-0.1.0-2E6EF7?style=flat-square&labelColor=60738C)
-![Desktop platforms](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-2E6EF7?style=flat-square&labelColor=60738C)
-[![Flutter](https://img.shields.io/badge/Flutter-native-2E6EF7?style=flat-square&labelColor=60738C)](https://flutter.dev)
-![AI](https://img.shields.io/badge/AI-Airy-168A6A?style=flat-square&labelColor=60738C)
-[![English](https://img.shields.io/badge/docs-English-168A6A?style=flat-square&labelColor=60738C)](README.md)
-[![中文](https://img.shields.io/badge/docs-%E4%B8%AD%E6%96%87-168A6A?style=flat-square&labelColor=60738C)](README.zh.md)
+<img src="media/cover.png" alt="Sshairy. Lightweight SSH. Powered by AI. 0.62 s to open, 131 MiB at idle, 27 MiB to download, one process." width="100%">
 
-<img src="media/cover.png" alt="Sshairy. Lightweight SSH. Powered by AI. 0.62 s startup, 131 MiB idle memory, 27 MiB portable ZIP." width="100%">
+[Features](#features) · [Airy](#airy) · [Themes](#themes) · [Performance](#performance) · [Get Sshairy](#get-sshairy) · [中文](README.zh.md)
 
-[Features](#features) · [Airy](#airy) · [Themes](#themes) · [Performance](#performance) · [Build](#build)
+![Preview](https://img.shields.io/badge/preview-0.1.0-2E6EF7?style=flat-square&labelColor=1F3A5F)
+![Desktop platforms](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-2E6EF7?style=flat-square&labelColor=1F3A5F)
+[![Flutter](https://img.shields.io/badge/Flutter-native-5AB6FF?style=flat-square&labelColor=1F3A5F)](https://flutter.dev)
+![AI](https://img.shields.io/badge/AI-Airy-3CC9A7?style=flat-square&labelColor=1F3A5F)
 
 </div>
 
-**Sshairy** is a lightweight SSH client for **Windows, macOS and Linux**. Terminals, SFTP, tunnels and server monitoring come together in a clean native interface, built with Dart and Flutter.
+**Sshairy** is a lightweight SSH client for **Windows, macOS and Linux**. Terminals, SFTP, tunnels and server monitoring share one clean native window, built with Dart and Flutter.
 
-A full SSH client first, with AI to help along the way. Keep working in the terminal, ask Airy to handle a task, or turn a sentence into a command. No Chromium, no WebView, no browser runtime to carry around.
+It is a complete SSH client first, with AI there when you want it. Stay in the terminal, hand Airy a task, or turn a sentence into a command. No Chromium, no WebView, no browser runtime to carry around.
 
-<img src="media/workspace.png" alt="The host library in the default Ice Blue / Mint theme, with groups, pinned hosts and search." width="100%">
+<img src="media/workspace.png" alt="A Sshairy window with three terminal panes on two servers, a live metrics card and a file transfer in progress." width="100%">
 
 ## Features
 
+<img src="media/features.png" alt="Host library, context-aware completion, dual-pane SFTP, live metrics and port forwarding." width="100%">
+
 | | |
 |---|---|
-| **Connect** | Organize hosts with groups, tags, pins and search. Password and key authentication, Ed25519 key generation, jump hosts and proxies. |
+| **Connect** | Hosts in groups with tags, pins and search. Password and key authentication, Ed25519 key generation, jump hosts and proxies. |
 | **Work** | Tabbed terminals, draggable splits, local shells, search, reconnect and restored layouts. |
 | **Move files** | Dual-pane SFTP, transfer queues, resumable file transfers, conflict handling and external editing. |
-| **Keep watch** | CPU, memory, disk and process monitoring over SSH. Nothing to install on the server. |
+| **Keep watch** | CPU, memory, disk and process monitoring over SSH, with nothing to install on the server. |
 | **Reach further** | Local, remote and dynamic port forwarding. Saved snippets and 1,453 shell completion specs. |
 | **Stay in control** | Host-key verification and OS-backed credential storage. English and Chinese interfaces, customizable shortcuts. |
 
 ## Airy
 
-An assistant beside your terminal, with **39 tools** for hosts, remote files, commands, sessions, layouts and settings. Connect your Anthropic or OpenAI-compatible model and choose how much to delegate.
+Airy sits beside your terminal with **39 tools** for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model and decide how much to delegate.
 
-- **Agent** — describe a task and let Airy work through it.
-- **Inline commands** — turn a plain-language request into an editable command.
-- **AI completion** — get suggestions as you type, alongside shell specs and command history.
+- **Agent** — describe a task and Airy works through it step by step.
+- **Inline commands** — a plain-language request becomes a command you can edit before it runs.
+- **AI completion** — suggestions as you type, next to shell specs and your history.
 
-Four permission modes fit different workflows: **Observe**, **Confirm**, **Auto confirm** and **Full auto**. Confirm is the default, with the target and operation presented for approval.
+Four permission modes cover the range from watching to hands-off: **Observe**, **Confirm**, **Auto confirm** and **Full auto**. Confirm is the default, and every action shows its target and exact operation before you approve it.
 
-<img src="media/airy.png" alt="Airy and its action approval panel." width="100%">
+<img src="media/airy.png" alt="Airy diagnosing a failing endpoint and asking for approval before restarting a container, with an inline command suggestion beside it." width="100%">
 
 ## Themes
 
-Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pink. Each palette carries through the interface, terminal and Airy artwork, with both light and dark appearances.
+Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pink. Each palette carries through the interface, the terminal and Airy's artwork, in light and dark.
 
-<img src="media/themes.png" alt="Six themes with matching interface colors and Airy artwork." width="100%">
+<img src="media/themes.png" alt="One window shown across six themes in light and dark, with the matching Airy for each." width="100%">
 
 ## Performance
 
-**0.62 seconds to open. 131 MiB at idle.** Sshairy uses about **71% less idle memory** than Netcatty and opens about **4× sooner**.
+**0.62 seconds to open. 131 MiB at idle.** Next to Netcatty, that is about **71% less idle memory** and a start about **4× sooner**.
 
-<img src="media/performance.png" alt="Startup and idle memory comparison across SSH clients." width="100%">
+<img src="media/performance.png" alt="Startup time and idle memory of ten SSH clients, sorted from lowest to highest." width="100%">
+
+<details>
+<summary>All measurements</summary>
 
 <!-- benchmark-table -->
 
@@ -71,26 +74,30 @@ Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pin
 
 <!-- /benchmark-table -->
 
-A **27 MiB download**, **97.4 MiB unpacked**, and **one native app process**, with **1,453 shell completion specs** included.
+Method, versions and sources are in [tool/readme/SOURCES.md](tool/readme/SOURCES.md).
 
-<img src="media/footprint.png" alt="Download size comparison and the contents of the Sshairy app folder." width="100%">
+</details>
 
-## Build
+A **27 MiB download** unpacks to **97.4 MiB** and runs as **one native process**, with 1,453 shell completion specs included.
 
-Requires Flutter 3.47.9 / Dart 3.13.7. For Windows, install Visual Studio's **Desktop development with C++** workload.
+<img src="media/footprint.png" alt="Download sizes of nine SSH clients and the contents of the Sshairy app folder." width="100%">
+
+## Get Sshairy
+
+Portable Windows builds are published on the [Releases](../../releases) page. Unzip and run `sshairy.exe` from the complete folder, next to its DLLs and `data` directory.
+
+To build from source you need Flutter 3.47.9 / Dart 3.13.7. On Windows, also install Visual Studio's **Desktop development with C++** workload.
 
 ```sh
 flutter pub get
 flutter run -d windows
 ```
 
-Create a portable Windows release:
+Package a portable Windows release:
 
 ```powershell
 ./tool/package_windows.ps1
 ```
-
-Run `sshairy.exe` from the complete release folder, alongside its DLLs and data directory.
 
 <div align="center">
 

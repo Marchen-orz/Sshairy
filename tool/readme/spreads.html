@@ -1,0 +1,269 @@
+<!doctype html>
+<!-- README spreads. Open with ?lang=en|zh; render_spreads.py exports each <section> at 2x into media/.
+     Interface panels are drawn by site/mock.js with fictional data; numbers come from benchmarks.json via site/assets/data.js. -->
+<html lang="en" data-theme="blue">
+<meta charset="utf-8">
+<title>Sshairy README spreads</title>
+<link rel="stylesheet" href="../../site/fonts.css">
+<link rel="stylesheet" href="../../site/themes.css">
+<link rel="stylesheet" href="../../site/mock.css">
+<link rel="stylesheet" href="../../site/kit.css">
+<style>
+html{background:transparent}
+body{margin:0;width:1200px;display:grid;gap:40px;font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+.sp{position:relative;width:1200px;box-sizing:border-box;overflow:hidden;border-radius:36px;background:#fff;isolation:isolate}
+h1,h2,h3,p{margin:0}
+h2{font-size:58px;line-height:1.04;letter-spacing:-.042em;font-weight:740}
+h2 .k-serif{font-size:1.1em;letter-spacing:-.02em;line-height:.9}
+:lang(zh) h1,:lang(zh) h2{letter-spacing:-.015em;font-weight:800}
+.lede{font-size:21px;line-height:1.4;color:var(--muted);letter-spacing:-.012em}
+:lang(zh) .lede{letter-spacing:0}
+.pad{padding:64px}
+.float{position:absolute;border-radius:16px;overflow:hidden;box-shadow:0 0 0 1px rgba(31,58,95,.07),0 28px 60px -22px color-mix(in srgb,var(--b-primary) 30%,rgba(31,58,95,.55)),0 6px 18px -8px rgba(31,58,95,.2)}
+.wash{background:radial-gradient(900px 520px at 88% -8%,color-mix(in srgb,var(--b-ice) 42%,transparent),transparent 70%),radial-gradient(760px 520px at -4% 104%,color-mix(in srgb,var(--b-accent) 38%,transparent),transparent 70%),var(--b-surface)}
+
+/* Cover */
+#cover{height:680px;background:#fff url(../../site/assets/airflow.webp) center/cover}
+#cover::after{content:'';position:absolute;inset:auto 0 0 0;height:250px;background:linear-gradient(transparent,rgba(255,255,255,.9) 80%);z-index:-1}
+#cover .wm{position:absolute;left:64px;top:54px;height:58px}
+#cover h1{position:absolute;left:61px;top:166px;font-size:84px;line-height:1.04;letter-spacing:-.045em;font-weight:760;white-space:nowrap}
+:lang(zh) #cover h1{font-size:82px;letter-spacing:-.02em;line-height:1.12;top:158px}
+#cover .lede{position:absolute;left:66px;top:378px;font-size:23px}
+#cover .mascot{position:absolute;left:764px;top:140px;width:340px;filter:drop-shadow(0 26px 34px rgba(46,110,247,.2))}
+.stats{position:absolute;left:64px;right:64px;bottom:46px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.stat{padding:20px 24px 19px;border-radius:22px;background:rgba(255,255,255,.66);backdrop-filter:blur(20px) saturate(1.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.95),0 0 0 1px rgba(31,58,95,.06),0 22px 44px -26px rgba(46,110,247,.45)}
+.stat b{display:block;font-size:43px;letter-spacing:-.045em;font-weight:730;line-height:1.08;white-space:nowrap}
+.stat b small{font-size:.5em;font-weight:620;letter-spacing:-.01em;margin-left:.22em;color:var(--muted)}
+.stat span{display:block;margin-top:3px;font-size:15.5px;color:var(--muted)}
+
+/* Workspace */
+#workspace{height:850px}
+#workspace .head{position:absolute;left:64px;top:60px;right:300px;display:flex;align-items:flex-end;justify-content:space-between;gap:40px}
+#workspace .lede{max-width:340px;text-align:right;padding-bottom:6px}
+:lang(zh) #workspace .lede{max-width:none;white-space:nowrap}
+#workspace .win{position:absolute;left:216px;top:210px}
+#workspace .mon{left:44px;top:372px;width:214px}
+#workspace .mon .sa-part{zoom:.92}
+#workspace .que{right:40px;top:746px;width:430px}
+#workspace .que .sa-part{zoom:1}
+#workspace .buddy{position:absolute;right:96px;top:74px;width:176px;filter:drop-shadow(0 14px 18px rgba(46,110,247,.2))}
+
+/* Features */
+#features{padding:60px 64px 64px;background:#fff}
+.bento{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;margin-top:40px}
+.card{position:relative;overflow:hidden;box-sizing:border-box;height:372px;padding:28px 30px;border-radius:28px;background:linear-gradient(180deg,var(--b-surface),color-mix(in srgb,var(--b-surface) 45%,#fff));box-shadow:inset 0 0 0 1px rgba(31,58,95,.06)}
+.card h3{font-size:23px;letter-spacing:-.028em;font-weight:690}
+:lang(zh) .card h3{letter-spacing:0;font-weight:700}
+.card p{margin-top:6px;font-size:15.5px;line-height:1.4;color:var(--muted)}
+.card .ui{position:absolute;left:30px;top:118px;border-radius:14px;box-shadow:0 0 0 1px rgba(31,58,95,.08),0 22px 44px -20px color-mix(in srgb,var(--b-primary) 28%,rgba(31,58,95,.5))}
+.card.mint{background:linear-gradient(180deg,var(--b-mist),color-mix(in srgb,var(--b-mist) 45%,#fff))}
+.c-hosts{grid-column:span 7}.c-cmp{grid-column:span 5}.c-files{grid-column:span 5}.c-mon{grid-column:span 3}.c-fwd{grid-column:span 4}
+.c-hosts .ui{zoom:.9;width:700px}
+.c-hosts .sa-water{display:none}
+.c-cmp .ui{zoom:.98;right:30px;flex-direction:column;padding-bottom:12px}
+.c-cmp .sa-term{flex:none;padding-bottom:6px}
+.c-cmp .sa-pop{margin:0 12px;width:auto}
+.c-files .ui{zoom:.86;width:680px;height:320px}
+.c-mon .ui{zoom:.84;left:26px;width:242px}
+.c-mon{padding:28px 26px}
+.c-fwd .ui{zoom:.86;right:30px;left:30px}
+.c-fwd .sa-fwd{padding:10px;gap:7px}
+.c-fwd .sa-fw{grid-template-columns:28px 46px minmax(0,1fr) 16px minmax(0,1fr) 8px;gap:8px;padding:0 10px}
+.c-fwd .sa-fw small{font-size:0;gap:0}
+.c-fwd .sa-fw code{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-fwd img{position:absolute;right:18px;bottom:6px;width:150px}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chips span{padding:9px 16px;border-radius:99px;font-size:15px;color:var(--ink);background:var(--b-surface);box-shadow:inset 0 0 0 1px rgba(31,58,95,.06)}
+
+/* Airy */
+#airy{height:770px;background:radial-gradient(820px 620px at 104% -6%,color-mix(in srgb,var(--b-accent) 55%,transparent),transparent 70%),radial-gradient(720px 520px at -6% 106%,color-mix(in srgb,var(--b-ice) 40%,transparent),transparent 70%),var(--b-mist)}
+#airy h2{position:absolute;left:64px;top:62px;font-size:80px}
+#airy .lede{position:absolute;left:67px;top:168px}
+.tiles{position:absolute;left:64px;top:232px;display:grid;grid-template-columns:150px 176px 250px;gap:12px}
+.tile{padding:16px 18px 15px;border-radius:20px;background:rgba(255,255,255,.72);box-shadow:inset 0 0 0 1px rgba(255,255,255,.9),0 0 0 1px rgba(31,58,95,.05)}
+.tile b{display:block;font-size:34px;line-height:1.1;letter-spacing:-.04em;font-weight:720;white-space:nowrap}
+.tile span{display:block;margin-top:4px;font-size:14.5px;line-height:1.35;color:var(--muted)}
+.modes{position:absolute;left:64px;top:372px;display:flex;padding:5px;border-radius:16px;background:rgba(255,255,255,.6);box-shadow:inset 0 0 0 1px rgba(31,58,95,.06)}
+.modes span{padding:9px 17px;border-radius:12px;font-size:15.5px;color:var(--muted);white-space:nowrap}
+.modes span.on{background:#fff;color:var(--ink);font-weight:620;box-shadow:0 0 0 1px rgba(31,58,95,.06),0 6px 14px -6px rgba(31,58,95,.25)}
+#airy .mascot{position:absolute;left:52px;top:462px;width:270px;filter:drop-shadow(0 18px 22px rgba(22,138,106,.18))}
+#airy .inl{left:318px;top:548px}
+#airy .inl .sa-part{zoom:1.04}
+#airy .panel{left:716px;top:58px}
+#airy .panel .sa-part{zoom:1.1;width:382px;height:594px}
+#airy .panel .sa-airy{width:382px;border:0}
+
+/* Themes */
+#themes{height:800px;background:#fff}
+#themes .head{position:absolute;left:64px;right:64px;top:60px;display:flex;align-items:flex-end;justify-content:space-between}
+#themes .lede{padding-bottom:6px}
+.stripes{position:absolute;left:64px;top:186px;width:1072px;height:400px;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgba(31,58,95,.08),0 30px 60px -26px rgba(31,58,95,.45)}
+.stripes>div{position:absolute;inset:0}
+.stripes .sa{border-radius:0;box-shadow:none}
+.pals{position:absolute;left:64px;top:612px;width:1072px;display:grid;grid-template-columns:repeat(6,1fr)}
+.pal{display:grid;justify-items:center;gap:2px}
+.pal img{width:124px;height:124px;object-fit:contain}
+.pal b{font-size:16px;font-weight:620;letter-spacing:-.01em}
+.pal i{display:flex;gap:5px;margin-top:5px}
+.pal i u{width:14px;height:14px;border-radius:50%}
+
+/* Performance and footprint */
+#performance,#footprint{padding:60px 64px 64px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:40px}
+.panel-c{box-sizing:border-box;padding:30px 32px 32px;border-radius:28px;background:rgba(255,255,255,.78);box-shadow:inset 0 0 0 1px rgba(255,255,255,.9),0 0 0 1px rgba(31,58,95,.05),0 24px 50px -34px rgba(46,110,247,.4)}
+#footprint{background:#fff}
+#footprint .panel-c{background:linear-gradient(180deg,var(--b-surface),color-mix(in srgb,var(--b-surface) 45%,#fff));box-shadow:inset 0 0 0 1px rgba(31,58,95,.06)}
+.hero{display:flex;align-items:baseline;gap:12px;margin-bottom:26px}
+.hero b{font-size:62px;line-height:1;letter-spacing:-.05em;font-weight:740}
+.hero b small{font-size:.44em;font-weight:620;letter-spacing:-.01em;margin-left:.18em}
+.hero span{font-size:18px;color:var(--muted)}
+.k-bars{--name:112px;--row:22px;--gap:10px;--fs:15px;--label:92px}
+.parts{display:grid;gap:13px;margin-top:22px}
+.parts div{display:grid;grid-template-columns:14px 1fr auto;align-items:center;gap:12px;font-size:16px}
+.parts u{width:12px;height:12px;border-radius:4px;background:var(--neutral)}
+.parts div:first-child u{background:var(--b-primary)}
+.parts div:first-child span{font-weight:650}
+.parts em{font-style:normal;color:var(--muted);font-variant-numeric:tabular-nums}
+.k-stack{height:16px}
+.pills{display:flex;gap:10px;margin-top:30px;flex-wrap:wrap}
+.pills span{padding:9px 16px;border-radius:99px;background:#fff;font-size:15px;box-shadow:inset 0 0 0 1px rgba(31,58,95,.07)}
+</style>
+<body>
+
+<section class="sp" id="cover">
+  <img class="wm" data-brand="wordmark" alt="">
+  <h1><span data-t="h1a"></span><br><span class="k-grad" data-t="h1b"></span></h1>
+  <p class="lede" data-t="coverLede"></p>
+  <img class="mascot" data-brand="default" alt="">
+  <div class="stats" id="stats"></div>
+</section>
+
+<section class="sp wash" id="workspace">
+  <div class="head"><h2 data-t="workspace"></h2><p class="lede" data-t="workspaceLede"></p></div>
+  <img class="buddy" data-brand="coding-focus" alt="">
+  <div class="win k-win" data-scene="terminal" data-opts='{"w":920,"h":570}'></div>
+  <div class="float mon"><div class="sa-part" data-part="monitor" data-opts='{"count":3}'></div></div>
+  <div class="float que"><div class="sa-part" data-part="queue"></div></div>
+</section>
+
+<section class="sp" id="features">
+  <h2 data-t="features"></h2>
+  <div class="bento">
+    <div class="card c-hosts"><h3 data-t="fHosts"></h3><p data-t="fHostsP"></p><div class="ui sa-part" data-part="hosts" data-opts='{"cols":3,"on":1}'></div></div>
+    <div class="card c-cmp mint"><h3 data-t="fCmp"></h3><p data-t="fCmpP"></p><div class="ui sa-part" data-mode="dark" id="cmp"></div></div>
+    <div class="card c-files mint"><h3 data-t="fFiles"></h3><p data-t="fFilesP"></p><div class="ui sa-part" data-part="files"></div></div>
+    <div class="card c-mon"><h3 data-t="fMon"></h3><p data-t="fMonP"></p><div class="ui sa-part" data-part="monitor"></div></div>
+    <div class="card c-fwd"><h3 data-t="fFwd"></h3><p data-t="fFwdP"></p><div class="ui sa-part" data-part="forwards"></div><img data-brand="ssh-connected" alt=""></div>
+  </div>
+  <div class="chips" id="chips"></div>
+</section>
+
+<section class="sp" id="airy">
+  <h2 data-t="airy"></h2>
+  <p class="lede" data-t="airyLede"></p>
+  <div class="tiles" id="tiles"></div>
+  <div class="modes" id="modes"></div>
+  <img class="mascot" data-brand="thinking-ai" alt="">
+  <div class="float inl"><div class="sa-part" data-part="inline"></div></div>
+  <div class="float panel"><div class="sa-part" data-part="airy"></div></div>
+</section>
+
+<section class="sp" id="themes">
+  <div class="head"><h2 data-t="themes"></h2><p class="lede" data-t="themesLede"></p></div>
+  <div class="stripes" id="stripes"></div>
+  <div class="pals" id="pals"></div>
+</section>
+
+<section class="sp wash" id="performance">
+  <h2 data-t="perf"></h2>
+  <div class="duo">
+    <div class="panel-c"><div class="hero"><b>0.62<small data-t="sec"></small></b><span data-t="startup"></span></div><div class="k-bars" data-chart="startup" data-unit="s" data-digits="2"></div></div>
+    <div class="panel-c"><div class="hero"><b>131<small>MiB</small></b><span data-t="memory"></span></div><div class="k-bars" data-chart="memory" data-unit="MiB" data-digits="1" style="--label:118px"></div></div>
+  </div>
+</section>
+
+<section class="sp" id="footprint">
+  <h2 data-t="foot"></h2>
+  <div class="duo">
+    <div class="panel-c"><div class="hero"><b>27<small>MiB</small></b><span data-t="download"></span></div><div class="k-bars" data-chart="download" data-unit="MiB" data-digits="1" style="--label:118px;--row:25px"></div></div>
+    <div class="panel-c"><div class="hero"><b>97.4<small>MiB</small></b><span data-t="unpacked"></span></div><div class="k-stack" id="stack"></div><div class="parts" id="parts"></div><div class="pills" id="pills"></div></div>
+  </div>
+</section>
+
+<script src="../../site/assets/data.js"></script>
+<script src="../../site/mock.js"></script>
+<script src="../../site/charts.js"></script>
+<script>
+const TEXT = {
+  en: {
+    h1a: 'Lightweight SSH.', h1b: 'Powered by AI.', coverLede: 'A native SSH workspace for Windows, macOS and Linux.',
+    stats: [['0.62', 's', 'to open'], ['131', 'MiB', 'at idle'], ['27', 'MiB', 'to download'], ['1', 'process', 'no browser engine']],
+    workspace: 'One window for<br><span class="k-serif">every</span> server.', workspaceLede: 'Tabs, splits, files and live metrics, side by side.',
+    features: 'The whole toolbox.',
+    fHosts: 'A host library that stays tidy', fHostsP: 'Groups, tags, pins and instant search.',
+    fCmp: 'Completion with context', fCmpP: '1,453 shell specs, your history, and an AI suggestion on top.',
+    fFiles: 'Dual-pane SFTP', fFilesP: 'Queues, resumable transfers, external editing.',
+    fMon: 'Live metrics', fMonP: 'No agent to install.',
+    fFwd: 'Port forwarding', fFwdP: 'Local, remote and dynamic tunnels.',
+    chips: ['Jump hosts', 'Proxies', 'Ed25519 keys', 'Host-key verification', 'OS credential storage', 'Snippets', 'Local shells'],
+    airy: 'Meet <span class="k-grad">Airy</span>.', airyLede: 'An assistant, right beside your terminal.',
+    tiles: [['39', 'tools for hosts, files and sessions'], ['4', 'permission modes, confirm by default'], ['Your model', 'Anthropic or any OpenAI-compatible API']],
+    modes: ['Observe', 'Confirm', 'Auto confirm', 'Full auto'],
+    themes: 'Six ways to feel at home.', themesLede: 'Light and dark, each with its own Airy.',
+    names: ['Ice Blue / Mint', 'Mint Green', 'Violet', 'Sunset Orange', 'Deep Sea Blue', 'Sakura Pink'],
+    perf: 'Less waiting. More working.', sec: 's', startup: 'to open', memory: 'at idle',
+    foot: 'Travel light.', download: 'to download', unpacked: 'unpacked',
+    parts: ['Shell completions', 'Flutter engine', 'App code · AOT', 'Brand artwork', 'Other files'],
+    pills: ['One app process', 'No Chromium', 'No WebView'],
+  },
+  zh: {
+    h1a: '轻量 SSH。', h1b: '由 AI 驱动。', coverLede: '面向 Windows、macOS、Linux 的原生 SSH 工作区。',
+    stats: [['0.62', '秒', '启动'], ['131', 'MiB', '空闲内存'], ['27', 'MiB', '下载体积'], ['1', '个进程', '无需浏览器内核']],
+    workspace: '所有服务器，<br>一个窗口。', workspaceLede: '标签、分屏、文件与实时监控，并排工作。',
+    features: '常用的，都在。',
+    fHosts: '井井有条的主机库', fHostsP: '分组、标签、置顶，随手搜索。',
+    fCmp: '懂命令的补全', fCmpP: '1,453 个 Shell 规格、命令历史，加一条 AI 建议。',
+    fFiles: '双栏 SFTP', fFilesP: '传输队列、断点续传、外部编辑。',
+    fMon: '实时监控', fMonP: '服务器零安装。',
+    fFwd: '端口转发', fFwdP: '本地、远程、动态隧道。',
+    chips: ['跳板机', '代理', 'Ed25519 密钥', '主机密钥校验', '系统凭据存储', '命令片段', '本地 Shell', '布局恢复', '快捷键'],
+    airy: '认识 <span class="k-grad">Airy</span>。', airyLede: '终端旁边，多一个帮手。',
+    tiles: [['39', '个工具，管理主机、文件与会话'], ['4', '档权限，默认先确认'], ['自选模型', 'Anthropic 或任意 OpenAI 兼容接口']],
+    modes: ['观察', '确认', '自动确认', '全自动'],
+    themes: '六种配色，换个心情。', themesLede: '浅色与深色，各有一只 Airy。',
+    names: ['冰蓝薄荷', '薄荷绿', '紫罗兰', '落日橙', '深海蓝', '樱花粉'],
+    perf: '打开就用。', sec: '秒', startup: '启动', memory: '空闲内存',
+    foot: '轻装上阵。', download: '下载体积', unpacked: '解压后',
+    parts: ['Shell 补全规格', 'Flutter 引擎', 'AOT 应用代码', '品牌素材', '其余文件'],
+    pills: ['单个应用进程', '无 Chromium', '无 WebView'],
+  },
+};
+const lang = new URLSearchParams(location.search).get('lang') === 'zh' ? 'zh' : 'en';
+const t = TEXT[lang], $ = (id) => document.getElementById(id);
+document.documentElement.lang = lang;
+document.querySelectorAll('[data-t]').forEach((el) => (el.innerHTML = t[el.dataset.t]));
+
+$('stats').innerHTML = t.stats.map(([n, unit, label]) => `<div class="stat"><b>${n}<small>${unit}</small></b><span>${label}</span></div>`).join('');
+$('chips').innerHTML = t.chips.map((c) => `<span>${c}</span>`).join('');
+$('tiles').innerHTML = t.tiles.map(([n, label]) => `<div class="tile"><b>${n}</b><span>${label}</span></div>`).join('');
+$('modes').innerHTML = t.modes.map((m, i) => `<span class="${i === 1 ? 'on' : ''}">${m}</span>`).join('');
+$('pills').innerHTML = t.pills.map((p) => `<span>${p}</span>`).join('');
+$('cmp').innerHTML = SshairyMock.term([SshairyMock.prompt('deploy', 'web-01') + 'systemctl {cur|}']) + SshairyMock.part('completion', lang, { style: ' ' });
+
+// One window cut into six slanted strips, alternating light and dark.
+const THEMES = ['blue', 'green', 'violet', 'orange', 'deepSea', 'pink'];
+const W = 1072, H = 400, lean = 34;
+$('stripes').innerHTML = THEMES.map((theme, i) => {
+  const a = i ? (W * i) / 6 : -lean, b = i < 5 ? (W * (i + 1)) / 6 : W + lean;
+  const clip = `polygon(${a + lean}px 0,${b + lean}px 0,${b - lean}px ${H}px,${a - lean}px ${H}px)`;
+  return `<div data-theme="${theme}" style="clip-path:${clip}">${SshairyMock.scene('hosts', lang, { w: W, h: H, mode: i % 2 ? 'dark' : 'light', mascot: false })}</div>`;
+}).join('');
+$('pals').innerHTML = THEMES.map((theme, i) => `<div class="pal" data-theme="${theme}"><img data-brand="default" alt=""><b>${t.names[i]}</b><i>${['primary', 'sky', 'accent'].map((k) => `<u style="background:var(--b-${k})"></u>`).join('')}</i></div>`).join('');
+
+const contents = SSHAIRY_DATA.contents;
+$('stack').innerHTML = contents.map((v, i) => `<i style="--v:${v};--o:${[1, 1, 0.72, 0.5, 0.34][i]}"></i>`).join('');
+$('parts').innerHTML = contents.map((v, i) => `<div><u style="opacity:${[1, 1, 0.72, 0.5, 0.34][i]}"></u><span>${t.parts[i]}</span><em>${v.toFixed(1)} MiB</em></div>`).join('');
+
+SshairyMock.mount(document, '../../site/assets');
+SshairyCharts.mount(document, lang);
+</script>
