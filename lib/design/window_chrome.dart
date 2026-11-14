@@ -77,7 +77,7 @@ class _WindowControlsState extends State<WindowControls> {
       valueListenable: _window,
       builder: (context, state, _) {
         _scheduleBounds();
-        if (!state.supported) return const SizedBox.shrink();
+        if (!state.supported || !state.customChrome) return const SizedBox.shrink();
         final scheme = Theme.of(context).colorScheme;
         return Row(
           mainAxisSize: MainAxisSize.min,

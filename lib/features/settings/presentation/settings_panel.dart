@@ -397,7 +397,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           ),
         ),
         _Field.stacked(l.appBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.app)),
-        if (Platform.isWindows)
+        if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
           _Field.stacked(
             l.renderer,
             segmented(SettingKeys.renderer, const {Renderer.skia: 'Skia', Renderer.impeller: 'Impeller'}),

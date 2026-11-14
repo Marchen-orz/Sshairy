@@ -24,13 +24,20 @@ class ImportRead {
 /// Reads other programs' session stores and files (docs/HOST_IMPORT.md): only text and PuTTY's registry key,
 /// within the size limits; nothing is executed but `reg.exe query` with fixed arguments.
 class HostImportFiles {
-  const HostImportFiles({this.finalShellLocations = const FinalShellLocations()});
+  const HostImportFiles({
+    this.finalShellLocations = const FinalShellLocations(),
+    this.environment,
+    this.operatingSystem,
+  });
 
   final FinalShellLocations finalShellLocations;
+  final Map<String, String>? environment;
+  final String? operatingSystem;
 
-  static String get _home => Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '';
-  static String get _user => Platform.environment['USERNAME'] ?? Platform.environment['USER'] ?? '';
-  static String? _env(String name) => Platform.environment[name];
+  bool get _windows => (operatingSystem ?? Platform.operatingSystem) == 'windows';
+  String get _home => (_windows ? _env('USERPROFILE') : _env('HOME')) ?? _env('HOME') ?? '';
+  String get _user => (_windows ? _env('USERNAME') : _env('USER')) ?? '';
+  String? _env(String name) => (environment ?? Platform.environment)[name];
 
   /// Session stores kept in a folder of many files rather than one.
   static const folders = {ImportFormat.securecrt, ImportFormat.xshell, ImportFormat.finalshell};
@@ -38,12 +45,24 @@ class HostImportFiles {
   /// Where each program keeps its sessions by default, in the order to try.
   List<String> defaults(ImportFormat format) {
     final home = _home, appData = _env('APPDATA');
-    String join(String a, String b) => '$a${Platform.pathSeparator}$b';
+    String join(String a, String b) => '$a/${b.replaceAll(r'\', '/')}';
     return switch (format) {
       ImportFormat.openssh => [join(join(home, '.ssh'), 'config')],
-      ImportFormat.putty => const [],
+      ImportFormat.putty => [
+        if (!_windows) ...[
+          if (_env('PUTTYDIR') case final root?) join(root, 'sessions'),
+          join(home, '.putty/sessions'),
+          join(_env('XDG_CONFIG_HOME') ?? join(home, '.config'), 'putty/sessions'),
+        ],
+      ],
       ImportFormat.mobaxterm => [if (appData != null) join(join(appData, 'MobaXterm'), 'MobaXterm.ini')],
-      ImportFormat.securecrt => [if (appData != null) join(appData, r'VanDyke\Config\Sessions')],
+      ImportFormat.securecrt => [
+        if (_windows && appData != null) join(appData, r'VanDyke\Config\Sessions'),
+        if (!_windows) ...[
+          join(home, 'Library/Application Support/VanDyke/SecureCRT/Config/Sessions'),
+          join(home, '.vandyke/SecureCRT/Config/Sessions'),
+        ],
+      ],
       ImportFormat.xshell => [
         for (final docs in [join(home, 'Documents'), join(home, r'OneDrive\Documents'), join(home, r'OneDrive\文档')])
           ..._xshell(join(docs, 'NetSarang Computer')),
@@ -67,7 +86,7 @@ class HostImportFiles {
   }
 
   /// Whether PuTTY's registry key can be read here.
-  bool get hasRegistry => Platform.isWindows;
+  bool get hasRegistry => _windows;
 
   String? found(ImportFormat format) {
     for (final path in defaults(format)) {
@@ -78,7 +97,7 @@ class HostImportFiles {
 
   /// Reads [format] from its default place; null when it is not there.
   Future<ImportRead?> readDefault(ImportFormat format) async {
-    if (format == ImportFormat.putty) return hasRegistry ? _registry() : null;
+    if (format == ImportFormat.putty && hasRegistry) return _registry();
     final paths = format == ImportFormat.finalshell ? await finalShellLocations.candidates() : defaults(format);
     ImportRead? unreadable;
     for (final path in paths) {
@@ -96,7 +115,7 @@ class HostImportFiles {
 
   /// Asks for a file, or a folder for [folders], and reads it as [format]; null [format] sniffs the file.
   Future<ImportRead?> pick([ImportFormat? format]) async {
-    if (format != null && folders.contains(format)) {
+    if (format != null && (folders.contains(format) || (format == ImportFormat.putty && !hasRegistry))) {
       final dir = await selector.getDirectoryPath(initialDirectory: _parentOf(defaults(format).firstOrNull));
       return dir == null ? null : read(format, dir);
     }
@@ -127,9 +146,10 @@ class HostImportFiles {
   Future<ImportRead> read(ImportFormat? format, String path) async {
     final name = path.split(RegExp(r'[/\\]')).where((p) => p.isNotEmpty).lastOrNull ?? path;
     if (FileSystemEntity.isDirectorySync(path)) {
-      final files = await _folder(path);
+      final files = await _folder(path, putty: format == ImportFormat.putty);
       final f = format ?? _sniffFolder(files);
       final config = switch (f) {
+        ImportFormat.putty => _puttyFiles(files),
         ImportFormat.securecrt => parseSecureCrt(files, defaultUser: _user),
         ImportFormat.xshell => parseXshell(files, defaultUser: _user),
         _ => parseFinalShell([
@@ -151,7 +171,11 @@ class HostImportFiles {
     final f = format ?? sniffImport(name, file.text) ?? ImportFormat.openssh;
     final config = switch (f) {
       ImportFormat.openssh => await _openssh(path),
-      ImportFormat.putty => parsePuttyReg(file, defaultUser: _user),
+      ImportFormat.putty =>
+        file.text.trimLeft().startsWith('Windows Registry Editor') ||
+                file.text.contains(r'\SimonTatham\PuTTY\Sessions\')
+            ? parsePuttyReg(file, defaultUser: _user)
+            : _puttyFiles([file]),
       ImportFormat.mobaxterm => parseMobaXterm(file, defaultUser: _user),
       ImportFormat.securecrt => parseSecureCrt([file], defaultUser: _user),
       ImportFormat.xshell => parseXshell([file], defaultUser: _user),
@@ -192,6 +216,25 @@ class HostImportFiles {
     );
   }
 
+  // Unix PuTTY stores one flat key=value file per percent-encoded session name. Feed only its public connection
+  // fields through the same parser as registry exports, so protocol/key validation and host limits remain shared.
+  SshConfig _puttyFiles(List<ImportText> files) {
+    final text = StringBuffer('Windows Registry Editor Version 5.00\n');
+    for (final file in files) {
+      final name = file.name.replaceAllMapped(RegExp(r'[\[\]\\\r\n]'), (m) => Uri.encodeComponent(m[0]!));
+      text.writeln('[HKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions\\$name]');
+      for (final raw in const LineSplitter().convert(file.text)) {
+        final equal = raw.indexOf('=');
+        if (equal < 1) continue;
+        final key = raw.substring(0, equal);
+        if (!const {'HostName', 'UserName', 'PortNumber', 'Protocol', 'PublicKeyFile'}.contains(key)) continue;
+        final value = raw.substring(equal + 1).replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+        text.writeln('"$key"="$value"');
+      }
+    }
+    return parsePuttyReg(ImportText('PuTTY', text.toString()), defaultUser: _user);
+  }
+
   ImportFormat _sniffFolder(List<ImportText> files) {
     bool any(String suffix) => files.any((f) => f.name.toLowerCase().endsWith(suffix));
     if (any('.xsh')) return ImportFormat.xshell;
@@ -200,7 +243,7 @@ class HostImportFiles {
   }
 
   /// Session files under [root], at most [importMaxDepth] deep, [importMaxFiles] files and [importMaxBytes].
-  Future<List<ImportText>> _folder(String root) async {
+  Future<List<ImportText>> _folder(String root, {bool putty = false}) async {
     final out = <ImportText>[];
     var total = 0;
     final base = Directory(root).absolute.path;
@@ -216,11 +259,13 @@ class HostImportFiles {
       for (final e in entries) {
         if (out.length >= importMaxFiles || total >= importMaxBytes) return;
         if (e is Directory) {
-          await walk(e, depth + 1);
+          if (!putty) await walk(e, depth + 1);
           continue;
         }
         final lower = e.path.toLowerCase();
-        if (e is! File || !(lower.endsWith('.ini') || lower.endsWith('.xsh') || lower.endsWith('.json'))) continue;
+        if (e is! File || (!putty && !(lower.endsWith('.ini') || lower.endsWith('.xsh') || lower.endsWith('.json')))) {
+          continue;
+        }
         final relative = e.absolute.path.substring(base.length).replaceAll(r'\', '/').replaceFirst(RegExp('^/'), '');
         try {
           final bytes = await _bytes(e);

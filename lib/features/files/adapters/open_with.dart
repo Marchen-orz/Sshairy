@@ -4,6 +4,8 @@ import 'dart:io';
 import '../../../foundation/open_external.dart';
 import '../domain/open_with.dart';
 
+part 'unix_editor_apps.dart';
+
 /// Reads the Windows registry through `reg.exe`: started without a shell, with arguments that are never joined into
 /// a command line.
 abstract interface class Registry {
@@ -236,22 +238,25 @@ class WindowsApps {
   }
 }
 
-/// Opens files in the programs this platform offers. Windows lists and starts programs; elsewhere only the
-/// system's association is available, started without anything to watch.
+/// Lists installed applications and uses a document-aware wait command only when the editor supports it.
 class PlatformEditorLauncher implements EditorLauncher {
-  PlatformEditorLauncher({WindowsApps? windows})
-    : _windows = windows ?? (Platform.isWindows ? WindowsApps(RegExe()) : null);
+  PlatformEditorLauncher({WindowsApps? windows, UnixApps? unix})
+    : _windows = windows ?? (unix == null && Platform.isWindows ? WindowsApps(RegExe()) : null),
+      _unix = unix ?? (windows == null && (Platform.isMacOS || Platform.isLinux) ? UnixApps() : null);
 
   final WindowsApps? _windows;
+  final UnixApps? _unix;
 
   @override
-  bool get canChoose => _windows != null;
+  bool get canChoose => _windows != null || (_unix?.supported ?? false);
 
   @override
-  Future<List<OpenWithApp>> apps(String fileName) async => await _windows?.find(fileName) ?? const [];
+  Future<List<OpenWithApp>> apps(String fileName) async =>
+      await _windows?.find(fileName) ?? await _unix?.find(fileName) ?? const [];
 
   @override
   Future<OpenWithApp?> program(String executable) async {
+    if (_unix case final unix?) return unix.program(executable);
     if (_windows == null || !_launchable(executable)) return null;
     return OpenWithApp.program(executable);
   }
@@ -267,7 +272,26 @@ class PlatformEditorLauncher implements EditorLauncher {
   Future<EditorLaunch> launch(OpenWithApp app, String path) async {
     if (!File(path).existsSync()) return const EditorLaunch.failed();
     final windows = _windows;
-    if (windows == null) return _system(path);
+    if (windows == null) {
+      final unix = _unix;
+      if (unix == null) return _system(path);
+      if (!app.isSystem) {
+        final recipe = await unix.recipe(app.executable!, path);
+        return recipe == null ? const EditorLaunch.failed() : _spawn(recipe);
+      }
+      // An executable remote file is edited by a text app, never passed to a system handler that may run it.
+      if (opensByRunning(baseName(path)) || UnixApps._canExecute(path)) {
+        if (unix.mac) return _spawn(LaunchRecipe('/usr/bin/open', ['-t', path]));
+        for (final editor in await unix.find('document.txt')) {
+          final recipe = await unix.recipe(editor.executable!, path);
+          if (recipe == null) continue;
+          final result = await _spawn(recipe);
+          if (result.started) return result;
+        }
+        return const EditorLaunch.failed();
+      }
+      return _system(path);
+    }
     final name = baseName(path);
     final executable = app.isSystem ? await windows.associated(name) : app.executable;
     if (executable == null) {

@@ -6,7 +6,8 @@ import '../../../foundation/secret.dart';
 class SecretStore {
   const SecretStore();
 
-  static const _storage = FlutterSecureStorage();
+  // The login keychain works for local macOS builds without a provisioning profile or sharing group.
+  static const _storage = FlutterSecureStorage(mOptions: MacOsOptions(usesDataProtectionKeychain: false));
 
   Future<Secret?> read(SecretRef ref) async {
     final value = await _storage.read(key: ref.storageKey);

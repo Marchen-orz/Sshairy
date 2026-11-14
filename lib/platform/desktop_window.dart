@@ -6,32 +6,40 @@ import 'package:flutter/services.dart';
 class DesktopWindowState {
   const DesktopWindowState({
     this.supported = false,
+    this.customChrome = true,
     this.maximized = false,
     this.active = true,
     this.maximizeHovered = false,
   });
 
-  final bool supported, maximized, active, maximizeHovered;
+  final bool supported, customChrome, maximized, active, maximizeHovered;
 }
 
-/// Only the Windows runner extends its client area; other runners retain their native frame.
+/// Native desktop operations; the runner reports whether Flutter draws the window buttons.
 class DesktopWindow extends ValueNotifier<DesktopWindowState> {
-  DesktopWindow({MethodChannel? channel, bool? windows})
+  DesktopWindow({MethodChannel? channel, bool? windows, TargetPlatform? platform})
     : _channel = channel ?? const MethodChannel('sshairy/window'),
-      _windows = windows ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows),
+      _desktop =
+          windows ??
+          (!kIsWeb &&
+              const {
+                TargetPlatform.windows,
+                TargetPlatform.macOS,
+                TargetPlatform.linux,
+              }.contains(platform ?? defaultTargetPlatform)),
       super(const DesktopWindowState());
 
   static final instance = DesktopWindow();
 
   final MethodChannel _channel;
-  final bool _windows;
+  final bool _desktop;
   Future<void>? _initializing;
   ({String theme, bool dark})? _brandIcon;
 
   Future<void> initialize() => _initializing ??= _initialize();
 
   Future<void> _initialize() async {
-    if (!_windows) return;
+    if (!_desktop) return;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'state') _update(call.arguments);
       // Alt+F4, the taskbar and the system menu take the same confirmed path as the close button.
@@ -48,6 +56,7 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
     if (message is! Map) return;
     value = DesktopWindowState(
       supported: true,
+      customChrome: message['customChrome'] != false,
       maximized: message['maximized'] == true,
       active: message['active'] != false,
       maximizeHovered: message['maximizeHovered'] == true,

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart' as selector;
 import 'package:flutter/widgets.dart';
@@ -11,8 +13,14 @@ Future<String?> pickDirectory() => selector.getDirectoryPath();
 /// A program the user picks in the system dialog; null when cancelled.
 Future<String?> pickProgram() async {
   final file = await selector.openFile(
-    acceptedTypeGroups: const [
-      selector.XTypeGroup(label: 'exe', extensions: ['exe']),
+    acceptedTypeGroups: [
+      if (Platform.isWindows) const selector.XTypeGroup(label: 'exe', extensions: ['exe']),
+      if (Platform.isMacOS)
+        const selector.XTypeGroup(
+          label: 'app',
+          extensions: ['app'],
+          uniformTypeIdentifiers: ['com.apple.application-bundle'],
+        ),
     ],
   );
   return file?.path;

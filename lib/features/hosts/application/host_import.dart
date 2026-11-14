@@ -70,10 +70,7 @@ class HostImport {
   final HostPasswordImport? _passwords;
   static const _logins = FinalShellLogin();
 
-  List<ImportFormat> get sources => [
-    for (final f in ImportFormat.values)
-      if (f != ImportFormat.putty || _files.hasRegistry) f,
-  ];
+  List<ImportFormat> get sources => ImportFormat.values;
 
   List<String> locations(ImportFormat format) => _files.defaults(format);
 

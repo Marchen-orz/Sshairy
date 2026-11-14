@@ -428,7 +428,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                         textStyle: TerminalStyle(
                           fontSize: settings.fontSize,
                           fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
-                          fontFamilyFallback: const [...AppFonts.monoFallback, 'Menlo', 'DejaVu Sans Mono'],
+                          fontFamilyFallback: AppFonts.monoFallback,
                         ),
                       ),
                     ),

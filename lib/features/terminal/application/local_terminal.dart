@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../adapters/local_shells.dart';
+import '../adapters/unix_pty.dart';
 import '../adapters/windows_pty.dart';
 import '../domain/local_pty.dart';
 import '../domain/terminal_target.dart';
 
 final localShellsProvider = Provider<List<LocalShell>>((_) => discoverLocalShells());
-final localPtyProvider = Provider<LocalPtyFactory>((_) => const WindowsPtyFactory());
+final localPtyProvider = Provider<LocalPtyFactory>(
+  (_) => Platform.isWindows ? const WindowsPtyFactory() : const UnixPtyFactory(),
+);

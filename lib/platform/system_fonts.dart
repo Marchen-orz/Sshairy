@@ -8,9 +8,12 @@ class SystemFont {
   final bool mono;
 }
 
-/// Installed font families, from the Windows runner; empty elsewhere, where the pickers offer the defaults only.
+/// Installed font families and fixed-pitch metadata from the desktop runner.
 Future<List<SystemFont>> loadSystemFonts([MethodChannel channel = const MethodChannel('sshairy/window')]) async {
-  if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return const [];
+  if (kIsWeb ||
+      !const {TargetPlatform.windows, TargetPlatform.macOS, TargetPlatform.linux}.contains(defaultTargetPlatform)) {
+    return const [];
+  }
   try {
     final raw = await channel.invokeListMethod<Object?>('fonts') ?? const [];
     return [

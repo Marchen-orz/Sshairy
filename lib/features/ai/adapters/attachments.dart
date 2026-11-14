@@ -25,7 +25,7 @@ class AgentAttachmentPicker {
   final Future<List<String>> Function() _pick, _clipboard;
 
   static Future<List<String>> _clipboardFiles() async {
-    if (!Platform.isWindows) return const [];
+    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) return const [];
     try {
       final paths = await const MethodChannel('sshairy/window').invokeListMethod<String>('clipboardFiles');
       return paths ?? const [];

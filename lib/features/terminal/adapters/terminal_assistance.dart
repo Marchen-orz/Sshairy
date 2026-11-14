@@ -51,6 +51,19 @@ extension _CommandAssistance on TerminalSession {
     final before = _rowText(row, 0, column);
     final local = localShell;
     if (local != null) {
+      if (local.kind == LocalShellKind.unix && !local.usesPosixSyntax) return null;
+      if (local.kind == LocalShellKind.bash ||
+          local.kind == LocalShellKind.zsh ||
+          local.kind == LocalShellKind.sh ||
+          local.kind == LocalShellKind.fish ||
+          local.kind == LocalShellKind.unix) {
+        return visibleUnixShellCommand(
+          before,
+          tail,
+          percent: local.kind == LocalShellKind.zsh,
+          fish: local.kind == LocalShellKind.fish,
+        );
+      }
       return visibleLocalShellCommand(
         before,
         tail,
@@ -120,7 +133,7 @@ extension _CommandAssistance on TerminalSession {
       );
     }
 
-    final posix = !isLocal || localShell!.kind == LocalShellKind.gitBash;
+    final posix = !isLocal || localShell!.usesPosixSyntax;
     if (!posix) {
       for (final snippet in _snippets()) {
         if (snippet.text.startsWith(request.text) && commandIsSingleLine(snippet.text)) {

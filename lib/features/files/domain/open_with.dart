@@ -7,8 +7,11 @@ class OpenWithApp {
   const OpenWithApp.system() : this('system', '', null);
 
   /// A program at [executable]. The id follows the path, so the same program found twice is one entry.
-  factory OpenWithApp.program(String executable, {String? name}) =>
-      OpenWithApp(executable.toLowerCase(), name ?? programName(executable), executable);
+  factory OpenWithApp.program(String executable, {String? name}) => OpenWithApp(
+    RegExp(r'^[A-Za-z]:[\\/]|^\\\\').hasMatch(executable) ? executable.toLowerCase() : executable,
+    name ?? programName(executable),
+    executable,
+  );
 
   final String id, name;
 
@@ -186,7 +189,7 @@ String programName(String executable) {
   final file = baseName(executable);
   final known = _knownNames[file.toLowerCase()];
   if (known != null) return known;
-  final base = file.toLowerCase().endsWith('.exe') ? file.substring(0, file.length - 4) : file;
+  final base = file.replaceFirst(RegExp(r'\.(exe|app|desktop)$', caseSensitive: false), '');
   // `NOTEPAD` and `notepad` read as `Notepad`; a mixed-case name was written that way on purpose.
   final plain = base == base.toLowerCase() || base == base.toUpperCase();
   return plain && base.isNotEmpty ? '${base[0].toUpperCase()}${base.substring(1).toLowerCase()}' : base;

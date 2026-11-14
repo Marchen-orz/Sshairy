@@ -1,10 +1,8 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
-#ifdef GDK_WINDOWING_X11
-#include <gdk/gdkx.h>
-#endif
 
+#include "desktop_bridge.h"
 #include "flutter/generated_plugin_registrant.h"
 
 struct _MyApplication {
@@ -25,38 +23,25 @@ static void my_application_activate(GApplication* application) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
-  // Use a header bar when running in GNOME as this is the common style used
-  // by applications and is the setup most users will be using (e.g. Ubuntu
-  // desktop).
-  // If running on X and not using GNOME then just use a traditional title bar
-  // in case the window manager does more exotic layout, e.g. tiling.
-  // If running on Wayland assume the header bar will work (may need changing
-  // if future cases occur).
-  gboolean use_header_bar = TRUE;
-#ifdef GDK_WINDOWING_X11
-  GdkScreen* screen = gtk_window_get_screen(window);
-  if (GDK_IS_X11_SCREEN(screen)) {
-    const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
-    if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
-      use_header_bar = FALSE;
-    }
-  }
-#endif
-  if (use_header_bar) {
-    GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
-    gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "sshairy");
-    gtk_header_bar_set_show_close_button(header_bar, TRUE);
-    gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
-  } else {
-    gtk_window_set_title(window, "sshairy");
-  }
-
+  // Flutter draws the controls; the bridge keeps native move/resize and confirmed close semantics.
+  gtk_window_set_title(window, "Sshairy");
+  gtk_window_set_decorated(window, FALSE);
   gtk_window_set_default_size(window, 1280, 720);
+  gtk_widget_set_size_request(GTK_WIDGET(window), 640, 400);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
-  fl_dart_project_set_dart_entrypoint_arguments(
-      project, self->dart_entrypoint_arguments);
+  const gboolean impeller = sshairy_renderer_preference(application);
+  fl_dart_project_set_enable_impeller(project, impeller);
+  GPtrArray* arguments = g_ptr_array_new_with_free_func(g_free);
+  if (self->dart_entrypoint_arguments) {
+    for (gchar** arg = self->dart_entrypoint_arguments; *arg; ++arg) {
+      if (!g_str_has_prefix(*arg, "--renderer=")) g_ptr_array_add(arguments, g_strdup(*arg));
+    }
+  }
+  g_ptr_array_add(arguments, g_strdup(impeller ? "--renderer=impeller" : "--renderer=skia"));
+  g_ptr_array_add(arguments, nullptr);
+  fl_dart_project_set_dart_entrypoint_arguments(project, reinterpret_cast<gchar**>(arguments->pdata));
+  g_ptr_array_unref(arguments);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
@@ -74,6 +59,7 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  sshairy_register_desktop_bridge(window, view);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }

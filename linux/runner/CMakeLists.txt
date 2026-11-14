@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME}
   "main.cc"
   "my_application.cc"
+  "desktop_bridge.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
 )
 
@@ -24,3 +25,10 @@ target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+
+# fork/exec stays in a single-threaded child executable, never in the Dart VM.
+add_executable(sshairy_pty "../../native/sshairy_pty.c")
+set_target_properties(sshairy_pty PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
+target_compile_options(sshairy_pty PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(sshairy_pty PRIVATE util)
+add_dependencies(${BINARY_NAME} sshairy_pty)

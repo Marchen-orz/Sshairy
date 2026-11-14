@@ -9,9 +9,9 @@ List<LocalShell> discoverLocalShells({
   bool Function(String path)? fileExists,
 }) {
   final env = environment ?? Platform.environment;
-  final windows = (operatingSystem ?? Platform.operatingSystem) == 'windows';
-  // Unix PTY is deferred until its native ownership/flow-control implementation is verified.
-  if (!windows) return const [];
+  final os = operatingSystem ?? Platform.operatingSystem;
+  final windows = os == 'windows';
+  if (!windows && os != 'linux' && os != 'macos') return const [];
   final exists = fileExists ?? (path) => File(path).existsSync();
   String? variable(String name) {
     for (final e in env.entries) {
@@ -90,6 +90,27 @@ List<LocalShell> discoverLocalShells({
     }
     final appData = normalize(variable('LOCALAPPDATA'));
     if (appData != null) add(LocalShellKind.gitBash, join(appData, r'Programs\Git\bin\bash.exe'));
+  } else {
+    LocalShellKind? kind(String path) => switch (path.split('/').last) {
+      'bash' => LocalShellKind.bash,
+      'zsh' => LocalShellKind.zsh,
+      'fish' => LocalShellKind.fish,
+      'sh' => LocalShellKind.sh,
+      'pwsh' => LocalShellKind.pwsh,
+      'dash' || 'ksh' || 'mksh' || 'csh' || 'tcsh' => LocalShellKind.unix,
+      _ => null,
+    };
+    final preferred = normalize(variable('SHELL'));
+    if (preferred != null) {
+      final preferredKind = kind(preferred);
+      if (preferredKind != null) add(preferredKind, preferred);
+    }
+    final roots = [...paths, '/bin', '/usr/bin', '/usr/local/bin', if (os == 'macos') '/opt/homebrew/bin'];
+    for (final root in roots) {
+      for (final name in ['zsh', 'bash', 'fish', 'sh', 'pwsh', 'ksh', 'dash', 'tcsh']) {
+        add(kind(name)!, join(root, name));
+      }
+    }
   }
   return List.unmodifiable(found);
 }

@@ -105,6 +105,27 @@ String? visibleShellCommand(String beforeCursor, String afterCursor) {
   return commandIsSingleLine(command) ? command : null;
 }
 
+/// Default Unix prompts only; custom prompts still require semantic OSC boundaries.
+String? visibleUnixShellCommand(String beforeCursor, String afterCursor, {bool percent = false, bool fish = false}) {
+  if (afterCursor.trim().isNotEmpty) return null;
+  if (!fish) {
+    final known =
+        visibleShellCommand(beforeCursor, afterCursor) ??
+        visibleLocalShellCommand(beforeCursor, afterCursor, powershell: false, bash: true);
+    if (known != null) return known;
+  }
+  final prompt =
+      (fish
+              ? RegExp(r'^[\w.-]+@[\w.-]+ [^\r\n>]*> ')
+              : percent
+              ? RegExp(r'^(?:[\w.-]+@[\w.-]+ [^\r\n]*?|[\w.-]+)[%#] ')
+              : null)
+          ?.firstMatch(beforeCursor);
+  if (prompt == null) return null;
+  final command = beforeCursor.substring(prompt.end);
+  return commandIsSingleLine(command) ? command : null;
+}
+
 /// Conservative defaults for local shells. Custom prompts still require semantic OSC boundaries.
 String? visibleLocalShellCommand(
   String beforeCursor,

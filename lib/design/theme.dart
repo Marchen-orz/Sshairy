@@ -56,9 +56,25 @@ abstract final class Motion {
 /// Font defaults from docs/UI.md §2. Chinese text falls back explicitly, so the system never picks Japanese glyphs.
 abstract final class AppFonts {
   static const uiSize = 13.0, uiSizeMin = 11.0, uiSizeMax = 18.0;
-  static const mono = 'Cascadia Mono';
-  static const cjk = ['Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC'];
-  static const monoFallback = ['Cascadia Code', 'Consolas', ...cjk, 'Noto Sans Mono CJK SC', 'monospace'];
+  static String get mono => switch (defaultTargetPlatform) {
+    TargetPlatform.macOS => 'Menlo',
+    TargetPlatform.linux => 'monospace',
+    _ => 'Cascadia Mono',
+  };
+  static List<String> get cjk => switch (defaultTargetPlatform) {
+    TargetPlatform.macOS => const ['PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC'],
+    TargetPlatform.linux => const ['Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'Source Han Sans SC'],
+    _ => const ['Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Source Han Sans SC'],
+  };
+  static List<String> get monoFallback => [
+    'Cascadia Code',
+    'Consolas',
+    'Menlo',
+    'DejaVu Sans Mono',
+    'Noto Sans Mono CJK SC',
+    ...cjk,
+    'monospace',
+  ];
 
   static String? get ui => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows ? 'Segoe UI' : null;
 }
@@ -69,7 +85,7 @@ class MonoFont extends ThemeExtension<MonoFont> {
 
   final String family;
 
-  static MonoFont of(BuildContext context) => Theme.of(context).extension<MonoFont>() ?? const MonoFont(AppFonts.mono);
+  static MonoFont of(BuildContext context) => Theme.of(context).extension<MonoFont>() ?? MonoFont(AppFonts.mono);
 
   TextStyle apply(TextStyle? base) =>
       (base ?? const TextStyle()).copyWith(fontFamily: family, fontFamilyFallback: AppFonts.monoFallback);

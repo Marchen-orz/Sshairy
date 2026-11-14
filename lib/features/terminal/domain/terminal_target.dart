@@ -1,7 +1,7 @@
 import '../../../foundation/ids.dart';
 
 /// A shell reference only; the inherited environment belongs to the running adapter, never the layout.
-enum LocalShellKind { cmd, powershell, pwsh, gitBash }
+enum LocalShellKind { cmd, powershell, pwsh, gitBash, bash, zsh, fish, sh, unix }
 
 class LocalShell {
   const LocalShell({required this.kind, required this.executable});
@@ -14,12 +14,25 @@ class LocalShell {
     LocalShellKind.powershell => 'Windows PowerShell',
     LocalShellKind.pwsh => 'PowerShell',
     LocalShellKind.gitBash => 'Git Bash',
+    LocalShellKind.bash => 'Bash',
+    LocalShellKind.zsh => 'Zsh',
+    LocalShellKind.fish => 'Fish',
+    LocalShellKind.sh => 'Shell',
+    LocalShellKind.unix => executable.split('/').last,
   };
 
   List<String> get arguments => switch (kind) {
     LocalShellKind.powershell || LocalShellKind.pwsh => const ['-NoLogo'],
-    LocalShellKind.gitBash => const ['--login', '-i'],
+    LocalShellKind.gitBash || LocalShellKind.bash => const ['--login', '-i'],
+    LocalShellKind.zsh => const ['-l', '-i'],
+    LocalShellKind.fish || LocalShellKind.sh || LocalShellKind.unix => const ['-i'],
     LocalShellKind.cmd => const [],
+  };
+
+  bool get usesPosixSyntax => switch (kind) {
+    LocalShellKind.gitBash || LocalShellKind.bash || LocalShellKind.zsh || LocalShellKind.sh => true,
+    LocalShellKind.unix => const {'dash', 'ksh', 'mksh'}.contains(executable.split('/').last),
+    _ => false,
   };
 
   static bool validExecutable(String value) =>
