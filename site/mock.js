@@ -63,10 +63,10 @@
     zh: {
       search: '搜索主机或 user@host', newHost: '新建主机', all: '全部', goal: '描述你想检查或处理的问题…',
       ask: '/api/reports 为什么返回 502？', diag: '收集诊断', exec: '执行命令',
-      found: '<code>reports-api</code> 容器达到 256 MiB 内存上限后被内核终止。重启它即可恢复这个接口。',
+      found: '<code>reports-api</code> 容器达到 256 MiB 内存上限后被内核终止；重启它即可恢复这个接口',
       approve: '确认操作', once: '仅批准此次', reject: '拒绝', timeout: '30 秒',
-      hint: '允许 Airy 执行此操作，并在本轮使用其有界结果。',
-      done: '已重启，<code>/api/reports</code> 恢复返回 200。',
+      hint: '允许 Airy 执行此操作，并在本轮使用其有界结果',
+      done: '已重启，<code>/api/reports</code> 恢复返回 200',
       next: ['内存上限仍为 256 MiB', '周报生成时峰值接近 240 MiB'],
       confirm: '确认', name: '名称', size: '大小', modified: '修改时间', transfers: '传输',
       cpu: 'CPU', memory: '内存', disks: '磁盘', network: '网络', processes: '进程', load: '负载', cores: '4 核',
