@@ -57,7 +57,7 @@ Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pin
 <img src="media/performance.png" alt="Startup time and idle memory of ten SSH clients, sorted from lowest to highest." width="100%">
 
 <details>
-<summary>All measurements</summary>
+<summary>Full comparison</summary>
 
 <!-- benchmark-table -->
 
@@ -75,8 +75,6 @@ Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pin
 | Xshell | 3.01 s | 35.8 MiB | 102.6 MiB |
 
 <!-- /benchmark-table -->
-
-Method, versions and sources are in [tool/readme/SOURCES.md](tool/readme/SOURCES.md).
 
 </details>
 

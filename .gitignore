@@ -57,6 +57,18 @@ app.*.map.json
 # Design notes and working logs stay local.
 /docs/
 
+# Presentation, tests and media generation stay local.
+/media/
+/site/
+/output/
+/test/
+/integration_test/
+/test_driver/
+/tool/readme/
+/tool/motion/
+/tool/site/
+/tool/test/
+
 # Agent instructions stay local.
 /CLAUDE.md
 /AGENTS.md

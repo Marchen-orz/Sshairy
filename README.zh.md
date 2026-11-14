@@ -57,7 +57,7 @@ Airy 就在终端旁边，是一位 AI 助手，配备 **39 个工具**，可管
 <img src="media/zh/performance.png" alt="十款 SSH 客户端的启动时间与空闲内存，从低到高排列" width="100%">
 
 <details>
-<summary>全部数据</summary>
+<summary>完整对比</summary>
 
 <!-- benchmark-table -->
 
@@ -75,8 +75,6 @@ Airy 就在终端旁边，是一位 AI 助手，配备 **39 个工具**，可管
 | Xshell | 3.01 秒 | 35.8 MiB | 102.6 MiB |
 
 <!-- /benchmark-table -->
-
-测量方法、版本与来源见 [tool/readme/SOURCES.md](tool/readme/SOURCES.md)
 
 </details>
 
