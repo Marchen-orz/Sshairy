@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
 import '../../../design/dialog.dart';
+import '../../../design/format.dart';
 import '../../../design/popup.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
@@ -1013,7 +1014,7 @@ class _AttachmentList extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(attachment.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                              Text(l.aiAgentAttachmentBytes(attachment.bytes), style: theme.textTheme.bodySmall),
+                              Text(formatFileSize(attachment.bytes), style: theme.textTheme.bodySmall),
                             ],
                           ),
                         ),

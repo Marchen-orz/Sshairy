@@ -12,8 +12,6 @@
   "@aiAgentAttachmentFileError": {"placeholders": {"name": {"type": "String"}, "reason": {"type": "String"}}},
   "aiAgentAttachmentUnsupported": "Choose UTF-8 text or a PNG, JPEG or WebP image. Binary files, credentials and unsupported formats cannot be attached.",
   "aiAgentAttachmentUnreadable": "The selected file could not be read.",
-  "aiAgentAttachmentBytes": "{bytes} bytes",
-  "@aiAgentAttachmentBytes": {"placeholders": {"bytes": {"type": "int"}}},
   "aiConfigEnabled": "Enable AI",
   "aiConfigAnthropic": "Anthropic Messages",
   "aiConfigOpenAi": "OpenAI Chat Completions",

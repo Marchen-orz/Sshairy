@@ -12,8 +12,6 @@
   "@aiAgentAttachmentFileError": {"placeholders": {"name": {"type": "String"}, "reason": {"type": "String"}}},
   "aiAgentAttachmentUnsupported": "请选择 UTF-8 文本或 PNG、JPEG、WebP 图片；不支持二进制文件、凭据和其他格式。",
   "aiAgentAttachmentUnreadable": "无法读取所选文件。",
-  "aiAgentAttachmentBytes": "{bytes} 字节",
-  "@aiAgentAttachmentBytes": {"placeholders": {"bytes": {"type": "int"}}},
   "aiConfigEnabled": "启用 AI",
   "aiConfigAnthropic": "Anthropic Messages",
   "aiConfigOpenAi": "OpenAI Chat Completions",

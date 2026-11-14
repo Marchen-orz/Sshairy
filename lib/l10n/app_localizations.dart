@@ -152,12 +152,6 @@ abstract class AppLocalizations {
   /// **'The selected file could not be read.'**
   String get aiAgentAttachmentUnreadable;
 
-  /// No description provided for @aiAgentAttachmentBytes.
-  ///
-  /// In en, this message translates to:
-  /// **'{bytes} bytes'**
-  String aiAgentAttachmentBytes(int bytes);
-
   /// No description provided for @aiConfigEnabled.
   ///
   /// In en, this message translates to:

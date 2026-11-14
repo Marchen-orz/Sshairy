@@ -47,11 +47,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'The selected file could not be read.';
 
   @override
-  String aiAgentAttachmentBytes(int bytes) {
-    return '$bytes bytes';
-  }
-
-  @override
   String get aiConfigEnabled => 'Enable AI';
 
   @override

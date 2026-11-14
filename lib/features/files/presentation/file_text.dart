@@ -1,19 +1,10 @@
+import '../../../design/format.dart';
 import '../../../foundation/file_system.dart';
 import '../../../l10n/app_localizations.dart';
 import '../application/file_ops.dart';
 import '../application/transfers.dart';
 
-String formatSize(int? bytes) {
-  if (bytes == null) return '';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  var v = bytes.toDouble();
-  var u = 0;
-  while (v >= 1024 && u < units.length - 1) {
-    v /= 1024;
-    u++;
-  }
-  return u == 0 ? '$bytes B' : '${v.toStringAsFixed(v >= 100 ? 0 : 1)} ${units[u]}';
-}
+String formatSize(int? bytes) => bytes == null ? '' : formatFileSize(bytes);
 
 String formatTime(DateTime? t) {
   if (t == null) return '';

@@ -44,11 +44,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentAttachmentUnreadable => '无法读取所选文件。';
 
   @override
-  String aiAgentAttachmentBytes(int bytes) {
-    return '$bytes 字节';
-  }
-
-  @override
   String get aiConfigEnabled => '启用 AI';
 
   @override
