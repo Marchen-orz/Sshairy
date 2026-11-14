@@ -11,9 +11,9 @@
 
 </div>
 
-**Sshairy** is a lightweight SSH client for **Windows, macOS and Linux**. Terminals, SFTP, tunnels and server monitoring share one clean native window, built with Dart and Flutter.
+**Sshairy** is a lightweight SSH client for **Windows, macOS and Linux**. Terminals, SFTP, tunnels and server monitoring share one modern native window with clean, fluid tabs, splits and panels, built with Dart and Flutter.
 
-It is a complete SSH client first, with AI there when you want it. Stay in the terminal, hand Airy a task, or turn a sentence into a command. No Chromium, no WebView, no browser runtime to carry around.
+AI is part of the SSH workflow: hand Airy a task or turn a sentence into a command, and it reads context, checks servers and carries out the work. Lightweight, modern and easy to use, with no Chromium, no WebView and no browser runtime to carry around.
 
 <img src="media/preview.gif" alt="A short tour of Sshairy: fast startup, one window for every server, completion with context, Airy commands and approvals, themes and measured performance." width="100%">
 
@@ -30,11 +30,11 @@ It is a complete SSH client first, with AI there when you want it. Stay in the t
 | **Move files** | Dual-pane SFTP, transfer queues, resumable file transfers, conflict handling and external editing. |
 | **Keep watch** | CPU, memory, disk and process monitoring over SSH, with nothing to install on the server. |
 | **Reach further** | Local, remote and dynamic port forwarding. Saved snippets and 1,453 shell completion specs. |
-| **Stay in control** | Host-key verification and OS-backed credential storage. English and Chinese interfaces, customizable shortcuts. |
+| **Stay in control** | Modern native interface with fluid tabs, splits and panels. Host-key verification, OS-backed credential storage, English and Chinese interfaces, customizable shortcuts. |
 
 ## Airy
 
-Airy sits beside your terminal with **39 tools** for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model and decide how much to delegate.
+Airy is the AI assistant beside your terminal, with **39 tools** for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model and decide how much to delegate.
 
 - **Agent** — describe a task and Airy works through it step by step.
 - **Inline commands** — a plain-language request becomes a command you can edit before it runs.
