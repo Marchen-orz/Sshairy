@@ -664,6 +664,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('command approval shows what the pending command does instead of fixed boilerplate', (tester) async {
+    final runtime = _Runtime()
+      ..active = true
+      ..phase = AgentPhase.awaitingApproval
+      ..approval = AgentApproval(
+        'user@web.example',
+        'df -h /',
+        '/',
+        'agent.execute',
+        purpose: 'Check remaining disk space',
+      );
+    await _panel(tester, runtime);
+    final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+    expect(find.text('Check remaining disk space'), findsOneWidget);
+    expect(find.text(l.aiAgentShellPermission), findsNothing);
+    expect(find.text('df -h /'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final locale in [const Locale('en'), const Locale('zh')]) {
     testWidgets('approval shows the current execution timeout (${locale.languageCode})', (tester) async {
       final runtime = _Runtime()

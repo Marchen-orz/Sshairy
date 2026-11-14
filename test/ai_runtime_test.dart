@@ -256,6 +256,7 @@ class _Harness {
     TerminalHistoryReader? terminalHistory,
     AgentResourceReader? resources,
     List<Capability> extraCapabilities = const [],
+    String? language,
   }) : model = _Model(script, review: review) {
     profile = ModelProfile(
       protocol: ModelProtocol.openai,
@@ -406,6 +407,7 @@ class _Harness {
       hostRoutes: hostRoutes ?? () => routes,
       terminalHistory: terminalHistory,
       resources: resources,
+      language: language == null ? null : () => language,
       configuration: () => (enabled: enabled, profile: profile, revision: revision),
     );
     if (approveDiagnostics) {
@@ -2058,9 +2060,29 @@ void main() {
       (_, _, index) => _oneCall(_call('command_execute', {..._command(), 'purpose': 'Check disk usage'}), index),
     );
     addTearDown(h.close);
-    await h.runtime.start('check disk', AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto));
+    final work = h.start();
+    await _until(() => h.runtime.approval != null);
+    expect(h.runtime.approval!.purpose, 'Check disk usage');
+    h.runtime.approve(true, expected: h.runtime.approval!);
+    await work;
     expect(h.runtime.executions.single.purpose, 'Check disk usage');
     expect(h.backend.target.commands, hasLength(1));
+  });
+
+  test('user-visible model text follows the frozen UI language', () async {
+    final chinese = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'ok'));
+    }, language: 'zh');
+    addTearDown(chinese.close);
+    await chinese.start();
+    expect(chinese.model.requests.single.system, contains('Simplified Chinese'));
+
+    final english = _Harness((_, _, _) async* {
+      yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'ok'));
+    }, language: 'en');
+    addTearDown(english.close);
+    await english.start();
+    expect(english.model.requests.single.system, contains('in English'));
   });
 
   test('default scope requires confirmation and context occupancy survives completion until clear', () async {

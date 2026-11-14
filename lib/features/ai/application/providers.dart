@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +7,7 @@ import '../../../foundation/data_dir.dart';
 import '../../../foundation/ids.dart';
 import '../../capabilities/api.dart';
 import '../../credentials/api.dart';
+import '../../settings/api.dart';
 import '../../terminal/api.dart';
 import '../adapters/model_provider.dart';
 import '../adapters/operation_journal.dart';
@@ -17,11 +19,25 @@ import 'model_selection.dart';
 import 'runtime.dart';
 import 'terminal_service.dart';
 
+/// The UI language for model-generated user-visible text, including command summaries.
+final aiResponseLanguageProvider = Provider<String Function()>((ref) {
+  return () {
+    final selected = ref.read(settingsProvider).locale;
+    if (selected != null) return selected == 'zh' ? 'zh' : 'en';
+    for (final locale in PlatformDispatcher.instance.locales) {
+      if (locale.languageCode == 'zh') return 'zh';
+      if (locale.languageCode == 'en') return 'en';
+    }
+    return 'en';
+  };
+});
+
 final aiTerminalServiceProvider = Provider<AiTerminalService>((ref) {
   final service = AiTerminalService(
     model: ref.read(aiModelProvider),
     configuration: () => ref.read(aiConfigurationProvider),
     hosts: () => ref.read(aiTerminalHostsProvider),
+    language: ref.read(aiResponseLanguageProvider),
   );
   ref.listen(aiConfigurationProvider, (_, _) => service.invalidate());
   ref.listen(aiTerminalHostsProvider, (_, _) => service.invalidate());
@@ -73,6 +89,7 @@ final agentRuntimeProvider = Provider<AgentRuntime>((ref) {
     dispatcher: ref.read(capabilityDispatcherProvider),
     hostRoutes: () => ref.read(agentConversationRoutesProvider)(),
     reviewProfile: () => ref.read(aiConfigurationProvider).profileForReview ?? ref.read(effectiveAgentProfileProvider),
+    language: ref.read(aiResponseLanguageProvider),
     configuration: () {
       final value = ref.read(aiConfigurationProvider);
       return (enabled: value.enabled, profile: ref.read(effectiveAgentProfileProvider), revision: value.revision);

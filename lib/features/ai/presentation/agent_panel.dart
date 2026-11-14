@@ -1839,7 +1839,9 @@ class _ApprovalCard extends StatelessWidget {
             ],
             const SizedBox(height: Space.md),
             Text(
-              terminalScreen
+              approval.purpose.isNotEmpty
+                  ? approval.purpose
+                  : terminalScreen
                   ? l.aiAgentTerminalScreenApproveHint
                   : terminalHistory
                   ? l.aiAgentTerminalApproveHint

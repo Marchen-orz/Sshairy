@@ -123,6 +123,20 @@ void main() {
     expect(service.canComplete(added), isFalse);
   });
 
+  test('inline user-visible messages follow the configured UI language', () async {
+    service.dispose();
+    service = AiTerminalService(
+      model: model,
+      configuration: () => config,
+      hosts: () => hosts,
+      language: () => 'zh',
+      now: () => now,
+    );
+    model.json({'status': 'command', 'command': 'pwd'});
+    await service.generate(_context(), 'Show the directory', CancellationToken());
+    expect(model.requests.single.system, contains('Simplified Chinese'));
+  });
+
   test('inline and completion send their separately selected models without tools', () async {
     config = _configuration(inlineModel: 'inline-model', completionModel: 'completion-model');
     model.json({'status': 'command', 'command': 'pwd'});
