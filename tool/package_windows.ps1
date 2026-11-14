@@ -1,9 +1,25 @@
 param(
+    [ValidateSet("x64", "arm64")]
+    [string]$Arch = "x64",
     [string]$Destination = "dist",
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipInstaller
 )
 
 $ErrorActionPreference = "Stop"
+function Get-Sha256([string]$Path) {
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        return [System.BitConverter]::ToString($sha256.ComputeHash($stream)).Replace("-", "").ToLowerInvariant()
+    } finally {
+        if ($stream) { $stream.Dispose() }
+        $sha256.Dispose()
+    }
+}
+$hostArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+if ($Arch -ne $hostArch) { throw "Build $Arch packages on a $Arch host; Flutter builds for the host architecture." }
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 try {
@@ -12,38 +28,121 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Release build failed." }
     }
 
-    $release = Join-Path $projectRoot "build/windows/x64/runner/Release"
-    if (-not (Test-Path (Join-Path $release "sshairy.exe"))) {
-        throw "No Windows x64 release build found."
-    }
+    $exe = Get-ChildItem -Path "build/windows" -Recurse -File -Filter "sshairy.exe" |
+        Where-Object { $_.FullName -match "\\runner\\Release\\sshairy\.exe$" } |
+        Select-Object -First 1
+    if (-not $exe) { throw "No Windows release build found." }
+    $release = $exe.Directory.FullName
+
     $version = ((Select-String -Path "pubspec.yaml" -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value).Trim()
-    $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
-    $name = "sshairy-$version-windows-x64-$stamp"
-    $bundle = Join-Path $Destination $name
-    $archive = "$bundle.zip"
-    if ((Test-Path $bundle) -or (Test-Path $archive)) { throw "Output already exists: $bundle" }
+    $stamp = [Environment]::GetEnvironmentVariable("SSHAIRY_BUILD_STAMP")
+    $suffix = if ($null -eq $stamp) { "-" + (Get-Date -Format "yyyyMMdd-HHmmss") } elseif ($stamp) { "-$stamp" } else { "" }
+    $base = "sshairy-$version-windows-$Arch$suffix"
+
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    $bundle = Join-Path $Destination $base
+    if (Test-Path $bundle) { throw "Output already exists: $bundle" }
     New-Item -ItemType Directory -Path $bundle | Out-Null
     Copy-Item -Path "$release/*" -Destination $bundle -Recurse
     Copy-Item -Path "README.md" -Destination $bundle
     if (Test-Path "LICENSE") { Copy-Item -Path "LICENSE" -Destination $bundle }
     & dart run tool/write_notices.dart (Join-Path $bundle "THIRD_PARTY_NOTICES.txt")
     if ($LASTEXITCODE -ne 0) { throw "Third-party license inventory failed. Bundle is incomplete: $bundle" }
-    Add-Type -AssemblyName System.IO.Compression
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $archivePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($archive)
-    [System.IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $bundle).Path, $archivePath)
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    $archiveStream = $null
+
+    $created = @()
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ("sshairy-portable-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $temp | Out-Null
     try {
-        $archiveStream = [System.IO.File]::OpenRead($archivePath)
-        $hash = [System.BitConverter]::ToString($sha256.ComputeHash($archiveStream)).Replace("-", "").ToLowerInvariant()
+        $payload = Join-Path $temp "payload.zip"
+        Add-Type -AssemblyName System.IO.Compression
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($bundle, $payload)
+        $payloadHash = Get-Sha256 $payload
+
+        $digits = [regex]::Matches($version, "\d+") | ForEach-Object { $_.Value }
+        $fileVersion = ($digits | Select-Object -First 4) -join "."
+        while (($fileVersion -split "\.").Count -lt 3) { $fileVersion += ".0" }
+        $info = Join-Path $temp "BuildInfo.cs"
+        @"
+using System.Reflection;
+[assembly: AssemblyInformationalVersion("$version")]
+[assembly: AssemblyFileVersion("$fileVersion")]
+[assembly: AssemblyProduct("sshairy")]
+[assembly: AssemblyTitle("sshairy")]
+[assembly: AssemblyCompany("sshairy")]
+internal static class BuildInfo {
+    internal const string PayloadHash = "$payloadHash";
+}
+"@ | Set-Content -Path $info -Encoding ascii
+
+        $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+        if (-not (Test-Path $csc)) { $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\csc.exe" }
+        if (-not (Test-Path $csc)) { throw "csc.exe (.NET Framework) not found." }
+        $framework = Split-Path $csc -Parent
+        $portable = Join-Path $Destination "$base-portable.exe"
+        $cscArguments = @(
+            "/nologo", "/target:winexe", "/optimize+", "/platform:anycpu",
+            "/win32icon:$(Join-Path $projectRoot "windows/runner/resources/app_icon.ico")",
+            "/resource:$payload,sshairy.payload",
+            "/reference:$(Join-Path $framework "System.dll")",
+            "/reference:$(Join-Path $framework "System.Core.dll")",
+            "/reference:$(Join-Path $framework "System.IO.Compression.dll")",
+            "/reference:$(Join-Path $framework "System.IO.Compression.FileSystem.dll")",
+            "/reference:$(Join-Path $framework "System.Windows.Forms.dll")",
+            "/out:$portable",
+            (Join-Path $PSScriptRoot "portable/Launcher.cs"),
+            $info
+        )
+        & $csc $cscArguments
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $portable)) { throw "Portable launcher compilation failed." }
+        $created += $portable
     } finally {
-        if ($archiveStream) { $archiveStream.Dispose() }
-        $sha256.Dispose()
+        Remove-Item -Path $temp -Recurse -Force -ErrorAction SilentlyContinue
     }
-    "$hash  $(Split-Path $archive -Leaf)" | Set-Content -Path "$archive.sha256" -Encoding ascii
-    Write-Output "Created $archive"
-    Write-Output "SHA256 $hash"
+
+    if ($SkipInstaller) {
+        Write-Output "Skipped the Inno Setup installer."
+    } else {
+        $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+        if (-not $iscc) {
+            $uninstallKeys = @(
+                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+            )
+            foreach ($item in Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue) {
+                if ($item.DisplayName -like "Inno Setup*" -and $item.InstallLocation) {
+                    $candidate = Join-Path $item.InstallLocation "ISCC.exe"
+                    if (Test-Path $candidate) { $iscc = $candidate; break }
+                }
+            }
+        }
+        if (-not $iscc) {
+            foreach ($root in @(${env:ProgramFiles(x86)}, $env:ProgramFiles, (Join-Path $env:LOCALAPPDATA "Programs"))) {
+                if (-not $root) { continue }
+                $candidate = Join-Path $root "Inno Setup 6/ISCC.exe"
+                if (Test-Path $candidate) { $iscc = $candidate; break }
+            }
+        }
+        if (-not $iscc) { throw "Inno Setup 6 (ISCC.exe) not found. Install it or pass -SkipInstaller." }
+        $env:SSHAIRY_ARCH = $Arch
+        $env:SSHAIRY_VERSION = $version
+        $env:SSHAIRY_PAYLOAD = (Resolve-Path $bundle).Path
+        $env:SSHAIRY_OUTPUT = (Resolve-Path $Destination).Path
+        $env:SSHAIRY_OUTPUT_NAME = "$base-setup"
+        & $iscc (Join-Path $PSScriptRoot "inno/sshairy.iss")
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $Destination "$base-setup.exe"))) {
+            throw "Inno Setup failed."
+        }
+        $created += Join-Path $Destination "$base-setup.exe"
+    }
+
+    foreach ($file in $created) {
+        $hash = Get-Sha256 $file
+        "$hash  $(Split-Path $file -Leaf)" | Set-Content -Path "$file.sha256" -Encoding ascii
+        Write-Output "Created $file"
+        Write-Output "SHA256 $hash"
+    }
 } finally {
     Pop-Location
 }

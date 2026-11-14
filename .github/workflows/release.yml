@@ -1,0 +1,183 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.9'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: version
+        name: Check the version
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1 | tr -d '\r')
+          [[ "$version" =~ ^[0-9A-Za-z.+-]+$ ]] || { echo "Invalid version: $version"; exit 1; }
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            tag=${GITHUB_REF_NAME#v}
+            [[ "$tag" == "$version" ]] || { echo "Tag $tag does not match pubspec $version"; exit 1; }
+            git fetch --no-tags --depth=1 origin +main:refs/remotes/origin/main
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "The tag is not on main"; exit 1; }
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart run tool/check_imports.dart
+      - run: flutter analyze
+
+  windows:
+    needs: [prepare, analyze]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x64
+          # GitHub-hosted Arm64 Windows runners; drop this entry if the label is unavailable.
+          - runner: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+      - name: Package
+        shell: pwsh
+        env:
+          SSHAIRY_BUILD_STAMP: ''
+        run: ./tool/package_windows.ps1 -Arch ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: dist/*.exe
+          if-no-files-found: error
+
+  macos:
+    needs: [prepare, analyze]
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Package
+        env:
+          SSHAIRY_BUILD_STAMP: ''
+        run: |
+          chmod +x tool/package_unix.sh
+          ./tool/package_unix.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+
+  linux:
+    needs: [prepare, analyze]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    container: ubuntu:22.04
+    steps:
+      - name: Prepare container
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates clang cmake curl file git ninja-build pkg-config \
+            libgtk-3-dev libsecret-1-dev libjsoncpp-dev liblzma-dev libstdc++-12-dev \
+            unzip xz-utils zip
+          git config --global --add safe.directory '*'
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install appimagetool
+        run: |
+          arch=$(uname -m)
+          curl -fsSL -o /usr/local/bin/appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
+          chmod +x /usr/local/bin/appimagetool
+          cd /opt && /usr/local/bin/appimagetool --appimage-extract
+          ln -sf /opt/squashfs-root/AppRun /usr/local/bin/appimagetool
+      - run: flutter pub get
+      - name: Package
+        env:
+          SSHAIRY_BUILD_STAMP: ''
+        run: |
+          chmod +x tool/package_unix.sh
+          ./tool/package_unix.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --draft --generate-notes --title "sshairy ${{ needs.prepare.outputs.version }}"

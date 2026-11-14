@@ -16,7 +16,8 @@ class _ProbeShell extends LocalShell {
   List<String> get arguments => switch (kind) {
     LocalShellKind.cmd => const ['/d'],
     LocalShellKind.powershell || LocalShellKind.pwsh => const ['-NoLogo', '-NoProfile'],
-    LocalShellKind.gitBash => const ['--noprofile', '--norc', '-i'],
+    LocalShellKind.gitBash || LocalShellKind.bash => const ['--noprofile', '--norc', '-i'],
+    _ => const ['-i'],
   };
 }
 
@@ -25,8 +26,9 @@ String _echo(LocalShell shell, String value) => switch (shell.kind) {
     'set SSHAIRY_PROBE=${value.substring(0, value.length - 2)}\r\necho %SSHAIRY_PROBE%${value.substring(value.length - 2)}\r',
   LocalShellKind.powershell || LocalShellKind.pwsh =>
     "Write-Output ('${value.substring(0, value.length - 2)}' + '${value.substring(value.length - 2)}')\r",
-  LocalShellKind.gitBash =>
+  LocalShellKind.gitBash || LocalShellKind.bash =>
     "printf '${value.substring(0, value.length - 2)}%s\\n' ${value.substring(value.length - 2)}\r",
+  _ => "printf '${value.substring(0, value.length - 2)}%s\\n' ${value.substring(value.length - 2)}\r",
 };
 
 bool _promptReady(LocalShell shell, String text) {
@@ -36,7 +38,8 @@ bool _promptReady(LocalShell shell, String text) {
   return switch (shell.kind) {
     LocalShellKind.cmd => RegExp(r'[A-Za-z]:\\[^\r\n]*>').hasMatch(plain),
     LocalShellKind.powershell || LocalShellKind.pwsh => RegExp(r'PS [^\r\n]*> ').hasMatch(plain),
-    LocalShellKind.gitBash => RegExp(r'bash-[\d.]+\$ ').hasMatch(plain),
+    LocalShellKind.gitBash || LocalShellKind.bash => RegExp(r'bash-[\d.]+\$ ').hasMatch(plain),
+    _ => RegExp(r'[#$]\s*$').hasMatch(plain),
   };
 }
 
