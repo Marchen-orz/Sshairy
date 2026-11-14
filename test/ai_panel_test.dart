@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -921,8 +922,9 @@ void main() {
         final row = find.byKey(ValueKey('ai-agent-permission-${mode.name}'));
         final hint = find.descendant(of: row, matching: find.text(hints[index]));
         expect(hint, findsOneWidget);
-        expect(tester.widget<Text>(hint).maxLines, 1);
-        expect(tester.getRect(hint).center.dy, closeTo(tester.getRect(row).center.dy, 1));
+        expect(tester.widget<Text>(hint).maxLines, 3);
+        expect(tester.getSize(hint).width, greaterThan(150), reason: 'the hint gets the row, not half of it');
+        expect(tester.getRect(row).contains(tester.getRect(hint).center), isTrue);
       }
       await tester.tap(find.byKey(const ValueKey('ai-agent-permission-auto')));
       await tester.pumpAndSettle();
@@ -930,6 +932,36 @@ void main() {
         expect(find.text(hint), findsNothing);
       }
       expect(tester.getSize(permission).height, before.height);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final locale in [const Locale('en'), const Locale('zh')]) {
+    testWidgets('permission hints stay fully visible at normal scale in $locale', (tester) async {
+      await _panel(tester, _Runtime(), size: const Size(300, 420), locale: locale);
+      final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+      final hints = [
+        l.aiAgentPermissionObserveHint,
+        l.aiAgentPermissionConfirmHint,
+        l.aiAgentPermissionReviewHint,
+        l.aiAgentPermissionAutoHint,
+      ];
+      await tester.tap(find.byKey(const ValueKey('ai-agent-permission')));
+      await tester.pumpAndSettle();
+      for (final (index, mode) in [
+        AgentPermissionMode.observe,
+        AgentPermissionMode.confirm,
+        AgentPermissionMode.review,
+        AgentPermissionMode.auto,
+      ].indexed) {
+        final row = find.byKey(ValueKey('ai-agent-permission-${mode.name}'));
+        final hint = find.descendant(of: row, matching: find.text(hints[index]));
+        expect(
+          tester.renderObject<RenderParagraph>(hint).didExceedMaxLines,
+          isFalse,
+          reason: 'the full hint must stay visible',
+        );
+      }
       expect(tester.takeException(), isNull);
     });
   }

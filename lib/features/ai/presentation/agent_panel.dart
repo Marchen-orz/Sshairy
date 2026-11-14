@@ -803,12 +803,13 @@ class _PermissionPicker extends StatelessWidget {
                 final picked = await showAnchoredPopup<AgentPermissionMode>(
                   context: context,
                   anchor: anchorOf(anchorContext),
-                  width: WorkspaceSize.toolPanelMin,
+                  width: WorkspaceSize.toolPanel,
                   builder: (context) => PopupSurface(
                     padding: const EdgeInsets.symmetric(vertical: Space.xs),
                     child: PopupKeys(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                      child: ListView(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
                         children: [
                           for (final option in [
                             AgentPermissionMode.observe,
@@ -826,21 +827,24 @@ class _PermissionPicker extends StatelessWidget {
                                   children: [
                                     Icon(_permissionIcon(option), size: 16),
                                     const SizedBox(width: Space.sm),
-                                    Flexible(
-                                      child: Text(
-                                        _permissionLabel(l, option),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: Space.sm),
                                     Expanded(
-                                      child: Text(
-                                        _permissionHint(l, option),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context).textTheme.bodySmall
-                                            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _permissionLabel(l, option),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            _permissionHint(l, option),
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context).textTheme.bodySmall
+                                                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     const SizedBox(width: Space.sm),
