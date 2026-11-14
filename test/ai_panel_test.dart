@@ -108,7 +108,12 @@ class _Settings extends SettingsNotifier {
   Settings build() => const Settings();
 }
 
-AgentConversationRecord _conversation(String id, {String? destination, List<ConversationEntry>? entries}) {
+AgentConversationRecord _conversation(
+  String id, {
+  String? destination,
+  List<ConversationEntry>? entries,
+  bool historyTruncated = false,
+}) {
   final now = DateTime.now().toUtc();
   return AgentConversationRecord(
     id: id,
@@ -117,6 +122,7 @@ AgentConversationRecord _conversation(String id, {String? destination, List<Conv
     updatedAt: now,
     destination: destination ?? _profile.identity,
     entries: entries ?? [ConversationEntry(kind: ConversationEntryKind.user, text: 'Previous $id')],
+    historyTruncated: historyTruncated,
   );
 }
 
@@ -474,6 +480,92 @@ void main() {
       tester.getTopLeft(find.text('user@web.example')).dy,
       lessThan(tester.getTopLeft(find.text('The disk still has space.', findRichText: true)).dy),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('consecutive commands collapse into one expandable thinking flow per text block', (tester) async {
+    final runtime = _Runtime();
+    runtime.entries.addAll([
+      AgentChatEntry('user', 'Check storage'),
+      (AgentExecution('a', 'agent.execute', 'target', 'df -h', '/')
+        ..state = 'completed'
+        ..purpose = 'Check disk usage'),
+      (AgentChatEntry('assistant', '')
+        ..reasoningReceived = true
+        ..reasoningSummary = 'compare usage before the next step'),
+      (AgentExecution('b', 'agent.execute', 'target', 'du -sh /var', '/')
+        ..state = 'completed'
+        ..purpose = 'Check /var usage'),
+      AgentChatEntry('assistant', 'First conclusion'),
+      (AgentExecution('c', 'agent.execute', 'target', 'free -m', '/')
+        ..state = 'completed'
+        ..purpose = 'Check memory'),
+      (AgentExecution('d', 'agent.execute', 'target', 'uptime', '/')
+        ..state = 'completed'
+        ..purpose = 'Check load'),
+    ]);
+    await _panel(tester, runtime);
+    final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+    expect(find.text('${l.aiAgentThinkingFlow} · 2'), findsNWidgets(2));
+    expect(find.text('Check disk usage'), findsNothing);
+    expect(find.text('Check /var usage'), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('ai-agent-flow-a')),
+        matching: find.byKey(const ValueKey('ai-agent-thinking-flow-toggle')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Check disk usage'), findsOneWidget);
+    expect(find.text('Check /var usage'), findsNWidgets(2));
+    expect(find.text('compare usage before the next step'), findsOneWidget);
+    expect(find.text('df -h'), findsNothing);
+    await tester.tap(
+      find.descendant(of: find.byKey(const ValueKey('a')), matching: find.byTooltip(l.aiAgentShowOutput)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('df -h'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reply actions appear only on the last answer of each round', (tester) async {
+    final runtime = _Runtime();
+    runtime.entries.addAll([
+      AgentChatEntry('user', 'First question'),
+      AgentChatEntry('assistant', 'First step'),
+      AgentChatEntry('assistant', 'First answer'),
+      AgentChatEntry('user', 'Second question'),
+      AgentChatEntry('assistant', 'Second answer'),
+    ]);
+    await _panel(tester, runtime);
+    expect(find.byKey(const ValueKey('ai-agent-copy-1')), findsNothing);
+    expect(find.byKey(const ValueKey('ai-agent-copy-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-agent-copy-4')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-agent-regenerate')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-agent-withdraw')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('trimmed history is marked in the conversation and the composer keeps no hint', (tester) async {
+    final runtime = _Runtime();
+    final store = _ConversationStore([
+      _conversation(
+        'a',
+        historyTruncated: true,
+        entries: const [
+          ConversationEntry(kind: ConversationEntryKind.user, text: 'Previous a'),
+          ConversationEntry(kind: ConversationEntryKind.assistant, text: 'Earlier answer'),
+        ],
+      ),
+    ]);
+    await _panel(tester, runtime, store: store);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('ai-agent-goal'))).decoration?.hintText, isNull);
+    await tester.tap(find.byKey(const ValueKey('ai-agent-history')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ai-conversation-a')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-agent-history-trimmed')), findsOneWidget);
+    expect(find.text('Some conversation history was trimmed to stay within storage limits.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

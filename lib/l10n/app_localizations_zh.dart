@@ -2991,6 +2991,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentExecutionRecord => '执行记录';
 
   @override
+  String get aiAgentThinkingFlow => '思考流程';
+
+  @override
   String get aiAgentCopied => '已复制';
 
   @override

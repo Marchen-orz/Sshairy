@@ -61,7 +61,7 @@ const agentTools = <AgentTool>[
   AgentTool(
     'command_execute',
     'agent.execute',
-    'Propose one exact remote POSIX command under the locally selected permission mode. Approval includes use of its bounded output.',
+    'Propose one exact remote POSIX command under the locally selected permission mode. Include purpose, a short concrete phrase saying what the command checks or changes. Approval includes use of its bounded output.',
     hostFields: ['hostId'],
   ),
   AgentTool(
@@ -75,7 +75,7 @@ const agentTools = <AgentTool>[
   AgentTool(
     'job_start',
     'agent.jobs.start',
-    'Start one exact remote POSIX command in the background. Approval matches command_execute; the job ends with this turn.',
+    'Start one exact remote POSIX command in the background. Include purpose, a short concrete phrase saying what the command checks or changes. Approval matches command_execute; the job ends with this turn.',
     hostFields: ['hostId'],
   ),
   AgentTool(

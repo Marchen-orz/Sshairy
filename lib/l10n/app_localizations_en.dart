@@ -3126,6 +3126,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentExecutionRecord => 'Execution record';
 
   @override
+  String get aiAgentThinkingFlow => 'Thinking steps';
+
+  @override
   String get aiAgentCopied => 'Copied';
 
   @override

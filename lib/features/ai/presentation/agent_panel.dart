@@ -344,6 +344,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                               key: _conversationKey,
                               runtime: runtime,
                               conversationId: conversations.selectedId,
+                              historyTruncated: conversations.current?.historyTruncated ?? false,
                               canRegenerate: enabled && !changedBinding && conversations.canRegenerate,
                               canWithdraw: conversations.canWithdraw,
                               onRegenerate: () => _regenerate(selectedHost),
@@ -423,8 +424,6 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                     ),
                                   ],
                                 ),
-                              if (conversations.current?.historyTruncated ?? false)
-                                Text(l.aiAgentHistoryTruncated, style: theme.textTheme.bodySmall),
                               if (_attachmentError != null)
                                 Text(
                                   _attachmentMessage(l),
@@ -495,8 +494,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                         buttonItems: items,
                                       );
                                     },
-                                    decoration: InputDecoration(
-                                      hintText: l.aiAgentGoal,
+                                    decoration: const InputDecoration(
                                       counterText: '',
                                       border: InputBorder.none,
                                       enabledBorder: InputBorder.none,
@@ -504,10 +502,7 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                       disabledBorder: InputBorder.none,
                                       filled: false,
                                       isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(
-                                        vertical: Space.sm,
-                                        horizontal: Space.xs,
-                                      ),
+                                      contentPadding: EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.xs),
                                     ),
                                     onChanged: (_) => _goalChanged(),
                                   ),
@@ -1042,6 +1037,7 @@ class _Conversation extends StatefulWidget {
     super.key,
     required this.runtime,
     required this.conversationId,
+    this.historyTruncated = false,
     required this.canRegenerate,
     required this.canWithdraw,
     required this.onRegenerate,
@@ -1049,6 +1045,7 @@ class _Conversation extends StatefulWidget {
   });
   final AgentRuntime runtime;
   final String conversationId;
+  final bool historyTruncated;
   final bool canRegenerate, canWithdraw;
   final VoidCallback onRegenerate, onWithdraw;
 
@@ -1213,9 +1210,49 @@ class _ConversationState extends State<_Conversation> {
     }
     final lastUser = entries.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'user');
     final lastAssistant = entries.lastIndexWhere((entry) => entry is AgentChatEntry && entry.role == 'assistant');
+    // Only the last assistant text of each user round carries actions, never intermediate steps.
+    final finalAssistants = <AgentChatEntry>{};
+    AgentChatEntry? roundAssistant;
+    for (final entry in entries) {
+      if (entry is AgentChatEntry && entry.role == 'user') {
+        if (roundAssistant != null) finalAssistants.add(roundAssistant);
+        roundAssistant = null;
+      } else if (entry is AgentChatEntry && entry.role == 'assistant' && entry.text.isNotEmpty) {
+        roundAssistant = entry;
+      }
+    }
+    if (roundAssistant != null) finalAssistants.add(roundAssistant);
+
+    // Consecutive commands and their reasoning form one collapsible run until the next assistant text.
+    final items = <Object>[];
+    final activity = <AgentTimelineEntry>[];
+    void flushActivity() {
+      if (activity.whereType<AgentExecution>().length >= 2) {
+        items.add(_ActivityGroup(List.of(activity)));
+      } else {
+        items.addAll(activity);
+      }
+      activity.clear();
+    }
+
+    for (final entry in entries) {
+      if (entry is AgentExecution && entry.capability == 'agent.execute') {
+        activity.add(entry);
+        continue;
+      }
+      // An assistant placeholder or reasoning-only step does not split a command run.
+      if (entry is AgentChatEntry && entry.role == 'assistant' && entry.text.isEmpty) {
+        if (entry.reasoningReceived) activity.add(entry);
+        continue;
+      }
+      flushActivity();
+      items.add(entry);
+    }
+    flushActivity();
+
     final approval = widget.runtime.approval;
     final thinking = widget.runtime.busy && approval == null;
-    final count = entries.length + (approval == null ? 0 : 1) + (thinking ? 1 : 0);
+    final count = items.length + (widget.historyTruncated ? 1 : 0) + (approval == null ? 0 : 1) + (thinking ? 1 : 0);
     return SelectionArea(
       child: ListView.builder(
         key: PageStorageKey('ai-agent-conversation-${widget.conversationId}'),
@@ -1225,8 +1262,41 @@ class _ConversationState extends State<_Conversation> {
         itemCount: count,
         itemBuilder: (context, index) {
           index = count - index - 1;
-          if (index < entries.length) {
-            final entry = entries[index];
+          if (widget.historyTruncated) {
+            if (index == 0) {
+              return Padding(
+                key: const ValueKey('ai-agent-history-trimmed'),
+                padding: const EdgeInsets.only(bottom: Space.sm),
+                child: Text(
+                  AppLocalizations.of(context).aiAgentHistoryTruncated,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              );
+            }
+            index--;
+          }
+          if (index < items.length) {
+            final item = items[index];
+            if (item is _ActivityGroup) {
+              final executions = item.steps.whereType<AgentExecution>().toList();
+              return _ThinkingFlow(
+                key: ValueKey('ai-agent-flow-${executions.first.id}'),
+                steps: item.steps,
+                highlightedId: _highlighted,
+                stepBuilder: (step) => KeyedSubtree(
+                  key: _keys.putIfAbsent(step, GlobalKey.new),
+                  child: step is AgentExecution
+                      ? _ExecutionCard(
+                          key: ValueKey(step.id),
+                          execution: step,
+                          revealVersion: _highlighted == step.id ? _revealVersion : 0,
+                        )
+                      : _ReasoningSummary(message: step as AgentChatEntry),
+                ),
+              );
+            }
+            final entry = item as AgentTimelineEntry;
+            final entryIndex = entries.indexOf(entry);
             Widget row;
             if (entry is AgentExecution) {
               row = _ExecutionCard(
@@ -1278,9 +1348,10 @@ class _ConversationState extends State<_Conversation> {
                     else ...[
                       if (message.reasoningReceived) _ReasoningSummary(message: message),
                       AiMarkdown(data: message.text, executionReferences: references, onExecution: _reveal),
-                      _actions(message, index, latest: index == lastAssistant && index > lastUser),
+                      if (finalAssistants.contains(message))
+                        _actions(message, entryIndex, latest: entryIndex == lastAssistant && entryIndex > lastUser),
                     ],
-                    if (user && index == lastUser && lastAssistant < lastUser && widget.canWithdraw)
+                    if (user && entryIndex == lastUser && lastAssistant < lastUser && widget.canWithdraw)
                       IconButton(
                         key: const ValueKey('ai-agent-withdraw'),
                         tooltip: AppLocalizations.of(context).aiAgentWithdrawHint,
@@ -1293,7 +1364,7 @@ class _ConversationState extends State<_Conversation> {
             }
             return KeyedSubtree(key: _keys.putIfAbsent(entry, GlobalKey.new), child: row);
           }
-          index -= entries.length;
+          index -= items.length;
           if (approval != null) {
             if (index == 0) {
               return _ApprovalCard(
@@ -1441,6 +1512,100 @@ class _ThinkingDotsState extends State<_ThinkingDots> {
   );
 }
 
+class _ActivityGroup {
+  _ActivityGroup(this.steps);
+  final List<AgentTimelineEntry> steps;
+}
+
+/// Consecutive command executions and their reasoning collapse into one disclosure until assistant text.
+class _ThinkingFlow extends StatefulWidget {
+  const _ThinkingFlow({super.key, required this.steps, required this.stepBuilder, this.highlightedId});
+  final List<AgentTimelineEntry> steps;
+  final Widget Function(AgentTimelineEntry step) stepBuilder;
+  final String? highlightedId;
+
+  @override
+  State<_ThinkingFlow> createState() => _ThinkingFlowState();
+}
+
+class _ThinkingFlowState extends State<_ThinkingFlow> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final executions = widget.steps.whereType<AgentExecution>().toList();
+    final latest = executions.last;
+    final reveal =
+        widget.highlightedId != null &&
+        widget.steps.any((entry) => entry is AgentExecution && entry.id == widget.highlightedId);
+    final expanded = _expanded || reveal;
+    final failed = executions.any(
+      (entry) => entry.state == 'failed' || (entry.exitCode != null && entry.exitCode != 0),
+    );
+    final unknown = executions.any((entry) => entry.state == 'outcomeUnknown' || entry.state == 'interrupted');
+    final running = executions.any((entry) => entry.state == 'running' || entry.state == 'pending');
+    final summary = latest.purpose.trim().isNotEmpty ? latest.purpose.trim() : latest.command;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.md),
+      child: _AgentCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              key: const ValueKey('ai-agent-thinking-flow-toggle'),
+              borderRadius: BorderRadius.circular(Radii.control),
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Row(
+                children: [
+                  Icon(expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 17),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${l.aiAgentThinkingFlow} · ${executions.length}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        if (summary.isNotEmpty)
+                          Text(
+                            summary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Icon(
+                    unknown
+                        ? Icons.help_outline_rounded
+                        : failed
+                        ? Icons.error_outline_rounded
+                        : running
+                        ? Icons.more_horiz_rounded
+                        : Icons.check_circle_outline_rounded,
+                    size: 16,
+                    color: failed || unknown ? theme.colorScheme.error : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+            if (expanded) ...[
+              const SizedBox(height: Space.sm),
+              for (final step in widget.steps) widget.stepBuilder(step),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ExecutionCard extends StatefulWidget {
   const _ExecutionCard({super.key, required this.execution, this.revealVersion = 0});
   final AgentExecution execution;
@@ -1513,9 +1678,12 @@ class _ExecutionCardState extends State<_ExecutionCard> {
       'agent.output' => (l.aiAgentToolOutput, l.aiAgentToolOutputHint),
       _ => (l.aiAgentExecutionRecord, l.aiAgentExecutionRecord),
     };
-    final label = execution.capability == 'agent.execute' && !execution.archived && execution.command.isNotEmpty
-        ? '$title · ${execution.command}'
-        : title;
+    final purpose = execution.purpose.trim();
+    final label = execution.capability != 'agent.execute' || execution.archived || execution.command.isEmpty
+        ? title
+        : purpose.isNotEmpty
+        ? purpose
+        : '$title · ${execution.command}';
     final status = failed
         ? compact || execution.command.isEmpty
               ? l.aiAgentFailed

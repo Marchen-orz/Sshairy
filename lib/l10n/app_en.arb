@@ -1023,6 +1023,7 @@
   "aiAgentWithdraw": "Withdraw last turn",
   "aiAgentWithdrawHint": "Restore the last question as a draft. Executed operations are not undone; clear the current draft first.",
   "aiAgentExecutionRecord": "Execution record",
+  "aiAgentThinkingFlow": "Thinking steps",
   "aiAgentCopied": "Copied",
   "aiAgentCopyFailed": "Could not copy. Select the text and copy manually."
 }

@@ -100,7 +100,8 @@ class InlineAiController extends ChangeNotifier {
       result = generated;
       command = generated.command ?? '';
     } on Object catch (error) {
-      if (!_closed && !token.isCancelled && identical(_cancel, token)) {
+      // A manual stop cleared _cancel, so only the current token may publish a failure.
+      if (!_closed && identical(_cancel, token)) {
         failure = error is TerminalAiFailure ? error : const TerminalAiFailure(TerminalAiFailureReason.invalid);
       }
     } finally {

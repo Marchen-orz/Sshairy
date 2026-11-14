@@ -5762,6 +5762,12 @@ abstract class AppLocalizations {
   /// **'Execution record'**
   String get aiAgentExecutionRecord;
 
+  /// No description provided for @aiAgentThinkingFlow.
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking steps'**
+  String get aiAgentThinkingFlow;
+
   /// No description provided for @aiAgentCopied.
   ///
   /// In en, this message translates to:

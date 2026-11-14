@@ -689,6 +689,23 @@ void main() {
     );
   });
 
+  testWidgets('generating again after stop starts a fresh request in the open editor', (tester) async {
+    await mount(tester, 'show me disk usage');
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-toggle')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-stop')));
+    await tester.pump();
+    expect(ai.generationTokens.single.isCancelled, isTrue);
+    await tester.tap(find.byKey(const ValueKey('terminal-ai-generate')));
+    await tester.pump();
+    expect(ai.generations, hasLength(2));
+    expect(ai.generationTokens.last.isCancelled, isFalse);
+    ai.generations.last.complete(const TerminalAiGeneration(TerminalAiGenerationKind.command, command: 'df -h'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('terminal-ai-accept')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('manual stop discards late results before reopening starts a fresh request', (tester) async {
     await mount(tester, 'show me disk usage');
     final toggle = find.byKey(const ValueKey('terminal-ai-toggle'));

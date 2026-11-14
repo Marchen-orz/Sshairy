@@ -979,6 +979,7 @@
   "aiAgentWithdraw": "撤回上一轮",
   "aiAgentWithdrawHint": "将上一轮问题恢复为草稿，不撤销已执行操作；请先清空当前草稿。",
   "aiAgentExecutionRecord": "执行记录",
+  "aiAgentThinkingFlow": "思考流程",
   "aiAgentCopied": "已复制",
   "aiAgentCopyFailed": "复制失败，请选中文字后手动复制。"
 }

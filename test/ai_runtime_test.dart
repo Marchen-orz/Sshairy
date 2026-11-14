@@ -324,6 +324,7 @@ class _Harness {
             'hostId': {'type': 'string', 'minLength': 1, 'maxLength': 128},
             'cwd': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
             'command': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+            'purpose': {'type': 'string', 'minLength': 1, 'maxLength': 160},
             'timeoutSeconds': {'type': 'integer', 'minimum': 1, 'maximum': 300},
           },
           ['hostId', 'cwd', 'command'],
@@ -2052,6 +2053,16 @@ void main() {
     expect(_result(h.model.requests.last)['error'], 'journalFailed');
   });
 
+  test('command purpose is carried through approval to the execution card', () async {
+    final h = _Harness(
+      (_, _, index) => _oneCall(_call('command_execute', {..._command(), 'purpose': 'Check disk usage'}), index),
+    );
+    addTearDown(h.close);
+    await h.runtime.start('check disk', AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.auto));
+    expect(h.runtime.executions.single.purpose, 'Check disk usage');
+    expect(h.backend.target.commands, hasLength(1));
+  });
+
   test('default scope requires confirmation and context occupancy survives completion until clear', () async {
     final h = _Harness((_, _, index) => _oneCall(_call('command_execute', _command()), index));
     addTearDown(h.close);
@@ -2164,7 +2175,7 @@ void main() {
       endpoint: h.profile.endpoint,
       model: h.profile.model,
       tools: true,
-      contextWindow: 10500,
+      contextWindow: 12000,
       maxOutputTokens: 1000,
     );
     h.backend.target.stdout = selected;
@@ -3577,7 +3588,10 @@ void main() {
         await h.start();
         expect(h.runtime.phase, AgentPhase.failed);
         expect(h.runtime.error, callsPerMessage == 1 ? 'stepLimit' : 'toolLimit');
-        expect(h.model.requests, hasLength(callsPerMessage == 1 ? 20 : 9));
+        expect(
+          h.model.requests,
+          hasLength(callsPerMessage == 1 ? AgentRuntime.maxModelRequests : AgentRuntime.maxToolCalls ~/ 8 + 1),
+        );
         expect(h.backend.prepared, isEmpty);
       } finally {
         await h.close();
@@ -3587,40 +3601,33 @@ void main() {
 
   test('reviews share the model-request budget and fall back to manual decisions before the final answer', () async {
     final h = _Harness((_, _, index) async* {
-      if (index < 3) {
-        yield ModelMessageComplete(
-          ModelMessage(
-            ModelRole.assistant,
-            calls: [
-              for (var i = 0; i < 8; i++)
-                ModelCall('read-$index-$i', 'diagnostics_collect', {
-                  'hostId': _host.value,
-                  'template': 'systemSummary',
-                }),
-            ],
-          ),
-        );
-      } else {
-        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'done'));
-      }
+      yield ModelMessageComplete(
+        ModelMessage(
+          ModelRole.assistant,
+          calls: [
+            for (var i = 0; i < 8; i++)
+              ModelCall('read-$index-$i', 'diagnostics_collect', {'hostId': _host.value, 'template': 'systemSummary'}),
+          ],
+        ),
+      );
     }, review: (_, _, _) => _reviewReply('allow'));
     addTearDown(h.close);
     h.backend.target.stdout = _systemOutput;
     final manualReads = <AgentApproval>{};
     h.runtime.addListener(() {
-      if (h.runtime.approval case final pending?) manualReads.add(pending);
+      if (h.runtime.approval case final pending?) {
+        if (manualReads.add(pending)) h.runtime.approve(true, expected: pending);
+      }
     });
     await h.runtime.start(
       'inspect this host',
       AgentScope(hosts: const [_host], permissionMode: AgentPermissionMode.review),
     );
-    expect(h.runtime.phase, AgentPhase.completed);
-    expect(h.model.requests, hasLength(4));
-    expect(h.model.reviewRequests, hasLength(16));
-    expect(h.model.requests.length + h.model.reviewRequests.length, 20);
+    expect(h.runtime.phase, AgentPhase.failed);
+    expect(h.runtime.error, 'stepLimit');
+    expect(h.model.requests.length + h.model.reviewRequests.length, AgentRuntime.maxModelRequests);
     expect(manualReads, isNotEmpty);
-    expect(h.backend.target.commands, hasLength(24));
-    expect(h.runtime.messages.last.text, 'done');
+    expect(h.backend.target.commands, hasLength(64));
   });
 
   test('oversized tool groups fail before any member can execute', () async {

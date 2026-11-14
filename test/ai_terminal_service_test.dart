@@ -579,6 +579,28 @@ void main() {
     await stream.close();
   });
 
+  test('a new inline request proceeds even while the provider delays cancellation cleanup', () async {
+    final cancelling = Completer<void>(), released = Completer<void>();
+    final stream = StreamController<ModelEvent>(
+      onCancel: () {
+        if (!cancelling.isCompleted) cancelling.complete();
+        return released.future;
+      },
+    );
+    model.answer = () => stream.stream;
+    final stopped = CancellationToken();
+    final first = service.generate(_context(), 'First request', stopped).then<void>((_) {}, onError: (Object _) {});
+    await cancelling.future;
+    stopped.cancel();
+    await Future<void>.delayed(Duration.zero);
+    model.json({'status': 'command', 'command': 'pwd'});
+    final second = await service.generate(_context(), 'Second request', CancellationToken());
+    expect(second.command, 'pwd');
+    expect(model.requests, hasLength(2));
+    released.complete();
+    await first;
+  });
+
   test('inline timeout is reported as a timeout failure', () async {
     service.dispose();
     service = AiTerminalService(

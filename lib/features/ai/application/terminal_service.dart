@@ -421,9 +421,14 @@ class AiTerminalService implements TerminalAiService {
       rethrow;
     } finally {
       timer.cancel();
-      await subscription?.cancel();
-      if (identical(_active, request)) _active = null;
-      request.settled.complete();
+      try {
+        // A provider may delay or never finish its onCancel future. Bound the cleanup wait so a later
+        // manual request cannot inherit it and stay in "loading" without ever reaching the model.
+        await subscription?.cancel().timeout(const Duration(milliseconds: 500), onTimeout: () {});
+      } finally {
+        if (identical(_active, request)) _active = null;
+        if (!request.settled.isCompleted) request.settled.complete();
+      }
     }
   }
 
