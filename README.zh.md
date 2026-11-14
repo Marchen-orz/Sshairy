@@ -82,7 +82,7 @@ Airy 就在终端旁边，是一位 AI 助手，配备 **39 个工具**，可管
 
 **下载体积 27 MiB，解压后 97.4 MiB，单进程原生运行。** 内置 1,453 个 Shell 补全规格
 
-<img src="media/zh/footprint.png" alt="九款 SSH 客户端的下载体积，以及 Sshairy 应用目录的构成" width="100%">
+<img src="media/zh/footprint.png" alt="十款 SSH 客户端的下载体积，以及 Sshairy 应用目录的构成" width="100%">
 
 ## 初衷
 

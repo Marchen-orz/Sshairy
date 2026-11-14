@@ -82,7 +82,7 @@ Method, versions and sources are in [tool/readme/SOURCES.md](tool/readme/SOURCES
 
 A **27 MiB download** unpacks to **97.4 MiB** and runs as **one native process**, with 1,453 shell completion specs included.
 
-<img src="media/footprint.png" alt="Download sizes of nine SSH clients and the contents of the Sshairy app folder." width="100%">
+<img src="media/footprint.png" alt="Download sizes of ten SSH clients and the contents of the Sshairy app folder." width="100%">
 
 ## Why
 

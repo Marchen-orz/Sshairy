@@ -25,8 +25,8 @@ POSES = ['default', 'happy', 'speed', 'thinking-ai', 'success', 'security', 'sft
          'ssh-connected', 'coding-focus', 'sleeping']
 # Normal Windows release artifacts, MiB; see tool/readme/SOURCES.md.
 DOWNLOAD = [
-    ('Sshairy', 27.2), ('WindTerm', 31.2), ('MobaXterm', 42.2), ('Xshell', 45.4), ('electerm', 114.6),
-    ('Netcatty', 126.9), ('Wave Terminal', 156.2), ('Tabby', 161.9), ('Termius', 327.9),
+    ('Sshairy', 27.2), ('WindTerm', 31.2), ('MobaXterm', 42.2), ('Xshell', 45.4), ('FinalShell', 63.8),
+    ('electerm', 114.6), ('Netcatty', 126.9), ('Wave Terminal', 156.2), ('Tabby', 161.9), ('Termius', 327.9),
 ]
 # Rounded MiB; the tiny files are grouped so the displayed parts total 97.4.
 CONTENTS = [52.7, 20.3, 14.7, 5.6, 4.1]

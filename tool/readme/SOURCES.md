@@ -60,7 +60,7 @@ The baseline harness is [measure_startup.py](measure_startup.py). For isolated E
 
 ## Downloads and folder contents
 
-The download chart uses the normal Windows release artifacts listed below. The benchmark may use the portable equivalent for isolated installation; its exact downloaded artifact is recorded in the JSON.
+The download chart uses the normal Windows release artifacts listed below. The benchmark may use the portable equivalent for isolated installation; its exact downloaded artifact is recorded in the JSON. FinalShell's 63.8 MiB entry was provided by the author on 2026-11-14 from the normal Windows installer; its artifact hash was not captured, so only the size is recorded.
 
 | Client | Artifact | MiB |
 |---|---|---:|
@@ -68,6 +68,7 @@ The download chart uses the normal Windows release artifacts listed below. The b
 | WindTerm 2.7.0 | Windows portable ZIP | 31.2 |
 | MobaXterm Home 26.6 | Windows portable ZIP | 42.2 |
 | Xshell Free 8.0.0120p | Windows installer | 45.4 |
+| FinalShell | Windows installer | 63.8 |
 | electerm 5.10.0 | Windows installer | 114.6 |
 | Netcatty 1.1.90 | Windows portable EXE | 126.9 |
 | Wave Terminal 0.14.5 | Windows EXE | 156.2 |
