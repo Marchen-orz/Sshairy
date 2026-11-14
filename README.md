@@ -15,6 +15,8 @@
 
 It is a complete SSH client first, with AI there when you want it. Stay in the terminal, hand Airy a task, or turn a sentence into a command. No Chromium, no WebView, no browser runtime to carry around.
 
+<img src="media/preview.gif" alt="A short tour of Sshairy: fast startup, one window for every server, completion with context, Airy commands and approvals, themes and measured performance." width="100%">
+
 <img src="media/workspace.png" alt="A Sshairy window with three terminal panes on two servers, a live metrics card and a file transfer in progress." width="100%">
 
 ## Features

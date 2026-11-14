@@ -15,6 +15,8 @@
 
 先做好 SSH，再让 AI 帮忙。终端里的习惯照旧，需要时把任务交给 Airy，或把一句话变成命令。不依赖 Chromium，不套 WebView，也不用背着一套浏览器运行时
 
+<img src="media/zh/preview.gif" alt="Sshairy 演示：快速启动、一个窗口管理所有服务器、懂上下文的补全、Airy 执行与审批、主题和实测性能" width="100%">
+
 <img src="media/zh/workspace.png" alt="Sshairy 窗口：两台服务器上的三个终端分屏、实时监控卡片和进行中的文件传输" width="100%">
 
 ## 功能
