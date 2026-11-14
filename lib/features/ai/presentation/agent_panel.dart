@@ -1236,7 +1236,7 @@ class _ConversationState extends State<_Conversation> {
     if (widget.runtime.busy) return const SizedBox.shrink();
     final l = AppLocalizations.of(context);
     return Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
         IconButton(
           key: ValueKey('ai-agent-copy-$index'),
