@@ -86,9 +86,11 @@ A **27 MiB download** unpacks to **97.4 MiB** and runs as **one native process**
 
 ## Why
 
-I have used many SSH clients over the years, and each one felt like it was missing something. FinalShell came closest and stayed in daily use, but slow startup, an interface that no longer felt modern, high resource use and no AI kept getting in the way.
+I have tried many SSH clients over the years, and most fell a little short. FinalShell came closest and stayed in daily use, but slow startup, an interface that no longer felt modern, high resource use and no AI kept bothering me — and I suspect many others feel the same.
 
-So I set out to build the client I wanted: low overhead, AI woven into the workflow, a modern interface and fluid interaction. Sshairy is the result of a lot of work, and it draws on the best ideas from other clients. It is primarily for my own use and still has rough edges; I hope the open-source community can help maintain it and make it better.
+When I finally had some time, I decided to build the client I wanted: low overhead, AI woven into the workflow, a modern interface and fluid interaction. I named it Sshairy — a combination of SSH and Airy that also happens to contain "Ai" and "hair" (the hair was unintentional, though programmers and hair have a long and complicated relationship, Orz). The goal is a lightweight, modern SSH client that is smooth and easy to use.
+
+Sshairy has taken a lot of work, and it draws on the best ideas from other clients. It is primarily for my own use and still has rough edges; I hope the open-source community can help maintain it and make it better.
 
 ## Get Sshairy
 
