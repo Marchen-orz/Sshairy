@@ -101,41 +101,46 @@ const agentTools = <AgentTool>[
   AgentTool(
     'files_list',
     'file.list',
-    'List one remote directory with bounded entries and nextOffset. Remote only; no local filesystem access.',
+    'List one remote directory with bounded entries and nextOffset. Requires a saved hostId and an absolute remote POSIX path; there is no local filesystem access.',
     readOnly: true,
     hostFields: ['hostId'],
   ),
   AgentTool(
     'files_stat',
     'file.stat',
-    'Read metadata for one remote file or directory. Remote only.',
+    'Read metadata for one remote file or directory. Requires a saved hostId and an absolute remote POSIX path.',
     readOnly: true,
     hostFields: ['hostId'],
   ),
   AgentTool(
     'files_read',
     'file.read',
-    'Read a bounded UTF-8 page of one remote text file, returning the whole-file sha256 baseline. Use nextOffset to continue; sensitive, binary and oversized files are refused. Remote only.',
+    'Read a bounded UTF-8 page of one remote text file, returning the whole-file sha256 baseline. Requires a saved hostId and an absolute remote POSIX path. Use nextOffset to continue. Binary, malformed-UTF-8, oversized (>256 KiB), sensitive-location and credential-like files are refused; report a refusal and ask the user rather than reading the file through a shell command.',
     readOnly: true,
     hostFields: ['hostId'],
   ),
   AgentTool(
     'files_write',
     'file.write',
-    'Write bounded UTF-8 text to one remote file. Creating needs no overwrite; replacing requires overwrite=true and expectedSha256 from files_read (64 lowercase hex characters), rechecked before atomic replacement. A changed baseline returns conflict. Remote only.',
+    'Write bounded UTF-8 text to one remote file. Requires a saved hostId and an absolute remote POSIX path. Creating needs no overwrite; replacing requires overwrite=true and expectedSha256 from files_read (64 lowercase hex characters), rechecked before atomic replacement. A changed baseline returns conflict. The server must support a private temporary file and atomic replace, otherwise the tool refuses; report the refusal instead of writing through a shell command.',
     hostFields: ['hostId'],
   ),
-  AgentTool('files_mkdir', 'file.mkdir', 'Create one remote directory. Remote only.', hostFields: ['hostId']),
+  AgentTool(
+    'files_mkdir',
+    'file.mkdir',
+    'Create one remote directory. Requires a saved hostId and an absolute remote POSIX path.',
+    hostFields: ['hostId'],
+  ),
   AgentTool(
     'files_rename',
     'file.rename',
-    'Rename one remote path without replacing an existing target. Remote only.',
+    'Rename one remote path without replacing an existing target. Requires a saved hostId and absolute remote POSIX paths.',
     hostFields: ['hostId'],
   ),
   AgentTool(
     'files_delete',
     'file.delete',
-    'Delete one remote file, link or directory tree. Remote only; there is no undo.',
+    'Delete one remote file, link or directory tree. Requires a saved hostId and an absolute remote POSIX path; there is no undo.',
     hostFields: ['hostId'],
   ),
   AgentTool(
@@ -148,7 +153,7 @@ const agentTools = <AgentTool>[
   AgentTool(
     'transfer_enqueue',
     'transfer.enqueue',
-    'Queue a remote-to-remote copy between two authorized hosts. Local paths are not available to the agent.',
+    'Queue a remote-to-remote copy between two authorized hosts; both fromHostId and toHostId are required and local paths are not available to the agent.',
     hostFields: ['fromHostId', 'toHostId'],
   ),
   AgentTool(

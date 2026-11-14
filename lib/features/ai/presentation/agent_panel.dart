@@ -1693,7 +1693,11 @@ class _ExecutionCardState extends State<_ExecutionCard> {
               ? l.aiAgentFailed
               : l.aiAgentExecutionFailed
         : _executionState(l, execution.state);
-    final failure = execution.failure == null ? null : _error(l, execution.failure);
+    final failure = execution.failure == null
+        ? null
+        : execution.capability.startsWith('file.')
+        ? _fileError(l, execution.failure!)
+        : _error(l, execution.failure);
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.md),
       child: _AgentCard(
@@ -1919,6 +1923,19 @@ String _executionState(AppLocalizations l, String state) => switch (state) {
   'interrupted' => l.tsInterrupted,
   'outcomeUnknown' || 'unknown' => l.aiAgentOutcomeUnknown,
   _ => l.aiAgentPreparing,
+};
+
+String _fileError(AppLocalizations l, String code) => switch (code) {
+  'denied' => l.aiAgentErrorFileDenied,
+  'sensitive' => l.aiAgentErrorFileSensitive,
+  'outsideScope' => l.aiAgentErrorFileScope,
+  'unsupported' => l.aiAgentErrorFileUnsupported,
+  'invalidArgument' => l.aiAgentErrorFileInvalid,
+  'conflict' => l.aiAgentErrorFileConflict,
+  'exists' => l.aiAgentErrorFileExists,
+  'notFound' => l.aiAgentErrorFileNotFound,
+  'permission' => l.aiAgentErrorFilePermission,
+  _ => _error(l, code),
 };
 
 String _error(AppLocalizations l, String? code) => switch (code) {

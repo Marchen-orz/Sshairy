@@ -264,7 +264,7 @@ void main() {
   test('rejects secret content after the first page before returning any text', () async {
     final fs = _Fs();
     fs.files['/config.txt'] = _text('${'x' * 13000}\napi_key=synthetic-fixture');
-    await expectLater(readTextFile(fs, _args({'path': '/config.txt'})), _opFailure('denied'));
+    await expectLater(readTextFile(fs, _args({'path': '/config.txt'})), _opFailure('sensitive'));
   });
 
   test('creates with private content and replaces only with a matching baseline while preserving mode', () async {

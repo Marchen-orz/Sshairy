@@ -480,7 +480,8 @@ Future<Uint8List> _readTextBytes(FileSystem fs, String path, RequestContext? con
   } on FormatException {
     throw const FsError(FsFailure.unsupported, 'encoding');
   }
-  if (terminalAiSensitiveText(text)) throw const OpFailure('denied');
+  // Distinct from a policy denial so the model can report why the file is unavailable.
+  if (terminalAiSensitiveText(text)) throw const OpFailure('sensitive');
   return raw;
 }
 

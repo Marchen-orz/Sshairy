@@ -2693,6 +2693,35 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentErrorUnsupported => '当前命令适配器不支持这台主机。';
 
   @override
+  String get aiAgentErrorFileDenied => '文件工具拒绝了该路径或内容（敏感位置、凭据样式文本或策略限制）。';
+
+  @override
+  String get aiAgentErrorFileSensitive =>
+      '文件包含疑似凭据或密钥内容，已拒绝读取；请让用户直接检查，或缩小到不含该内容的范围。';
+
+  @override
+  String get aiAgentErrorFileUnsupported =>
+      '该文件操作不受支持：二进制或非 UTF-8、超过 256 KiB，或服务器不支持私有临时文件与原子替换。';
+
+  @override
+  String get aiAgentErrorFileConflict => '文件在读取后已变化；请重新读取后再写入。';
+
+  @override
+  String get aiAgentErrorFileExists => '目标已存在；请先读取，并在覆盖时提供最新的 sha256。';
+
+  @override
+  String get aiAgentErrorFileNotFound => '文件或目录不存在。';
+
+  @override
+  String get aiAgentErrorFilePermission => 'SSH 账号没有执行该文件操作的权限。';
+
+  @override
+  String get aiAgentErrorFileInvalid => '文件工具参数无效；请检查 hostId、绝对路径和分页参数。';
+
+  @override
+  String get aiAgentErrorFileScope => '该主机不在本次任务的授权范围内，请先确认主机后再试。';
+
+  @override
   String get aiReasoningEffort => '思考强度';
 
   @override

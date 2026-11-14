@@ -634,6 +634,16 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
 
   static final toolIds = {for (final tool in agentTools) tool.name: tool.capability};
 
+  /// Host fields are optional in the shared UI capability but mandatory for every agent call.
+  static Map<String, Object?> _agentSchema(AgentTool tool, Map<String, Object?> schema) {
+    if (tool.hostFields.isEmpty) return schema;
+    final required = [...?(schema['required'] as List?)?.cast<String>()];
+    for (final field in tool.hostFields) {
+      if (!required.contains(field)) required.add(field);
+    }
+    return {...schema, 'required': required};
+  }
+
   Future<void> _run(String goal, Map<String, Object?>? previous, List<AgentAttachment> attachments) async {
     final cancel = _cancel!;
     final timer = Timer(turnDuration, cancel.cancel);
@@ -650,7 +660,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         if (_hasTools)
           for (final tool in agentTools)
             if (dispatcher[tool.capability] case final capability?)
-              if (_allowedInMode(capability)) ModelTool(tool.name, tool.description, capability.inputSchema),
+              if (_allowedInMode(capability))
+                ModelTool(tool.name, tool.description, _agentSchema(tool, capability.inputSchema)),
       ];
       final focused = _terminalSessions.where((session) => session.sessionId == _defaultTerminal).firstOrNull;
       final currentTerminal = focused == null ? null : _terminalData(focused);
@@ -913,6 +924,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'Never choose the first or only host merely because it is available. '
       'Never silently substitute another host after a connection failure or repeat an operation with unknown outcome. '
       'No mode grants credentials, host trust changes or policy changes. Respect declined hosts and actions. '
+      'Prefer files_* tools for inspecting or editing remote files: every call needs an explicit saved hostId and an absolute POSIX path. '
+      'Never use a shell command to read or edit a file that a file tool refused for sensitive content, binary or oversized data, or unsupported server behavior; report the refusal and ask the user. '
+      'Shell commands are for command-line work the file tools cannot express, not a way around a refusal. '
       'output_read only rereads an already shared projection, never raw buffers. Do not rerun actions to bypass output limits. '
       'job_start runs one approved command in the background; poll job_read with nextOffset and job_status. Jobs end with this turn and are never replayed. '
       'settings, host, workspace, session and forwarding tools change this app locally; they still follow the frozen permission mode and host scope. '

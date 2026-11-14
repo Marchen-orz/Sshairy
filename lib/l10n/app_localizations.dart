@@ -5192,6 +5192,60 @@ abstract class AppLocalizations {
   /// **'This server does not support the current command adapter.'**
   String get aiAgentErrorUnsupported;
 
+  /// No description provided for @aiAgentErrorFileDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'The file tool refused this path or content (sensitive location, credential-like text or policy limit).'**
+  String get aiAgentErrorFileDenied;
+
+  /// No description provided for @aiAgentErrorFileSensitive.
+  ///
+  /// In en, this message translates to:
+  /// **'The file contains credential-like or key material and was not read. Ask the user to inspect it, or narrow the request to content that excludes it.'**
+  String get aiAgentErrorFileSensitive;
+
+  /// No description provided for @aiAgentErrorFileUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'This file operation is unsupported: binary or non-UTF-8, larger than 256 KiB, or the server lacks private staging and atomic replace.'**
+  String get aiAgentErrorFileUnsupported;
+
+  /// No description provided for @aiAgentErrorFileConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'The file changed after it was read. Read it again before writing.'**
+  String get aiAgentErrorFileConflict;
+
+  /// No description provided for @aiAgentErrorFileExists.
+  ///
+  /// In en, this message translates to:
+  /// **'The target already exists. Read it first and provide its current sha256 when overwriting.'**
+  String get aiAgentErrorFileExists;
+
+  /// No description provided for @aiAgentErrorFileNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The file or directory does not exist.'**
+  String get aiAgentErrorFileNotFound;
+
+  /// No description provided for @aiAgentErrorFilePermission.
+  ///
+  /// In en, this message translates to:
+  /// **'The SSH account cannot perform this file operation.'**
+  String get aiAgentErrorFilePermission;
+
+  /// No description provided for @aiAgentErrorFileInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The file tool arguments were invalid; check hostId, the absolute path and paging values.'**
+  String get aiAgentErrorFileInvalid;
+
+  /// No description provided for @aiAgentErrorFileScope.
+  ///
+  /// In en, this message translates to:
+  /// **'This host is not authorized for the current task. Confirm the host before retrying.'**
+  String get aiAgentErrorFileScope;
+
   /// No description provided for @aiReasoningEffort.
   ///
   /// In en, this message translates to:

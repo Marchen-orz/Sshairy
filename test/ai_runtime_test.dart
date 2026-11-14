@@ -2069,6 +2069,33 @@ void main() {
     expect(h.backend.target.commands, hasLength(1));
   });
 
+  test('agent-facing schemas require the host fields enforced at runtime', () async {
+    final h = _Harness(
+      (_, _, _) async* {
+        yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'ok'));
+      },
+      extraCapabilities: [
+        FunctionCapability(
+          'file.read',
+          Effect.query,
+          (_, _) async => const Ok(null),
+          agentExposed: true,
+          inputSchema: _schema(
+            {
+              'hostId': {'type': 'string'},
+              'path': {'type': 'string'},
+            },
+            ['path'],
+          ),
+        ),
+      ],
+    );
+    addTearDown(h.close);
+    await h.start();
+    final tool = h.model.requests.single.tools.firstWhere((tool) => tool.name == 'files_read');
+    expect(tool.schema['required'], contains('hostId'));
+  });
+
   test('user-visible model text follows the frozen UI language', () async {
     final chinese = _Harness((_, _, _) async* {
       yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: 'ok'));

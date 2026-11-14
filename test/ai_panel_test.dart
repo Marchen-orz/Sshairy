@@ -529,6 +529,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('file tool failures show a file-specific reason', (tester) async {
+    final runtime = _Runtime();
+    runtime.entries.addAll([
+      AgentChatEntry('user', 'Read the config'),
+      (AgentExecution('read', 'file.read', 'host', '', '')
+        ..state = 'failed'
+        ..failure = 'denied'),
+    ]);
+    await _panel(tester, runtime);
+    final l = AppLocalizations.of(tester.element(find.byType(AgentPanel)));
+    await tester.tap(
+      find.descendant(of: find.byKey(const ValueKey('read')), matching: find.byTooltip(l.aiAgentShowOutput)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(l.aiAgentErrorFileDenied), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('reply actions appear only on the last answer of each round', (tester) async {
     final runtime = _Runtime();
     runtime.entries.addAll([

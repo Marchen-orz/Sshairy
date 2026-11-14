@@ -2796,6 +2796,42 @@ class AppLocalizationsEn extends AppLocalizations {
       'This server does not support the current command adapter.';
 
   @override
+  String get aiAgentErrorFileDenied =>
+      'The file tool refused this path or content (sensitive location, credential-like text or policy limit).';
+
+  @override
+  String get aiAgentErrorFileSensitive =>
+      'The file contains credential-like or key material and was not read. Ask the user to inspect it, or narrow the request to content that excludes it.';
+
+  @override
+  String get aiAgentErrorFileUnsupported =>
+      'This file operation is unsupported: binary or non-UTF-8, larger than 256 KiB, or the server lacks private staging and atomic replace.';
+
+  @override
+  String get aiAgentErrorFileConflict =>
+      'The file changed after it was read. Read it again before writing.';
+
+  @override
+  String get aiAgentErrorFileExists =>
+      'The target already exists. Read it first and provide its current sha256 when overwriting.';
+
+  @override
+  String get aiAgentErrorFileNotFound =>
+      'The file or directory does not exist.';
+
+  @override
+  String get aiAgentErrorFilePermission =>
+      'The SSH account cannot perform this file operation.';
+
+  @override
+  String get aiAgentErrorFileInvalid =>
+      'The file tool arguments were invalid; check hostId, the absolute path and paging values.';
+
+  @override
+  String get aiAgentErrorFileScope =>
+      'This host is not authorized for the current task. Confirm the host before retrying.';
+
+  @override
   String get aiReasoningEffort => 'Reasoning effort';
 
   @override
