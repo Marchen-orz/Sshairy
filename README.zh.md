@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="media/zh/cover.png" alt="Sshairy。轻量 SSH，AI 加持。0.62 秒启动，131 MiB 空闲内存，下载包 27 MiB，单进程运行" width="100%">
+<img src="media/zh/cover.png" alt="Sshairy。轻量 SSH，AI 加持。0.62 秒启动，131 MiB 空闲内存，27 MiB 下载体积，单进程运行" width="100%">
 
 [功能](#功能) · [Airy](#airy) · [主题](#主题) · [性能](#性能) · [获取](#获取) · [English](README.md)
 
@@ -80,9 +80,9 @@ Airy 就在终端旁边，是一位 AI 助手，配备 **39 个工具**，可管
 
 </details>
 
-**下载包 27 MiB，解压后 97.4 MiB，单进程原生运行。** 内置 1,453 个 Shell 补全规格
+**下载体积 27 MiB，解压后 97.4 MiB，单进程原生运行。** 内置 1,453 个 Shell 补全规格
 
-<img src="media/zh/footprint.png" alt="九款 SSH 客户端的下载包大小，以及 Sshairy 应用目录的构成" width="100%">
+<img src="media/zh/footprint.png" alt="九款 SSH 客户端的下载体积，以及 Sshairy 应用目录的构成" width="100%">
 
 ## 获取
 
