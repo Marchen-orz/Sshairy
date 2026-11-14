@@ -10,6 +10,7 @@ import '../../../foundation/diagnostics.dart';
 import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/json_file.dart';
+import '../../../foundation/name_patterns.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
@@ -89,7 +90,8 @@ class TransferManager extends Notifier<List<Transfer>> {
   /// An approval follows one attempt, rather than another job resumed or retried under the same ID.
   Object? resourceBinding(TransferId id) => _jobs[id] ?? byId(id);
 
-  /// Copies [paths] on [from] (null for this computer) into [targetDir] on [to]. One call is one batch.
+  /// Copies [paths] on [from] (null for this computer) into [targetDir] on [to]. One call is one batch; names matching
+  /// [exclude] are left out of directory copies.
   List<TransferId> enqueue({
     required Host? from,
     required List<String> paths,
@@ -98,6 +100,7 @@ class TransferManager extends Notifier<List<Transfer>> {
     CancellationToken? cancel,
     DateTime? deadline,
     bool Function()? isAuthorized,
+    List<String> exclude = const [],
   }) {
     if (_closing || paths.isEmpty) return const [];
     final authority = cancel == null && deadline == null && isAuthorized == null
@@ -119,6 +122,7 @@ class TransferManager extends Notifier<List<Transfer>> {
           target: FileEnd(to?.id, dstStyle.join(targetDir, srcStyle.name(p)), label: to?.title ?? ''),
           created: now,
           needsAuthorization: isAuthorized != null,
+          exclude: List.unmodifiable(exclude),
         ),
     ];
     if (authority != null) {
@@ -801,6 +805,10 @@ class _Copy {
       entries.sort((a, b) => a.name.compareTo(b.name));
       for (final e in entries) {
         if (++seen > maxScanEntries) throw const OpFailure('tooMany', '$maxScanEntries');
+        if (nameMatchesAny(e.name, _job.transfer.exclude)) {
+          _job.skipped++;
+          continue;
+        }
         final child = [...rel, e.name];
         switch (e.kind) {
           case FileKind.directory:

@@ -1032,5 +1032,21 @@
   "aiAgentExecutionRecord": "Execution record",
   "aiAgentThinkingFlow": "Thinking steps",
   "aiAgentCopied": "Copied",
-  "aiAgentCopyFailed": "Could not copy. Select the text and copy manually."
+  "aiAgentCopyFailed": "Could not copy. Select the text and copy manually.",
+  "aiAgentToolLocalRequest": "Request local access",
+  "aiAgentToolLocalList": "List local folder",
+  "aiAgentToolLocalStat": "Local file info",
+  "aiAgentToolLocalRead": "Read local file",
+  "aiAgentToolLocalHint": "Use local files and folders you granted to this conversation.",
+  "aiAgentLocalFolder": "Folder",
+  "aiAgentLocalGrantRevoke": "Revoke access",
+  "aiAgentLocalGrantWrite": "{name} · writable",
+  "@aiAgentLocalGrantWrite": {"placeholders": {"name": {"type": "String"}}},
+  "aiAgentLocalGrantExpired": "This local access has expired. Attach or grant it again.",
+  "aiAgentLocalAccessTitle": "Allow access to local files",
+  "aiAgentLocalAccessFolder": "Airy asks to read a folder in this conversation.",
+  "aiAgentLocalAccessFile": "Airy asks to read a file in this conversation.",
+  "aiAgentLocalAccessWrite": "Airy asks to read and write a folder in this conversation. Files from servers may be saved into it.",
+  "aiAgentLocalAccessChooseFolder": "Choose folder",
+  "aiAgentLocalAccessChooseFile": "Choose file"
 }

@@ -256,7 +256,7 @@ class AgentContext {
                     'text': jsonEncode({
                       'attachment': attachment.description,
                       'untrustedData': true,
-                      if (!attachment.isImage) 'text': attachment.content,
+                      if (!attachment.isImage && !attachment.isReference) 'text': attachment.content,
                     }),
                     if (attachment.isImage) 'image': attachment.content,
                   },

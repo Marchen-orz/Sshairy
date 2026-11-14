@@ -3165,4 +3165,56 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiAgentCopyFailed =>
       'Could not copy. Select the text and copy manually.';
+
+  @override
+  String get aiAgentToolLocalRequest => 'Request local access';
+
+  @override
+  String get aiAgentToolLocalList => 'List local folder';
+
+  @override
+  String get aiAgentToolLocalStat => 'Local file info';
+
+  @override
+  String get aiAgentToolLocalRead => 'Read local file';
+
+  @override
+  String get aiAgentToolLocalHint =>
+      'Use local files and folders you granted to this conversation.';
+
+  @override
+  String get aiAgentLocalFolder => 'Folder';
+
+  @override
+  String get aiAgentLocalGrantRevoke => 'Revoke access';
+
+  @override
+  String aiAgentLocalGrantWrite(String name) {
+    return '$name · writable';
+  }
+
+  @override
+  String get aiAgentLocalGrantExpired =>
+      'This local access has expired. Attach or grant it again.';
+
+  @override
+  String get aiAgentLocalAccessTitle => 'Allow access to local files';
+
+  @override
+  String get aiAgentLocalAccessFolder =>
+      'Airy asks to read a folder in this conversation.';
+
+  @override
+  String get aiAgentLocalAccessFile =>
+      'Airy asks to read a file in this conversation.';
+
+  @override
+  String get aiAgentLocalAccessWrite =>
+      'Airy asks to read and write a folder in this conversation. Files from servers may be saved into it.';
+
+  @override
+  String get aiAgentLocalAccessChooseFolder => 'Choose folder';
+
+  @override
+  String get aiAgentLocalAccessChooseFile => 'Choose file';
 }

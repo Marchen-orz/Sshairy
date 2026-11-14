@@ -5827,6 +5827,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not copy. Select the text and copy manually.'**
   String get aiAgentCopyFailed;
+
+  /// No description provided for @aiAgentToolLocalRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Request local access'**
+  String get aiAgentToolLocalRequest;
+
+  /// No description provided for @aiAgentToolLocalList.
+  ///
+  /// In en, this message translates to:
+  /// **'List local folder'**
+  String get aiAgentToolLocalList;
+
+  /// No description provided for @aiAgentToolLocalStat.
+  ///
+  /// In en, this message translates to:
+  /// **'Local file info'**
+  String get aiAgentToolLocalStat;
+
+  /// No description provided for @aiAgentToolLocalRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Read local file'**
+  String get aiAgentToolLocalRead;
+
+  /// No description provided for @aiAgentToolLocalHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Use local files and folders you granted to this conversation.'**
+  String get aiAgentToolLocalHint;
+
+  /// No description provided for @aiAgentLocalFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder'**
+  String get aiAgentLocalFolder;
+
+  /// No description provided for @aiAgentLocalGrantRevoke.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke access'**
+  String get aiAgentLocalGrantRevoke;
+
+  /// No description provided for @aiAgentLocalGrantWrite.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} · writable'**
+  String aiAgentLocalGrantWrite(String name);
+
+  /// No description provided for @aiAgentLocalGrantExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This local access has expired. Attach or grant it again.'**
+  String get aiAgentLocalGrantExpired;
+
+  /// No description provided for @aiAgentLocalAccessTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow access to local files'**
+  String get aiAgentLocalAccessTitle;
+
+  /// No description provided for @aiAgentLocalAccessFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Airy asks to read a folder in this conversation.'**
+  String get aiAgentLocalAccessFolder;
+
+  /// No description provided for @aiAgentLocalAccessFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Airy asks to read a file in this conversation.'**
+  String get aiAgentLocalAccessFile;
+
+  /// No description provided for @aiAgentLocalAccessWrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Airy asks to read and write a folder in this conversation. Files from servers may be saved into it.'**
+  String get aiAgentLocalAccessWrite;
+
+  /// No description provided for @aiAgentLocalAccessChooseFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose folder'**
+  String get aiAgentLocalAccessChooseFolder;
+
+  /// No description provided for @aiAgentLocalAccessChooseFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose file'**
+  String get aiAgentLocalAccessChooseFile;
 }
 
 class _AppLocalizationsDelegate

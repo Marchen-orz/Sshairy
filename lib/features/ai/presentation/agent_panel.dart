@@ -25,6 +25,7 @@ import '../adapters/markdown_view.dart';
 import '../adapters/attachments.dart';
 import '../adapters/attachment_drop.dart';
 import '../domain/attachment.dart';
+import '../domain/local_grant.dart';
 import 'model_picker.dart';
 import '../application/runtime.dart';
 import '../domain/agent.dart';
@@ -442,6 +443,12 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                                 draft.attachments.where((value) => value.id != attachment.id),
                                               );
                                         },
+                                ),
+                              if (runtime.localGrantsFor(conversations.selectedId) case final grants
+                                  when grants.isNotEmpty)
+                                _LocalGrantList(
+                                  grants: grants,
+                                  onRevoke: (grant) => runtime.revokeLocalGrant(conversations.selectedId, grant.id),
                                 ),
                               Focus(
                                 onKeyEvent: (_, event) {
@@ -949,6 +956,60 @@ class _Welcome extends StatelessWidget {
   }
 }
 
+/// Local roots granted to the selected conversation; the real path is shown only to the user, as a tooltip.
+class _LocalGrantList extends StatelessWidget {
+  const _LocalGrantList({required this.grants, required this.onRevoke});
+  final List<LocalGrant> grants;
+  final ValueChanged<LocalGrant> onRevoke;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Wrap(
+      spacing: Space.xs,
+      runSpacing: Space.xs,
+      children: [
+        for (final grant in grants)
+          Tooltip(
+            message: grant.root,
+            child: Container(
+              key: ValueKey('ai-local-grant-${grant.id}'),
+              padding: const EdgeInsets.only(left: Space.sm),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondaryContainer.withValues(alpha: .45),
+                borderRadius: BorderRadius.circular(Radii.pill),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(grant.directory ? Icons.folder_outlined : Icons.insert_drive_file_outlined, size: 14),
+                  const SizedBox(width: Space.xs),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 180),
+                    child: Text(
+                      grant.write ? l.aiAgentLocalGrantWrite(grant.label) : grant.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  IconButton(
+                    key: ValueKey('ai-local-grant-revoke-${grant.id}'),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: l.aiAgentLocalGrantRevoke,
+                    onPressed: () => onRevoke(grant),
+                    icon: const Icon(Icons.close_rounded, size: 13),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _AttachmentList extends StatelessWidget {
   const _AttachmentList({required this.attachments, this.onRemove});
   final List<AgentAttachment> attachments;
@@ -993,7 +1054,7 @@ class _AttachmentList extends StatelessWidget {
                 Flexible(
                   child: TextButton(
                     key: ValueKey('ai-attachment-preview-${attachment.id}'),
-                    onPressed: () => _preview(context, attachment),
+                    onPressed: attachment.isReference ? null : () => _preview(context, attachment),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1006,7 +1067,14 @@ class _AttachmentList extends StatelessWidget {
                             errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined, size: 17),
                           )
                         else
-                          const Icon(Icons.description_outlined, size: 17),
+                          Icon(
+                            attachment.isDirectory
+                                ? Icons.folder_outlined
+                                : attachment.isReference
+                                ? Icons.file_present_outlined
+                                : Icons.description_outlined,
+                            size: 17,
+                          ),
                         const SizedBox(width: Space.xs),
                         Flexible(
                           child: Column(
@@ -1014,7 +1082,12 @@ class _AttachmentList extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(attachment.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                              Text(formatFileSize(attachment.bytes), style: theme.textTheme.bodySmall),
+                              Text(
+                                attachment.isDirectory
+                                    ? l.aiAgentLocalFolder
+                                    : formatFileSize(attachment.size ?? attachment.bytes),
+                                style: theme.textTheme.bodySmall,
+                              ),
                             ],
                           ),
                         ),
@@ -1646,6 +1719,10 @@ class _ExecutionCardState extends State<_ExecutionCard> {
       'agent.terminals' => (l.aiAgentToolTerminals, l.aiAgentToolTerminalsHint),
       'agent.terminalHistory' => (l.aiAgentToolTerminalHistory, l.aiAgentToolTerminalHistoryHint),
       'agent.terminalScreen' => (l.aiAgentToolTerminalScreen, l.aiAgentToolTerminalScreenHint),
+      'local.requestAccess' => (l.aiAgentToolLocalRequest, l.aiAgentToolLocalHint),
+      'local.list' => (l.aiAgentToolLocalList, l.aiAgentToolLocalHint),
+      'local.stat' => (l.aiAgentToolLocalStat, l.aiAgentToolLocalHint),
+      'local.read' => (l.aiAgentToolLocalRead, l.aiAgentToolLocalHint),
       'file.list' => (l.aiAgentToolFilesList, l.aiAgentToolFilesHint),
       'file.stat' => (l.aiAgentToolFilesStat, l.aiAgentToolFilesHint),
       'file.read' => (l.aiAgentToolFilesRead, l.aiAgentToolFilesHint),
@@ -1696,7 +1773,9 @@ class _ExecutionCardState extends State<_ExecutionCard> {
         : _executionState(l, execution.state);
     final failure = execution.failure == null
         ? null
-        : execution.capability.startsWith('file.')
+        : execution.capability.startsWith('file.') ||
+              execution.capability.startsWith('local.') ||
+              execution.capability == 'transfer.enqueue'
         ? _fileError(l, execution.failure!)
         : _error(l, execution.failure);
     return Padding(
@@ -1936,6 +2015,7 @@ String _fileError(AppLocalizations l, String code) => switch (code) {
   'exists' => l.aiAgentErrorFileExists,
   'notFound' => l.aiAgentErrorFileNotFound,
   'permission' => l.aiAgentErrorFilePermission,
+  'expired' => l.aiAgentLocalGrantExpired,
   _ => _error(l, code),
 };
 

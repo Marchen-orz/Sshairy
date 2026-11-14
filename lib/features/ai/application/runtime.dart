@@ -14,6 +14,7 @@ import '../../terminal/api.dart';
 import '../domain/agent.dart';
 import '../domain/agent_tool.dart';
 import '../domain/conversation.dart';
+import '../domain/local_grant.dart';
 import '../domain/model.dart';
 import '../domain/resources.dart';
 import 'context.dart';
@@ -197,12 +198,23 @@ class AgentHostApproval {
   final String? conversationId;
 }
 
+/// A pending `local_request_access`: the user chooses the actual folder or file in the system picker.
+class AgentLocalAccessRequest {
+  AgentLocalAccessRequest(this.purpose, {required this.directory, required this.write, this.conversationId});
+  final String purpose;
+  final bool directory, write;
+  final String? conversationId;
+}
+
 class _ConversationAccess {
   _ConversationAccess(this.defaultHost, this.destination, this.revision);
   final HostId? defaultHost;
   String destination;
   int revision;
   final grants = <HostId, String?>{};
+
+  /// User-granted local roots, memory only (docs/AI.md §7.1).
+  final localGrants = <String, LocalGrant>{};
 }
 
 String _bounded(String value, int bytes) {
@@ -278,6 +290,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   final _activeCalls = <OperationId, List<HostId>>{};
   CancellationToken? _cancel;
   Completer<bool>? _approvalResult, _hostApprovalResult;
+  Completer<String?>? _localAccessResult;
+  final _deniedLocalRequests = <String>{};
   Future<void>? _working;
   AgentScope? _scope;
   List<AgentHost> _availableHosts = const [];
@@ -299,6 +313,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   bool contextCompacted = false;
   AgentApproval? approval;
   AgentHostApproval? hostApproval;
+  AgentLocalAccessRequest? localAccessRequest;
   List<AgentChatEntry> get messages => List.unmodifiable(_messages);
   List<AgentExecution> get executions => List.unmodifiable(_executions);
   List<AgentTimelineEntry> get timeline => List.unmodifiable(_timeline);
@@ -615,10 +630,22 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       }
     } else if (existing.destination != _profile!.identity || existing.revision != _configRevision) {
       existing.grants.clear();
+      existing.localGrants.clear();
       existing.destination = _profile!.identity;
       existing.revision = _configRevision;
     }
     _resolvedHost = _access!.defaultHost;
+    _deniedLocalRequests.clear();
+    // Only references attached to this send become grants; history never revives a local path.
+    for (final attachment in attachments) {
+      if (!attachment.isReference || attachment.localPath == null) continue;
+      _access!.localGrants[attachment.id] = LocalGrant(
+        id: attachment.id,
+        root: attachment.localPath!,
+        label: attachment.name,
+        directory: attachment.isDirectory,
+      );
+    }
     _conversationBytes = utf8.encode(goal).length;
     if (appendGoal) _addMessage(AgentChatEntry('user', goal, attachments: attachments));
     _phase(AgentPhase.preparing);
@@ -639,7 +666,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     if (tool.hostFields.isEmpty) return schema;
     final required = [...?(schema['required'] as List?)?.cast<String>()];
     for (final field in tool.hostFields) {
-      if (!required.contains(field)) required.add(field);
+      // An end that may be this computer is named by either the host or the grant field.
+      if (!required.contains(field) && !tool.localFields.containsKey(field)) required.add(field);
     }
     return {...schema, 'required': required};
   }
@@ -870,6 +898,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       }
       approval = null;
       hostApproval = null;
+      localAccessRequest = null;
+      _localAccessResult = null;
       _pendingHostRoute = null;
       reviewing = false;
       _approvalResult = null;
@@ -927,6 +957,11 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'Prefer files_* tools for inspecting or editing remote files: every call needs an explicit saved hostId and an absolute POSIX path. '
       'Never use a shell command to read or edit a file that a file tool refused for sensitive content, binary or oversized data, or unsupported server behavior; report the refusal and ask the user. '
       'Shell commands are for command-line work the file tools cannot express, not a way around a refusal. '
+      'This computer is reachable only through local grants the user made in this conversation: attachments with localGrantId, or grants returned by local_request_access. '
+      'Use local_list, local_stat and local_read with the grantId and a path relative to its root; you never see or pass real local paths. '
+      'Ask with local_request_access (purpose and kind) only when the task needs local files that no grant covers; never ask again after a refusal in the same turn. '
+      'To deploy local files, queue transfer_enqueue from fromGrantId to a remote host and exclude build output, dependencies and VCS folders the target does not need; to download, ask for a write grant and use toGrantId. '
+      'An expired grant means the user must attach or grant it again. '
       'output_read only rereads an already shared projection, never raw buffers. Do not rerun actions to bypass output limits. '
       'job_start runs one approved command in the background; poll job_read with nextOffset and job_status. Jobs end with this turn and are never replayed. '
       'settings, host, workspace, session and forwarding tools change this app locally; they still follow the frozen permission mode and host scope. '
@@ -1085,6 +1120,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     final hosts = <HostId>[...?resolved?.hosts];
     for (final field in tool.hostFields) {
       final raw = args[field];
+      if (raw == null && args[tool.localFields[field]] is String) continue;
       if (raw is! String || raw.isEmpty) return null;
       final host = HostId(raw);
       if (!hosts.contains(host)) hosts.add(host);
@@ -1115,6 +1151,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     _profile!.identity,
     target?.identity,
     [for (final host in hosts) hostRoutes()[host]],
+    [
+      for (final field in _toolFor(capability.id)?.grantFields ?? const <String>[])
+        if (args[field] case final String id) _access?.localGrants[id]?.binding,
+    ],
   ]);
 
   String _approvalSummary(AgentTool tool, Map<String, Object?> args, AgentResourceSnapshot? resource) {
@@ -1129,7 +1169,15 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       });
     }
     // Every field in these locally validated schemas is non-secret; omitting one can hide the actual action.
-    return jsonEncode({...args, if (resource != null) 'affected': resource.details});
+    final grants = {
+      for (final field in tool.grantFields)
+        if (args[field] case final String id) id: _access?.localGrants[id]?.label,
+    };
+    return jsonEncode({
+      ...args,
+      if (resource != null) 'affected': resource.details,
+      if (grants.isNotEmpty) 'localGrants': grants,
+    });
   }
 
   @override
@@ -1146,9 +1194,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       }
       final tool = _toolFor(capability.id);
       if (tool == null || !_hasTools || !_allowedInMode(capability)) return const Err(AppError('notExposed'));
-      if (const {'agent.hosts', 'agent.output', 'agent.terminals'}.contains(capability.id)) {
+      if (const {'agent.hosts', 'agent.output', 'agent.terminals', 'local.requestAccess'}.contains(capability.id)) {
         return const Ok(null);
       }
+      if (_grantRefusal(tool, args, context) case final refusal?) return refusal;
       if (capability.id == 'agent.terminalHistory') {
         final session = _terminal(args);
         if (session == null) return const Err(AppError('outsideScope'));
@@ -1318,7 +1367,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   Future<Result<void>> revalidate(Capability capability, Map<String, Object?> args, RequestContext context) async {
     try {
       _check();
-      if (const {'agent.hosts', 'agent.output', 'agent.terminals'}.contains(capability.id)) {
+      if (const {'agent.hosts', 'agent.output', 'agent.terminals', 'local.requestAccess'}.contains(capability.id)) {
         return const Ok(null);
       }
       if (capability.id == 'agent.terminalHistory') {
@@ -1410,6 +1459,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       );
     });
     const controls = {
+      'local.requestAccess',
       'agent.hosts',
       'agent.output',
       'agent.terminals',
@@ -2097,6 +2147,86 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     stop();
   }
 
+  /// Grants of one conversation, for the composer; their roots stay local.
+  List<LocalGrant> localGrantsFor(String? conversationId) =>
+      List.unmodifiable(_conversationAccess[conversationId]?.localGrants.values ?? const <LocalGrant>[]);
+
+  /// Withdraws a grant at once; a call already holding it fails its next authorization check.
+  void revokeLocalGrant(String? conversationId, String grantId) {
+    if (_conversationAccess[conversationId]?.localGrants.remove(grantId) != null) _emit();
+  }
+
+  /// The current turn's grant, for local file capabilities. Null outside a turn or after revocation.
+  LocalGrant? localGrant(String id) => busy ? _access?.localGrants[id] : null;
+
+  void decideLocalAccess(AgentLocalAccessRequest expected, String? path) {
+    if (identical(localAccessRequest, expected) && _localAccessResult?.isCompleted == false) {
+      _localAccessResult!.complete(path);
+    }
+  }
+
+  /// Waits for the user to pick a folder or file; the model never names the path (docs/AI.md §7.1).
+  Future<Result<Object?>> requestLocalAccess(Map<String, Object?> args) async {
+    final token = _cancel, owner = _owner;
+    _checkTurn(token, owner);
+    final directory = args['kind'] != 'file', write = args['write'] == true;
+    if (write && !directory) return const Err(AppError('invalidArgument'));
+    final purpose = _purpose(args['purpose']);
+    final key = jsonEncode([purpose, directory, write]);
+    if (_deniedLocalRequests.contains(key) || localAccessRequest != null) return const Err(AppError('denied'));
+    final pending = localAccessRequest = AgentLocalAccessRequest(
+      purpose,
+      directory: directory,
+      write: write,
+      conversationId: _scope?.conversationId,
+    );
+    final result = _localAccessResult = Completer<String?>();
+    _phase(AgentPhase.awaitingApproval);
+    try {
+      final path = await _decision<String?>(result.future, null, cancel: token);
+      _checkTurn(token, owner);
+      if (path == null || path.isEmpty) {
+        _deniedLocalRequests.add(key);
+        return const Err(AppError('denied'));
+      }
+      final name = path.split(RegExp(r'[\\/]')).where((part) => part.isNotEmpty).lastOrNull ?? path;
+      final grant = LocalGrant(
+        id: 'local-${newId()}',
+        root: path,
+        label: _bounded(name, 255),
+        directory: directory,
+        write: write,
+      );
+      _access!.localGrants[grant.id] = grant;
+      return Ok(grant.description);
+    } finally {
+      if (identical(localAccessRequest, pending)) {
+        localAccessRequest = null;
+        _localAccessResult = null;
+      }
+      if (identical(token, _cancel) && !(token?.isCancelled ?? true)) _phase(AgentPhase.executing);
+    }
+  }
+
+  Result<void>? _grantRefusal(AgentTool tool, Map<String, Object?> args, RequestContext context) {
+    final labels = <String>[];
+    for (final field in tool.grantFields) {
+      final raw = args[field];
+      if (raw == null) continue;
+      if (raw is! String) return const Err(AppError('invalidArgument'));
+      final grant = _access?.localGrants[raw];
+      if (grant == null) return const Err(AppError('expired'));
+      if (field == 'toGrantId' && !grant.write) return const Err(AppError('denied'));
+      labels.add(_bounded(grant.label, 256));
+    }
+    if (labels.isNotEmpty && tool.hostFields.isEmpty) {
+      final execution = _executions.where((entry) => entry.id == context.operationId.value).firstOrNull;
+      final path = args['path'];
+      if (execution != null) execution.target = [...labels, if (path is String && path.isNotEmpty) path].join(' / ');
+    }
+    return null;
+  }
+
   void forgetConversation(String id) => _conversationAccess.remove(id);
 
   void retainConversations(Set<String> ids) => _conversationAccess.removeWhere((id, _) => !ids.contains(id));
@@ -2107,7 +2237,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     _cancel!.cancel();
     if (_approvalResult?.isCompleted == false) _approvalResult!.complete(false);
     if (_hostApprovalResult?.isCompleted == false) _hostApprovalResult!.complete(false);
+    if (_localAccessResult?.isCompleted == false) _localAccessResult!.complete(null);
     hostApproval = null;
+    localAccessRequest = null;
     _pendingHostRoute = null;
     _emit();
   }

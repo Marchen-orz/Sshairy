@@ -11,6 +11,8 @@ import '../../features/capabilities/api.dart';
 import '../../features/hosts/api.dart';
 import '../../features/files/api.dart';
 import '../../features/terminal/api.dart' show terminalAiSensitiveText;
+import '../../features/ai/api.dart' show localSensitiveExcludes;
+import 'local_files.dart';
 
 Map<String, Object?> fileEntryDto(FileEntry e) => {
   'name': e.name,
@@ -257,7 +259,18 @@ List<Capability> fileCapabilities(Ref ref) {
             'items': {'type': 'string'},
           },
           'toHostId': _hostProp,
-          'targetDir': _pathProp,
+          'targetDir': {
+            'type': 'string',
+            'description': 'absolute remote path, or a path relative to toGrantId for this computer',
+          },
+          'fromGrantId': {'type': 'string', 'description': 'local grant whose relative paths are uploaded'},
+          'toGrantId': {'type': 'string', 'description': 'local write grant that receives a download'},
+          'exclude': {
+            'type': 'array',
+            'maxItems': 64,
+            'items': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+            'description': 'name patterns with * and ? left out of directory copies',
+          },
         },
         'required': ['paths', 'targetDir'],
       },
@@ -270,14 +283,50 @@ List<Capability> fileCapabilities(Ref ref) {
         }
         final paths = a.require<List<Object?>>('paths');
         if (paths.isEmpty || paths.any((p) => p is! String)) throw ArgumentError.value(paths, 'paths', 'strings');
+        var sources = paths.cast<String>(), targetDir = a.require<String>('targetDir');
+        final exclude = [for (final pattern in a.optional<List<Object?>>('exclude') ?? const []) '$pattern'];
+        if (exclude.any((pattern) => pattern.isEmpty || pattern.contains('/') || pattern.contains(r'\'))) {
+          return const Err(AppError('invalidArgument'));
+        }
+        if (c.origin == Origin.agent) {
+          final fromGrant = a.optional<String>('fromGrantId'), toGrant = a.optional<String>('toGrantId');
+          // Each end is exactly one of a saved host or a local grant, and this computer may be only one of them.
+          if ((fromGrant != null) == a.has('fromHostId') || (toGrant != null) == a.has('toHostId')) {
+            return const Err(AppError('invalidArgument'));
+          }
+          if (fromGrant != null && toGrant != null) return const Err(AppError('unsupported'));
+          final handle = await pool().acquire(null, const NoPrompts());
+          try {
+            if (fromGrant != null) {
+              final grant = agentLocalGrant(ref, c, fromGrant);
+              if (grant == null) return const Err(AppError('expired'));
+              sources = [for (final path in sources) await resolveGrantPath(handle.fs, grant, path)];
+              exclude.insertAll(0, localSensitiveExcludes);
+            }
+            if (toGrant != null) {
+              final grant = agentLocalGrant(ref, c, toGrant);
+              if (grant == null) return const Err(AppError('expired'));
+              if (!grant.write || !grant.directory) return const Err(AppError('denied'));
+              targetDir = await resolveGrantPath(handle.fs, grant, targetDir, directory: true);
+            }
+          } on FsError catch (e) {
+            return Err(AppError(e.kind.name));
+          } on OpFailure catch (e) {
+            return Err(AppError(e.code));
+          } finally {
+            handle.release();
+          }
+          _checkRequest(c);
+        }
         final ids = transfers().enqueue(
           from: from,
-          paths: paths.cast<String>(),
+          paths: sources,
           to: to,
-          targetDir: a.require<String>('targetDir'),
+          targetDir: targetDir,
           cancel: c.origin == Origin.agent ? c.cancellation : null,
           deadline: c.origin == Origin.agent ? c.deadline : null,
           isAuthorized: c.origin == Origin.agent ? () => c.isCurrent : null,
+          exclude: exclude,
         );
         return Ok({
           'transferIds': [for (final id in ids) id.value],
@@ -423,8 +472,8 @@ Future<String> _checkedPath(FileSystem fs, String path, {RequestContext? context
   return canonical;
 }
 
-Future<Object?> listFiles(FileSystem fs, Args a, RequestContext c) async {
-  final path = a.require<String>('path');
+Future<Object?> listFiles(FileSystem fs, Args a, RequestContext c, {String? at}) async {
+  final path = at ?? a.require<String>('path');
   if (c.origin != Origin.agent) return [for (final e in await fs.list(path)) fileEntryDto(e)];
   final offset = a.optional<int>('offset') ?? 0;
   if (offset < 0 || offset >= _maxDirectoryScan) throw const OpFailure('invalidArgument');
@@ -489,7 +538,18 @@ Future<Uint8List> _readTextBytes(FileSystem fs, String path, RequestContext? con
 Future<Object?> readTextFile(FileSystem fs, Args a, {RequestContext? context}) async {
   final path = a.require<String>('path');
   final canonical = await _checkedPath(fs, path, context: context);
-  final offset = a.optional<int>('offset') ?? 0;
+  return readTextPage(fs, canonical, path, a.optional<int>('offset') ?? 0, context: context);
+}
+
+/// One page of a checked [canonical] text file; [shown] is the path the caller named, returned in place of it.
+Future<Object?> readTextPage(
+  FileSystem fs,
+  String canonical,
+  String shown,
+  int offset, {
+  RequestContext? context,
+}) async {
+  final path = shown;
   final raw = await _readTextBytes(fs, canonical, context);
   if (offset < 0 || offset > raw.length || offset < raw.length && (raw[offset] & 0xC0) == 0x80) {
     throw const OpFailure('invalidArgument');

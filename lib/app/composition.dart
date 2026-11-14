@@ -23,6 +23,7 @@ import 'capabilities/host_library.dart';
 import 'capabilities/credentials.dart';
 import 'capabilities/workspace.dart';
 import 'capabilities/files.dart';
+import 'capabilities/local_files.dart';
 import 'capabilities/settings.dart';
 import 'capabilities/snippets.dart';
 import 'capabilities/forwarding.dart';
@@ -131,6 +132,7 @@ List<Override> appOverrides() => [
       ...workspaceCapabilities(ref),
       ...settingsCapabilities(ref),
       ...fileCapabilities(ref),
+      ...localFileCapabilities(ref),
       ...snippetCapabilities(ref),
       ...forwardCapabilities(ref),
     ]),

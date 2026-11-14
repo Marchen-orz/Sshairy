@@ -3022,4 +3022,51 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentCopyFailed => '复制失败，请选中文字后手动复制。';
+
+  @override
+  String get aiAgentToolLocalRequest => '申请本地访问';
+
+  @override
+  String get aiAgentToolLocalList => '列出本地目录';
+
+  @override
+  String get aiAgentToolLocalStat => '本地文件信息';
+
+  @override
+  String get aiAgentToolLocalRead => '读取本地文件';
+
+  @override
+  String get aiAgentToolLocalHint => '使用你在本会话中授权的本地文件和文件夹。';
+
+  @override
+  String get aiAgentLocalFolder => '文件夹';
+
+  @override
+  String get aiAgentLocalGrantRevoke => '撤销授权';
+
+  @override
+  String aiAgentLocalGrantWrite(String name) {
+    return '$name · 可写入';
+  }
+
+  @override
+  String get aiAgentLocalGrantExpired => '本地授权已失效，请重新添加或授权。';
+
+  @override
+  String get aiAgentLocalAccessTitle => '授权访问本地文件';
+
+  @override
+  String get aiAgentLocalAccessFolder => 'Airy 请求在本会话中读取一个文件夹。';
+
+  @override
+  String get aiAgentLocalAccessFile => 'Airy 请求在本会话中读取一个文件。';
+
+  @override
+  String get aiAgentLocalAccessWrite => 'Airy 请求在本会话中读写一个文件夹，服务器上的文件可能会下载到这里。';
+
+  @override
+  String get aiAgentLocalAccessChooseFolder => '选择文件夹';
+
+  @override
+  String get aiAgentLocalAccessChooseFile => '选择文件';
 }

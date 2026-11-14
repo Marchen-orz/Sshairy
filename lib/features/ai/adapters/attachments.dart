@@ -11,6 +11,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../foundation/ids.dart';
 import '../domain/attachment.dart';
 
+/// The system picker behind a local grant request; null when cancelled.
+Future<String?> chooseLocalGrantPath({required bool directory}) async =>
+    directory ? selector.getDirectoryPath() : (await selector.openFile())?.path;
+
 final agentAttachmentPickerProvider = Provider<AgentAttachmentPicker>((_) => AgentAttachmentPicker());
 
 class AttachmentImportFailure extends FormatException {
@@ -61,7 +65,9 @@ class AgentAttachmentPicker {
     }
   }
 
-  /// Paths come only from explicit picker, file paste or drop events and are discarded after reading.
+  /// Paths come only from explicit picker, file paste or drop events. Images and small text are read and the path is
+  /// discarded; folders, large or non-text files become references whose path stays in memory until it becomes a
+  /// conversation grant (docs/AI.md §7.1).
   Future<List<AgentAttachment>> importFiles(List<String> paths, List<AgentAttachment> current) async {
     try {
       _checkPaths(paths);
@@ -72,17 +78,38 @@ class AgentAttachmentPicker {
       final added = <AgentAttachment>[];
       var remaining = AgentAttachmentLimits.totalBytes - current.fold(0, (size, item) => size + item.bytes);
       for (final path in paths) {
-        final name = path.replaceAll('\\', '/').split('/').last;
+        final name = path.replaceAll('\\', '/').split('/').where((part) => part.isNotEmpty).lastOrNull ?? '';
         final cleanName = name.replaceAll(RegExp(r'[\x00-\x1f\x7f-\x9f]'), '');
         final displayName = cleanName.substring(0, min(cleanName.length, 255));
         try {
-          if (await FileSystemEntity.type(path) != FileSystemEntityType.file || _unsupportedName(name)) {
-            throw const FormatException('attachmentUnsupported');
+          final type = await FileSystemEntity.type(path);
+          if (_credentialName(name)) throw const FormatException('attachmentUnsupported');
+          if (type == FileSystemEntityType.directory) {
+            added.add(AgentAttachment.reference(id: newId(), name: name, directory: true, localPath: path));
+            continue;
           }
-          final bytes = await _read(path, AgentAttachmentLimits.inputImageBytes);
-          final attachment = _image(bytes)
-              ? AgentAttachment.image(id: newId(), name: name, base64: base64Encode(await _normalize(bytes)))
-              : AgentAttachment.text(id: newId(), name: name, text: utf8.decode(bytes));
+          if (type != FileSystemEntityType.file) throw const FormatException('attachmentUnsupported');
+          final size = await File(path).length();
+          AgentAttachment reference() =>
+              AgentAttachment.reference(id: newId(), name: name, directory: false, size: size, localPath: path);
+          final head = await _read(path, min(size, 16), exact: false);
+          final AgentAttachment attachment;
+          if (_image(head)) {
+            final bytes = await _read(path, AgentAttachmentLimits.inputImageBytes);
+            attachment = AgentAttachment.image(id: newId(), name: name, base64: base64Encode(await _normalize(bytes)));
+          } else if (_binaryName(name) || size > AgentAttachmentLimits.inlineTextBytes) {
+            attachment = reference();
+          } else {
+            final bytes = await _read(path, AgentAttachmentLimits.inlineTextBytes);
+            final String text;
+            try {
+              text = utf8.decode(bytes);
+            } on FormatException {
+              added.add(reference());
+              continue;
+            }
+            attachment = AgentAttachment.text(id: newId(), name: name, text: text);
+          }
           if (attachment.bytes > remaining) throw const FormatException('attachmentTotalTooLarge');
           remaining -= attachment.bytes;
           added.add(attachment);
@@ -103,35 +130,37 @@ class AgentAttachmentPicker {
     }
   }
 
-  static bool _unsupportedName(String name) {
+  static bool _credentialName(String name) {
     final lower = name.toLowerCase();
-    return lower == '.env' ||
-        lower.startsWith('.env.') ||
-        lower.startsWith('id_rsa') ||
-        lower.startsWith('id_ed25519') ||
-        const {
-          'pdf',
-          'doc',
-          'docx',
-          'xls',
-          'xlsx',
-          'ppt',
-          'pptx',
-          'odt',
-          'ods',
-          'odp',
-          'zip',
-          'rar',
-          '7z',
-          'gz',
-          'tar',
-          'mp3',
-          'mp4',
-          'wav',
-          'ogg',
-          'avi',
-          'mov',
-        }.contains(lower.split('.').last);
+    return lower == '.env' || lower.startsWith('.env.') || lower.startsWith('id_rsa') || lower.startsWith('id_ed25519');
+  }
+
+  /// Types sent as references rather than decoded as text.
+  static bool _binaryName(String name) {
+    final lower = name.toLowerCase();
+    return const {
+      'pdf',
+      'doc',
+      'docx',
+      'xls',
+      'xlsx',
+      'ppt',
+      'pptx',
+      'odt',
+      'ods',
+      'odp',
+      'zip',
+      'rar',
+      '7z',
+      'gz',
+      'tar',
+      'mp3',
+      'mp4',
+      'wav',
+      'ogg',
+      'avi',
+      'mov',
+    }.contains(lower.split('.').last);
   }
 
   static bool _image(Uint8List bytes) =>
@@ -141,9 +170,10 @@ class AgentAttachmentPicker {
           ascii.decode(bytes.sublist(0, 4), allowInvalid: true) == 'RIFF' &&
           ascii.decode(bytes.sublist(8, 12), allowInvalid: true) == 'WEBP');
 
-  static Future<Uint8List> _read(String path, int limit) async {
+  static Future<Uint8List> _read(String path, int limit, {bool exact = true}) async {
     final file = await File(path).open();
     try {
+      if (!exact) return await file.read(limit);
       if (await file.length() > limit) throw const FormatException('attachmentTooLarge');
       final bytes = BytesBuilder(copy: false);
       while (bytes.length <= limit) {

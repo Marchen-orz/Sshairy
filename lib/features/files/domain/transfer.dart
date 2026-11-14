@@ -176,6 +176,7 @@ class Transfer {
     this.directory = false,
     this.checkpoint,
     this.needsAuthorization = false,
+    this.exclude = const [],
   });
 
   final TransferId id;
@@ -213,6 +214,9 @@ class Transfer {
 
   /// An Agent approval is kept only in memory; restored tasks need a new explicit submission.
   final bool needsAuthorization;
+
+  /// Name patterns (`*`, `?`) skipped anywhere inside a directory copy.
+  final List<String> exclude;
 
   bool get upload => source.local && !target.local;
   bool get download => !source.local && target.local;
@@ -254,6 +258,7 @@ class Transfer {
     directory: directory ?? this.directory,
     checkpoint: checkpoint == null ? this.checkpoint : checkpoint(),
     needsAuthorization: needsAuthorization,
+    exclude: exclude,
   );
 
   /// A fresh attempt from the start, in a batch of its own so earlier "apply to all" answers do not carry over.
@@ -264,6 +269,7 @@ class Transfer {
     target: target,
     created: created,
     needsAuthorization: needsAuthorization,
+    exclude: exclude,
   );
 
   /// Only what history needs: no handles, no secrets, no conflict in progress.
@@ -285,6 +291,7 @@ class Transfer {
     if (directory) 'directory': true,
     if (checkpoint != null) 'checkpoint': checkpoint!.toJson(),
     if (needsAuthorization) 'needsAuthorization': true,
+    if (exclude.isNotEmpty) 'exclude': exclude,
   };
 
   /// A transfer that was still active when saved did not finish: it comes back interrupted, never running.
@@ -309,6 +316,7 @@ class Transfer {
       finished: j['finished'] == null ? null : DateTime.parse(j['finished'] as String),
       directory: j['directory'] as bool? ?? false,
       needsAuthorization: j['needsAuthorization'] as bool? ?? false,
+      exclude: [for (final pattern in j['exclude'] as List? ?? const []) pattern as String],
       checkpoint: j['checkpoint'] == null
           ? null
           : TransferCheckpoint.fromJson((j['checkpoint'] as Map).cast<String, dynamic>()),

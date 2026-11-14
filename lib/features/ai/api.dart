@@ -1,5 +1,6 @@
 export 'domain/agent.dart';
 export 'domain/agent_tool.dart';
+export 'domain/local_grant.dart';
 export 'domain/resources.dart';
 export 'domain/model.dart';
 export 'domain/conversation.dart';

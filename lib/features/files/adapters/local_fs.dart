@@ -5,8 +5,36 @@ import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
 
 /// This computer's files. On Windows the empty path lists the drives.
-class LocalFileSystem implements FileSystem {
+class LocalFileSystem implements FileSystem, BoundedFileListing {
   const LocalFileSystem();
+
+  @override
+  Future<BoundedListing> listBounded(
+    String dir, {
+    required int maxScanned,
+    bool Function(String name)? accept,
+    CancellationToken? cancel,
+  }) async {
+    final out = <FileEntry>[];
+    var scanned = 0;
+    try {
+      await for (final e in Directory(dir).list(followLinks: false)) {
+        if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
+        if (scanned == maxScanned) return BoundedListing(out, scanned: scanned, complete: false);
+        scanned++;
+        final name = e.path.substring(e.path.lastIndexOf(Platform.pathSeparator) + 1);
+        if (accept != null && !accept(name)) continue;
+        final entry = await _entry(
+          e.path,
+          e is Link ? FileKind.link : (e is Directory ? FileKind.directory : FileKind.file),
+        );
+        if (entry != null) out.add(entry);
+      }
+    } on FileSystemException catch (e) {
+      throw _map(e);
+    }
+    return BoundedListing(out, scanned: scanned, complete: true);
+  }
 
   @override
   PathStyle get style => Platform.isWindows ? PathStyle.windows : PathStyle.posix;

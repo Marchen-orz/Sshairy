@@ -6,6 +6,8 @@ class AgentTool {
     this.description, {
     this.readOnly = false,
     this.hostFields = const [],
+    this.localFields = const {},
+    this.grantFields = const [],
     this.approval = true,
   });
 
@@ -16,6 +18,12 @@ class AgentTool {
 
   /// Argument keys carrying HostId values that must be inside the conversation scope.
   final List<String> hostFields;
+
+  /// A host field that may be replaced by a local grant field naming this computer's end instead.
+  final Map<String, String> localFields;
+
+  /// Argument keys carrying local grant IDs that must exist in the conversation.
+  final List<String> grantFields;
 
   /// Whether a non-query action needs local approval in observe/confirm/review modes.
   final bool approval;
@@ -144,6 +152,37 @@ const agentTools = <AgentTool>[
     hostFields: ['hostId'],
   ),
   AgentTool(
+    'local_request_access',
+    'local.requestAccess',
+    'Ask the user to choose one local folder or file for this conversation. Give purpose (why it is needed) and kind (directory or file); set write only to download remote files into it. The user picks the actual path; you receive a grantId, never the path. A cancelled request is final for this turn.',
+    readOnly: true,
+    approval: false,
+  ),
+  AgentTool(
+    'local_list',
+    'local.list',
+    'List one directory inside a local grant with bounded entries and nextOffset. path is relative to the grant root using "/", empty for the root.',
+    readOnly: true,
+    approval: false,
+    grantFields: ['grantId'],
+  ),
+  AgentTool(
+    'local_stat',
+    'local.stat',
+    'Read metadata of one path inside a local grant; path is relative to the grant root, empty for the root itself.',
+    readOnly: true,
+    approval: false,
+    grantFields: ['grantId'],
+  ),
+  AgentTool(
+    'local_read',
+    'local.read',
+    'Read a bounded UTF-8 page of one text file inside a local grant (path relative to the grant root; empty for a file grant). Same limits and refusals as files_read; use nextOffset to continue.',
+    readOnly: true,
+    approval: false,
+    grantFields: ['grantId'],
+  ),
+  AgentTool(
     'transfer_list',
     'transfer.list',
     'List current file transfers with state and progress.',
@@ -153,13 +192,15 @@ const agentTools = <AgentTool>[
   AgentTool(
     'transfer_enqueue',
     'transfer.enqueue',
-    'Queue a remote-to-remote copy between two authorized hosts; both fromHostId and toHostId are required and local paths are not available to the agent.',
+    'Queue a copy between authorized ends. A remote end uses fromHostId/toHostId with absolute POSIX paths; this computer uses fromGrantId/toGrantId with paths relative to that grant. At least one end must be remote; a local target needs a write grant. Use exclude for name patterns such as node_modules, .git or build when uploading a project; credential files are always left out.',
     hostFields: ['fromHostId', 'toHostId'],
+    localFields: {'fromHostId': 'fromGrantId', 'toHostId': 'toGrantId'},
+    grantFields: ['fromGrantId', 'toGrantId'],
   ),
   AgentTool(
     'transfer_cancel',
     'transfer.cancel',
-    'Cancel one queued or running remote-to-remote transfer by ID after approving its actual endpoints.',
+    'Cancel one queued or running transfer by ID after approving its actual endpoints.',
   ),
   AgentTool(
     'session_open',

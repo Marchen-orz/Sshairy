@@ -6,11 +6,37 @@ class AgentAttachmentLimits {
   static const inputImageBytes = 32 << 20;
   static const sourcePixels = 64 * 1024 * 1024;
   static const longestSide = 2048;
+
+  /// Larger text files are attached as local references and read on demand.
+  static const inlineTextBytes = 256 * 1024;
 }
 
-/// Explicitly selected content. A local path is never part of this value.
+/// Explicitly selected content, or a reference to a local file or folder. A reference keeps its local path only in
+/// memory until it becomes a conversation grant: the path is never serialized, described or sent to the model.
 class AgentAttachment {
-  AgentAttachment._(this.id, this.name, this.mediaType, this.content, this.bytes);
+  AgentAttachment._(this.id, this.name, this.mediaType, this.content, this.bytes, {this.size, this.localPath});
+
+  static const referenceType = 'application/x-sshairy-local';
+
+  /// [directory] names a folder; files keep their [size]. References add nothing to the inline content budget.
+  factory AgentAttachment.reference({
+    required String id,
+    required String name,
+    required bool directory,
+    int? size,
+    String? localPath,
+  }) {
+    if (size != null && size < 0) throw const FormatException('attachmentUnsupported');
+    return AgentAttachment._(
+      _id(id),
+      _name(name),
+      referenceType,
+      directory ? 'directory' : 'file',
+      0,
+      size: directory ? null : size,
+      localPath: localPath,
+    );
+  }
 
   factory AgentAttachment.text({required String id, required String name, required String text}) {
     final size = utf8.encode(text).length;
@@ -48,7 +74,7 @@ class AgentAttachment {
   }
 
   factory AgentAttachment.fromJson(Map<String, Object?> data) {
-    if (data.keys.any((key) => !const {'id', 'name', 'mediaType', 'content'}.contains(key)) ||
+    if (data.keys.any((key) => !const {'id', 'name', 'mediaType', 'content', 'size'}.contains(key)) ||
         data['id'] is! String ||
         data['name'] is! String ||
         data['content'] is! String) {
@@ -59,6 +85,12 @@ class AgentAttachment {
         id: data['id'] as String,
         name: data['name'] as String,
         text: data['content'] as String,
+      ),
+      referenceType when data['content'] == 'directory' || data['content'] == 'file' => AgentAttachment.reference(
+        id: data['id'] as String,
+        name: data['name'] as String,
+        directory: data['content'] == 'directory',
+        size: data['size'] is int ? data['size'] as int : null,
       ),
       'image/png' => AgentAttachment.image(
         id: data['id'] as String,
@@ -71,11 +103,19 @@ class AgentAttachment {
 
   final String id, name, mediaType, content;
   final int bytes;
+  final int? size;
+
+  /// Memory only; dropped by [toJson] and never part of [description].
+  final String? localPath;
   bool get isImage => mediaType == 'image/png';
+  bool get isReference => mediaType == referenceType;
+  bool get isDirectory => isReference && content == 'directory';
   int get storedBytes => utf8.encode(content).length + utf8.encode(name).length + 128;
 
-  Map<String, Object?> toJson() => {'id': id, 'name': name, 'mediaType': mediaType, 'content': content};
-  Map<String, Object?> get description => {'id': id, 'name': name, 'mediaType': mediaType, 'bytes': bytes};
+  Map<String, Object?> toJson() => {'id': id, 'name': name, 'mediaType': mediaType, 'content': content, 'size': ?size};
+  Map<String, Object?> get description => isReference
+      ? {'localGrantId': id, 'name': name, 'kind': content, 'size': ?size}
+      : {'id': id, 'name': name, 'mediaType': mediaType, 'bytes': bytes};
 
   static String _id(String value) {
     if (!RegExp(r'^[A-Za-z0-9_.:\-]{1,128}$').hasMatch(value)) throw const FormatException('attachmentUnsupported');
