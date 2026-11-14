@@ -246,12 +246,12 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     );
   }
 
+  // New commands update history without revoking the Agent's access to the same connection.
   bool historySessionCurrent(TerminalHistorySession expected) =>
       canInsert &&
       (isLocal || _lease?.isCurrent == true) &&
       expected.sessionId == id &&
       expected.generation == _shellGeneration &&
-      expected.historyRevision == _historyRevision &&
       identical(expected.binding, _historyBinding) &&
       switch ((expected.target, target)) {
         (SshTerminalAiTarget(hostId: final expected), SshTerminalTarget(:final hostId)) => expected == hostId,
