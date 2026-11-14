@@ -2,7 +2,7 @@
 
 <img src="media/zh/cover.png" alt="Sshairy。轻量 SSH，AI 加持。0.62 秒启动，131 MiB 空闲内存，27 MiB 下载体积，单进程运行" width="100%">
 
-[功能](#功能) · [Airy](#airy) · [主题](#主题) · [性能](#性能) · [获取](#获取) · [English](README.md)
+[功能](#功能) · [Airy](#airy) · [主题](#主题) · [性能](#性能) · [初衷](#初衷) · [获取](#获取) · [English](README.md)
 
 ![预览版](https://img.shields.io/badge/preview-0.1.0-2E6EF7?style=flat-square&labelColor=1F3A5F)
 ![桌面平台](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-2E6EF7?style=flat-square&labelColor=1F3A5F)
@@ -83,6 +83,12 @@ Airy 就在终端旁边，是一位 AI 助手，配备 **39 个工具**，可管
 **下载体积 27 MiB，解压后 97.4 MiB，单进程原生运行。** 内置 1,453 个 Shell 补全规格
 
 <img src="media/zh/footprint.png" alt="九款 SSH 客户端的下载体积，以及 Sshairy 应用目录的构成" width="100%">
+
+## 初衷
+
+这些年用过不少 SSH 客户端，总觉得差一口气。后来长期用 FinalShell，操作相对顺手，但启动慢、界面不够现代、占用偏高，AI 能力也一直缺席，这些问题始终困扰我。
+
+于是决定自己做一款占用低、AI 真正融入工作流、界面现代、交互流畅的 SSH 客户端。Sshairy 花了不少心血，也借鉴了同类软件里做得好的地方。目前主要自用，仍有不少不足；希望能在开源社区的共同维护下，把它做得越来越好。
 
 ## 获取
 

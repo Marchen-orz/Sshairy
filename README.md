@@ -2,7 +2,7 @@
 
 <img src="media/cover.png" alt="Sshairy. Lightweight SSH. Powered by AI. 0.62 s to open, 131 MiB at idle, 27 MiB to download, one process." width="100%">
 
-[Features](#features) · [Airy](#airy) · [Themes](#themes) · [Performance](#performance) · [Get Sshairy](#get-sshairy) · [中文](README.zh.md)
+[Features](#features) · [Airy](#airy) · [Themes](#themes) · [Performance](#performance) · [Why](#why) · [Get Sshairy](#get-sshairy) · [中文](README.zh.md)
 
 ![Preview](https://img.shields.io/badge/preview-0.1.0-2E6EF7?style=flat-square&labelColor=1F3A5F)
 ![Desktop platforms](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-2E6EF7?style=flat-square&labelColor=1F3A5F)
@@ -83,6 +83,12 @@ Method, versions and sources are in [tool/readme/SOURCES.md](tool/readme/SOURCES
 A **27 MiB download** unpacks to **97.4 MiB** and runs as **one native process**, with 1,453 shell completion specs included.
 
 <img src="media/footprint.png" alt="Download sizes of nine SSH clients and the contents of the Sshairy app folder." width="100%">
+
+## Why
+
+I have used many SSH clients over the years, and each one felt like it was missing something. FinalShell came closest and stayed in daily use, but slow startup, an interface that no longer felt modern, high resource use and no AI kept getting in the way.
+
+So I set out to build the client I wanted: low overhead, AI woven into the workflow, a modern interface and fluid interaction. Sshairy is the result of a lot of work, and it draws on the best ideas from other clients. It is primarily for my own use and still has rough edges; I hope the open-source community can help maintain it and make it better.
 
 ## Get Sshairy
 
