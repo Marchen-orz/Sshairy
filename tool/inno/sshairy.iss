@@ -8,11 +8,11 @@
 
 [Setup]
 AppId={{8C0D5E2A-2F4B-4E77-9B5C-3A6D1F9E4B21}
-AppName=sshairy
+AppName=Sshairy
 AppVersion={#AppVersion}
-AppPublisher=sshairy
+AppPublisher=Sshairy
 DefaultDirName={localappdata}\Programs\sshairy
-DefaultGroupName=sshairy
+DefaultGroupName=Sshairy
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
@@ -37,8 +37,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\sshairy"; Filename: "{app}\sshairy.exe"
-Name: "{autodesktop}\sshairy"; Filename: "{app}\sshairy.exe"; Tasks: desktopicon
+Name: "{group}\Sshairy"; Filename: "{app}\sshairy.exe"
+Name: "{autodesktop}\Sshairy"; Filename: "{app}\sshairy.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\sshairy.exe"; Description: "{cm:LaunchProgram,sshairy}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\sshairy.exe"; Description: "{cm:LaunchProgram,Sshairy}"; Flags: nowait postinstall skipifsilent

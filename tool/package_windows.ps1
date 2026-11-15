@@ -87,9 +87,9 @@ try {
 using System.Reflection;
 [assembly: AssemblyInformationalVersion("$version")]
 [assembly: AssemblyFileVersion("$fileVersion")]
-[assembly: AssemblyProduct("sshairy")]
-[assembly: AssemblyTitle("sshairy")]
-[assembly: AssemblyCompany("sshairy")]
+[assembly: AssemblyProduct("Sshairy")]
+[assembly: AssemblyTitle("Sshairy")]
+[assembly: AssemblyCompany("Sshairy")]
 internal static class BuildInfo {
     internal const string PayloadHash = "$payloadHash";
 }

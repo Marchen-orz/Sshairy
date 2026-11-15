@@ -534,7 +534,7 @@
   "dockBottom": "下方",
   "dockPosition": "停靠位置",
   "confirmQuit": "退出前确认",
-  "quitTitle": "退出 sshairy？",
+  "quitTitle": "退出 Sshairy？",
   "sessionsOpen": "{count} 个会话将断开",
   "monitorInterval": "刷新间隔",
   "copyAddress": "复制地址",

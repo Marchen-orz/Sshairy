@@ -38,7 +38,7 @@ if [[ "$platform" == macos ]]; then
   apps=(build/macos/Build/Products/Release/*.app)
   [[ ${#apps[@]} == 1 && -d "${apps[0]}" && -x "${apps[0]}/Contents/MacOS/sshairy_pty" ]]
   app=${apps[0]}
-  for binary in "$app/Contents/MacOS/sshairy" "$app/Contents/MacOS/sshairy_pty"; do
+  for binary in "$app/Contents/MacOS/Sshairy" "$app/Contents/MacOS/sshairy_pty"; do
     archs=$(lipo -archs "$binary")
     [[ "$archs" == *arm64* && "$archs" == *x86_64* ]] || {
       printf 'Not a universal binary: %s (%s)\n' "$binary" "$archs" >&2
@@ -60,7 +60,7 @@ if [[ "$platform" == macos ]]; then
   cp README.md "$work/dmg/"
   if [[ -f LICENSE ]]; then cp LICENSE "$work/dmg/"; fi
   cp "$stage/THIRD_PARTY_NOTICES.txt" "$work/dmg/"
-  hdiutil create -volname sshairy -srcfolder "$work/dmg" -ov -format UDZO "dist/$base.dmg"
+  hdiutil create -volname Sshairy -srcfolder "$work/dmg" -ov -format UDZO "dist/$base.dmg"
 
   (cd dist && shasum -a 256 "$base.zip" "$base.dmg" > "$base.sha256")
   printf 'Created %s.zip and %s.dmg\n' "$stage" "$stage"
@@ -87,7 +87,7 @@ desktop="$work/sshairy.desktop"
 cat > "$desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=sshairy
+Name=Sshairy
 Comment=Lightweight SSH client with an AI agent
 Exec=sshairy
 Icon=sshairy
@@ -125,7 +125,7 @@ cat > "$deb/DEBIAN/control" <<EOF
 Package: sshairy
 Version: $version
 Architecture: $deb_arch
-Maintainer: sshairy <noreply@sshairy.dev>
+Maintainer: Sshairy <noreply@sshairy.dev>
 Installed-Size: $(du -sk "$deb/opt" | cut -f1)
 Depends: $(package_dependencies "$deb/opt/sshairy")
 Section: net

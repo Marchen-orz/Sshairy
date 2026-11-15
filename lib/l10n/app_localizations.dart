@@ -3239,7 +3239,7 @@ abstract class AppLocalizations {
   /// No description provided for @quitTitle.
   ///
   /// In en, this message translates to:
-  /// **'Quit sshairy?'**
+  /// **'Quit Sshairy?'**
   String get quitTitle;
 
   /// No description provided for @sessionsOpen.

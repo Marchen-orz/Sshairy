@@ -69,7 +69,7 @@ class SshairyApp extends ConsumerWidget {
     final problem = ref.watch(configurationCheckProvider);
     final settings = problem == null ? ref.watch(settingsProvider) : const Settings();
     return MaterialApp(
-      title: 'sshairy',
+      title: 'Sshairy',
       scrollBehavior: const AppScrollBehavior(),
       debugShowCheckedModeBanner: false,
       theme: buildTheme(

@@ -56,7 +56,7 @@ internal static class PortableLauncher
         }
         catch (Exception error)
         {
-            MessageBox.Show(error.Message, "sshairy", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(error.Message, "Sshairy", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
     }

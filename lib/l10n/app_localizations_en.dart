@@ -1758,7 +1758,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get confirmQuit => 'Confirm before quitting';
 
   @override
-  String get quitTitle => 'Quit sshairy?';
+  String get quitTitle => 'Quit Sshairy?';
 
   @override
   String sessionsOpen(int count) {

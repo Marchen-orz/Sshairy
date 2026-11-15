@@ -1687,7 +1687,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get confirmQuit => '退出前确认';
 
   @override
-  String get quitTitle => '退出 sshairy？';
+  String get quitTitle => '退出 Sshairy？';
 
   @override
   String sessionsOpen(int count) {

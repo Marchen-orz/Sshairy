@@ -570,7 +570,7 @@
   "dockBottom": "Bottom",
   "dockPosition": "Dock position",
   "confirmQuit": "Confirm before quitting",
-  "quitTitle": "Quit sshairy?",
+  "quitTitle": "Quit Sshairy?",
   "sessionsOpen": "{count} sessions will be disconnected",
   "@sessionsOpen": {"placeholders": {"count": {"type": "int"}}},
   "monitorInterval": "Refresh interval",
