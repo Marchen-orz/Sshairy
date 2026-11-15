@@ -259,8 +259,8 @@ gboolean sshairy_renderer_preference(GApplication* application) {
   // Match path_provider_linux: use the old executable-based directory only when the ID directory does not exist.
   const gchar* directory = !g_file_test(current, G_FILE_TEST_IS_DIR) && g_file_test(legacy, G_FILE_TEST_IS_DIR) ? legacy : current;
   g_autofree gchar* path = g_build_filename(directory, "settings.json", nullptr);
-  GStatBuf stat = {};
-  if (g_stat(path, &stat) != 0 || stat.st_size < 0 || stat.st_size > 1024 * 1024) return FALSE;
+  GStatBuf info = {};
+  if (g_stat(path, &info) != 0 || info.st_size < 0 || info.st_size > 1024 * 1024) return FALSE;
   gchar* contents = nullptr;
   gsize length = 0;
   if (!g_file_get_contents(path, &contents, &length, nullptr)) return FALSE;
