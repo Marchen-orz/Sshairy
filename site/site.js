@@ -42,7 +42,7 @@
       copy: 'Copy', copied: 'Copied', or: '# or macos, linux',
       docsH: 'Docs.', read: 'Read', soon: 'Coming soon',
       docs: [['Getting started', 'Install, add your first host and open a session.'], ['Build from source', 'Toolchain, commands and Windows packaging.'], ['Guides', 'Airy, permissions, themes and shortcuts.']],
-      foot: 'Lightweight SSH. Powered by AI.', rel: 'Releases', issues: 'Issues', buddy: 'Next theme',
+      foot: 'Lightweight SSH. Powered by AI.', scheme: 'Dark mode', rel: 'Releases', issues: 'Issues', buddy: 'Next theme',
     },
     zh: {
       title: 'Sshairy · 轻量 SSH，AI 加持',
@@ -81,7 +81,7 @@
       copy: '复制', copied: '已复制', or: '# 或 macos、linux',
       docsH: '文档', read: '阅读', soon: '即将补充',
       docs: [['快速开始', '安装、添加第一台主机、打开会话'], ['从源码构建', '工具链、命令与 Windows 打包'], ['使用指南', 'Airy、权限、主题与快捷键']],
-      foot: '轻量 SSH，AI 加持', rel: '发布', issues: '问题反馈', buddy: '换个主题',
+      foot: '轻量 SSH，AI 加持', scheme: '深色模式', rel: '发布', issues: '问题反馈', buddy: '换个主题',
     },
   };
   const DOC_LINKS = ['#readme', 'blob/main/README.md#get-sshairy', null];
@@ -95,8 +95,10 @@
   let theme = THEMES.includes(store('theme')) ? store('theme') : 'blue';
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
   const os = /mac/i.test(platform) ? 'mac' : /linux|x11/i.test(platform) && !/android/i.test(navigator.userAgent) ? 'linux' : 'win';
+  // The head script already set data-scheme from the stored choice or the system.
   const night = matchMedia('(prefers-color-scheme: dark)');
-  let tour = 0, mode = 1, dark = night.matches, toured = false, chatSeen = false, timers = [];
+  let scheme = root.dataset.scheme === 'dark' ? 'dark' : 'light';
+  let tour = 0, mode = 1, dark = scheme === 'dark', toured = false, chatSeen = false, timers = [];
   root.classList.add('js');
   if (!still) root.classList.add('intro');
   root.dataset.theme = theme;
@@ -188,8 +190,11 @@
     $$('[data-i]').forEach((el) => (el.innerHTML = t[el.dataset.i]));
     $('#lang').textContent = lang === 'zh' ? 'EN' : '中文';
     $('#dlLabel').textContent = t.dl[os];
-    $$('img[data-brand^="wordmark"]').forEach((img) => (img.dataset.brand = night.matches ? 'wordmark-dark' : 'wordmark'));
-    $('#chat').dataset.mode = night.matches ? 'dark' : 'light';
+    $$('img[data-brand^="wordmark"]').forEach((img) => (img.dataset.brand = scheme === 'dark' ? 'wordmark-dark' : 'wordmark'));
+    $('#chat').dataset.mode = scheme;
+    $('#scheme').setAttribute('aria-label', t.scheme);
+    $('#scheme').setAttribute('aria-pressed', scheme === 'dark');
+    $('meta[name="theme-color"]').content = scheme === 'dark' ? '#0B0E13' : '#F1F7FF';
     $('#dots').setAttribute('aria-label', t.theme);
     $('#replay').setAttribute('aria-label', t.replay);
     $('#buddy').setAttribute('aria-label', t.buddy);
@@ -271,7 +276,16 @@
     copied = setTimeout(() => ($('#copy').textContent = T[lang].copy), 1600);
   };
   addEventListener('resize', () => { fit(); slideAll(); });
-  night.addEventListener('change', () => { dark = night.matches; render(); });
+  // A choice that matches the system is forgotten, so the page follows the system again.
+  function setScheme(next) {
+    scheme = next;
+    dark = next === 'dark';
+    root.dataset.scheme = next;
+    try { (next === 'dark') === night.matches ? localStorage.removeItem('scheme') : localStorage.setItem('scheme', next); } catch {}
+    render();
+  }
+  $('#scheme').onclick = (event) => spread(event, event.currentTarget, () => setScheme(scheme === 'dark' ? 'light' : 'dark'));
+  night.addEventListener('change', () => { if (!store('scheme')) setScheme(night.matches ? 'dark' : 'light'); });
   document.fonts.ready.then(slideAll);
 
   render();

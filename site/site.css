@@ -1,14 +1,13 @@
 /* Landing page. Colors follow html[data-theme] (themes.css); shared pieces are in kit.css and mock.css. */
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:96px}
-/* Surfaces, hairlines and shadows as RGB channels so every alpha follows the system light or dark mode. */
+/* Surfaces, hairlines and shadows as RGB channels so every alpha follows the light or dark mode. */
 :root{--bg:#fff;--card:255 255 255;--edge:31 58 95;--shade:31 58 95;--on-ink:#fff;--glow:1;color-scheme:light}
-@media (prefers-color-scheme:dark){
-  :root{--bg:#0B0E13;--card:23 28 36;--edge:196 210 230;--shade:0 0 0;--ink:#E8EDF4;--muted:#9AA8BA;--faint:#6E7D90;--neutral:#46536A;--line:rgba(196,210,230,.1);--on-ink:#0B0E13;--glow:.32;color-scheme:dark}
-  [data-theme="blue"]{--b-primary:#5AB6FF;--b-sky:#8FD0FF}[data-theme="green"]{--b-primary:#54D6AE}[data-theme="violet"]{--b-primary:#B79AFF}
-  [data-theme="orange"]{--b-primary:#FFAE70}[data-theme="deepSea"]{--b-primary:#71AAE0}[data-theme="pink"]{--b-primary:#F4A1CB}
-  [data-theme]{--b-surface:color-mix(in srgb,var(--b-primary) 8%,#12161D);--b-mist:color-mix(in srgb,var(--b-accent) 7%,#0F1419)}
-}
+/* data-scheme follows the system until the visitor picks a mode (site.js). */
+:root[data-scheme="dark"]{--bg:#0B0E13;--card:23 28 36;--edge:196 210 230;--shade:0 0 0;--ink:#E8EDF4;--muted:#9AA8BA;--faint:#6E7D90;--neutral:#46536A;--line:rgba(196,210,230,.1);--on-ink:#0B0E13;--glow:.32;color-scheme:dark}
+[data-scheme="dark"][data-theme="blue"],[data-scheme="dark"] [data-theme="blue"]{--b-primary:#5AB6FF;--b-sky:#8FD0FF}[data-scheme="dark"][data-theme="green"],[data-scheme="dark"] [data-theme="green"]{--b-primary:#54D6AE}[data-scheme="dark"][data-theme="violet"],[data-scheme="dark"] [data-theme="violet"]{--b-primary:#B79AFF}
+[data-scheme="dark"][data-theme="orange"],[data-scheme="dark"] [data-theme="orange"]{--b-primary:#FFAE70}[data-scheme="dark"][data-theme="deepSea"],[data-scheme="dark"] [data-theme="deepSea"]{--b-primary:#71AAE0}[data-scheme="dark"][data-theme="pink"],[data-scheme="dark"] [data-theme="pink"]{--b-primary:#F4A1CB}
+[data-scheme="dark"][data-theme],[data-scheme="dark"] [data-theme]{--b-surface:color-mix(in srgb,var(--b-primary) 8%,#12161D);--b-mist:color-mix(in srgb,var(--b-accent) 7%,#0F1419)}
 body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 img{display:block;max-width:100%}
 a{color:inherit}
@@ -45,6 +44,9 @@ h2 .k-serif{font-size:1.1em;line-height:.9}
 .dots button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--b-primary)}
 .lang,.gh{display:grid;place-items:center;flex:none;height:40px;min-width:40px;padding:0 10px;border:0;border-radius:99px;background:none;color:var(--ink);font:600 14px var(--sans);cursor:pointer;text-decoration:none;white-space:nowrap}
 .lang:hover,.gh:hover{background:rgb(var(--edge) / .06)}
+#scheme svg{transition:rotate .5s cubic-bezier(.3,1.4,.5,1)}
+#scheme:hover svg{rotate:-15deg}
+[data-scheme="dark"] #scheme .moon,:root:not([data-scheme="dark"]) #scheme .sun{display:none}
 
 .hero{position:relative;isolation:isolate;min-height:100svh;display:flex;flex-direction:column;justify-content:center;gap:64px;padding:140px 0 56px;overflow:hidden}
 .air{position:absolute;inset:0;z-index:-1;background:url(assets/airflow.webp) 62% 42%/cover;filter:hue-rotate(var(--hue,0deg)) saturate(var(--sat,1));transform:translate(calc(var(--px,0) * 12px),calc(var(--py,0) * 8px)) scale(1.04);transition:transform 1.2s cubic-bezier(.2,.7,.2,1)}
@@ -217,12 +219,10 @@ body>footer nav a{text-underline-offset:4px}
   .k-bars{--name:96px;--label:120px}
   #buddy{width:76px;height:76px}
 }
-@media (prefers-color-scheme:dark){
-  .air{filter:invert(1) hue-rotate(calc(180deg + var(--hue,0deg))) saturate(var(--sat,1))}
-  /* Inside the inverted layer, so this is the inverse of --bg. */
-  .air::after{background:linear-gradient(transparent,#F4F1EC)}
-  .code{box-shadow:inset 0 0 0 1px rgb(var(--edge) / .08)}
-}
+[data-scheme="dark"] .air{filter:invert(1) hue-rotate(calc(180deg + var(--hue,0deg))) saturate(var(--sat,1))}
+/* Inside the inverted layer, so this is the inverse of --bg. */
+[data-scheme="dark"] .air::after{background:linear-gradient(transparent,#F4F1EC)}
+[data-scheme="dark"] .code{box-shadow:inset 0 0 0 1px rgb(var(--edge) / .08)}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{animation:none!important;transition:none!important}
