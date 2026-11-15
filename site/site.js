@@ -38,7 +38,7 @@
       tableS: 'Full comparison', cols: ['Client', 'Startup', 'Idle memory', 'Download'],
       filmH: 'Fifty-seven seconds of Sshairy.',
       getH: 'Get Sshairy.', winP: 'Installer or single-file portable app for 64-bit Windows.', winB: 'Download · 27 MiB',
-      macP: 'Universal DMG for Apple silicon and Intel. Early build.', linuxP: 'AppImage and .deb for x64. Early build.', osB: 'Download →',
+      macP: 'Universal DMG for Apple silicon and Intel. Early build.', linuxP: 'AppImage and .deb for x64. Early build.', osB: 'Download →', getB: 'Download',
       copy: 'Copy', copied: 'Copied', or: '# or macos, linux',
       docsH: 'Docs.', read: 'Read', soon: 'Coming soon',
       docs: [['Getting started', 'Install, add your first host and open a session.'], ['Build from source', 'Toolchain, commands and Windows packaging.'], ['Guides', 'Airy, permissions, themes and shortcuts.']],
@@ -77,7 +77,7 @@
       tableS: '完整对比', cols: ['客户端', '启动', '空闲内存', '下载体积'],
       filmH: '57 秒，看完 Sshairy',
       getH: '获取 Sshairy', winP: '64 位 Windows 安装包或单文件便携版', winB: '下载 · 27 MiB',
-      macP: '通用 DMG，支持 Apple 芯片与 Intel，早期构建', linuxP: 'x64 的 AppImage 与 .deb，早期构建', osB: '下载 →',
+      macP: '通用 DMG，支持 Apple 芯片与 Intel，早期构建', linuxP: 'x64 的 AppImage 与 .deb，早期构建', osB: '下载 →', getB: '下载',
       copy: '复制', copied: '已复制', or: '# 或 macos、linux',
       docsH: '文档', read: '阅读', soon: '即将补充',
       docs: [['快速开始', '安装、添加第一台主机、打开会话'], ['从源码构建', '工具链、命令与 Windows 打包'], ['使用指南', 'Airy、权限、主题与快捷键']],
@@ -95,7 +95,8 @@
   let theme = THEMES.includes(store('theme')) ? store('theme') : 'blue';
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
   const os = /mac/i.test(platform) ? 'mac' : /linux|x11/i.test(platform) && !/android/i.test(navigator.userAgent) ? 'linux' : 'win';
-  let tour = 0, mode = 1, dark = false, toured = false, chatSeen = false, timers = [];
+  const night = matchMedia('(prefers-color-scheme: dark)');
+  let tour = 0, mode = 1, dark = night.matches, toured = false, chatSeen = false, timers = [];
   root.classList.add('js');
   if (!still) root.classList.add('intro');
   root.dataset.theme = theme;
@@ -187,6 +188,8 @@
     $$('[data-i]').forEach((el) => (el.innerHTML = t[el.dataset.i]));
     $('#lang').textContent = lang === 'zh' ? 'EN' : '中文';
     $('#dlLabel').textContent = t.dl[os];
+    $$('img[data-brand^="wordmark"]').forEach((img) => (img.dataset.brand = night.matches ? 'wordmark-dark' : 'wordmark'));
+    $('#chat').dataset.mode = night.matches ? 'dark' : 'light';
     $('#dots').setAttribute('aria-label', t.theme);
     $('#replay').setAttribute('aria-label', t.replay);
     $('#buddy').setAttribute('aria-label', t.buddy);
@@ -210,6 +213,13 @@
     $('#docCards').innerHTML = t.docs.map(([title, text], i) => DOC_LINKS[i]
       ? `<a class="doc" style="--i:${i}" href="${link(DOC_LINKS[i])}"><b>${title}</b><span>${text}</span><em>${t.read} →</em></a>`
       : `<div class="doc" style="--i:${i}"><b>${title}</b><span>${text}</span><em>${t.soon}</em></div>`).join('');
+    // The visitor's platform leads the download cards.
+    const latest = link('releases/latest');
+    $('#osCards').innerHTML = [['win', 'Windows', t.winP], ['mac', 'macOS', t.macP], ['linux', 'Linux', t.linuxP]]
+      .sort((a, b) => (b[0] === os) - (a[0] === os))
+      .map(([key, name, text], i) => key === os
+        ? `<article class="os main" style="--i:${i}"><h3>${name}</h3><p>${text}</p><a class="btn big" href="${latest}">${key === 'win' ? t.winB : t.getB}</a></article>`
+        : `<article class="os" style="--i:${i}"><h3>${name}</h3><p>${text}</p><a class="more" href="${latest}">${t.osB}</a></article>`).join('');
     $('#steps').innerHTML = `git clone ${REPO}.git\ncd sshairy\nflutter pub get\nflutter run -d windows  <span class="c">${t.or}</span>`;
     $('#copy').textContent = t.copy;
     const video = $('#video'), film = `media/sshairy-${lang}.mp4`;
@@ -261,6 +271,7 @@
     copied = setTimeout(() => ($('#copy').textContent = T[lang].copy), 1600);
   };
   addEventListener('resize', () => { fit(); slideAll(); });
+  night.addEventListener('change', () => { dark = night.matches; render(); });
   document.fonts.ready.then(slideAll);
 
   render();

@@ -10,7 +10,8 @@
 <meta property="og:title" content="Sshairy · Lightweight SSH. Powered by AI.">
 <meta property="og:description" content="Terminals, SFTP, tunnels and server monitoring in one clean native window.">
 <meta property="og:image" content="https://marchen-orz.github.io/sshairy/media/poster-en.jpg">
-<meta name="theme-color" content="#F1F7FF">
+<meta name="theme-color" content="#F1F7FF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B0E13" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="assets/favicon.png">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="themes.css">
@@ -107,11 +108,7 @@
 <section class="band mint" id="download" data-pose="sftp-transfer">
   <div class="wrap">
     <h2 class="rv" data-i="getH"></h2>
-    <div class="os3">
-      <article class="os main rv"><h3>Windows</h3><p data-i="winP"></p><a class="btn big" data-href="releases/latest" data-i="winB"></a></article>
-      <article class="os rv"><h3>macOS</h3><p data-i="macP"></p><a class="more" data-href="releases/latest" data-i="osB"></a></article>
-      <article class="os rv"><h3>Linux</h3><p data-i="linuxP"></p><a class="more" data-href="releases/latest" data-i="osB"></a></article>
-    </div>
+    <div class="os3 stg" id="osCards"></div>
     <div class="code rv" id="build"><button id="copy" type="button"></button><pre><code id="steps"></code></pre></div>
   </div>
 </section>
