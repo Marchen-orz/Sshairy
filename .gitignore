@@ -57,8 +57,7 @@ app.*.map.json
 # Design notes and working logs stay local.
 /docs/
 
-# Tests, the landing page and media generation stay local. media/ is a README dependency.
-/site/
+# Tests and media generation stay local. media/ is a README dependency.
 /output/
 /test/
 /integration_test/
