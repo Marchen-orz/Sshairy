@@ -169,4 +169,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --draft --generate-notes --title "sshairy ${{ needs.prepare.outputs.version }}"
+            --draft --generate-notes --title "Sshairy ${{ needs.prepare.outputs.version }}"
