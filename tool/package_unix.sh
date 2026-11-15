@@ -69,6 +69,13 @@ fi
 
 source="build/linux/$arch/release/bundle"
 [[ -x "$source/sshairy" && -x "$source/lib/sshairy_pty" && -d "$source/data/flutter_assets" ]]
+for binary in "$source/sshairy" "$source/lib/sshairy_pty"; do
+  info=$(file -b "$binary")
+  case "$arch" in
+    x64) [[ "$info" == *x86-64* ]] || { printf 'Unexpected architecture for %s: %s\n' "$binary" "$info" >&2; exit 1; } ;;
+    arm64) [[ "$info" == *aarch64* ]] || { printf 'Unexpected architecture for %s: %s\n' "$binary" "$info" >&2; exit 1; } ;;
+  esac
+done
 cp -a "$source/." "$stage/"
 cp README.md "$stage/"
 if [[ -f LICENSE ]]; then cp LICENSE "$stage/"; fi

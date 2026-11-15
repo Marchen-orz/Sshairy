@@ -53,18 +53,11 @@ jobs:
       - run: flutter analyze
       - run: flutter test ci_test
 
+  # Flutter publishes only an x64 Windows SDK, so there is no native arm64 build to make here.
+  # Windows on ARM runs this x64 build through the system's x64 emulation.
   windows:
     needs: [prepare, analyze]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-latest
-            arch: x64
-          # GitHub-hosted Arm64 Windows runners; drop this entry if the label is unavailable.
-          - runner: windows-11-arm
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -80,10 +73,10 @@ jobs:
         shell: pwsh
         env:
           SSHAIRY_BUILD_STAMP: ''
-        run: ./tool/package_windows.ps1 -Arch ${{ matrix.arch }}
+        run: ./tool/package_windows.ps1 -Arch x64
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ matrix.arch }}
+          name: windows-x64
           path: dist/*.exe
           if-no-files-found: error
 
@@ -112,17 +105,11 @@ jobs:
             dist/*.zip
           if-no-files-found: error
 
+  # Flutter publishes only an x64 Linux SDK and refuses x64-to-arm64 cross-builds.
+  # An arm64 package needs a Flutter SDK running natively on arm64, which does not exist upstream.
   linux:
     needs: [prepare, analyze]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            arch: x64
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     container: ubuntu:22.04
     steps:
       - name: Prepare container
@@ -141,9 +128,8 @@ jobs:
           cache: true
       - name: Install appimagetool
         run: |
-          arch=$(uname -m)
           curl -fsSL -o /usr/local/bin/appimagetool \
-            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${arch}.AppImage"
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x /usr/local/bin/appimagetool
           cd /opt && /usr/local/bin/appimagetool --appimage-extract
           ln -sf /opt/squashfs-root/AppRun /usr/local/bin/appimagetool
@@ -156,7 +142,7 @@ jobs:
           ./tool/package_unix.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.arch }}
+          name: linux-x64
           path: |
             dist/*.AppImage
             dist/*.deb

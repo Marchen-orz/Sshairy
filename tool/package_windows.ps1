@@ -18,6 +18,20 @@ function Get-Sha256([string]$Path) {
         $sha256.Dispose()
     }
 }
+function Get-PeMachine([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $reader = New-Object System.IO.BinaryReader($stream)
+        $stream.Position = 0x3C
+        $offset = $reader.ReadInt32()
+        if ($offset -le 0 -or $offset -ge $stream.Length - 6) { throw "Not a PE file: $Path" }
+        $stream.Position = $offset
+        if ($reader.ReadUInt32() -ne 0x00004550) { throw "Not a PE file: $Path" }
+        return $reader.ReadUInt16()
+    } finally {
+        $stream.Dispose()
+    }
+}
 $hostArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
 if ($Arch -ne $hostArch) { throw "Build $Arch packages on a $Arch host; Flutter builds for the host architecture." }
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -32,6 +46,12 @@ try {
         Where-Object { $_.FullName -match "\\runner\\Release\\sshairy\.exe$" } |
         Select-Object -First 1
     if (-not $exe) { throw "No Windows release build found." }
+    $expectedMachine = if ($Arch -eq "arm64") { 0xAA64 } else { 0x8664 }
+    $machine = Get-PeMachine $exe.FullName
+    if ($machine -ne $expectedMachine) {
+        $message = "sshairy.exe has PE machine 0x{0:X4}, expected 0x{1:X4} for {2}. The Flutter SDK only builds for its own architecture, so this build cannot be shipped as $Arch." -f $machine, $expectedMachine, $Arch
+        throw $message
+    }
     $release = $exe.Directory.FullName
 
     $version = ((Select-String -Path "pubspec.yaml" -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value).Trim()
