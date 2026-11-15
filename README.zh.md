@@ -92,7 +92,13 @@ Sshairy 花了我不少心血，也借鉴了同类软件里做得好的地方。
 
 ## 获取
 
-Windows 便携版发布在 [Releases](../../releases) 页面。解压后保留完整文件夹，连同 DLL 和 `data` 目录一起运行 `sshairy.exe`
+安装包发布在 [Releases](https://github.com/Marchen-orz/sshairy/releases) 页面：
+
+- **Windows x64**：`setup.exe` 为当前用户安装；`portable.exe` 是单文件便携版，免安装直接运行
+- **macOS**：通用 DMG 或 ZIP，支持 Apple 芯片与 Intel，早期构建
+- **Linux x64**：AppImage 或 `.deb`，早期构建
+
+安装包暂未签名。Windows 首次启动可能出现 SmartScreen 提示（更多信息 → 仍要运行）；macOS 可右键应用选择“打开”，或在“系统设置 → 隐私与安全性”中允许
 
 从源码构建需要 Flutter 3.47.9 / Dart 3.13.7。Windows 还需安装 Visual Studio 的 **C++ 桌面开发**工作负载
 
@@ -101,11 +107,17 @@ flutter pub get
 flutter run -d windows
 ```
 
-生成 Windows 便携版：
+生成 Windows 安装包（安装程序需要 [Inno Setup 6](https://jrsoftware.org/isinfo.php)，没有时加 `-SkipInstaller`）：
 
 ```powershell
 ./tool/package_windows.ps1
 ```
+
+在 macOS 或 Linux 上运行 `./tool/package_unix.sh` 生成 DMG/ZIP 或 AppImage/deb
+
+## 许可证
+
+[MIT](LICENSE)
 
 <div align="center">
 

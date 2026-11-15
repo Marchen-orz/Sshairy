@@ -92,7 +92,13 @@ Sshairy has taken a lot of work, and it draws on the best ideas from other clien
 
 ## Get Sshairy
 
-Portable Windows builds are published on the [Releases](../../releases) page. Unzip and run `sshairy.exe` from the complete folder, next to its DLLs and `data` directory.
+Builds are published on the [Releases](https://github.com/Marchen-orz/sshairy/releases) page:
+
+- **Windows x64**: `setup.exe` installs for the current user; `portable.exe` is a single file that runs without installing.
+- **macOS**: a universal DMG or ZIP for Apple silicon and Intel. Early build.
+- **Linux x64**: AppImage or `.deb`. Early build.
+
+Builds are not code-signed yet. Windows SmartScreen may warn on first launch (More info → Run anyway); on macOS, right-click the app and choose Open, or allow it in System Settings → Privacy & Security.
 
 To build from source you need Flutter 3.47.9 / Dart 3.13.7. On Windows, also install Visual Studio's **Desktop development with C++** workload.
 
@@ -101,11 +107,17 @@ flutter pub get
 flutter run -d windows
 ```
 
-Package a portable Windows release:
+Package a Windows release (the installer needs [Inno Setup 6](https://jrsoftware.org/isinfo.php); pass `-SkipInstaller` without it):
 
 ```powershell
 ./tool/package_windows.ps1
 ```
+
+On macOS or Linux, `./tool/package_unix.sh` builds the DMG/ZIP or the AppImage/deb.
+
+## License
+
+[MIT](LICENSE)
 
 <div align="center">
 
