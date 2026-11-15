@@ -51,6 +51,7 @@ jobs:
       - run: flutter pub get
       - run: dart run tool/check_imports.dart
       - run: flutter analyze
+      - run: flutter test ci_test
 
   windows:
     needs: [prepare, analyze]
