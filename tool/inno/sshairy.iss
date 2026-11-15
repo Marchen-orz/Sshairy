@@ -26,8 +26,8 @@ WizardStyle=modern
 ArchitecturesAllowed=arm64
 ArchitecturesInstallIn64BitMode=arm64
 #else
-ArchitecturesAllowed=x64os
-ArchitecturesInstallIn64BitMode=x64os
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 #endif
 
 [Tasks]
