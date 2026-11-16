@@ -48,6 +48,8 @@ class SidebarFrame extends StatefulWidget {
 
 class _SidebarFrameState extends State<SidebarFrame> {
   final _focus = FocusNode();
+  // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
+  var _pointerFocus = false;
   double? _guide;
 
   @override
@@ -108,7 +110,7 @@ class _SidebarFrameState extends State<SidebarFrame> {
                   cursor: SystemMouseCursors.resizeColumn,
                   child: Focus(
                     focusNode: _focus,
-                    onFocusChange: (_) => setState(() {}),
+                    onFocusChange: (focused) => setState(() => _pointerFocus &= focused),
                     onKeyEvent: (_, event) {
                       if (event is! KeyDownEvent) return KeyEventResult.ignored;
                       if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
@@ -123,9 +125,13 @@ class _SidebarFrameState extends State<SidebarFrame> {
                     },
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
-                      onTapDown: (_) => _focus.requestFocus(),
+                      onTapDown: (_) {
+                        setState(() => _pointerFocus = true);
+                        _focus.requestFocus();
+                      },
                       onDoubleTap: () => resize(WorkspaceSize.monitor),
                       onPanStart: (_) {
+                        setState(() => _pointerFocus = true);
                         _focus.requestFocus();
                         setState(() => _guide = width);
                       },
@@ -136,7 +142,7 @@ class _SidebarFrameState extends State<SidebarFrame> {
                         resize(next);
                       },
                       onPanCancel: () => setState(() => _guide = null),
-                      child: _focus.hasFocus
+                      child: _guide != null || (_focus.hasFocus && !_pointerFocus)
                           ? ColoredBox(color: scheme.primary.withValues(alpha: .3))
                           : const SizedBox.expand(),
                     ),

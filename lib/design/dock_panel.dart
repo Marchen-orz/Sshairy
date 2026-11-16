@@ -94,6 +94,8 @@ class DockPanel extends StatefulWidget {
 class _DockPanelState extends State<DockPanel> {
   final _panelKey = GlobalKey();
   final _focus = FocusNode();
+  // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
+  var _pointerFocus = false;
   var _width = WorkspaceSize.toolPanel;
   var _height = WorkspaceSize.dockBottom;
   double? _guide;
@@ -235,7 +237,7 @@ class _DockPanelState extends State<DockPanel> {
                   cursor: _vertical ? SystemMouseCursors.resizeRow : SystemMouseCursors.resizeColumn,
                   child: Focus(
                     focusNode: _focus,
-                    onFocusChange: (_) => setState(() {}),
+                    onFocusChange: (focused) => setState(() => _pointerFocus &= focused),
                     onKeyEvent: (_, event) {
                       if (event is! KeyDownEvent) return KeyEventResult.ignored;
                       if (event.logicalKey == growKey) {
@@ -250,10 +252,14 @@ class _DockPanelState extends State<DockPanel> {
                     },
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
-                      onTapDown: (_) => _focus.requestFocus(),
+                      onTapDown: (_) {
+                        setState(() => _pointerFocus = true);
+                        _focus.requestFocus();
+                      },
                       onDoubleTap: () =>
                           _resize(_vertical ? WorkspaceSize.dockBottom : WorkspaceSize.toolPanel, constraints),
                       onPanStart: (_) {
+                        setState(() => _pointerFocus = true);
                         _focus.requestFocus();
                         setState(() => _guide = extent);
                       },
@@ -264,7 +270,7 @@ class _DockPanelState extends State<DockPanel> {
                         _resize(next, constraints);
                       },
                       onPanCancel: () => setState(() => _guide = null),
-                      child: _focus.hasFocus
+                      child: _guide != null || (_focus.hasFocus && !_pointerFocus)
                           ? ColoredBox(color: scheme.primary.withValues(alpha: .3))
                           : const SizedBox.expand(),
                     ),

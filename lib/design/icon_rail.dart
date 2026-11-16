@@ -184,6 +184,8 @@ class NavigationFrame extends StatefulWidget {
 
 class _NavigationFrameState extends State<NavigationFrame> {
   final _focus = FocusNode();
+  // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
+  var _pointerFocus = false;
   double? _guide;
 
   @override
@@ -227,7 +229,7 @@ class _NavigationFrameState extends State<NavigationFrame> {
                 cursor: SystemMouseCursors.resizeColumn,
                 child: Focus(
                   focusNode: _focus,
-                  onFocusChange: (_) => setState(() {}),
+                  onFocusChange: (focused) => setState(() => _pointerFocus &= focused),
                   onKeyEvent: (_, event) {
                     if (event is! KeyDownEvent) return KeyEventResult.ignored;
                     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
@@ -242,9 +244,13 @@ class _NavigationFrameState extends State<NavigationFrame> {
                   },
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
-                    onTapDown: (_) => _focus.requestFocus(),
+                    onTapDown: (_) {
+                      setState(() => _pointerFocus = true);
+                      _focus.requestFocus();
+                    },
                     onDoubleTap: () => _resize(WorkspaceSize.navigationExpanded),
                     onPanStart: (_) {
+                      setState(() => _pointerFocus = true);
                       _focus.requestFocus();
                       setState(() => _guide = width);
                     },
@@ -255,7 +261,7 @@ class _NavigationFrameState extends State<NavigationFrame> {
                       _resize(next);
                     },
                     onPanCancel: () => setState(() => _guide = null),
-                    child: _focus.hasFocus
+                    child: _guide != null || (_focus.hasFocus && !_pointerFocus)
                         ? ColoredBox(color: scheme.primary.withValues(alpha: .3))
                         : const SizedBox.expand(),
                   ),
