@@ -65,6 +65,9 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   /// The SFTP page connects nothing until first shown, then stays alive like a tab.
   var _filesBuilt = false;
+
+  /// Which kind of page showed at the last build: host library, files or a terminal tab.
+  int? _pageKind;
   var _agentOpen = false;
 
   /// Shown at once and saved behind, like the files dock; a change through settings.patch is followed.
@@ -613,6 +616,50 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
       ),
     );
 
+    // A page of another kind fades in over the one it replaces; terminal tabs switch at once, as a browser's do.
+    final kind = vault
+        ? 0
+        : state.files
+        ? 1
+        : 2;
+    final animatePages = _pageKind != null && kind != _pageKind;
+    _pageKind = kind;
+    const backdrop = BackgroundImageView(slot: BackgroundSlot.app);
+    final pages = <(bool, Widget)>[
+      (
+        vault,
+        PageVisibility(
+          key: const ValueKey('vault'),
+          visible: vault,
+          animate: animatePages,
+          backdrop: backdrop,
+          child: VaultPage(active: vault, onConnect: _workspace.openHost),
+        ),
+      ),
+      if (_filesBuilt)
+        (
+          state.files,
+          PageVisibility(
+            key: const ValueKey('files'),
+            visible: state.files,
+            animate: animatePages,
+            backdrop: backdrop,
+            child: FilesPage(active: state.files),
+          ),
+        ),
+      for (final tab in state.tabs)
+        (
+          state.active == tab.id && !state.files,
+          PageVisibility(
+            key: ValueKey(tab.id),
+            visible: state.active == tab.id && !state.files,
+            animate: animatePages,
+            backdrop: backdrop,
+            child: tabBody(tab),
+          ),
+        ),
+    ];
+
     return SidePanelAnchor(
       navigationWidth: navigationExpanded ? navigationWidth : WorkspaceSize.rail,
       child: Scaffold(
@@ -683,21 +730,13 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                         : const SizedBox.shrink(),
                     child: Stack(
                       fit: StackFit.expand,
+                      // The page showing is painted last, so the one it replaces stays underneath while it fades in.
                       children: [
                         const BackgroundImageView(slot: BackgroundSlot.app),
-                        PageVisibility(
-                          key: const ValueKey('vault'),
-                          visible: vault,
-                          child: VaultPage(active: vault, onConnect: _workspace.openHost),
-                        ),
-                        if (_filesBuilt)
-                          PageVisibility(
-                            key: const ValueKey('files'),
-                            visible: state.files,
-                            child: FilesPage(active: state.files),
-                          ),
-                        for (final tab in state.tabs)
-                          PageVisibility(key: ValueKey(tab.id), visible: state.active == tab.id, child: tabBody(tab)),
+                        for (final (shown, page) in pages)
+                          if (!shown) page,
+                        for (final (shown, page) in pages)
+                          if (shown) page,
                       ],
                     ),
                   ),

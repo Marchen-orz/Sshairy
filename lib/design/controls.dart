@@ -228,8 +228,9 @@ class _AppSegmentedState<T> extends State<AppSegmented<T>> {
                       ),
                       child: Text(
                         label,
+                        // One weight for every segment: a bolder selection would widen it and shift the others.
                         style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: value == selected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight: FontWeight.w500,
                           color: !enabled
                               ? palette.textMuted
                               : value == selected || hovered

@@ -24,7 +24,7 @@ Future<T?> showAppDialog<T>({
     transitionDuration: Motion.panel,
     pageBuilder: (context, _, _) => Builder(builder: builder),
     transitionBuilder: (context, animation, _, child) =>
-        popupTransition(context, animation, child, offset: const Offset(0, 12), scale: .96),
+        popupTransition(context, animation, child, offset: const Offset(0, 12)),
   );
 }
 

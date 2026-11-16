@@ -46,18 +46,15 @@ class SidebarFrame extends StatefulWidget {
   State<SidebarFrame> createState() => _SidebarFrameState();
 }
 
-class _SidebarFrameState extends State<SidebarFrame> with SingleTickerProviderStateMixin {
+class _SidebarFrameState extends State<SidebarFrame> with SingleTickerProviderStateMixin, PanelPresence {
   final _focus = FocusNode();
   // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
   var _pointerFocus = false;
   double? _guide;
-
-  // As with the dock panel, the page resizes once on each side of the animation rather than every frame.
-  late final _presence = AnimationController(vsync: this, duration: Motion.panel, value: widget.sidebar == null ? 0 : 1)
-    ..addStatusListener((status) {
-      if (status.isDismissed && mounted) setState(() => _leaving = null);
-    });
   Widget? _leaving;
+
+  @override
+  bool get initiallyOpen => widget.sidebar != null;
 
   @override
   void didUpdateWidget(SidebarFrame old) {
@@ -65,18 +62,12 @@ class _SidebarFrameState extends State<SidebarFrame> with SingleTickerProviderSt
     // A drag cannot finish on a divider that is gone.
     if (widget.sidebar == null) _guide = null;
     if ((widget.sidebar == null) == (old.sidebar == null)) return;
-    _presence.duration = Motion.of(context, Motion.panel);
-    if (widget.sidebar == null) {
-      _leaving = old.sidebar;
-      _presence.reverse();
-    } else {
-      _presence.forward();
-    }
+    if (widget.sidebar == null) _leaving = old.sidebar;
+    showPanel(widget.sidebar != null);
   }
 
   @override
   void dispose() {
-    _presence.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -88,7 +79,8 @@ class _SidebarFrameState extends State<SidebarFrame> with SingleTickerProviderSt
       final available = constraints.maxWidth;
       final width = SidebarFrame.clampWidth(widget.width, available);
       final sidebar = widget.sidebar;
-      final shown = sidebar ?? (_presence.isDismissed ? null : _leaving);
+      final visible = sidebar ?? (shown ? _leaving : null);
+      final room = width + WorkspaceSize.divider;
       const grab = WorkspaceSize.dividerGrab, step = Space.xl;
       double clamp(double w) => SidebarFrame.clampWidth(w, available);
       void resize(double w) {
@@ -99,26 +91,30 @@ class _SidebarFrameState extends State<SidebarFrame> with SingleTickerProviderSt
       return Stack(
         fit: StackFit.expand,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (shown != null) ...[
-                SizedBox(
-                  width: width,
-                  child: ClipRect(
-                    child: IgnorePointer(
-                      ignoring: sidebar == null,
-                      child: EdgeSlide(animation: _presence, from: AxisDirection.left, child: shown),
-                    ),
+          // Always first and positioned, so the page is the same element with or without the panel.
+          PanelViewport(progress: panelProgress, extent: room, from: AxisDirection.left, child: widget.child),
+          if (visible != null)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: width + WorkspaceSize.divider,
+              child: IgnorePointer(
+                ignoring: sidebar == null,
+                child: PanelSlide(
+                  presence: panelProgress,
+                  from: AxisDirection.left,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: visible),
+                      const VerticalDivider(width: WorkspaceSize.divider),
+                    ],
                   ),
                 ),
-                const VerticalDivider(width: WorkspaceSize.divider),
-              ],
-              // Keyed, so the page is the same element with or without the panel.
-              Expanded(key: const ValueKey('sidebar-frame-page'), child: widget.child),
-            ],
-          ),
-          if (sidebar != null)
+              ),
+            ),
+          if (sidebar != null && settled)
             Positioned(
               top: 0,
               bottom: 0,

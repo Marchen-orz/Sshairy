@@ -39,21 +39,40 @@ class IconRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final motion = context.dependOnInheritedWidgetOfExactType<_NavigationAnimation>()?.progress;
+    if (motion == null) return _build(context, expanded ? 1 : 0);
+    return AnimatedBuilder(animation: motion, builder: (context, _) => _build(context, motion.value));
+  }
+
+  Widget _build(BuildContext context, double t) {
     final scheme = Theme.of(context).colorScheme;
     return SizedBox(
-      width: expanded ? width : WorkspaceSize.rail,
+      width: WorkspaceSize.rail + (width - WorkspaceSize.rail) * t,
       child: ColoredBox(
         color: scheme.surfaceContainerLow,
         child: FocusTraversalGroup(
           child: Column(
             children: [
               SizedBox(
-                height: expanded ? WorkspaceSize.navigationHeader : WorkspaceSize.titleBar,
-                child: AnimatedSwitcher(
-                  duration: Motion.of(context, Motion.normal),
-                  switchInCurve: Motion.enter,
-                  switchOutCurve: Motion.exit,
-                  child: KeyedSubtree(key: ValueKey(expanded), child: expanded ? expandedHeader : header),
+                height: WorkspaceSize.titleBar + (WorkspaceSize.navigationHeader - WorkspaceSize.titleBar) * t,
+                child: ClipRect(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Opacity(
+                        opacity: 1 - t,
+                        child: RepaintBoundary(child: header),
+                      ),
+                      Opacity(
+                        opacity: t,
+                        child: OverflowBox(
+                          minWidth: width,
+                          maxWidth: width,
+                          child: RepaintBoundary(child: expandedHeader),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: Space.xs),
@@ -71,7 +90,7 @@ class IconRail extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(vertical: Space.sm, horizontal: Space.lg),
                                 child: SizedBox(width: expanded ? double.infinity : 20, child: const Divider()),
                               ),
-                            for (final item in group) _RailButton(item, expanded: expanded),
+                            for (final item in group) _RailButton(item, progress: t, labelWidth: width - 72),
                           ],
                         ],
                       ),
@@ -85,9 +104,10 @@ class IconRail extends StatelessWidget {
                   label: toggleLabel,
                   onTap: onToggle,
                 ),
-                expanded: expanded,
+                progress: t,
+                labelWidth: width - 72,
               ),
-              for (final item in bottom) _RailButton(item, expanded: expanded),
+              for (final item in bottom) _RailButton(item, progress: t, labelWidth: width - 72),
               const SizedBox(height: Space.sm),
             ],
           ),
@@ -98,10 +118,10 @@ class IconRail extends StatelessWidget {
 }
 
 class _RailButton extends StatelessWidget {
-  const _RailButton(this.item, {required this.expanded});
+  const _RailButton(this.item, {required this.progress, required this.labelWidth});
 
   final RailItem item;
-  final bool expanded;
+  final double progress, labelWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +131,7 @@ class _RailButton extends StatelessWidget {
     final color = item.selected ? palette.onNavigationSelection : scheme.onSurfaceVariant;
     final icon = Icon(item.icon, size: 18, color: color);
     return Padding(
-      padding: EdgeInsets.only(bottom: Space.xs, left: expanded ? Space.sm : 6, right: expanded ? Space.sm : 6),
+      padding: EdgeInsets.only(bottom: Space.xs, left: 6 + 2 * progress, right: 6 + 2 * progress),
       child: Tooltip(
         message: item.label,
         child: Semantics(
@@ -136,33 +156,34 @@ class _RailButton extends StatelessWidget {
               hoverColor: scheme.onSurface.withValues(alpha: .06),
               child: SizedBox(
                 width: double.infinity,
-                height: expanded ? WorkspaceSize.navigationItem : WorkspaceSize.railItem,
-                child: expanded
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Space.md),
-                        child: Row(
-                          children: [
-                            icon,
-                            const SizedBox(width: Space.md),
-                            Expanded(
-                              // Labels ease in beside the icons as the column widens.
-                              child: Entrance(
-                                offset: const Offset(-6, 0),
-                                child: Text(
-                                  item.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: color,
-                                    fontWeight: item.selected ? FontWeight.w600 : FontWeight.w400,
-                                  ),
-                                ),
+                height: WorkspaceSize.railItem + (WorkspaceSize.navigationItem - WorkspaceSize.railItem) * progress,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 9 + 3 * progress),
+                  child: Row(
+                    children: [
+                      icon,
+                      SizedBox(width: Space.md * progress),
+                      Expanded(
+                        child: ClipRect(
+                          child: OverflowBox(
+                            alignment: Alignment.centerLeft,
+                            minWidth: labelWidth,
+                            maxWidth: labelWidth,
+                            child: Opacity(
+                              opacity: progress,
+                              child: Text(
+                                item.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(color: color, fontWeight: FontWeight.w500),
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      )
-                    : Center(child: icon),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -199,11 +220,30 @@ class NavigationFrame extends StatefulWidget {
   State<NavigationFrame> createState() => _NavigationFrameState();
 }
 
-class _NavigationFrameState extends State<NavigationFrame> {
+class _NavigationAnimation extends InheritedWidget {
+  const _NavigationAnimation({required this.progress, required super.child});
+
+  final Animation<double> progress;
+
+  @override
+  bool updateShouldNotify(_NavigationAnimation old) => progress != old.progress;
+}
+
+class _NavigationFrameState extends State<NavigationFrame> with SingleTickerProviderStateMixin, PanelPresence {
   final _focus = FocusNode();
   // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
   var _pointerFocus = false;
   double? _guide;
+
+  @override
+  bool get initiallyOpen => widget.expanded;
+
+  @override
+  void didUpdateWidget(NavigationFrame old) {
+    super.didUpdateWidget(old);
+    if (widget.expanded != old.expanded) showPanel(widget.expanded);
+    if (!widget.expanded) _guide = null;
+  }
 
   @override
   void dispose() {
@@ -221,15 +261,31 @@ class _NavigationFrameState extends State<NavigationFrame> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            widget.navigation,
-            const VerticalDivider(width: WorkspaceSize.divider),
-            Expanded(child: widget.child),
-          ],
+        PanelViewport(
+          progress: panelProgress,
+          closedExtent: WorkspaceSize.rail + WorkspaceSize.divider,
+          extent: width + WorkspaceSize.divider,
+          from: AxisDirection.left,
+          child: widget.child,
         ),
-        if (widget.expanded)
+        AnimatedBuilder(
+          animation: panelProgress,
+          child: _NavigationAnimation(progress: panelProgress, child: widget.navigation),
+          builder: (context, child) => Positioned(
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: WorkspaceSize.rail + (width - WorkspaceSize.rail) * panelProgress.value + WorkspaceSize.divider,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: child!),
+                const VerticalDivider(width: WorkspaceSize.divider),
+              ],
+            ),
+          ),
+        ),
+        if (widget.expanded && settled)
           Positioned(
             top: 0,
             bottom: 0,

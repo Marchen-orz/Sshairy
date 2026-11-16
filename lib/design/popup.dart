@@ -95,9 +95,8 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
     context,
     animation,
     child,
-    offset: placement == PopupPlacement.below ? const Offset(0, -4) : const Offset(-4, 0),
-    scale: .96,
-    alignment: placement == PopupPlacement.below ? Alignment.topCenter : Alignment.centerLeft,
+    offset: placement == PopupPlacement.below ? const Offset(0, -6) : const Offset(-6, 0),
+    duration: Motion.normal,
   );
 }
 

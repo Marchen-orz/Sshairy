@@ -1600,9 +1600,9 @@ class _ThinkingDotsState extends State<_ThinkingDots> {
           for (var i = 0; i < 3; i++)
             Padding(
               padding: const EdgeInsets.only(right: Space.xs),
-              child: AnimatedOpacity(
+              // Steps rather than fades: it runs for a whole turn, and every animated frame redraws the window.
+              child: Opacity(
                 opacity: _timer == null || i == _step ? .9 : .3,
-                duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : Motion.quick,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,

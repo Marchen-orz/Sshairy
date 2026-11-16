@@ -14,11 +14,13 @@
 // so this reads the settings file the app writes. The path is what path_provider derives from Runner.rc
 // (CompanyName\ProductName under the roaming app data folder).
 static bool UseImpeller() {
-  // Integration tests inject temporary Dart data; skip the native preference read as well.
+  // Integration tests inject temporary Dart data; skip the native preference read as well. They run Skia unless
+  // SSHAIRY_TEST_IMPELLER=1, which the frame-timing probe uses to compare both.
   wchar_t isolated[2] = {};
   if (::GetEnvironmentVariableW(L"SSHAIRY_TEST_ISOLATED", isolated, 2) == 1 &&
       isolated[0] == L'1') {
-    return false;
+    wchar_t impeller[2] = {};
+    return ::GetEnvironmentVariableW(L"SSHAIRY_TEST_IMPELLER", impeller, 2) == 1 && impeller[0] == L'1';
   }
   wchar_t *app_data = nullptr;
   if (FAILED(::SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &app_data))) {

@@ -396,44 +396,49 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
           fit: StackFit.expand,
           children: [
             Positioned.fill(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // The image is drawn opaque over the theme colour; the renderer's own fill above it
-                  // carries 1 - opacity, so the image shows through at exactly the chosen opacity.
-                  if (hasImage)
-                    BackgroundImageView(slot: BackgroundSlot.terminal, baseColor: palette.background, opacity: 1),
-                  Listener(
-                    onPointerUp: copyOnSelect ? (_) => _copy() : null,
-                    child: ScrollConfiguration(
-                      behavior: const AppScrollBehavior(gutter: 0),
-                      child: TerminalView(
-                        _terminal,
-                        key: _view,
-                        focusNode: _focus,
-                        controller: _controller,
-                        scrollController: _scroll,
-                        onKeyEvent: _onKey,
-                        padding: const EdgeInsets.all(Space.sm),
-                        theme: _terminalTheme(palette),
-                        backgroundOpacity: hasImage ? 1 - imageOpacity : 1,
-                        cursorType: switch (settings.get(SettingKeys.cursorShape)) {
-                          CursorShape.block => TerminalCursorType.block,
-                          CursorShape.underline => TerminalCursorType.underline,
-                          CursorShape.bar => TerminalCursorType.verticalBar,
-                        },
-                        onPaste: _paste,
-                        onTapUp: _onTapUp,
-                        onSecondaryTapUp: _onSecondaryTapUp,
-                        textStyle: TerminalStyle(
-                          fontSize: settings.fontSize,
-                          fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
-                          fontFamilyFallback: AppFonts.monoFallback,
+              // xterm2 draws every cell on its own; on Impeller a full screen costs tens of milliseconds a frame, so
+              // transitions elsewhere see it as a still image.
+              child: MotionSnapshot(
+                freezeLayout: true,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // The image is drawn opaque over the theme colour; the renderer's own fill above it
+                    // carries 1 - opacity, so the image shows through at exactly the chosen opacity.
+                    if (hasImage)
+                      BackgroundImageView(slot: BackgroundSlot.terminal, baseColor: palette.background, opacity: 1),
+                    Listener(
+                      onPointerUp: copyOnSelect ? (_) => _copy() : null,
+                      child: ScrollConfiguration(
+                        behavior: const AppScrollBehavior(gutter: 0),
+                        child: TerminalView(
+                          _terminal,
+                          key: _view,
+                          focusNode: _focus,
+                          controller: _controller,
+                          scrollController: _scroll,
+                          onKeyEvent: _onKey,
+                          padding: const EdgeInsets.all(Space.sm),
+                          theme: _terminalTheme(palette),
+                          backgroundOpacity: hasImage ? 1 - imageOpacity : 1,
+                          cursorType: switch (settings.get(SettingKeys.cursorShape)) {
+                            CursorShape.block => TerminalCursorType.block,
+                            CursorShape.underline => TerminalCursorType.underline,
+                            CursorShape.bar => TerminalCursorType.verticalBar,
+                          },
+                          onPaste: _paste,
+                          onTapUp: _onTapUp,
+                          onSecondaryTapUp: _onSecondaryTapUp,
+                          textStyle: TerminalStyle(
+                            fontSize: settings.fontSize,
+                            fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
+                            fontFamilyFallback: AppFonts.monoFallback,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             _completionOverlay(),
@@ -458,8 +463,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
             if (_session.status != SessionStatus.connected)
               Center(
                 child: Entrance(
-                  scale: .96,
-                  offset: Offset.zero,
+                  offset: const Offset(0, 6),
                   child: Card(
                     child: Padding(
                       padding: const EdgeInsets.all(Space.lg),

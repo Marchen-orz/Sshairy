@@ -91,7 +91,7 @@ class DockPanel extends StatefulWidget {
   State<DockPanel> createState() => _DockPanelState();
 }
 
-class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMixin {
+class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMixin, PanelPresence {
   final _panelKey = GlobalKey();
   final _focus = FocusNode();
   // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
@@ -100,32 +100,23 @@ class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMix
   var _height = WorkspaceSize.dockBottom;
   double? _guide;
 
-  // The main view resizes once when the panel opens and once after it has left, never frame by frame, so a terminal
-  // there is not reflowed throughout the animation (UI §4).
-  late final _presence = AnimationController(vsync: this, duration: Motion.panel, value: widget.open ? 1 : 0)
-    ..addStatusListener((status) {
-      if (status.isDismissed && mounted) setState(() {});
-    });
   // What a closing panel shows on its way out, as its owner may already have dropped it.
   late Widget _leaving = widget.panel;
 
   bool get _vertical => widget.side == DockSide.bottom;
 
   @override
+  bool get initiallyOpen => widget.open;
+
+  @override
   void didUpdateWidget(DockPanel old) {
     super.didUpdateWidget(old);
     if (old.open) _leaving = old.panel;
-    _presence.duration = Motion.of(context, Motion.panel);
-    if (widget.open != old.open) {
-      widget.open ? _presence.forward() : _presence.reverse();
-    } else if (widget.open && widget.side != old.side) {
-      _presence.forward(from: 0);
-    }
+    if (widget.open != old.open) showPanel(widget.open);
   }
 
   @override
   void dispose() {
-    _presence.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -154,7 +145,6 @@ class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMix
       final extent = _vertical ? _clamp(_height, constraints) : _width;
       final overlay = !_vertical && constraints.maxWidth < _width + WorkspaceSize.terminalMin + WorkspaceSize.divider;
       final size = min(extent, _vertical ? constraints.maxHeight : constraints.maxWidth);
-      final present = widget.open || !_presence.isDismissed;
       final edge = switch (widget.side) {
         DockSide.left => AxisDirection.left,
         DockSide.right => AxisDirection.right,
@@ -194,22 +184,24 @@ class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMix
       final divider = _vertical
           ? const Divider(height: WorkspaceSize.divider)
           : const VerticalDivider(width: WorkspaceSize.divider);
-      final docked = present && !overlay;
-      final main = Expanded(child: widget.child);
-      final slid = ClipRect(
-        child: EdgeSlide(animation: _presence, from: edge, child: panel),
+      final room = overlay ? 0.0 : size + WorkspaceSize.divider;
+      final slot = overlay ? size : size + WorkspaceSize.divider;
+      final sliding = PanelSlide(
+        presence: panelProgress,
+        from: edge,
+        child: overlay
+            ? CallbackShortcuts(
+                bindings: {const SingleActivator(LogicalKeyboardKey.escape): widget.onClose},
+                child: FocusScope(autofocus: true, child: panel),
+              )
+            : Flex(
+                direction: _vertical ? Axis.vertical : Axis.horizontal,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: widget.side == DockSide.left
+                    ? [Expanded(child: panel), divider]
+                    : [divider, Expanded(child: panel)],
+              ),
       );
-      final sized = _vertical ? SizedBox(height: size, child: slid) : SizedBox(width: size, child: slid);
-      final children = switch (widget.side) {
-        DockSide.left => [
-          if (docked) ...[sized, divider],
-          main,
-        ],
-        DockSide.right || DockSide.bottom => [
-          main,
-          if (docked) ...[divider, sized],
-        ],
-      };
       final step = Space.xl;
       // Moving toward the main view grows the panel.
       final growKey = switch (widget.side) {
@@ -237,12 +229,11 @@ class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMix
       return Stack(
         fit: StackFit.expand,
         children: [
-          _vertical
-              ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)
-              : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
-          if (present && overlay) ...[
+          // Always first and always positioned, so the main view is the same element however the panel lies.
+          PanelViewport(progress: panelProgress, extent: room, from: edge, child: widget.child),
+          if (shown && overlay)
             FadeTransition(
-              opacity: _presence,
+              opacity: panelProgress,
               child: ModalBarrier(
                 color: Colors.black26,
                 dismissible: widget.open,
@@ -250,21 +241,8 @@ class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMix
                 semanticsLabel: widget.closeLabel,
               ),
             ),
-            place(
-              offset: 0,
-              thickness: size,
-              child: EdgeSlide(
-                animation: _presence,
-                from: edge,
-                full: true,
-                child: CallbackShortcuts(
-                  bindings: {const SingleActivator(LogicalKeyboardKey.escape): widget.onClose},
-                  child: FocusScope(autofocus: true, child: panel),
-                ),
-              ),
-            ),
-          ],
-          if (widget.open)
+          if (shown) place(offset: 0, thickness: slot, child: sliding),
+          if (widget.open && settled)
             place(
               offset: size - grab / 2,
               thickness: grab,
