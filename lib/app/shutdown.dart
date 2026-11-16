@@ -101,6 +101,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
           await ref.read(terminalSessionsProvider.notifier).shutdown().timeout(const Duration(seconds: 5));
           ref.read(connectionManagerProvider).closeAll();
           await _closeDiagnostics();
+          await _window.relaunchIfRequested();
           return AppExitResponse.exit;
         } on Object {
           ref
@@ -118,6 +119,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
               await _window.hide();
               ref.read(terminalSessionsProvider.notifier).closeAll();
               ref.read(connectionManagerProvider).closeAll();
+              await _window.relaunchIfRequested();
               return AppExitResponse.exit;
             case _ExitFailureChoice.back:
               transfers.resumeAfterShutdown();

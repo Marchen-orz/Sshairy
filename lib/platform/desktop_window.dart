@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -100,6 +101,25 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
 
   /// Uses the same cancelable application-exit request as Alt+F4 and the native close menu.
   Future<AppExitResponse> close() => ServicesBinding.instance.exitApplication(AppExitType.cancelable);
+
+  var _relaunch = false;
+
+  /// Closes through the same confirmed path and starts the app again once that close has drained.
+  Future<void> restart() async {
+    _relaunch = true;
+    if (await close() == AppExitResponse.cancel) _relaunch = false;
+  }
+
+  /// Called by the close path after everything is saved and released, right before the process exits.
+  Future<void> relaunchIfRequested() async {
+    if (!_relaunch || !_desktop) return;
+    _relaunch = false;
+    try {
+      await Process.start(Platform.resolvedExecutable, const [], mode: ProcessStartMode.detached);
+    } on ProcessException {
+      // The close still goes ahead; the user can start the app again by hand.
+    }
+  }
 
   @override
   void dispose() {

@@ -18,6 +18,7 @@ import '../../../foundation/data_dir.dart';
 import '../../../foundation/open_external.dart';
 import '../../../foundation/shortcuts.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/desktop_window.dart';
 import '../../../platform/system_fonts.dart';
 import '../settings.dart';
 import '../domain/background.dart';
@@ -403,6 +404,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
             segmented(SettingKeys.renderer, {Renderer.impeller: l.rendererSmooth, Renderer.skia: l.rendererLight}),
             hint: settings.renderer == Renderer.impeller ? l.rendererSmoothHint : l.rendererLightHint,
             warning: hint(SettingKeys.renderer),
+            onWarning: DesktopWindow.instance.restart,
           ),
       ]),
       _Section(SettingsSectionId.terminal, l.terminal, Icons.terminal_outlined, [
@@ -696,20 +698,22 @@ class _Section extends StatelessWidget {
 
 /// A label beside its control, or above it when the control needs the width.
 class _Field extends StatelessWidget {
-  const _Field(this.label, this.child, {this.hint, this.warning}) : stacked = false;
-  const _Field.stacked(this.label, this.child, {this.hint, this.warning}) : stacked = true;
+  const _Field(this.label, this.child, {this.hint}) : stacked = false, warning = null, onWarning = null;
+  const _Field.stacked(this.label, this.child, {this.hint, this.warning, this.onWarning}) : stacked = true;
 
   final String label;
   final Widget child;
   final String? hint;
 
-  /// Shown after [hint] in the error colour.
+  /// Shown after [hint] in the error colour; a link when [onWarning] is set.
   final String? warning;
+  final VoidCallback? onWarning;
   final bool stacked;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final warningStyle = TextStyle(color: theme.colorScheme.error);
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -720,11 +724,32 @@ class _Field extends StatelessWidget {
             TextSpan(
               text: hint,
               children: [
+                if (warning != null && hint != null) TextSpan(text: ' · ', style: warningStyle),
                 if (warning != null)
-                  TextSpan(
-                    text: hint == null ? warning : ' · $warning',
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
+                  onWarning == null
+                      ? TextSpan(text: warning, style: warningStyle)
+                      : WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: Semantics(
+                            button: true,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: onWarning,
+                                child: Text(
+                                  warning!,
+                                  style: theme.textTheme.bodySmall?.merge(
+                                    warningStyle.copyWith(
+                                      decoration: TextDecoration.underline,
+                                      decorationColor: theme.colorScheme.error,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
               ],
             ),
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
