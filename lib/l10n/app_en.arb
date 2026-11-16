@@ -987,6 +987,15 @@
   "aiAgentHistoryLocalNotice": "Conversation text is saved locally and may contain sensitive information. Raw tool output is not saved.",
   "aiModelSearch": "Search models",
   "aiModelsLoadFailed": "Could not load models. Retry or enter a model name.",
+  "aiModelsLoadHttp": "The service returned HTTP {status}. Check the key and address.",
+  "@aiModelsLoadHttp": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "aiModelsLoadTimedOut": "The request timed out. Retry or enter a model name.",
   "aiModelCustom": "Use {model}",
   "aiModelsEmpty": "No models found",
   "aiModelsRefresh": "Refresh models",

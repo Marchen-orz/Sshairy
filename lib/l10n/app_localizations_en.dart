@@ -3041,6 +3041,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load models. Retry or enter a model name.';
 
   @override
+  String aiModelsLoadHttp(String status) {
+    return 'The service returned HTTP $status. Check the key and address.';
+  }
+
+  @override
+  String get aiModelsLoadTimedOut =>
+      'The request timed out. Retry or enter a model name.';
+
+  @override
   String aiModelCustom(String model) {
     return 'Use $model';
   }

@@ -201,7 +201,8 @@ class _ModelsState extends State<_Models> {
   final _search = TextEditingController();
   CancellationToken? _request;
   var _models = <String>[];
-  var _loading = true, _failed = false;
+  var _loading = true;
+  ModelFailure? _failure;
   int _generation = 0;
 
   @override
@@ -232,7 +233,7 @@ class _ModelsState extends State<_Models> {
     _request = cancel;
     setState(() {
       _loading = true;
-      _failed = false;
+      _failure = null;
     });
     try {
       final models = await widget.catalog.list(
@@ -246,17 +247,23 @@ class _ModelsState extends State<_Models> {
         return;
       }
       setState(() => _models = models);
-    } on Object {
+    } on Object catch (error) {
       if (!mounted || generation != _generation || widget.cancel.isCancelled) {
         return;
       }
-      setState(() => _failed = true);
+      setState(() => _failure = error is ModelFailure ? error : const ModelFailure('modelCatalogFailed'));
     } finally {
       if (mounted && generation == _generation) {
         setState(() => _loading = false);
       }
     }
   }
+
+  String _reason(AppLocalizations l, ModelFailure failure) => switch (failure.code) {
+    'modelCatalogHttp' when failure.statusCode != null => l.aiModelsLoadHttp('${failure.statusCode}'),
+    'modelCatalogTimedOut' => l.aiModelsLoadTimedOut,
+    _ => l.aiModelsLoadFailed,
+  };
 
   bool _valid(String value) =>
       value.isNotEmpty && value.length <= 256 && !RegExp(r'[\x00-\x20\x7f-\x9f]').hasMatch(value);
@@ -312,10 +319,10 @@ class _ModelsState extends State<_Models> {
             ),
             const SizedBox(height: Space.sm),
             if (_loading) const LinearProgressIndicator(),
-            if (_failed)
+            if (_failure case final failure?)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: Space.sm),
-                child: Text(l.aiModelsLoadFailed, style: Theme.of(context).textTheme.bodySmall),
+                child: Text(_reason(l, failure), style: Theme.of(context).textTheme.bodySmall),
               ),
             Flexible(
               child: ListView.builder(

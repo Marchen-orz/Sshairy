@@ -5600,6 +5600,18 @@ abstract class AppLocalizations {
   /// **'Could not load models. Retry or enter a model name.'**
   String get aiModelsLoadFailed;
 
+  /// No description provided for @aiModelsLoadHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'The service returned HTTP {status}. Check the key and address.'**
+  String aiModelsLoadHttp(String status);
+
+  /// No description provided for @aiModelsLoadTimedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'The request timed out. Retry or enter a model name.'**
+  String get aiModelsLoadTimedOut;
+
   /// No description provided for @aiModelCustom.
   ///
   /// In en, this message translates to:

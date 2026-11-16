@@ -944,6 +944,8 @@
   "aiAgentHistoryLocalNotice": "会话文字保存在本地，可能含敏感信息；不保存原始工具输出。",
   "aiModelSearch": "搜索模型",
   "aiModelsLoadFailed": "无法获取模型列表，可重试或输入模型名称。",
+  "aiModelsLoadHttp": "服务返回 HTTP {status}，请检查密钥和地址。",
+  "aiModelsLoadTimedOut": "请求超时，可重试或输入模型名称。",
   "aiModelCustom": "使用 {model}",
   "aiModelsEmpty": "未找到模型",
   "aiModelsRefresh": "刷新模型",

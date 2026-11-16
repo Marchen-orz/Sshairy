@@ -2906,6 +2906,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiModelsLoadFailed => '无法获取模型列表，可重试或输入模型名称。';
 
   @override
+  String aiModelsLoadHttp(String status) {
+    return '服务返回 HTTP $status，请检查密钥和地址。';
+  }
+
+  @override
+  String get aiModelsLoadTimedOut => '请求超时，可重试或输入模型名称。';
+
+  @override
   String aiModelCustom(String model) {
     return '使用 $model';
   }
