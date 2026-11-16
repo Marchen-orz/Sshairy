@@ -24,7 +24,7 @@ import '../domain/background.dart';
 import 'background_image.dart';
 import 'shortcut_field.dart';
 
-const appVersion = '0.1.0';
+const appVersion = '0.1.1';
 
 enum SettingsSectionId {
   appearance,
