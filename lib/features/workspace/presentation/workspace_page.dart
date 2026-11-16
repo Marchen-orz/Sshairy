@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/gestures.dart' show GestureBinding, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -257,31 +258,43 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     run?.call();
   }
 
+  /// A mouse wheel only reports vertical deltas, so the strip would scroll sideways for trackpads alone.
+  void _wheelTabs(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || event.scrollDelta.dx != 0 || !_tabScroll.hasClients) return;
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      final position = _tabScroll.position;
+      _tabScroll.jumpTo((position.pixels + event.scrollDelta.dy).clamp(0.0, position.maxScrollExtent));
+    });
+  }
+
   // Drag feedback holds labels and IDs only; it must not retain live terminal models.
-  Widget _tabs(WorkspaceState state) => SingleChildScrollView(
-    controller: _tabScroll,
-    scrollDirection: Axis.horizontal,
-    child: Row(
-      children: [
-        for (final tab in state.tabs)
-          _tabDropTarget(
-            tab,
-            _draggable(
+  Widget _tabs(WorkspaceState state) => Listener(
+    onPointerSignal: _wheelTabs,
+    child: SingleChildScrollView(
+      controller: _tabScroll,
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final tab in state.tabs)
+            _tabDropTarget(
               tab,
-              null,
-              tab.title ?? _workspace.session(tab.layout.focusedLeaf.session)?.title ?? '',
-              _Tab(
-                key: ValueKey(tab.id),
-                tab: tab,
-                selected: state.active == tab.id,
-                onTap: () => _workspace.activate(tab.id),
-                onRename: (name) => _rename(tab, name),
-                onSecondaryTap: (name, p) => _tabMenu(tab, name, p),
-                onClose: () => _workspace.closeTab(tab.id),
+              _draggable(
+                tab,
+                null,
+                tab.title ?? _workspace.session(tab.layout.focusedLeaf.session)?.title ?? '',
+                _Tab(
+                  key: ValueKey(tab.id),
+                  tab: tab,
+                  selected: state.active == tab.id,
+                  onTap: () => _workspace.activate(tab.id),
+                  onRename: (name) => _rename(tab, name),
+                  onSecondaryTap: (name, p) => _tabMenu(tab, name, p),
+                  onClose: () => _workspace.closeTab(tab.id),
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     ),
   );
 

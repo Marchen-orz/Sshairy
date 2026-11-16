@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../platform/desktop_window.dart';
 import 'popup.dart';
 import 'theme.dart';
 
-/// A centred modal for security confirmations, authentication, quitting and settings (UI §5).
+/// A centred modal for security confirmations, authentication, quitting and settings (UI §5). A dialog that opens while
+/// the window is minimized or behind others brings it to the front so the user notices the question.
 Future<T?> showAppDialog<T>({
   required BuildContext context,
   required WidgetBuilder builder,
   bool barrierDismissible = true,
 }) {
+  final window = DesktopWindow.instance;
+  if (!window.value.active) unawaited(window.show());
   final dark = Theme.of(context).brightness == Brightness.dark;
   return showGeneralDialog<T>(
     context: context,

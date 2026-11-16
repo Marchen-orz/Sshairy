@@ -72,7 +72,8 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
   Future<void> beginDrag() => _invoke('drag');
   Future<void> showSystemMenu() => _invoke('systemMenu');
 
-  /// Quit hides the window before slow cleanup and shows it again only if cleanup needs a decision.
+  /// Quit hides the window before slow cleanup and shows it again only if cleanup needs a decision. Showing also
+  /// restores a minimized window and raises it above others, so a dialog is never left waiting out of sight.
   Future<void> hide() => _invoke('hide');
   Future<void> show() => _invoke('show');
 
