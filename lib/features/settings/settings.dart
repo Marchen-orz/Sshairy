@@ -330,7 +330,7 @@ abstract final class SettingKeys {
     WorkspaceSize.monitorMin,
     WorkspaceSize.monitorMax,
   );
-  static const filesDock = EnumSetting('filesDock', FilesDock.right, FilesDock.values);
+  static const filesDock = EnumSetting('filesDock', FilesDock.bottom, FilesDock.values);
   static const navigationExpanded = BoolSetting('navigationExpanded', false);
   static const navigationWidth = DoubleSetting(
     'navigationWidth',
