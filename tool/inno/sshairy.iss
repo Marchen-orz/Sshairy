@@ -11,9 +11,10 @@ AppId={{8C0D5E2A-2F4B-4E77-9B5C-3A6D1F9E4B21}
 AppName=Sshairy
 AppVersion={#AppVersion}
 AppPublisher=Sshairy
-DefaultDirName={localappdata}\Programs\sshairy
+DefaultDirName={localappdata}\Programs\Sshairy
 DefaultGroupName=Sshairy
 DisableProgramGroupPage=yes
+ShowLanguageDialog=no
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputName}
@@ -29,6 +30,11 @@ ArchitecturesInstallIn64BitMode=arm64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 #endif
+
+; Setup follows the Windows UI language; anything other than Chinese falls back to the first entry.
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
