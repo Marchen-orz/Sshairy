@@ -45,6 +45,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
+  // An ID no shortcut carries: under the implicit one the taskbar button takes the icon of the Start menu shortcut
+  // that targets this exe and ignores the window icons switched with the theme.
+  ::SetCurrentProcessExplicitAppUserModelID(L"dev.sshairy.sshairy");
+
   flutter::DartProject project(L"data");
 
   bool impeller = UseImpeller();
