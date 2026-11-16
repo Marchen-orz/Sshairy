@@ -532,6 +532,8 @@ Stream<ModelEvent> decodeModelStream(ModelProfile profile, Stream<List<int>> byt
   };
   try {
     await for (final event in decodeSse(bytes)) {
+      // Some compatible services send blank data lines as keep-alives.
+      if (event.data.trim().isEmpty) continue;
       for (final result in parser.add(event)) {
         yield result;
       }
@@ -619,6 +621,8 @@ class _AnthropicParser extends _ProtocolParser {
             throw const ModelFailure('invalidModelStream');
           }
         case 'thinking':
+          // Compatible endpoints may omit the signature; an empty one is replayed as received.
+          copy['signature'] ??= '';
           if (copy['thinking'] is! String || copy['signature'] is! String) {
             throw const ModelFailure('invalidModelStream');
           }
@@ -648,9 +652,6 @@ class _AnthropicParser extends _ProtocolParser {
           } else {
             block.value['input'] = _arguments(jsonEncode(block.value['input']));
           }
-        }
-        if (block.value['type'] == 'thinking' && (block.value['signature'] as String).isEmpty) {
-          throw const ModelFailure('invalidModelContinuation');
         }
         return;
       }
@@ -727,7 +728,8 @@ class _AnthropicParser extends _ProtocolParser {
       );
       return;
     }
-    throw const ModelFailure('unsupportedModelEvent');
+    // New event types do not change completion; they still count towards the message bound.
+    count(value);
   }
 }
 
@@ -756,10 +758,12 @@ class _OpenAiParser extends _ProtocolParser {
           ModelCall(
             calls[index]!.id ?? '',
             calls[index]!.name.toString(),
-            _arguments(calls[index]!.arguments.toString()),
+            // Tools without parameters may arrive with no argument text at all.
+            _arguments(calls[index]!.arguments.isEmpty ? '{}' : calls[index]!.arguments.toString()),
           ),
       ];
-      _validateCalls(completedCalls, reason == 'tool_calls');
+      // Several compatible services finish complete tool calls with `stop`; `tool_calls` without calls stays invalid.
+      _validateCalls(completedCalls, reason == 'tool_calls' || completedCalls.isNotEmpty);
       complete = true;
       yield ModelMessageComplete(ModelMessage(ModelRole.assistant, text: text.toString(), calls: completedCalls));
       return;
@@ -773,16 +777,25 @@ class _OpenAiParser extends _ProtocolParser {
     messageId ??= id as String?;
     final usage = value['usage'];
     if (usage is Map) yield _usage(usage, anthropic: false);
-    final choices = value['choices'];
+    // Compatible services may omit choices or send null for optional fields.
+    final choices = value['choices'] ?? const [];
     if (choices is! List || choices.length > 1) throw const ModelFailure('invalidModelStream');
     if (choices.isEmpty) return;
     final choice = choices.single;
-    if (choice is! Map || choice['index'] != 0 || reason != null) throw const ModelFailure('invalidModelStream');
-    final delta = choice['delta'];
-    if (delta is! Map ||
-        (delta['role'] != null && delta['role'] != 'assistant') ||
-        delta.containsKey('function_call')) {
+    if (choice is! Map || (choice['index'] ?? 0) != 0) throw const ModelFailure('invalidModelStream');
+    final delta = choice['delta'] ?? const {};
+    if (delta is! Map || (delta['role'] != null && delta['role'] != 'assistant') || delta['function_call'] != null) {
       throw const ModelFailure('invalidModelStream');
+    }
+    if (reason != null) {
+      // A trailing chunk after the finish reason may repeat it, but may not add content.
+      final empty =
+          (delta['content'] == null || delta['content'] == '') &&
+          delta['tool_calls'] == null &&
+          (delta['reasoning_content'] == null || delta['reasoning_content'] == '') &&
+          (choice['finish_reason'] == null || choice['finish_reason'] == reason);
+      if (!empty) throw const ModelFailure('invalidModelStream');
+      return;
     }
     started = true;
     final content = delta['content'];
@@ -807,12 +820,13 @@ class _OpenAiParser extends _ProtocolParser {
             fragment['index'] is! int ||
             (fragment['index'] as int) < 0 ||
             (fragment['index'] as int) >= 8 ||
-            (fragment['type'] != null && fragment['type'] != 'function')) {
+            (fragment['type'] != null && fragment['type'] != '' && fragment['type'] != 'function')) {
           throw const ModelFailure('invalidModelStream');
         }
         final call = calls.putIfAbsent(fragment['index'] as int, _OpenAiCall.new);
         final id = fragment['id'];
-        if (id != null) {
+        // Continuation fragments from some services carry an empty id.
+        if (id != null && id != '') {
           if (id is! String || !_callId.hasMatch(id) || (call.id != null && call.id != id)) {
             throw const ModelFailure('invalidModelStream');
           }

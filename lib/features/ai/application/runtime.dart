@@ -252,8 +252,36 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     this.hostRoutes = _noRoutes,
     this.terminalHistory,
     this.resources,
+    this.retryDelays = const [Duration(seconds: 1), Duration(seconds: 3)],
     OutputStore? outputs,
   }) : outputs = outputs ?? OutputStore();
+
+  /// Backoff before each automatic resend of a failed model response; its length bounds the attempts.
+  final List<Duration> retryDelays;
+
+  static const _retryableModelFailures = {
+    'modelNetworkError',
+    'modelTimedOut',
+    'modelStreamError',
+    'invalidModelStream',
+    'incompleteModelStream',
+    'invalidModelArguments',
+  };
+
+  /// Null when [failure] is not transient or the attempts are spent; a long Retry-After is not waited out.
+  Duration? _retryDelay(ModelFailure failure, int attempt) {
+    if (attempt >= retryDelays.length) return null;
+    final status = failure.statusCode;
+    final transient = failure.code == 'modelHttpError'
+        ? status != null && ({408, 409, 425, 429}.contains(status) || status >= 500)
+        : _retryableModelFailures.contains(failure.code);
+    if (!transient) return null;
+    final after = failure.retryAfter;
+    if (after == null) return retryDelays[attempt];
+    if (after > const Duration(seconds: 30)) return null;
+    return after > retryDelays[attempt] ? after : retryDelays[attempt];
+  }
+
   final ModelProvider model;
   final AgentBackend backend;
   final OperationJournal journal;
@@ -739,30 +767,53 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         ModelMessage? complete;
         var messageBytes = 0;
         _modelRequests++;
-        await for (final event in model.stream(
-          ModelRequest(profile: profile, system: _system, messages: history.messages, tools: tools),
-          cancel,
-        )) {
-          _check();
-          if (event is ModelReasoningDelta) {
-            visible.reasoningReceived = true;
-            visible.reasoningActive = true;
-            visible.reasoningSummary = _bounded('${visible.reasoningSummary}${event.summary}', 2048);
-            _queueEmit();
-          } else if (event is ModelTextDelta) {
-            visible.reasoningActive = false;
-            final bytes = utf8.encode(event.text).length;
-            messageBytes += bytes;
-            _conversationBytes += bytes;
-            if (messageBytes > 1 << 20 || _conversationBytes > 1 << 20) {
-              throw const AgentFailure('messageLimit');
+        for (var attempt = 0; ; attempt++) {
+          try {
+            await for (final event in model.stream(
+              ModelRequest(profile: profile, system: _system, messages: history.messages, tools: tools),
+              cancel,
+            )) {
+              _check();
+              if (event is ModelReasoningDelta) {
+                visible.reasoningReceived = true;
+                visible.reasoningActive = true;
+                visible.reasoningSummary = _bounded('${visible.reasoningSummary}${event.summary}', 2048);
+                _queueEmit();
+              } else if (event is ModelTextDelta) {
+                visible.reasoningActive = false;
+                final bytes = utf8.encode(event.text).length;
+                messageBytes += bytes;
+                _conversationBytes += bytes;
+                if (messageBytes > 1 << 20 || _conversationBytes > 1 << 20) {
+                  throw const AgentFailure('messageLimit');
+                }
+                visible.text += event.text;
+                contextUsedTokens = inputTokens + (messageBytes + 1) ~/ 2;
+                _queueEmit();
+              } else if (event is ModelMessageComplete) {
+                if (complete != null) throw const AgentFailure('protocol');
+                complete = event.message;
+              }
             }
-            visible.text += event.text;
-            contextUsedTokens = inputTokens + (messageBytes + 1) ~/ 2;
-            _queueEmit();
-          } else if (event is ModelMessageComplete) {
-            if (complete != null) throw const AgentFailure('protocol');
-            complete = event.message;
+            break;
+          } on ModelFailure catch (failure) {
+            // Only a response that delivered no complete message, and so ran no tools, is sent again.
+            final delay = complete == null && !cancel.isCancelled ? _retryDelay(failure, attempt) : null;
+            if (delay == null) rethrow;
+            _conversationBytes -= messageBytes;
+            messageBytes = 0;
+            visible
+              ..text = ''
+              ..reasoningSummary = ''
+              ..reasoningReceived = false
+              ..reasoningActive = false;
+            contextUsedTokens = inputTokens;
+            _emit();
+            final waited = Completer<void>();
+            final backoff = Timer(delay, waited.complete);
+            await Future.any([waited.future, cancel.whenCancelled]);
+            backoff.cancel();
+            _check();
           }
         }
         _check();
