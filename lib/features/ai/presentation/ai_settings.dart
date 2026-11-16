@@ -389,6 +389,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     final theme = Theme.of(context);
     _saveController?.changed();
     final blocked = _working || config.loadFailed || (_saveController?.busy ?? false);
+    final locked = blocked || !_enabled;
     final activeRuntime = ref.exists(agentRuntimeProvider) ? ref.watch(agentRuntimeProvider) : null;
     const gap = SizedBox(height: Space.md);
     return Form(
@@ -425,7 +426,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               AppOption(ModelProtocol.openai, l.aiConfigOpenAi),
               AppOption(ModelProtocol.responses, l.aiConfigResponses),
             ],
-            onChanged: blocked
+            onChanged: locked
                 ? null
                 : (v) {
                     _protocol = v;
@@ -439,7 +440,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             child: TextFormField(
               key: const ValueKey('ai-config-endpoint'),
               controller: _endpoint,
-              enabled: !blocked,
+              enabled: !locked,
               keyboardType: TextInputType.url,
               autocorrect: false,
               decoration: AppFormField.decoration(context),
@@ -453,7 +454,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             child: TextField(
               key: const ValueKey('ai-config-key'),
               controller: _key,
-              enabled: !blocked && !_checking && !_keyError && _draftProvider != null,
+              enabled: !locked && !_checking && !_keyError && _draftProvider != null,
               obscureText: true,
               autocorrect: false,
               enableSuggestions: false,
@@ -480,13 +481,13 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
           if (_keyError)
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton(onPressed: blocked ? null : _checkKey, child: Text(l.retryAction)),
+              child: TextButton(onPressed: locked ? null : _checkKey, child: Text(l.retryAction)),
             ),
           if (_hasKey && !_removeKey)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
-                onPressed: blocked
+                onPressed: locked
                     ? null
                     : () => setState(() {
                         _removeKey = true;
@@ -505,7 +506,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             endpoint: _endpoint.text.trim(),
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: blocked || _draftProvider == null ? null : _selectModel,
+            onChanged: locked || _draftProvider == null ? null : _selectModel,
           ),
           gap,
           AiModelPicker(
@@ -516,7 +517,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             endpoint: _endpoint.text.trim(),
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, review: true),
+            onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, review: true),
           ),
           gap,
           AppFormField(
@@ -533,7 +534,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                   AppOption(ReasoningEffort.medium, l.aiReasoningMedium),
                   AppOption(ReasoningEffort.high, l.aiReasoningHigh),
                 ],
-                onChanged: blocked || (activeRuntime?.busy ?? false)
+                onChanged: locked || (activeRuntime?.busy ?? false)
                     ? null
                     : (value) => setState(() => _reasoningEffort = value),
               ),
@@ -565,7 +566,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                           const AppOption(256000, '256K'),
                           AppOption(-1, l.aiConfigContextCustom),
                         ],
-                        onChanged: blocked
+                        onChanged: locked
                             ? null
                             : (value) => setState(() {
                                 _customContext = value == -1;
@@ -585,7 +586,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                         child: TextFormField(
                           key: const ValueKey('ai-config-context-custom'),
                           controller: _contextWindow,
-                          enabled: !blocked,
+                          enabled: !locked,
                           keyboardType: TextInputType.number,
                           decoration: AppFormField.decoration(context),
                           validator: (_) => _profile == null ? l.aiConfigInvalid : null,
@@ -600,7 +601,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
                       child: TextFormField(
                         key: const ValueKey('ai-config-max-output'),
                         controller: _maxOutput,
-                        enabled: !blocked,
+                        enabled: !locked,
                         keyboardType: TextInputType.number,
                         decoration: AppFormField.decoration(context),
                         validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
@@ -619,7 +620,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             key: const ValueKey('ai-config-inline'),
             title: l.aiConfigInline,
             value: _inlineEnabled,
-            onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _inlineEnabled = v),
+            onChanged: locked || _profile == null ? null : (v) => setState(() => _inlineEnabled = v),
           ),
           const SizedBox(height: Space.xs),
           Text(
@@ -635,7 +636,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             endpoint: _endpoint.text.trim(),
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, inline: true),
+            onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, inline: true),
           ),
           if (_inlineEnabled) ...[
             const SizedBox(height: Space.xs),
@@ -643,7 +644,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               feature: 'inline',
               expanded: _inlineAdvanced,
               excluded: _inlineExcludedHosts,
-              blocked: blocked,
+              blocked: locked,
               onExpanded: (value) => setState(() => _inlineAdvanced = value),
             ),
           ],
@@ -652,7 +653,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             key: const ValueKey('ai-config-completion'),
             title: l.aiConfigCompletion,
             value: _completionEnabled,
-            onChanged: blocked || !_enabled || _profile == null ? null : (v) => setState(() => _completionEnabled = v),
+            onChanged: locked || _profile == null ? null : (v) => setState(() => _completionEnabled = v),
           ),
           const SizedBox(height: Space.xs),
           Text(
@@ -668,7 +669,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
             endpoint: _endpoint.text.trim(),
             credentialIdentity: _catalogCredential,
             draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: blocked || _draftProvider == null ? null : (value) => _selectModel(value, completion: true),
+            onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, completion: true),
           ),
           if (_completionEnabled) ...[
             const SizedBox(height: Space.xs),
@@ -676,7 +677,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               feature: 'completion',
               expanded: _completionAdvanced,
               excluded: _completionExcludedHosts,
-              blocked: blocked,
+              blocked: locked,
               onExpanded: (value) => setState(() => _completionAdvanced = value),
             ),
           ],
