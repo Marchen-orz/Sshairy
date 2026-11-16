@@ -46,6 +46,10 @@ if [[ "$platform" == macos ]]; then
       exit 1
     }
   done
+  # The build leaves FlutterMacOS.framework with the engine's own signature while the app is ad hoc; with the hardened
+  # runtime, dyld then refuses it for having a different Team ID. Re-signing everything ad hoc makes them match.
+  codesign --force --deep --sign - "$app"
+  codesign --verify --deep --strict "$app"
   cp -R "$app" "$stage/"
   cp README.md "$stage/"
   if [[ -f LICENSE ]]; then cp LICENSE "$stage/"; fi
