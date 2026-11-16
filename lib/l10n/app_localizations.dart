@@ -185,7 +185,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigEndpointHint.
   ///
   /// In en, this message translates to:
-  /// **'Include the API base path, such as /v1. HTTPS or exact local loopback HTTP only.'**
+  /// **'/v1 is added when the path has no version. HTTPS or exact local loopback HTTP only.'**
   String get aiConfigEndpointHint;
 
   /// No description provided for @aiConfigModel.

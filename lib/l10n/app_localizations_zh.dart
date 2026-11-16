@@ -60,7 +60,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiConfigEndpointHint =>
-      '包含 /v1 等 API 基础路径；仅允许 HTTPS 或精确本机回环 HTTP。';
+      '不含 /v1 等版本路径时自动补 /v1；仅允许 HTTPS 或精确本机回环 HTTP。';
 
   @override
   String get aiConfigModel => '模型';

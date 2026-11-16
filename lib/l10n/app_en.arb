@@ -17,7 +17,7 @@
   "aiConfigOpenAi": "OpenAI Chat Completions",
   "aiConfigResponses": "OpenAI Responses",
   "aiConfigEndpoint": "API base URL",
-  "aiConfigEndpointHint": "Include the API base path, such as /v1. HTTPS or exact local loopback HTTP only.",
+  "aiConfigEndpointHint": "/v1 is added when the path has no version. HTTPS or exact local loopback HTTP only.",
   "aiConfigModel": "Model",
   "aiConfigTools": "Model supports tool calls",
   "aiConfigContextWindow": "Context window (tokens)",

@@ -104,6 +104,7 @@ class ModelProfile {
   }
 
   static final _controls = RegExp(r'[\x00-\x20\x7f-\x9f]');
+  static final _version = RegExp(r'^v\d');
 
   static String normalizeEndpoint(String value) {
     if (value.isEmpty || value.length > 2048 || _controls.hasMatch(value) || value.contains('\\')) {
@@ -149,6 +150,8 @@ class ModelProfile {
     while (path.endsWith('/')) {
       path = path.substring(0, path.length - 1);
     }
+    // A base URL without a version segment such as v1 or v1beta gets the common /v1.
+    if (!uri.pathSegments.any(_version.hasMatch)) path = '$path/v1';
     return uri.replace(path: path).toString();
   }
 }

@@ -63,7 +63,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigEndpointHint =>
-      'Include the API base path, such as /v1. HTTPS or exact local loopback HTTP only.';
+      '/v1 is added when the path has no version. HTTPS or exact local loopback HTTP only.';
 
   @override
   String get aiConfigModel => 'Model';

@@ -92,17 +92,20 @@ class TranslationConfig {
         _ => endpoint.isEmpty && model.isEmpty && region.isEmpty,
       };
 
-  /// The API base URL, including its path; the router adds /chat/completions.
+  /// The API base URL, including its path (/v1 when unversioned); the router adds /chat/completions.
   String get canonicalEndpoint => validEndpoint(endpoint) ? _canonicalEndpoint(Uri.parse(endpoint)) : '';
 
   static String _canonicalEndpoint(Uri value) {
     final uri = value.normalizePath();
     final port = uri.hasPort && uri.port != (uri.scheme == 'https' ? 443 : 80) ? uri.port : null;
+    final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    // A base URL without a version segment such as v1 or v1beta gets the common /v1.
+    final versioned = uri.pathSegments.any(RegExp(r'^v\d').hasMatch);
     return Uri(
       scheme: uri.scheme.toLowerCase(),
       host: uri.host.toLowerCase(),
       port: port,
-      path: uri.path.replaceFirst(RegExp(r'/+$'), ''),
+      path: versioned ? path : '$path/v1',
     ).toString();
   }
 
