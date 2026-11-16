@@ -276,20 +276,27 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
       child: Row(
         children: [
           for (final tab in state.tabs)
-            _tabDropTarget(
-              tab,
-              _draggable(
+            // Keyed here so a new tab grows in once and closing another does not replay it.
+            Reveal(
+              key: ValueKey(tab.id),
+              open: true,
+              appear: true,
+              axis: Axis.horizontal,
+              child: _tabDropTarget(
                 tab,
-                null,
-                tab.title ?? _workspace.session(tab.layout.focusedLeaf.session)?.title ?? '',
-                _Tab(
-                  key: ValueKey(tab.id),
-                  tab: tab,
-                  selected: state.active == tab.id,
-                  onTap: () => _workspace.activate(tab.id),
-                  onRename: (name) => _rename(tab, name),
-                  onSecondaryTap: (name, p) => _tabMenu(tab, name, p),
-                  onClose: () => _workspace.closeTab(tab.id),
+                _draggable(
+                  tab,
+                  null,
+                  tab.title ?? _workspace.session(tab.layout.focusedLeaf.session)?.title ?? '',
+                  _Tab(
+                    key: ValueKey(tab.id),
+                    tab: tab,
+                    selected: state.active == tab.id,
+                    onTap: () => _workspace.activate(tab.id),
+                    onRename: (name) => _rename(tab, name),
+                    onSecondaryTap: (name, p) => _tabMenu(tab, name, p),
+                    onClose: () => _workspace.closeTab(tab.id),
+                  ),
                 ),
               ),
             ),
@@ -669,35 +676,19 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                       fit: StackFit.expand,
                       children: [
                         const BackgroundImageView(slot: BackgroundSlot.app),
-                        Visibility.maintain(
+                        PageVisibility(
                           key: const ValueKey('vault'),
                           visible: vault,
-                          child: ExcludeFocus(
-                            excluding: !vault,
-                            child: VaultPage(active: vault, onConnect: _workspace.openHost),
-                          ),
+                          child: VaultPage(active: vault, onConnect: _workspace.openHost),
                         ),
                         if (_filesBuilt)
-                          Visibility.maintain(
+                          PageVisibility(
                             key: const ValueKey('files'),
                             visible: state.files,
-                            child: IgnorePointer(
-                              ignoring: !state.files,
-                              child: ExcludeFocus(
-                                excluding: !state.files,
-                                child: FilesPage(active: state.files),
-                              ),
-                            ),
+                            child: FilesPage(active: state.files),
                           ),
                         for (final tab in state.tabs)
-                          Visibility.maintain(
-                            key: ValueKey(tab.id),
-                            visible: state.active == tab.id,
-                            child: IgnorePointer(
-                              ignoring: state.active != tab.id,
-                              child: ExcludeFocus(excluding: state.active != tab.id, child: tabBody(tab)),
-                            ),
-                          ),
+                          PageVisibility(key: ValueKey(tab.id), visible: state.active == tab.id, child: tabBody(tab)),
                       ],
                     ),
                   ),
@@ -725,16 +716,21 @@ class _BarToggle extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Semantics(
       toggled: selected,
-      child: IconButton(
-        tooltip: tooltip,
-        onPressed: onPressed,
-        style: selected
-            ? IconButton.styleFrom(
-                backgroundColor: scheme.primary.withValues(alpha: .12),
-                foregroundColor: scheme.primary,
-              )
-            : null,
-        icon: Icon(icon, size: 18),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: selected ? 1 : 0),
+        duration: Motion.of(context, Motion.normal),
+        curve: Motion.move,
+        builder: (context, t, _) => IconButton(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          style: t == 0
+              ? null
+              : IconButton.styleFrom(
+                  backgroundColor: scheme.primary.withValues(alpha: .12 * t),
+                  foregroundColor: Color.lerp(scheme.onSurfaceVariant, scheme.primary, t),
+                ),
+          icon: Icon(icon, size: 18),
+        ),
       ),
     );
   }
@@ -795,7 +791,8 @@ class _PaneHeader extends StatelessWidget {
       color: scheme.surfaceContainerLow,
       child: InkWell(
         onTap: onTap,
-        child: Container(
+        child: AnimatedContainer(
+          duration: Motion.of(context, Motion.quick),
           height: WorkspaceSize.paneHeader,
           padding: const EdgeInsets.only(left: Space.sm, right: Space.xs),
           decoration: BoxDecoration(
@@ -969,8 +966,9 @@ class _TabState extends ConsumerState<_Tab> {
                             ),
                             const SizedBox(width: Space.xs),
                             // The close button shows on the current tab and on hover, so idle tabs read cleanly.
-                            Opacity(
+                            AnimatedOpacity(
                               opacity: selected || _hovered ? 1 : 0,
+                              duration: Motion.of(context, Motion.quick),
                               child: IconButton(
                                 tooltip: AppLocalizations.of(context).close,
                                 onPressed: widget.onClose,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'brand_palette.dart';
 export 'brand_palette.dart';
+export 'motion.dart';
 
 /// Spacing and radius tokens from docs/UI.md §2.
 abstract final class Space {
@@ -46,11 +47,6 @@ abstract final class InlineAiPopupSize {
 abstract final class HistoryPopupSize {
   static const width = 440.0, height = 360.0, minWidth = 280.0, minHeight = 180.0;
   static const maxWidth = 720.0, maxHeight = 560.0, resizeGrip = 20.0;
-}
-
-abstract final class Motion {
-  static const quick = Duration(milliseconds: 120), normal = Duration(milliseconds: 180);
-  static const panel = Duration(milliseconds: 220);
 }
 
 /// Font defaults from docs/UI.md §2. Chinese text falls back explicitly, so the system never picks Japanese glyphs.

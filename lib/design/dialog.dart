@@ -21,15 +21,10 @@ Future<T?> showAppDialog<T>({
     barrierDismissible: barrierDismissible,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black.withValues(alpha: dark ? .5 : .28),
-    transitionDuration: Motion.normal,
+    transitionDuration: Motion.panel,
     pageBuilder: (context, _, _) => Builder(builder: builder),
-    transitionBuilder: (context, animation, _, child) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-      return FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(scale: Tween(begin: .96, end: 1.0).animate(curved), child: child),
-      );
-    },
+    transitionBuilder: (context, animation, _, child) =>
+        popupTransition(context, animation, child, offset: const Offset(0, 12), scale: .96),
   );
 }
 

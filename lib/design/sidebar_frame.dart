@@ -46,21 +46,37 @@ class SidebarFrame extends StatefulWidget {
   State<SidebarFrame> createState() => _SidebarFrameState();
 }
 
-class _SidebarFrameState extends State<SidebarFrame> {
+class _SidebarFrameState extends State<SidebarFrame> with SingleTickerProviderStateMixin {
   final _focus = FocusNode();
   // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
   var _pointerFocus = false;
   double? _guide;
+
+  // As with the dock panel, the page resizes once on each side of the animation rather than every frame.
+  late final _presence = AnimationController(vsync: this, duration: Motion.panel, value: widget.sidebar == null ? 0 : 1)
+    ..addStatusListener((status) {
+      if (status.isDismissed && mounted) setState(() => _leaving = null);
+    });
+  Widget? _leaving;
 
   @override
   void didUpdateWidget(SidebarFrame old) {
     super.didUpdateWidget(old);
     // A drag cannot finish on a divider that is gone.
     if (widget.sidebar == null) _guide = null;
+    if ((widget.sidebar == null) == (old.sidebar == null)) return;
+    _presence.duration = Motion.of(context, Motion.panel);
+    if (widget.sidebar == null) {
+      _leaving = old.sidebar;
+      _presence.reverse();
+    } else {
+      _presence.forward();
+    }
   }
 
   @override
   void dispose() {
+    _presence.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -72,6 +88,7 @@ class _SidebarFrameState extends State<SidebarFrame> {
       final available = constraints.maxWidth;
       final width = SidebarFrame.clampWidth(widget.width, available);
       final sidebar = widget.sidebar;
+      final shown = sidebar ?? (_presence.isDismissed ? null : _leaving);
       const grab = WorkspaceSize.dividerGrab, step = Space.xl;
       double clamp(double w) => SidebarFrame.clampWidth(w, available);
       void resize(double w) {
@@ -85,8 +102,16 @@ class _SidebarFrameState extends State<SidebarFrame> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (sidebar != null) ...[
-                SizedBox(width: width, child: sidebar),
+              if (shown != null) ...[
+                SizedBox(
+                  width: width,
+                  child: ClipRect(
+                    child: IgnorePointer(
+                      ignoring: sidebar == null,
+                      child: EdgeSlide(animation: _presence, from: AxisDirection.left, child: shown),
+                    ),
+                  ),
+                ),
                 const VerticalDivider(width: WorkspaceSize.divider),
               ],
               // Keyed, so the page is the same element with or without the panel.

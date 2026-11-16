@@ -700,8 +700,9 @@ class _HostTileState extends State<_HostTile> {
       child: Icon(Icons.dns_outlined, size: widget.list ? 14 : 16, color: theme.colorScheme.primary),
     );
     // Stays in the tree when hidden: an open menu would otherwise lose its selection when focus moves.
-    final actions = Opacity(
+    final actions = AnimatedOpacity(
       opacity: _hovered || _focused || widget.selected ? 1 : 0,
+      duration: Motion.of(context, Motion.quick),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -773,10 +774,11 @@ class _HostTileState extends State<_HostTile> {
           },
           child: Semantics(
             selected: widget.selected,
-            child: Card(
-              margin: EdgeInsets.zero,
-              color: widget.selected ? theme.colorScheme.primaryContainer : null,
-              clipBehavior: Clip.antiAlias,
+            child: TweenAnimationBuilder<Color?>(
+              tween: ColorTween(end: widget.selected ? theme.colorScheme.primaryContainer : theme.colorScheme.surface),
+              duration: Motion.of(context, Motion.quick),
+              builder: (context, color, child) =>
+                  Card(margin: EdgeInsets.zero, color: color, clipBehavior: Clip.antiAlias, child: child),
               child: InkWell(
                 focusNode: _focus,
                 onTap: _tap,

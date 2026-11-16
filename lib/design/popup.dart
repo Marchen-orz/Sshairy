@@ -91,17 +91,14 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
     Widget child,
-  ) {
-    final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-    return FadeTransition(
-      opacity: curved,
-      child: ScaleTransition(
-        alignment: placement == PopupPlacement.below ? Alignment.topCenter : Alignment.centerLeft,
-        scale: Tween(begin: .96, end: 1.0).animate(curved),
-        child: child,
-      ),
-    );
-  }
+  ) => popupTransition(
+    context,
+    animation,
+    child,
+    offset: placement == PopupPlacement.below ? const Offset(0, -4) : const Offset(-4, 0),
+    scale: .96,
+    alignment: placement == PopupPlacement.below ? Alignment.topCenter : Alignment.centerLeft,
+  );
 }
 
 class _AnchorLayout extends SingleChildLayoutDelegate {

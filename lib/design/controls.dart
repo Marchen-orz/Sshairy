@@ -144,7 +144,7 @@ class AppCheckbox extends StatelessWidget {
 }
 
 /// A pill track with a sliding highlight; replaces Material's segmented button.
-class AppSegmented<T> extends StatelessWidget {
+class AppSegmented<T> extends StatefulWidget {
   const AppSegmented({super.key, required this.segments, required this.selected, required this.onChanged});
 
   final Map<T, String> segments;
@@ -152,11 +152,43 @@ class AppSegmented<T> extends StatelessWidget {
   final ValueChanged<T>? onChanged;
 
   @override
+  State<AppSegmented<T>> createState() => _AppSegmentedState<T>();
+}
+
+class _AppSegmentedState<T> extends State<AppSegmented<T>> {
+  final _track = GlobalKey();
+  final _segments = <T, GlobalKey>{};
+
+  /// Where the selected segment sits in the track, once laid out; until then the segment draws its own highlight.
+  Rect? _thumb;
+
+  void _measure(Duration _) {
+    if (!mounted) return;
+    final track = _track.currentContext?.findRenderObject() as RenderBox?;
+    final segment = _segments[widget.selected]?.currentContext?.findRenderObject() as RenderBox?;
+    if (track == null || segment == null || !track.hasSize || !segment.hasSize) return;
+    final rect = segment.localToGlobal(Offset.zero, ancestor: track) & segment.size;
+    if (rect != _thumb) setState(() => _thumb = rect);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final selected = widget.selected;
+    final onChanged = widget.onChanged;
     final enabled = onChanged != null;
     final palette = BrandPalette.of(context);
+    _segments.removeWhere((value, _) => !widget.segments.containsKey(value));
+    WidgetsBinding.instance.addPostFrameCallback(_measure);
+    final fill = BoxDecoration(
+      color: enabled ? scheme.surface : scheme.outlineVariant,
+      borderRadius: BorderRadius.circular(Radii.pill),
+      boxShadow: enabled
+          ? [BoxShadow(color: Colors.black.withValues(alpha: .1), blurRadius: 3, offset: const Offset(0, 1))]
+          : null,
+    );
+    final thumb = _thumb;
     return Container(
       height: 30,
       padding: const EdgeInsets.all(2),
@@ -166,49 +198,50 @@ class AppSegmented<T> extends StatelessWidget {
             : palette.disabledSurface,
         borderRadius: BorderRadius.circular(Radii.pill),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Stack(
+        key: _track,
         children: [
-          for (final MapEntry(key: value, value: label) in segments.entries)
-            Semantics(
-              button: true,
-              enabled: enabled,
-              selected: value == selected,
-              child: _Pressable(
-                onTap: onChanged == null ? null : () => onChanged!(value),
-                builder: (context, hovered, focused) => AnimatedContainer(
-                  duration: Motion.normal,
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(horizontal: Space.md),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: value == selected ? (enabled ? scheme.surface : scheme.outlineVariant) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(Radii.pill),
-                    border: _ring(context, focused, 0),
-                    boxShadow: enabled && value == selected
-                        ? [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: .1),
-                              blurRadius: 3,
-                              offset: const Offset(0, 1),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Text(
-                    label,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: value == selected ? FontWeight.w600 : FontWeight.w500,
-                      color: !enabled
-                          ? palette.textMuted
-                          : value == selected || hovered
-                          ? scheme.onSurface
-                          : scheme.onSurfaceVariant,
+          if (thumb != null)
+            AnimatedPositioned.fromRect(
+              rect: thumb,
+              duration: Motion.of(context, Motion.normal),
+              curve: Motion.move,
+              child: DecoratedBox(decoration: fill),
+            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final MapEntry(key: value, value: label) in widget.segments.entries)
+                Semantics(
+                  key: _segments.putIfAbsent(value, GlobalKey.new),
+                  button: true,
+                  enabled: enabled,
+                  selected: value == selected,
+                  child: _Pressable(
+                    onTap: onChanged == null ? null : () => onChanged(value),
+                    builder: (context, hovered, focused) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                      alignment: Alignment.center,
+                      decoration: (value == selected && thumb == null ? fill : const BoxDecoration()).copyWith(
+                        borderRadius: BorderRadius.circular(Radii.pill),
+                        border: _ring(context, focused, 0),
+                      ),
+                      child: Text(
+                        label,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: value == selected ? FontWeight.w600 : FontWeight.w500,
+                          color: !enabled
+                              ? palette.textMuted
+                              : value == selected || hovered
+                              ? scheme.onSurface
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
+            ],
+          ),
         ],
       ),
     );

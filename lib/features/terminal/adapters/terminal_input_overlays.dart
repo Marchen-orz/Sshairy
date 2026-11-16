@@ -58,35 +58,42 @@ extension _InputOverlays on _TerminalPaneState {
               top: offset.dy,
               width: width,
               height: height,
-              child: _CommandHistoryPopup(
-                session: _session,
-                active: widget.active,
-                pinned: _historyPinned,
-                onClose: _closeHistory,
-                onOutside: () {
-                  if (!_historyPinned) _closeHistory(restoreFocus: false);
-                },
-                onPin: () => _update(() => _historyPinned = !_historyPinned),
-                onDragStart: () => _update(() => _historyOffset = offset),
-                onDrag: (delta) => _update(() => _historyOffset = constrain((_historyOffset ?? offset) + delta)),
-                onResizeStart: () => _update(() {
-                  _historyOffset = offset;
-                  _historySize = Size(width, height);
-                }),
-                onResize: (delta) => _update(() {
-                  final size = _historySize ?? Size(width, height);
-                  _historySize = Size(
-                    (size.width + delta.dx).clamp(minWidth, min(maxWidth, constraints.maxWidth - offset.dx - Space.sm)),
-                    (size.height + delta.dy).clamp(
-                      minHeight,
-                      min(maxHeight, constraints.maxHeight - offset.dy - Space.sm),
-                    ),
-                  );
-                }),
-                onInserted: () {
-                  if (!_historyPinned) _closeHistory();
-                  _focus.requestFocus();
-                },
+              // Fades only: it sits on the terminal, and a shift or zoom would blur the text beside it.
+              child: Entrance(
+                offset: Offset.zero,
+                child: _CommandHistoryPopup(
+                  session: _session,
+                  active: widget.active,
+                  pinned: _historyPinned,
+                  onClose: _closeHistory,
+                  onOutside: () {
+                    if (!_historyPinned) _closeHistory(restoreFocus: false);
+                  },
+                  onPin: () => _update(() => _historyPinned = !_historyPinned),
+                  onDragStart: () => _update(() => _historyOffset = offset),
+                  onDrag: (delta) => _update(() => _historyOffset = constrain((_historyOffset ?? offset) + delta)),
+                  onResizeStart: () => _update(() {
+                    _historyOffset = offset;
+                    _historySize = Size(width, height);
+                  }),
+                  onResize: (delta) => _update(() {
+                    final size = _historySize ?? Size(width, height);
+                    _historySize = Size(
+                      (size.width + delta.dx).clamp(
+                        minWidth,
+                        min(maxWidth, constraints.maxWidth - offset.dx - Space.sm),
+                      ),
+                      (size.height + delta.dy).clamp(
+                        minHeight,
+                        min(maxHeight, constraints.maxHeight - offset.dy - Space.sm),
+                      ),
+                    );
+                  }),
+                  onInserted: () {
+                    if (!_historyPinned) _closeHistory();
+                    _focus.requestFocus();
+                  },
+                ),
               ),
             ),
           ],
@@ -102,12 +109,15 @@ extension _InputOverlays on _TerminalPaneState {
         alignment: Alignment.bottomCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: WorkspaceSize.settingsDialog, maxHeight: WorkspaceSize.toolPanel),
-          child: _MultilineComposer(
-            session: _session,
-            generation: _composerGeneration!,
-            confirmMultiline: ref.read(settingsProvider).get(SettingKeys.confirmPaste),
-            onClose: _closeComposer,
-            onOutside: () => _closeComposer(restoreFocus: false),
+          child: Entrance(
+            offset: Offset.zero,
+            child: _MultilineComposer(
+              session: _session,
+              generation: _composerGeneration!,
+              confirmMultiline: ref.read(settingsProvider).get(SettingKeys.confirmPaste),
+              onClose: _closeComposer,
+              onOutside: () => _closeComposer(restoreFocus: false),
+            ),
           ),
         ),
       ),

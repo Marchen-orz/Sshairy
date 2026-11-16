@@ -91,7 +91,7 @@ class DockPanel extends StatefulWidget {
   State<DockPanel> createState() => _DockPanelState();
 }
 
-class _DockPanelState extends State<DockPanel> {
+class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMixin {
   final _panelKey = GlobalKey();
   final _focus = FocusNode();
   // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
@@ -100,10 +100,32 @@ class _DockPanelState extends State<DockPanel> {
   var _height = WorkspaceSize.dockBottom;
   double? _guide;
 
+  // The main view resizes once when the panel opens and once after it has left, never frame by frame, so a terminal
+  // there is not reflowed throughout the animation (UI §4).
+  late final _presence = AnimationController(vsync: this, duration: Motion.panel, value: widget.open ? 1 : 0)
+    ..addStatusListener((status) {
+      if (status.isDismissed && mounted) setState(() {});
+    });
+  // What a closing panel shows on its way out, as its owner may already have dropped it.
+  late Widget _leaving = widget.panel;
+
   bool get _vertical => widget.side == DockSide.bottom;
 
   @override
+  void didUpdateWidget(DockPanel old) {
+    super.didUpdateWidget(old);
+    if (old.open) _leaving = old.panel;
+    _presence.duration = Motion.of(context, Motion.panel);
+    if (widget.open != old.open) {
+      widget.open ? _presence.forward() : _presence.reverse();
+    } else if (widget.open && widget.side != old.side) {
+      _presence.forward(from: 0);
+    }
+  }
+
+  @override
   void dispose() {
+    _presence.dispose();
     _focus.dispose();
     super.dispose();
   }
@@ -132,40 +154,52 @@ class _DockPanelState extends State<DockPanel> {
       final extent = _vertical ? _clamp(_height, constraints) : _width;
       final overlay = !_vertical && constraints.maxWidth < _width + WorkspaceSize.terminalMin + WorkspaceSize.divider;
       final size = min(extent, _vertical ? constraints.maxHeight : constraints.maxWidth);
+      final present = widget.open || !_presence.isDismissed;
+      final edge = switch (widget.side) {
+        DockSide.left => AxisDirection.left,
+        DockSide.right => AxisDirection.right,
+        DockSide.bottom => AxisDirection.down,
+      };
       final panel = KeyedSubtree(
         key: _panelKey,
-        child: Material(
-          color: scheme.surface,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (widget.showHeader)
-                SizedBox(
-                  height: WorkspaceSize.control,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      ...widget.actions,
-                      IconButton(
-                        tooltip: widget.closeLabel,
-                        onPressed: widget.onClose,
-                        icon: const Icon(Icons.close, size: 16),
-                      ),
-                      const SizedBox(width: Space.xs),
-                    ],
+        child: IgnorePointer(
+          ignoring: !widget.open,
+          child: Material(
+            color: scheme.surface,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.showHeader)
+                  SizedBox(
+                    height: WorkspaceSize.control,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        ...widget.actions,
+                        IconButton(
+                          tooltip: widget.closeLabel,
+                          onPressed: widget.onClose,
+                          icon: const Icon(Icons.close, size: 16),
+                        ),
+                        const SizedBox(width: Space.xs),
+                      ],
+                    ),
                   ),
-                ),
-              Expanded(child: widget.panel),
-            ],
+                Expanded(child: widget.open ? widget.panel : _leaving),
+              ],
+            ),
           ),
         ),
       );
       final divider = _vertical
           ? const Divider(height: WorkspaceSize.divider)
           : const VerticalDivider(width: WorkspaceSize.divider);
-      final docked = widget.open && !overlay;
+      final docked = present && !overlay;
       final main = Expanded(child: widget.child);
-      final sized = _vertical ? SizedBox(height: size, child: panel) : SizedBox(width: size, child: panel);
+      final slid = ClipRect(
+        child: EdgeSlide(animation: _presence, from: edge, child: panel),
+      );
+      final sized = _vertical ? SizedBox(height: size, child: slid) : SizedBox(width: size, child: slid);
       final children = switch (widget.side) {
         DockSide.left => [
           if (docked) ...[sized, divider],
@@ -206,19 +240,27 @@ class _DockPanelState extends State<DockPanel> {
           _vertical
               ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)
               : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
-          if (widget.open && overlay) ...[
-            ModalBarrier(
-              color: Colors.black26,
-              dismissible: true,
-              onDismiss: widget.onClose,
-              semanticsLabel: widget.closeLabel,
+          if (present && overlay) ...[
+            FadeTransition(
+              opacity: _presence,
+              child: ModalBarrier(
+                color: Colors.black26,
+                dismissible: widget.open,
+                onDismiss: widget.onClose,
+                semanticsLabel: widget.closeLabel,
+              ),
             ),
             place(
               offset: 0,
               thickness: size,
-              child: CallbackShortcuts(
-                bindings: {const SingleActivator(LogicalKeyboardKey.escape): widget.onClose},
-                child: FocusScope(autofocus: true, child: panel),
+              child: EdgeSlide(
+                animation: _presence,
+                from: edge,
+                full: true,
+                child: CallbackShortcuts(
+                  bindings: {const SingleActivator(LogicalKeyboardKey.escape): widget.onClose},
+                  child: FocusScope(autofocus: true, child: panel),
+                ),
               ),
             ),
           ],

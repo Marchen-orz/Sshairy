@@ -445,52 +445,64 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
               Positioned(
                 top: Space.sm,
                 right: Space.lg,
-                child: _SearchBar(terminal: _terminal, controller: _controller, reveal: _reveal, onClose: _closeSearch),
+                child: Entrance(
+                  offset: const Offset(0, -6),
+                  child: _SearchBar(
+                    terminal: _terminal,
+                    controller: _controller,
+                    reveal: _reveal,
+                    onClose: _closeSearch,
+                  ),
+                ),
               ),
             if (_session.status != SessionStatus.connected)
               Center(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(Space.lg),
-                    child: switch (_session) {
-                      TerminalSession(status: SessionStatus.connecting) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                          const SizedBox(width: Space.md),
-                          Text(l.connecting),
-                        ],
-                      ),
-                      TerminalSession(reconnectIn: final n?) => Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_message(l, _session)),
-                          const SizedBox(height: Space.sm),
-                          Text(l.reconnectingIn(n)),
-                          const SizedBox(height: Space.md),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextButton(onPressed: _session.stopReconnect, child: Text(l.stop)),
-                              const SizedBox(width: Space.sm),
-                              FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
-                            ],
-                          ),
-                        ],
-                      ),
-                      _ => Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_session.status == SessionStatus.idle ? _session.targetLabel : _message(l, _session)),
-                          const SizedBox(height: Space.md),
-                          FilledButton(
-                            autofocus: true,
-                            onPressed: _connect,
-                            child: Text(_session.status == SessionStatus.idle ? l.connect : l.retry),
-                          ),
-                        ],
-                      ),
-                    },
+                child: Entrance(
+                  scale: .96,
+                  offset: Offset.zero,
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(Space.lg),
+                      child: switch (_session) {
+                        TerminalSession(status: SessionStatus.connecting) => Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                            const SizedBox(width: Space.md),
+                            Text(l.connecting),
+                          ],
+                        ),
+                        TerminalSession(reconnectIn: final n?) => Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_message(l, _session)),
+                            const SizedBox(height: Space.sm),
+                            Text(l.reconnectingIn(n)),
+                            const SizedBox(height: Space.md),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextButton(onPressed: _session.stopReconnect, child: Text(l.stop)),
+                                const SizedBox(width: Space.sm),
+                                FilledButton(autofocus: true, onPressed: _connect, child: Text(l.retry)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        _ => Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_session.status == SessionStatus.idle ? _session.targetLabel : _message(l, _session)),
+                            const SizedBox(height: Space.md),
+                            FilledButton(
+                              autofocus: true,
+                              onPressed: _connect,
+                              child: Text(_session.status == SessionStatus.idle ? l.connect : l.retry),
+                            ),
+                          ],
+                        ),
+                      },
+                    ),
                   ),
                 ),
               ),

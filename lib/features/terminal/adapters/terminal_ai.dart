@@ -325,16 +325,19 @@ extension _TerminalAiPane on _TerminalPaneState {
               left: offset.dx,
               top: offset.dy,
               width: width,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: height),
-                child: _InlineAiComposer(
-                  key: ObjectKey(_session._inlineAi.context),
-                  session: _session,
-                  service: _aiService!,
-                  isActive: () => mounted && widget.active && widget.visible && _applicationActive && _inlineAiOpen,
-                  onClose: _closeInlineAi,
-                  onDrag: (delta) => _update(() => _inlineAiOffset = constrain((_inlineAiOffset ?? offset) + delta)),
-                  onAskAgent: widget.onAskAgent,
+              child: Entrance(
+                offset: Offset.zero,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: height),
+                  child: _InlineAiComposer(
+                    key: ObjectKey(_session._inlineAi.context),
+                    session: _session,
+                    service: _aiService!,
+                    isActive: () => mounted && widget.active && widget.visible && _applicationActive && _inlineAiOpen,
+                    onClose: _closeInlineAi,
+                    onDrag: (delta) => _update(() => _inlineAiOffset = constrain((_inlineAiOffset ?? offset) + delta)),
+                    onAskAgent: widget.onAskAgent,
+                  ),
                 ),
               ),
             ),

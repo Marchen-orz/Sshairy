@@ -328,12 +328,14 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                       ),
                     ),
                     const Divider(height: 1),
-                    if (_historyExpanded)
-                      ConstrainedBox(
+                    Reveal(
+                      open: _historyExpanded,
+                      child: ConstrainedBox(
                         key: const ValueKey('ai-agent-history-list'),
                         constraints: BoxConstraints(maxHeight: min(240, constraints.maxHeight * .32)),
                         child: _History(conversations: conversations, onChoice: _history),
                       ),
+                    ),
                     Expanded(
                       child: runtime.timeline.isEmpty && !runtime.busy
                           ? _Welcome(
@@ -1134,6 +1136,9 @@ class _Conversation extends StatefulWidget {
 class _ConversationState extends State<_Conversation> {
   final _scroll = ScrollController();
   final _keys = <AgentTimelineEntry, GlobalKey>{};
+  // Entries on screen when a conversation opens appear at once; later ones ease in, and only the first time.
+  final _shown = Set<AgentTimelineEntry>.identity();
+  var _primed = false;
   String? _highlighted;
   int _navigation = 0, _revealVersion = 0;
 
@@ -1172,6 +1177,8 @@ class _ConversationState extends State<_Conversation> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
       _keys.clear();
+      _shown.clear();
+      _primed = false;
       _highlighted = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) scrollToBottom();
@@ -1273,6 +1280,10 @@ class _ConversationState extends State<_Conversation> {
     final entries = _entries;
     final current = entries.toSet();
     _keys.removeWhere((entry, _) => !current.contains(entry));
+    if (!_primed) {
+      _primed = true;
+      _shown.addAll(entries);
+    }
     final references = <String, String>{};
     final ambiguous = <String>{};
     for (final execution in entries.whereType<AgentExecution>()) {
@@ -1440,15 +1451,22 @@ class _ConversationState extends State<_Conversation> {
                 ),
               );
             }
-            return KeyedSubtree(key: _keys.putIfAbsent(entry, GlobalKey.new), child: row);
+            return KeyedSubtree(
+              key: _keys.putIfAbsent(entry, GlobalKey.new),
+              child: Entrance(play: _shown.add(entry), offset: const Offset(0, 8), child: row),
+            );
           }
           index -= items.length;
           if (approval != null) {
             if (index == 0) {
-              return _ApprovalCard(
-                approval: approval,
-                onApprove: () => widget.runtime.approve(true, expected: approval),
-                onReject: () => widget.runtime.approve(false, expected: approval),
+              return Entrance(
+                key: ObjectKey(approval),
+                offset: const Offset(0, 8),
+                child: _ApprovalCard(
+                  approval: approval,
+                  onApprove: () => widget.runtime.approve(true, expected: approval),
+                  onReject: () => widget.runtime.approve(false, expected: approval),
+                ),
               );
             }
             index--;
@@ -1517,16 +1535,26 @@ class _ReasoningSummaryState extends State<_ReasoningSummary> {
                 children: [
                   Text(label, style: style),
                   const SizedBox(width: Space.xs),
-                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 14),
+                  AnimatedRotation(
+                    turns: _expanded ? .5 : 0,
+                    duration: Motion.of(context, Motion.normal),
+                    curve: Motion.move,
+                    child: const Icon(Icons.expand_more, size: 14),
+                  ),
                 ],
               ),
             ),
-            Text(
-              summary,
-              key: const ValueKey('ai-agent-reasoning-summary'),
-              maxLines: _expanded ? null : 2,
-              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-              style: style,
+            AnimatedSize(
+              duration: Motion.of(context, Motion.normal),
+              curve: Motion.move,
+              alignment: Alignment.topLeft,
+              child: Text(
+                summary,
+                key: const ValueKey('ai-agent-reasoning-summary'),
+                maxLines: _expanded ? null : 2,
+                overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                style: style,
+              ),
             ),
           ],
         ],
@@ -1637,7 +1665,12 @@ class _ThinkingFlowState extends State<_ThinkingFlow> {
               onTap: () => setState(() => _expanded = !_expanded),
               child: Row(
                 children: [
-                  Icon(expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 17),
+                  AnimatedRotation(
+                    turns: expanded ? .25 : 0,
+                    duration: Motion.of(context, Motion.normal),
+                    curve: Motion.move,
+                    child: const Icon(Icons.chevron_right_rounded, size: 17),
+                  ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1673,10 +1706,16 @@ class _ThinkingFlowState extends State<_ThinkingFlow> {
                 ],
               ),
             ),
-            if (expanded) ...[
-              const SizedBox(height: Space.sm),
-              for (final step in widget.steps) widget.stepBuilder(step),
-            ],
+            Reveal(
+              open: expanded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: Space.sm),
+                  for (final step in widget.steps) widget.stepBuilder(step),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1790,7 +1829,12 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                   visualDensity: VisualDensity.compact,
                   tooltip: _expanded ? l.aiAgentHideOutput : l.aiAgentShowOutput,
                   onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.chevron_right_rounded, size: 17),
+                  icon: AnimatedRotation(
+                    turns: _expanded ? .25 : 0,
+                    duration: Motion.of(context, Motion.normal),
+                    curve: Motion.move,
+                    child: const Icon(Icons.chevron_right_rounded, size: 17),
+                  ),
                 ),
                 Expanded(
                   child: Tooltip(
@@ -1817,45 +1861,53 @@ class _ExecutionCardState extends State<_ExecutionCard> {
                 ),
               ],
             ),
-            if (_expanded) ...[
-              if (!execution.archived && execution.target.isNotEmpty)
-                Text(execution.target, style: theme.textTheme.labelMedium),
-              const SizedBox(height: Space.sm),
-              Wrap(
-                spacing: Space.md,
-                runSpacing: Space.xs,
+            Reveal(
+              open: _expanded,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(status, style: theme.textTheme.bodySmall),
-                  if (failure != null && failure != status) Text(failure, style: theme.textTheme.bodySmall),
-                  if (execution.exitCode case final code?)
-                    Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
-                  if (execution.historyTruncated || (output?.truncated ?? false))
-                    Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
+                  if (!execution.archived && execution.target.isNotEmpty)
+                    Text(execution.target, style: theme.textTheme.labelMedium),
+                  const SizedBox(height: Space.sm),
+                  Wrap(
+                    spacing: Space.md,
+                    runSpacing: Space.xs,
+                    children: [
+                      Text(status, style: theme.textTheme.bodySmall),
+                      if (failure != null && failure != status) Text(failure, style: theme.textTheme.bodySmall),
+                      if (execution.exitCode case final code?)
+                        Text(l.aiAgentExitCode(code), style: theme.textTheme.bodySmall),
+                      if (execution.historyTruncated || (output?.truncated ?? false))
+                        Text(l.aiAgentTruncated, style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                  if (execution.archived && !compact) ...[
+                    const SizedBox(height: Space.sm),
+                    Text(l.aiAgentHistoryOutputUnavailable, style: theme.textTheme.bodySmall),
+                    if (execution.sharedText?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: Space.sm),
+                      Text(execution.sharedText!, style: mono(context, theme.textTheme.bodySmall)),
+                    ],
+                  ],
+                  if (!execution.archived &&
+                      execution.capability == 'agent.execute' &&
+                      execution.command.isNotEmpty) ...[
+                    const SizedBox(height: Space.sm),
+                    Text(execution.command, style: mono(context, theme.textTheme.bodySmall)),
+                  ],
+                  if (!execution.archived && execution.cwd.isNotEmpty) ...[
+                    const SizedBox(height: Space.sm),
+                    Text(execution.cwd, style: mono(context, theme.textTheme.bodySmall)),
+                  ],
+                  if (!execution.archived && output != null && output.length > 0) ...[
+                    const SizedBox(height: Space.sm),
+                    const Divider(height: 1),
+                    const SizedBox(height: Space.sm),
+                    Text(output.excerpt, style: mono(context, theme.textTheme.bodySmall)),
+                  ],
                 ],
               ),
-              if (execution.archived && !compact) ...[
-                const SizedBox(height: Space.sm),
-                Text(l.aiAgentHistoryOutputUnavailable, style: theme.textTheme.bodySmall),
-                if (execution.sharedText?.isNotEmpty ?? false) ...[
-                  const SizedBox(height: Space.sm),
-                  Text(execution.sharedText!, style: mono(context, theme.textTheme.bodySmall)),
-                ],
-              ],
-              if (!execution.archived && execution.capability == 'agent.execute' && execution.command.isNotEmpty) ...[
-                const SizedBox(height: Space.sm),
-                Text(execution.command, style: mono(context, theme.textTheme.bodySmall)),
-              ],
-              if (!execution.archived && execution.cwd.isNotEmpty) ...[
-                const SizedBox(height: Space.sm),
-                Text(execution.cwd, style: mono(context, theme.textTheme.bodySmall)),
-              ],
-              if (!execution.archived && output != null && output.length > 0) ...[
-                const SizedBox(height: Space.sm),
-                const Divider(height: 1),
-                const SizedBox(height: Space.sm),
-                Text(output.excerpt, style: mono(context, theme.textTheme.bodySmall)),
-              ],
-            ],
+            ),
           ],
         ),
       ),

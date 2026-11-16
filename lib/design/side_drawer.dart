@@ -64,15 +64,7 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
         ),
       ),
     ),
-    transitionBuilder: (context, animation, _, child) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween(begin: Offset(right ? .06 : -.06, 0), end: Offset.zero).animate(curved),
-          child: child,
-        ),
-      );
-    },
+    transitionBuilder: (context, animation, _, child) =>
+        popupTransition(context, animation, child, offset: Offset(right ? 32 : -32, 0)),
   );
 }

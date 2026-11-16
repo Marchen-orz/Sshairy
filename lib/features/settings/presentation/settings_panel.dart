@@ -570,22 +570,32 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                                     child: Semantics(
                                       selected: index == _selected,
                                       inMutuallyExclusiveGroup: true,
-                                      child: TextButton(
-                                        key: ValueKey('settings-tab-$index'),
-                                        style: TextButton.styleFrom(
-                                          alignment: compact ? Alignment.center : Alignment.centerLeft,
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: compact ? Space.sm : Space.md,
-                                            vertical: Space.md,
+                                      child: TweenAnimationBuilder<double>(
+                                        tween: Tween(end: index == _selected ? 1 : 0),
+                                        duration: Motion.of(context, Motion.normal),
+                                        curve: Motion.move,
+                                        builder: (context, t, child) => TextButton(
+                                          key: ValueKey('settings-tab-$index'),
+                                          style: TextButton.styleFrom(
+                                            alignment: compact ? Alignment.center : Alignment.centerLeft,
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: compact ? Space.sm : Space.md,
+                                              vertical: Space.md,
+                                            ),
+                                            backgroundColor: t == 0
+                                                ? null
+                                                : theme.colorScheme.primaryContainer.withValues(
+                                                    alpha: theme.colorScheme.primaryContainer.a * t,
+                                                  ),
+                                            foregroundColor: Color.lerp(
+                                              theme.colorScheme.onSurfaceVariant,
+                                              theme.colorScheme.onPrimaryContainer,
+                                              t,
+                                            ),
                                           ),
-                                          backgroundColor: index == _selected
-                                              ? theme.colorScheme.primaryContainer
-                                              : null,
-                                          foregroundColor: index == _selected
-                                              ? theme.colorScheme.onPrimaryContainer
-                                              : theme.colorScheme.onSurfaceVariant,
+                                          onPressed: () => _goTo(index),
+                                          child: child!,
                                         ),
-                                        onPressed: () => _goTo(index),
                                         child: compact
                                             ? Column(
                                                 mainAxisSize: MainAxisSize.min,

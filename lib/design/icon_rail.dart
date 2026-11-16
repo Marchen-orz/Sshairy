@@ -49,7 +49,12 @@ class IconRail extends StatelessWidget {
             children: [
               SizedBox(
                 height: expanded ? WorkspaceSize.navigationHeader : WorkspaceSize.titleBar,
-                child: expanded ? expandedHeader : header,
+                child: AnimatedSwitcher(
+                  duration: Motion.of(context, Motion.normal),
+                  switchInCurve: Motion.enter,
+                  switchOutCurve: Motion.exit,
+                  child: KeyedSubtree(key: ValueKey(expanded), child: expanded ? expandedHeader : header),
+                ),
               ),
               const SizedBox(height: Space.xs),
               Expanded(
@@ -114,10 +119,18 @@ class _RailButton extends StatelessWidget {
           selected: item.selected,
           label: item.label,
           excludeSemantics: true,
-          child: Material(
-            color: item.selected ? palette.navigationSelection : Colors.transparent,
-            borderRadius: BorderRadius.circular(Radii.control),
-            clipBehavior: Clip.antiAlias,
+          child: TweenAnimationBuilder<Color?>(
+            tween: ColorTween(
+              end: item.selected ? palette.navigationSelection : palette.navigationSelection.withAlpha(0),
+            ),
+            duration: Motion.of(context, Motion.normal),
+            curve: Motion.move,
+            builder: (context, color, child) => Material(
+              color: color,
+              borderRadius: BorderRadius.circular(Radii.control),
+              clipBehavior: Clip.antiAlias,
+              child: child,
+            ),
             child: InkWell(
               onTap: item.onTap,
               hoverColor: scheme.onSurface.withValues(alpha: .06),
@@ -132,13 +145,17 @@ class _RailButton extends StatelessWidget {
                             icon,
                             const SizedBox(width: Space.md),
                             Expanded(
-                              child: Text(
-                                item.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: color,
-                                  fontWeight: item.selected ? FontWeight.w600 : FontWeight.w400,
+                              // Labels ease in beside the icons as the column widens.
+                              child: Entrance(
+                                offset: const Offset(-6, 0),
+                                child: Text(
+                                  item.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: color,
+                                    fontWeight: item.selected ? FontWeight.w600 : FontWeight.w400,
+                                  ),
                                 ),
                               ),
                             ),
