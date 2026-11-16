@@ -260,16 +260,16 @@ gboolean sshairy_renderer_preference(GApplication* application) {
   const gchar* directory = !g_file_test(current, G_FILE_TEST_IS_DIR) && g_file_test(legacy, G_FILE_TEST_IS_DIR) ? legacy : current;
   g_autofree gchar* path = g_build_filename(directory, "settings.json", nullptr);
   GStatBuf info = {};
-  if (g_stat(path, &info) != 0 || info.st_size < 0 || info.st_size > 1024 * 1024) return FALSE;
+  if (g_stat(path, &info) != 0 || info.st_size < 0 || info.st_size > 1024 * 1024) return TRUE;
   gchar* contents = nullptr;
   gsize length = 0;
-  if (!g_file_get_contents(path, &contents, &length, nullptr)) return FALSE;
+  if (!g_file_get_contents(path, &contents, &length, nullptr)) return TRUE;
   g_autoptr(GBytes) bytes = g_bytes_new_take(contents, length);
   g_autoptr(FlJsonMessageCodec) codec = fl_json_message_codec_new();
   g_autoptr(FlValue) settings = fl_message_codec_decode_message(FL_MESSAGE_CODEC(codec), bytes, nullptr);
-  if (settings == nullptr || fl_value_get_type(settings) != FL_VALUE_TYPE_MAP) return FALSE;
+  if (settings == nullptr || fl_value_get_type(settings) != FL_VALUE_TYPE_MAP) return TRUE;
   FlValue* value = fl_value_lookup_string(settings, "renderer");
-  return value != nullptr && fl_value_get_type(value) == FL_VALUE_TYPE_STRING && strcmp(fl_value_get_string(value), "impeller") == 0;
+  return value == nullptr || fl_value_get_type(value) != FL_VALUE_TYPE_STRING || strcmp(fl_value_get_string(value), "skia") != 0;
 }
 
 void sshairy_register_desktop_bridge(GtkWindow* window, FlView* view) {

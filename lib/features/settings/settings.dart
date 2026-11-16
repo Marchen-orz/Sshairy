@@ -265,7 +265,7 @@ abstract final class SettingKeys {
   static const locale = OptionalChoice('locale', ['zh', 'en']);
   static const renderer = EnumSetting(
     'renderer',
-    Renderer.skia,
+    Renderer.impeller,
     Renderer.values,
     apply: ApplyMode.restart,
     agentExposed: false,

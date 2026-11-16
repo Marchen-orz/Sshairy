@@ -475,7 +475,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get more => 'More';
 
   @override
-  String get renderer => 'Renderer';
+  String get renderer => 'Rendering';
+
+  @override
+  String get rendererSmooth => 'Smooth';
+
+  @override
+  String get rendererLight => 'Lightweight';
+
+  @override
+  String get rendererSmoothHint =>
+      'Impeller engine: steadier animation, about 150 MB more memory';
+
+  @override
+  String get rendererLightHint =>
+      'Skia engine: less memory, but animations may stutter the first time they appear';
 
   @override
   String get restartToApply => 'Takes effect after restart';

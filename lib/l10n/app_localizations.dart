@@ -911,8 +911,32 @@ abstract class AppLocalizations {
   /// No description provided for @renderer.
   ///
   /// In en, this message translates to:
-  /// **'Renderer'**
+  /// **'Rendering'**
   String get renderer;
+
+  /// No description provided for @rendererSmooth.
+  ///
+  /// In en, this message translates to:
+  /// **'Smooth'**
+  String get rendererSmooth;
+
+  /// No description provided for @rendererLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Lightweight'**
+  String get rendererLight;
+
+  /// No description provided for @rendererSmoothHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Impeller engine: steadier animation, about 150 MB more memory'**
+  String get rendererSmoothHint;
+
+  /// No description provided for @rendererLightHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Skia engine: less memory, but animations may stutter the first time they appear'**
+  String get rendererLightHint;
 
   /// No description provided for @restartToApply.
   ///

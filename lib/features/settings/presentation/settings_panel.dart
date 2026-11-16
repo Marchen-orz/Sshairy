@@ -400,8 +400,11 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
           _Field.stacked(
             l.renderer,
-            segmented(SettingKeys.renderer, const {Renderer.skia: 'Skia', Renderer.impeller: 'Impeller'}),
-            hint: hint(SettingKeys.renderer),
+            segmented(SettingKeys.renderer, {Renderer.impeller: l.rendererSmooth, Renderer.skia: l.rendererLight}),
+            hint: [
+              settings.renderer == Renderer.impeller ? l.rendererSmoothHint : l.rendererLightHint,
+              ?hint(SettingKeys.renderer),
+            ].join(' · '),
           ),
       ]),
       _Section(SettingsSectionId.terminal, l.terminal, Icons.terminal_outlined, [

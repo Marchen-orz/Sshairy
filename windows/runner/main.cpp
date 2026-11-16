@@ -10,8 +10,8 @@
 #include "flutter_window.h"
 #include "utils.h"
 
-// Skia by default (docs/DESIGN.md ADR-11). The engine takes the renderer only at startup, so this reads
-// the settings file the app writes. The path is what path_provider derives from Runner.rc
+// Impeller unless the user chose Skia (docs/DESIGN.md ADR-11). The engine takes the renderer only at startup,
+// so this reads the settings file the app writes. The path is what path_provider derives from Runner.rc
 // (CompanyName\ProductName under the roaming app data folder).
 static bool UseImpeller() {
   // Integration tests inject temporary Dart data; skip the native preference read as well.
@@ -23,14 +23,14 @@ static bool UseImpeller() {
   wchar_t *app_data = nullptr;
   if (FAILED(::SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &app_data))) {
     ::CoTaskMemFree(app_data);
-    return false;
+    return true;
   }
   std::wstring path = std::wstring(app_data) + L"\\dev.sshairy\\sshairy\\settings.json";
   ::CoTaskMemFree(app_data);
   std::ifstream file(path);
   std::stringstream text;
   text << file.rdbuf();
-  return std::regex_search(text.str(), std::regex(R"("renderer"\s*:\s*"impeller")"));
+  return !std::regex_search(text.str(), std::regex(R"("renderer"\s*:\s*"skia")"));
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,

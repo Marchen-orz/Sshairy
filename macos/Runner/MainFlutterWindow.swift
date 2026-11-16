@@ -43,13 +43,13 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private func rendererPreference() -> Bool {
     if ProcessInfo.processInfo.environment["SSHAIRY_TEST_ISOLATED"] == "1" { return false }
     guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
-          let identifier = Bundle.main.bundleIdentifier else { return false }
+          let identifier = Bundle.main.bundleIdentifier else { return true }
     let path = support.appendingPathComponent(identifier).appendingPathComponent("settings.json")
     guard let attributes = try? FileManager.default.attributesOfItem(atPath: path.path),
           let size = attributes[.size] as? NSNumber, size.intValue <= 1_048_576,
           let data = try? Data(contentsOf: path),
-          let settings = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
-    return settings["renderer"] as? String == "impeller"
+          let settings = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return true }
+    return settings["renderer"] as? String != "skia"
   }
 
   private func windowState() -> [String: Any] {
