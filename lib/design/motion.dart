@@ -299,11 +299,13 @@ class _PopupMotionState extends State<_PopupMotion> with SingleTickerProviderSta
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _fade,
-    child: MotionSnapshot(child: RepaintBoundary(child: widget.child)),
+    // Scrollbar gutters and async form content can settle after the first frame. Keep the popup live so those
+    // updates appear during entrance, instead of revealing a different width when a cached first frame is released.
+    child: RepaintBoundary(child: widget.child),
     builder: (context, child) => _Shifted(
       t: _fade.value,
       offset: widget.offset,
-      // Paint the first snapshot before starting the clock; an exactly transparent layer would skip that paint.
+      // Paint the content before starting the clock; an exactly transparent layer would skip that paint.
       paintAtZero: _enter.value == 0 && widget.route.status == AnimationStatus.forward,
       child: child!,
     ),
