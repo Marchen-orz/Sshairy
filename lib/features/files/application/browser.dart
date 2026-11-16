@@ -261,10 +261,13 @@ class FileBrowser extends ChangeNotifier {
     _notify();
   }
 
-  void toggleHidden() {
-    showHidden = !showHidden;
+  void setShowHidden(bool value) {
+    if (showHidden == value) return;
+    showHidden = value;
     _notify();
   }
+
+  void toggleHidden() => setShowHidden(!showHidden);
 
   /// Click semantics: plain replaces, [toggle] (Ctrl/Cmd) adds or removes, [range] (Shift) extends from the anchor.
   void select(String name, {bool toggle = false, bool range = false}) {

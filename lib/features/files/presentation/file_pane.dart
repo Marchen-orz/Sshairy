@@ -17,6 +17,7 @@ import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
+import '../../settings/api.dart';
 import '../adapters/desktop.dart';
 import '../application/browser.dart';
 import '../application/edits.dart';
@@ -76,6 +77,18 @@ class _FilePaneState extends ConsumerState<FilePane> {
   FileBrowser get b => widget.browser;
   AppLocalizations get l => AppLocalizations.of(context);
   TransferManager get _transfers => ref.read(transfersProvider.notifier);
+
+  @override
+  void initState() {
+    super.initState();
+    b.setShowHidden(ref.read(settingsProvider).get(SettingKeys.showHidden));
+  }
+
+  @override
+  void didUpdateWidget(FilePane old) {
+    super.didUpdateWidget(old);
+    if (old.browser != b) b.setShowHidden(ref.read(settingsProvider).get(SettingKeys.showHidden));
+  }
 
   @override
   void dispose() {
@@ -331,6 +344,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    ref.listen(settingsProvider.select((s) => s.get(SettingKeys.showHidden)), (_, value) => b.setShowHidden(value));
     ref.listen(transfersProvider, (before, now) {
       final running = {
         for (final t in before ?? const <Transfer>[])
@@ -436,7 +450,11 @@ class _FilePaneState extends ConsumerState<FilePane> {
                   ],
                   AppMenuItem(value: _newFolder, label: l.newFolder),
                   if (!b.local) AppMenuItem(value: _uploadPicked, label: l.uploadFiles),
-                  AppMenuItem(checked: b.showHidden, value: b.toggleHidden, label: l.hiddenFiles),
+                  AppMenuItem(
+                    checked: b.showHidden,
+                    value: () => ref.read(settingsProvider.notifier).set(SettingKeys.showHidden, !b.showHidden),
+                    label: l.hiddenFiles,
+                  ),
                   AppMenuItem(
                     value: () => Clipboard.setData(ClipboardData(text: b.path)),
                     label: l.copyPath,
