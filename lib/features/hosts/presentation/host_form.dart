@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/form_field.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/secret.dart';
@@ -242,70 +243,73 @@ class _HostFormState extends ConsumerState<HostForm> {
     final library = ref.watch(hostLibraryProvider);
     final old = _seed;
     final path = normalizeGroup(_group.text);
-    return Form(
-      key: _form,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: ExcludeFocus(
-              excluding: _saving || _missing,
-              child: AbsorbPointer(
-                absorbing: _saving || _missing,
-                child: ListView(
-                  padding: const EdgeInsets.only(top: Space.sm),
-                  children: [
-                    TextFormField(
-                      controller: _label,
-                      autofocus: true,
-                      decoration: InputDecoration(labelText: l.label),
-                    ),
-                    formGap,
-                    TextFormField(
-                      controller: _address,
-                      validator: (v) => requiredField(l, v),
-                      decoration: InputDecoration(labelText: l.address),
-                    ),
-                    formGap,
-                    Autocomplete<String>(
-                      textEditingController: _group,
-                      focusNode: _groupFocus,
-                      optionsBuilder: (v) =>
-                          library.groupPaths.where((g) => g.toLowerCase().contains(v.text.toLowerCase())),
-                      onSelected: (_) => setState(() {}),
-                      fieldViewBuilder: (context, controller, focus, onSubmit) => TextFormField(
-                        controller: controller,
-                        focusNode: focus,
-                        onChanged: (_) => setState(() {}),
-                        decoration: InputDecoration(labelText: l.group, hintText: 'prod/web'),
+    return FloatingLabelFields(
+      child: Form(
+        key: _form,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ExcludeFocus(
+                excluding: _saving || _missing,
+                child: AbsorbPointer(
+                  absorbing: _saving || _missing,
+                  child: ListView(
+                    padding: const EdgeInsets.only(top: Space.sm),
+                    children: [
+                      TextFormField(
+                        controller: _label,
+                        autofocus: true,
+                        decoration: InputDecoration(labelText: l.label),
                       ),
-                    ),
-                    formGap,
-                    TextFormField(
-                      controller: _tags,
-                      decoration: InputDecoration(labelText: l.tags, hintText: l.tagsHint),
-                    ),
-                    formGap,
-                    ConnectionEditor(
-                      key: _connection,
-                      initial: old?.overrides ?? (old == null ? const ConnectionOverrides() : explicitConnection(old)),
-                      // A host in a group that does not exist yet inherits from the groups above that path, if any.
-                      inherited: library.resolveConnection(_resolvableGroup(library, path), null),
-                      self: _id,
-                      fresh: old == null,
-                      passwordField: _passwordField(l),
-                    ),
-                  ],
+                      formGap,
+                      TextFormField(
+                        controller: _address,
+                        validator: (v) => requiredField(l, v),
+                        decoration: InputDecoration(labelText: l.address),
+                      ),
+                      formGap,
+                      Autocomplete<String>(
+                        textEditingController: _group,
+                        focusNode: _groupFocus,
+                        optionsBuilder: (v) =>
+                            library.groupPaths.where((g) => g.toLowerCase().contains(v.text.toLowerCase())),
+                        onSelected: (_) => setState(() {}),
+                        fieldViewBuilder: (context, controller, focus, onSubmit) => TextFormField(
+                          controller: controller,
+                          focusNode: focus,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(labelText: l.group, hintText: 'prod/web'),
+                        ),
+                      ),
+                      formGap,
+                      TextFormField(
+                        controller: _tags,
+                        decoration: InputDecoration(labelText: l.tags, hintText: l.tagsHint),
+                      ),
+                      formGap,
+                      ConnectionEditor(
+                        key: _connection,
+                        initial:
+                            old?.overrides ?? (old == null ? const ConnectionOverrides() : explicitConnection(old)),
+                        // A host in a group that does not exist yet inherits from the groups above that path, if any.
+                        inherited: library.resolveConnection(_resolvableGroup(library, path), null),
+                        self: _id,
+                        fresh: old == null,
+                        passwordField: _passwordField(l),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          FormFooter(
-            onSave: _save,
-            saving: _saving || _missing || _loadingPassword || _passwordError,
-            error: _missing ? l.fwErrHost : _error,
-          ),
-        ],
+            FormFooter(
+              onSave: _save,
+              saving: _saving || _missing || _loadingPassword || _passwordError,
+              error: _missing ? l.fwErrHost : _error,
+            ),
+          ],
+        ),
       ),
     );
   }

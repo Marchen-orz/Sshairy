@@ -4,6 +4,46 @@ import 'package:flutter/material.dart';
 
 import 'theme.dart';
 
+/// For forms whose text fields float their label inside the box: those fields and [AppSelect]s below share one
+/// height, a little taller than [AppFormField.height] so the floating label fits.
+class FloatingLabelFields extends StatelessWidget {
+  const FloatingLabelFields({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => _FloatingLabelScope(
+    child: Builder(
+      builder: (context) {
+        final theme = Theme.of(context);
+        final line = TextPainter(
+          text: TextSpan(text: ' ', style: theme.textTheme.bodyLarge),
+          textDirection: TextDirection.ltr,
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        // An outlined label floats on the border, so the input line and its padding make up the whole height.
+        final inset = max(2.0, (AppFormField.height(context) - line.preferredLineHeight) / 2);
+        line.dispose();
+        return Theme(
+          data: theme.copyWith(
+            inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: inset),
+            ),
+          ),
+          child: child,
+        );
+      },
+    ),
+  );
+}
+
+class _FloatingLabelScope extends InheritedWidget {
+  const _FloatingLabelScope({required super.child});
+
+  @override
+  bool updateShouldNotify(_FloatingLabelScope oldWidget) => false;
+}
+
 /// Shared label placement and visible field geometry in settings forms.
 class AppFormField extends StatelessWidget {
   const AppFormField({super.key, required this.label, required this.child, this.helperText});
@@ -16,7 +56,8 @@ class AppFormField extends StatelessWidget {
     final style = Theme.of(context).textTheme.bodyMedium!;
     final line = MediaQuery.textScalerOf(context).scale(style.fontSize!) * (style.height ?? 1.5);
     // Matches AppSelect's painted box: rounded text line, vertical inset and border.
-    return max(WorkspaceSize.control, line.ceilToDouble() + Space.sm + 2);
+    final base = max(WorkspaceSize.control, line.ceilToDouble() + Space.sm + 2);
+    return context.dependOnInheritedWidgetOfExactType<_FloatingLabelScope>() == null ? base : base + Space.xs;
   }
 
   static Color fill(BuildContext context, {bool enabled = true}) =>

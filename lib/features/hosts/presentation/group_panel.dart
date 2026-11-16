@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/form_field.dart';
 import '../../../l10n/app_localizations.dart';
 import '../application/hosts.dart';
 import '../domain/host.dart';
@@ -71,33 +72,35 @@ class _GroupPanelState extends ConsumerState<GroupPanel> {
     final path = normalizeGroup(_path.text);
     // The group's own defaults sit on top of what its parent gives.
     final parent = path.contains('/') ? library.groupIdFor(path.substring(0, path.lastIndexOf('/'))) : null;
-    return Form(
-      key: _form,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: ListView(
-              children: [
-                TextFormField(
-                  controller: _path,
-                  autofocus: true,
-                  validator: (v) => requiredField(l, v) ?? (normalizeGroup(v!).isEmpty ? l.required : null),
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(labelText: l.group, hintText: 'prod/web'),
-                ),
-                formGap,
-                ConnectionEditor(
-                  key: _connection,
-                  initial: widget.group?.defaults ?? const ConnectionOverrides(),
-                  inherited: library.resolveConnection(parent, null),
-                  loginOptional: true,
-                ),
-              ],
+    return FloatingLabelFields(
+      child: Form(
+        key: _form,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ListView(
+                children: [
+                  TextFormField(
+                    controller: _path,
+                    autofocus: true,
+                    validator: (v) => requiredField(l, v) ?? (normalizeGroup(v!).isEmpty ? l.required : null),
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(labelText: l.group, hintText: 'prod/web'),
+                  ),
+                  formGap,
+                  ConnectionEditor(
+                    key: _connection,
+                    initial: widget.group?.defaults ?? const ConnectionOverrides(),
+                    inherited: library.resolveConnection(parent, null),
+                    loginOptional: true,
+                  ),
+                ],
+              ),
             ),
-          ),
-          FormFooter(onSave: _save, saving: _saving, error: _error),
-        ],
+            FormFooter(onSave: _save, saving: _saving, error: _error),
+          ],
+        ),
       ),
     );
   }
@@ -137,25 +140,27 @@ class _DefaultsPanelState extends ConsumerState<DefaultsPanel> {
   @override
   Widget build(BuildContext context) {
     final library = ref.read(hostLibraryProvider);
-    return Form(
-      key: _form,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: ListView(
-              children: [
-                ConnectionEditor(
-                  key: _connection,
-                  initial: library.defaults,
-                  inherited: HostLibrary().resolveConnection(null, null),
-                  loginOptional: true,
-                ),
-              ],
+    return FloatingLabelFields(
+      child: Form(
+        key: _form,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: ListView(
+                children: [
+                  ConnectionEditor(
+                    key: _connection,
+                    initial: library.defaults,
+                    inherited: HostLibrary().resolveConnection(null, null),
+                    loginOptional: true,
+                  ),
+                ],
+              ),
             ),
-          ),
-          FormFooter(onSave: _save, saving: _saving, error: _error),
-        ],
+            FormFooter(onSave: _save, saving: _saving, error: _error),
+          ],
+        ),
       ),
     );
   }
