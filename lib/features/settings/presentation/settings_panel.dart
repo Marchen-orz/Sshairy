@@ -401,10 +401,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           _Field.stacked(
             l.renderer,
             segmented(SettingKeys.renderer, {Renderer.impeller: l.rendererSmooth, Renderer.skia: l.rendererLight}),
-            hint: [
-              settings.renderer == Renderer.impeller ? l.rendererSmoothHint : l.rendererLightHint,
-              ?hint(SettingKeys.renderer),
-            ].join(' · '),
+            hint: settings.renderer == Renderer.impeller ? l.rendererSmoothHint : l.rendererLightHint,
+            warning: hint(SettingKeys.renderer),
           ),
       ]),
       _Section(SettingsSectionId.terminal, l.terminal, Icons.terminal_outlined, [
@@ -698,12 +696,15 @@ class _Section extends StatelessWidget {
 
 /// A label beside its control, or above it when the control needs the width.
 class _Field extends StatelessWidget {
-  const _Field(this.label, this.child, {this.hint}) : stacked = false;
-  const _Field.stacked(this.label, this.child, {this.hint}) : stacked = true;
+  const _Field(this.label, this.child, {this.hint, this.warning}) : stacked = false;
+  const _Field.stacked(this.label, this.child, {this.hint, this.warning}) : stacked = true;
 
   final String label;
   final Widget child;
   final String? hint;
+
+  /// Shown after [hint] in the error colour.
+  final String? warning;
   final bool stacked;
 
   @override
@@ -714,8 +715,20 @@ class _Field extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(label),
-        if (hint != null)
-          Text(hint!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        if (hint != null || warning != null)
+          Text.rich(
+            TextSpan(
+              text: hint,
+              children: [
+                if (warning != null)
+                  TextSpan(
+                    text: hint == null ? warning : ' · $warning',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+              ],
+            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
       ],
     );
     return LayoutBuilder(
