@@ -197,7 +197,6 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       _generation++;
       _providerIdentity = nextProvider;
       _identity = _draftIdentity;
-      _key.clear();
       _hasKey = _keyError = _removeKey = false;
       _checking = _identity != null;
       if (_identity != null) {
