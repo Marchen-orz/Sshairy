@@ -18,6 +18,9 @@ class FlutterWindow : public Win32Window {
   explicit FlutterWindow(const flutter::DartProject& project);
   virtual ~FlutterWindow();
 
+  // Remembers the frame and maximized state of a visible window for the next launch.
+  void SavePlacement();
+
  protected:
   // Win32Window:
   bool OnCreate() override;

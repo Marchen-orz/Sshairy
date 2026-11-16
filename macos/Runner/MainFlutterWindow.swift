@@ -28,6 +28,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     let windowFrame = frame
     contentViewController = controller
     setFrame(windowFrame, display: true)
+    // AppKit restores the last frame under this name and saves every move or resize.
+    setFrameAutosaveName("SshairyMainWindow")
     delegate = self
 
     RegisterGeneratedPlugins(registry: controller)

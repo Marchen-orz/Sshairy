@@ -5,6 +5,7 @@
 #include <shellapi.h>
 #include <windowsx.h>
 
+#include <algorithm>
 #include <cmath>
 #include <iterator>
 #include <map>
@@ -73,7 +74,59 @@ flutter::EncodableList SystemFonts() {
   return list;
 }
 
+constexpr wchar_t kPlacementKey[] = L"Software\\Sshairy";
+constexpr wchar_t kPlacementValue[] = L"WindowPlacement";
+
+// Integration tests inject temporary data and must neither read nor overwrite the user's window placement.
+bool IsolatedTest() {
+  wchar_t isolated[2] = {};
+  return ::GetEnvironmentVariableW(L"SSHAIRY_TEST_ISOLATED", isolated, 2) == 1 && isolated[0] == L'1';
+}
+
+// Shows the window where it was last closed, unless that frame no longer touches any monitor.
+bool RestorePlacement(HWND window) {
+  if (IsolatedTest()) return false;
+  WINDOWPLACEMENT placement = {};
+  DWORD size = sizeof(placement);
+  if (RegGetValueW(HKEY_CURRENT_USER, kPlacementKey, kPlacementValue, RRF_RT_REG_BINARY, nullptr, &placement,
+                   &size) != ERROR_SUCCESS ||
+      size != sizeof(placement) || placement.length != sizeof(placement) ||
+      MonitorFromRect(&placement.rcNormalPosition, MONITOR_DEFAULTTONULL) == nullptr) {
+    return false;
+  }
+  const bool maximized = placement.showCmd == SW_SHOWMAXIMIZED ||
+                         (placement.showCmd == SW_SHOWMINIMIZED && (placement.flags & WPF_RESTORETOMAXIMIZED));
+  placement.flags = 0;
+  // Moving onto a monitor with another DPI rescales the frame once; the second call applies the saved size.
+  placement.showCmd = SW_HIDE;
+  SetWindowPlacement(window, &placement);
+  placement.showCmd = maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+  return SetWindowPlacement(window, &placement) != FALSE;
+}
+
+void CenterOnMonitor(HWND window) {
+  RECT frame;
+  MONITORINFO monitor = {sizeof(monitor)};
+  if (!GetWindowRect(window, &frame) ||
+      !GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor)) {
+    return;
+  }
+  const RECT& work = monitor.rcWork;
+  const LONG x = work.left + (std::max)(0L, ((work.right - work.left) - (frame.right - frame.left)) / 2);
+  const LONG y = work.top + (std::max)(0L, ((work.bottom - work.top) - (frame.bottom - frame.top)) / 2);
+  SetWindowPos(window, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 }  // namespace
+
+void FlutterWindow::SavePlacement() {
+  const HWND window = GetHandle();
+  WINDOWPLACEMENT placement = {sizeof(placement)};
+  if (IsolatedTest() || window == nullptr || !IsWindowVisible(window) || !GetWindowPlacement(window, &placement)) {
+    return;
+  }
+  RegSetKeyValueW(HKEY_CURRENT_USER, kPlacementKey, kPlacementValue, REG_BINARY, &placement, sizeof(placement));
+}
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -109,7 +162,10 @@ bool FlutterWindow::OnCreate() {
       });
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    if (!RestorePlacement(GetHandle())) {
+      CenterOnMonitor(GetHandle());
+      this->Show();
+    }
   });
   flutter_controller_->ForceRedraw();
   return true;
@@ -216,6 +272,8 @@ void FlutterWindow::HandleWindowMethod(
     ReleaseCapture();
     SendMessage(window, WM_NCLBUTTONDOWN, HTCAPTION, 0);
   } else if (method == "hide") {
+    // Quitting hides the window first, while its frame is still the one the user left.
+    SavePlacement();
     ShowWindow(window, SW_HIDE);
   } else if (method == "show") {
     ShowWindow(window, IsIconic(window) ? SW_RESTORE : SW_SHOW);

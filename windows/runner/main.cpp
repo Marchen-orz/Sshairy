@@ -71,6 +71,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::TranslateMessage(&msg);
     ::DispatchMessage(&msg);
   }
+  window.SavePlacement();
   // Engine teardown can take seconds; it must not leave a frozen window on screen.
   ::ShowWindow(window.GetHandle(), SW_HIDE);
 
