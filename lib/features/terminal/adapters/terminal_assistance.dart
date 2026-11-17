@@ -71,7 +71,8 @@ extension _CommandAssistance on TerminalSession {
         bash: local.kind == LocalShellKind.gitBash,
       );
     }
-    return visibleShellCommand(before, tail);
+    // SSH also often prints a bare `$ ` or `# `; the same Bash prompt rule applies there.
+    return visibleUnixShellCommand(before, tail);
   }
 
   bool _requestCurrent(CommandCompletionRequest request) =>

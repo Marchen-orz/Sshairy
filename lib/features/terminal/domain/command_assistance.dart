@@ -105,7 +105,7 @@ String? visibleShellCommand(String beforeCursor, String afterCursor) {
   return commandIsSingleLine(command) ? command : null;
 }
 
-/// Default Unix prompts only; custom prompts still require semantic OSC boundaries.
+/// Default Unix prompts for local shells and SSH; custom prompts still require semantic OSC boundaries.
 String? visibleUnixShellCommand(String beforeCursor, String afterCursor, {bool percent = false, bool fish = false}) {
   if (afterCursor.trim().isNotEmpty) return null;
   if (!fish) {
