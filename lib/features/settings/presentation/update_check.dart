@@ -116,11 +116,12 @@ Future<void> showReleaseNotes(BuildContext context, UpdateState state) {
             separatorBuilder: (_, _) => const Divider(height: Space.xl),
             itemBuilder: (context, index) {
               final release = state.releases[index];
+              final notes = releaseNotesFor(release.notes, Localizations.localeOf(context).languageCode);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('${release.version} · ${release.title}', style: theme.textTheme.titleSmall),
-                  if (release.notes.isNotEmpty) ...[const SizedBox(height: Space.xs), _ReleaseNotes(release.notes)],
+                  if (notes.isNotEmpty) ...[const SizedBox(height: Space.xs), _ReleaseNotes(notes)],
                 ],
               );
             },

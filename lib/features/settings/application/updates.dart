@@ -45,6 +45,26 @@ ReleaseNote? _note(Map<String, dynamic> entry) {
   return ReleaseNote(version: version, title: title, notes: notes, url: url);
 }
 
+final _languageBlock = RegExp(r'<!--\s*([a-zA-Z-]+)\s*-->([\s\S]*?)<!--\s*/\1\s*-->');
+
+/// A body may carry one block per language, marked `<!-- zh -->`; pick the one the app speaks.
+/// Bodies without markers are shown as they are, which keeps older releases readable.
+String releaseNotesFor(String notes, String languageCode) {
+  final blocks = <String, String>{};
+  for (final match in _languageBlock.allMatches(notes)) {
+    // The first block for a language wins, so a stray repeated marker cannot shadow the real one.
+    blocks.putIfAbsent(match[1]!.toLowerCase(), () => match[2]!.trim());
+  }
+  if (blocks.isEmpty) return notes.trim();
+  final wanted = languageCode.toLowerCase();
+  final exact = blocks[wanted];
+  if (exact != null) return exact;
+  for (final entry in blocks.entries) {
+    if (entry.key.startsWith('$wanted-')) return entry.value;
+  }
+  return blocks['en'] ?? blocks.values.first;
+}
+
 /// Whether [candidate] is a later dotted number than [current]; anything unreadable counts as not newer.
 bool isNewerVersion(String candidate, String current) {
   final a = _numbers(candidate), b = _numbers(current);
