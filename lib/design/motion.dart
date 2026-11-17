@@ -212,6 +212,13 @@ class _RenderSnapshotLayout extends RenderProxyBox {
   }
 }
 
+/// Whether popups reveal by clipping their card instead of fading it. Skia spends about 130 ms the first
+/// time it clips a popup (measured on Windows), where Impeller draws the same reveal in a few milliseconds;
+/// the app sets this from the renderer in use.
+abstract final class PopupReveal {
+  static bool byClip = true;
+}
+
 /// A popup's optional fade and shift (a fade only when motion is reduced). It arrives on its own
 /// clock, started once the popup's first frame is built: a route's clock starts with the tap, so a costly first
 /// frame would otherwise skip half the entrance.
@@ -222,11 +229,13 @@ Widget popupTransition(
   Offset offset = Offset.zero,
   Duration duration = Motion.panel,
   bool fade = true,
+  CustomClipper<Rect> Function(Animation<double>)? clipper,
 }) => _PopupMotion(
   route: animation,
   offset: Motion.reduced(context) ? Offset.zero : offset,
   duration: duration,
   fade: fade || Motion.reduced(context),
+  clipper: Motion.reduced(context) ? null : clipper,
   child: child,
 );
 
@@ -236,9 +245,11 @@ class _PopupMotion extends StatefulWidget {
     required this.offset,
     required this.duration,
     required this.fade,
+    required this.clipper,
     required this.child,
   });
 
+  final CustomClipper<Rect> Function(Animation<double>)? clipper;
   final bool fade;
   final Animation<double> route;
   final Offset offset;
@@ -306,20 +317,26 @@ class _PopupMotionState extends State<_PopupMotion> with SingleTickerProviderSta
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _fade,
-    // Scrollbar gutters and async form content can settle after the first frame. Keep the popup live so those
-    // updates appear during entrance, instead of revealing a different width when a cached first frame is released.
-    child: RepaintBoundary(child: widget.child),
-    builder: (context, child) => _Shifted(
-      t: _fade.value,
-      offset: widget.offset,
-      fade: widget.fade,
-      // Paint the content before starting the clock; an exactly transparent layer would skip that paint.
-      paintAtZero: _enter.value == 0 && widget.route.status == AnimationStatus.forward,
-      child: child!,
-    ),
-  );
+  Widget build(BuildContext context) {
+    // Keep scrollbars and async content live; a cached first frame can reveal a different width at the end.
+    Widget child = RepaintBoundary(child: widget.child);
+    final clipper = widget.clipper;
+    if (clipper != null) child = ClipRect(clipper: clipper(_fade), child: child);
+    // A reclip listener updates only paint/semantics, keeping the popup's build and layout out of each tick.
+    if (!widget.fade && widget.offset == Offset.zero) return child;
+    return AnimatedBuilder(
+      animation: _fade,
+      child: child,
+      builder: (context, child) => _Shifted(
+        t: _fade.value,
+        offset: widget.offset,
+        fade: widget.fade,
+        // Paint the content before starting the clock; an exactly transparent layer would skip that paint.
+        paintAtZero: _enter.value == 0 && widget.route.status == AnimationStatus.forward,
+        child: child!,
+      ),
+    );
+  }
 }
 
 /// [child] at opacity [t], moved by [offset] scaled by what is left of the way.
