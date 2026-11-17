@@ -734,6 +734,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get version => 'Version';
 
   @override
+  String get checkForUpdates => 'Check for updates';
+
+  @override
+  String get checkingForUpdates => 'Checking for updates…';
+
+  @override
+  String get upToDate => 'You\'re up to date';
+
+  @override
+  String get updateFailed => 'Could not check for updates';
+
+  @override
+  String updateAvailable(String version) {
+    return 'Version $version is available';
+  }
+
+  @override
+  String get releaseNotes => 'Release notes';
+
+  @override
+  String get openReleasePage => 'Open release page';
+
+  @override
   String get dataDir => 'Data folder';
 
   @override

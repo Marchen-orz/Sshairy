@@ -1394,6 +1394,48 @@ abstract class AppLocalizations {
   /// **'Version'**
   String get version;
 
+  /// No description provided for @checkForUpdates.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates'**
+  String get checkForUpdates;
+
+  /// No description provided for @checkingForUpdates.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking for updates…'**
+  String get checkingForUpdates;
+
+  /// No description provided for @upToDate.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re up to date'**
+  String get upToDate;
+
+  /// No description provided for @updateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check for updates'**
+  String get updateFailed;
+
+  /// No description provided for @updateAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} is available'**
+  String updateAvailable(String version);
+
+  /// No description provided for @releaseNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Release notes'**
+  String get releaseNotes;
+
+  /// No description provided for @openReleasePage.
+  ///
+  /// In en, this message translates to:
+  /// **'Open release page'**
+  String get openReleasePage;
+
   /// No description provided for @dataDir.
   ///
   /// In en, this message translates to:

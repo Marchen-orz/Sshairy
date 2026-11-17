@@ -693,6 +693,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get version => '版本';
 
   @override
+  String get checkForUpdates => '检查更新';
+
+  @override
+  String get checkingForUpdates => '正在检查更新…';
+
+  @override
+  String get upToDate => '已是最新版本';
+
+  @override
+  String get updateFailed => '无法检查更新';
+
+  @override
+  String updateAvailable(String version) {
+    return '发现新版本 $version';
+  }
+
+  @override
+  String get releaseNotes => '更新日志';
+
+  @override
+  String get openReleasePage => '打开发布页';
+
+  @override
   String get dataDir => '数据目录';
 
   @override

@@ -14,6 +14,7 @@ import '../../../design/form_save.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../design/theme_names.dart';
+import '../../../foundation/app_info.dart';
 import '../../../foundation/data_dir.dart';
 import '../../../foundation/open_external.dart';
 import '../../../foundation/shortcuts.dart';
@@ -24,8 +25,7 @@ import '../settings.dart';
 import '../domain/background.dart';
 import 'background_image.dart';
 import 'shortcut_field.dart';
-
-const appVersion = '0.2.0';
+import 'update_check.dart';
 
 enum SettingsSectionId {
   appearance,
@@ -519,7 +519,18 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           padding: EdgeInsets.symmetric(vertical: Space.md),
           child: Align(alignment: Alignment.centerLeft, child: BrandLogo()),
         ),
-        _Field(l.version, Text(appVersion, style: theme.textTheme.bodyMedium)),
+        _Field(
+          l.version,
+          Wrap(
+            spacing: Space.md,
+            runSpacing: Space.sm,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(appVersion, style: theme.textTheme.bodyMedium),
+              const UpdateCheckControl(),
+            ],
+          ),
+        ),
         _Field(
           l.dataDir,
           TextButton(onPressed: () => openExternal(ref.read(dataDirProvider)), child: Text(l.open)),
