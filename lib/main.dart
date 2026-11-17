@@ -59,37 +59,42 @@ Future<void> main(List<String> args) async {
   );
 }
 
-class SshairyApp extends ConsumerWidget {
+class SshairyApp extends ConsumerStatefulWidget {
   const SshairyApp({super.key, this.window});
 
   final DesktopWindow? window;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SshairyApp> createState() => _SshairyAppState();
+}
+
+class _SshairyAppState extends ConsumerState<SshairyApp> {
+  (Accent, double, String?, String?)? _themeInputs;
+  late ThemeData _theme, _darkTheme;
+
+  @override
+  Widget build(BuildContext context) {
     final problem = ref.watch(configurationCheckProvider);
     final settings = problem == null ? ref.watch(settingsProvider) : const Settings();
+    final inputs = (settings.accent, settings.uiFontSize, settings.uiFontFamily, settings.terminalFontFamily);
+    if (_themeInputs != inputs) {
+      _themeInputs = inputs;
+      _theme = buildTheme(Brightness.light, inputs.$1, inputs.$2, inputs.$3, inputs.$4);
+      _darkTheme = buildTheme(Brightness.dark, inputs.$1, inputs.$2, inputs.$3, inputs.$4);
+    }
     return MaterialApp(
       title: 'Sshairy',
       scrollBehavior: const AppScrollBehavior(),
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(
-        Brightness.light,
-        settings.accent,
-        settings.uiFontSize,
-        settings.uiFontFamily,
-        settings.terminalFontFamily,
-      ),
-      darkTheme: buildTheme(
-        Brightness.dark,
-        settings.accent,
-        settings.uiFontSize,
-        settings.uiFontFamily,
-        settings.terminalFontFamily,
-      ),
+      theme: _theme,
+      darkTheme: _darkTheme,
+      // Interpolating ThemeData rebuilds every themed form field on every tick.
+      // Apply the palette once; controls keep their own local transitions.
+      themeAnimationDuration: Duration.zero,
       themeMode: settings.themeMode,
       builder: (context, child) => ImageCacheBudget(
         child: WindowBrandIcon(
-          window: window,
+          window: widget.window,
           child: InterfaceScale(scale: settings.uiScale, child: child ?? const SizedBox.shrink()),
         ),
       ),
@@ -103,7 +108,7 @@ class SshairyApp extends ConsumerWidget {
       supportedLocales: AppLocalizations.supportedLocales,
       home: problem == null
           ? ShutdownGuard(
-              window: window,
+              window: widget.window,
               child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
             )
           : ConfigurationErrorPage(problem),
