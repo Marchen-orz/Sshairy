@@ -527,6 +527,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                     active: state.active == tab.id,
                     tree: dock == FilesDock.bottom,
                     directory: session.directory,
+                    listing: session.listingTicks,
                     toolbarActions: _fileToolbar(dock),
                   )
                 : const SizedBox.shrink(),

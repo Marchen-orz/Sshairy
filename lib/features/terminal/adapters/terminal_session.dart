@@ -482,6 +482,13 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   /// The shell's working directory, looked up only while something listens; null until known.
   ValueListenable<String?> get directory => _directory;
 
+  final _listingTicks = ValueNotifier<int>(0);
+
+  /// Bumped when a command may have changed the files a panel lists for this shell.
+  ValueListenable<int> get listingTicks => _listingTicks;
+
+  Timer? _localListing;
+
   set viewed(bool value) {
     if (_viewed == value) return;
     _viewed = value;
@@ -783,6 +790,13 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _directory.value = null;
     (remotePaths ?? _ownedPaths)?.invalidate();
     if (_directory.followed) _lookSoon(const [Duration(milliseconds: 400), Duration(milliseconds: 1500)]);
+    // A local shell has no marker to query, so a listing refresh follows the command once its output has settled.
+    _localListing?.cancel();
+    if (isLocal) {
+      _localListing = Timer(const Duration(milliseconds: 1200), () {
+        if (!_closed && !_shellEnded) _listingTicks.value++;
+      });
+    }
   }
 
   void _following(bool on) {
@@ -843,7 +857,11 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       }
       // A server that refused the marker or has no /proc may still report through OSC 7.
       found ??= _reported;
-      if (found != null) _directory.value = found;
+      if (found != null) {
+        _directory.value = found;
+        // The lookup follows a finished command, so what the panel lists for this shell is stale.
+        _listingTicks.value++;
+      }
       return found;
     }
 
@@ -911,7 +929,9 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _stopTimer();
     _cancelLookups();
     _cancelDirectoryLookup();
+    _localListing?.cancel();
     _directory.dispose();
+    _listingTicks.dispose();
     _connecting?.cancel();
     _outputQueue?.cancel();
     _terminal.onOutput = null;

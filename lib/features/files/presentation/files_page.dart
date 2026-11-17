@@ -126,6 +126,7 @@ class SideFilesPanel extends ConsumerStatefulWidget {
     this.active = true,
     this.tree = false,
     this.directory,
+    this.listing,
     this.toolbarActions = const [],
   });
 
@@ -138,6 +139,9 @@ class SideFilesPanel extends ConsumerStatefulWidget {
 
   /// The terminal's working directory, which the panel follows while it is open (docs/MODULES.md §4).
   final ValueListenable<String?>? directory;
+
+  /// Bumped after a command that may have changed the files on screen.
+  final ValueListenable<int>? listing;
 
   final List<Widget> toolbarActions;
 
@@ -159,7 +163,10 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   @override
   void initState() {
     super.initState();
-    if (widget.active) widget.directory?.addListener(_follow);
+    if (widget.active) {
+      widget.directory?.addListener(_follow);
+      widget.listing?.addListener(_listingChanged);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && widget.active) _activate();
     });
@@ -170,9 +177,12 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   void didUpdateWidget(SideFilesPanel old) {
     super.didUpdateWidget(old);
     final directoryChanged = !identical(old.directory, widget.directory);
+    final listingChanged = !identical(old.listing, widget.listing);
     final hostChanged = old.host?.id != widget.host?.id;
     if (old.active && (!widget.active || directoryChanged)) old.directory?.removeListener(_follow);
+    if (old.active && (!widget.active || listingChanged)) old.listing?.removeListener(_listingChanged);
     if (widget.active && (!old.active || directoryChanged)) widget.directory?.addListener(_follow);
+    if (widget.active && (!old.active || listingChanged)) widget.listing?.addListener(_listingChanged);
     if (old.active != widget.active || hostChanged) _generation++;
     if (widget.active) _idleTimer?.cancel();
     if (!widget.active) {
@@ -208,9 +218,21 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   @override
   void dispose() {
     _idleTimer?.cancel();
-    if (widget.active) widget.directory?.removeListener(_follow);
+    if (widget.active) {
+      widget.directory?.removeListener(_follow);
+      widget.listing?.removeListener(_listingChanged);
+    }
     _browser.dispose();
     super.dispose();
+  }
+
+  /// A finished command may have added, removed or renamed entries; the terminal's own directory is followed by
+  /// [_follow], while this re-reads whatever the panel shows when it is still the shell's directory.
+  void _listingChanged() {
+    if (!mounted || !widget.active || _browser.loading) return;
+    final to = widget.directory?.value;
+    if (to != null && to != _browser.path) return;
+    _browser.refresh();
   }
 
   void _follow() {
