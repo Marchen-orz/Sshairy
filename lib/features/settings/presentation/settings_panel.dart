@@ -401,8 +401,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
           _Field.stacked(
             l.renderer,
-            segmented(SettingKeys.renderer, {Renderer.impeller: l.rendererSmooth, Renderer.skia: l.rendererLight}),
-            hint: settings.renderer == Renderer.impeller ? l.rendererSmoothHint : l.rendererLightHint,
+            segmented(SettingKeys.renderer, {Renderer.impeller: l.rendererPerformance, Renderer.skia: l.rendererLight}),
+            hint: settings.renderer == Renderer.impeller ? l.rendererPerformanceHint : l.rendererLightHint,
             warning: hint(SettingKeys.renderer),
             onWarning: DesktopWindow.instance.restart,
           ),

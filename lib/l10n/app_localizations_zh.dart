@@ -450,13 +450,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get renderer => '渲染模式';
 
   @override
-  String get rendererSmooth => '流畅';
+  String get rendererPerformance => '高性能';
 
   @override
   String get rendererLight => '轻量';
 
   @override
-  String get rendererSmoothHint => 'Impeller 引擎：动画更稳，内存约多 150 MB';
+  String get rendererPerformanceHint => 'Impeller 引擎：动画更稳，内存约多 150 MB';
 
   @override
   String get rendererLightHint => 'Skia 引擎：内存更低，动画首次出现时可能卡顿';

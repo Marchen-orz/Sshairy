@@ -914,11 +914,11 @@ abstract class AppLocalizations {
   /// **'Rendering'**
   String get renderer;
 
-  /// No description provided for @rendererSmooth.
+  /// No description provided for @rendererPerformance.
   ///
   /// In en, this message translates to:
-  /// **'Smooth'**
-  String get rendererSmooth;
+  /// **'High performance'**
+  String get rendererPerformance;
 
   /// No description provided for @rendererLight.
   ///
@@ -926,11 +926,11 @@ abstract class AppLocalizations {
   /// **'Lightweight'**
   String get rendererLight;
 
-  /// No description provided for @rendererSmoothHint.
+  /// No description provided for @rendererPerformanceHint.
   ///
   /// In en, this message translates to:
   /// **'Impeller engine: steadier animation, about 150 MB more memory'**
-  String get rendererSmoothHint;
+  String get rendererPerformanceHint;
 
   /// No description provided for @rendererLightHint.
   ///

@@ -478,13 +478,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get renderer => 'Rendering';
 
   @override
-  String get rendererSmooth => 'Smooth';
+  String get rendererPerformance => 'High performance';
 
   @override
   String get rendererLight => 'Lightweight';
 
   @override
-  String get rendererSmoothHint =>
+  String get rendererPerformanceHint =>
       'Impeller engine: steadier animation, about 150 MB more memory';
 
   @override
