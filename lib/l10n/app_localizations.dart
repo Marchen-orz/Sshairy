@@ -1715,7 +1715,7 @@ abstract class AppLocalizations {
   /// No description provided for @hiddenFiles.
   ///
   /// In en, this message translates to:
-  /// **'Hidden files'**
+  /// **'Show hidden files'**
   String get hiddenFiles;
 
   /// No description provided for @uploadFiles.

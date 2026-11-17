@@ -275,7 +275,7 @@
   "filter": "筛选",
   "editPath": "编辑路径",
   "newFolder": "新建文件夹",
-  "hiddenFiles": "隐藏文件",
+  "hiddenFiles": "显示隐藏文件",
   "uploadFiles": "上传文件…",
   "downloadTo": "下载到…",
   "sendToOther": "发送到另一侧",

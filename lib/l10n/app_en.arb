@@ -287,7 +287,7 @@
   "filter": "Filter",
   "editPath": "Edit path",
   "newFolder": "New folder",
-  "hiddenFiles": "Hidden files",
+  "hiddenFiles": "Show hidden files",
   "uploadFiles": "Upload files…",
   "downloadTo": "Download to…",
   "sendToOther": "Send to the other side",

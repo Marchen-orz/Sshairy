@@ -864,7 +864,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get newFolder => '新建文件夹';
 
   @override
-  String get hiddenFiles => '隐藏文件';
+  String get hiddenFiles => '显示隐藏文件';
 
   @override
   String get uploadFiles => '上传文件…';

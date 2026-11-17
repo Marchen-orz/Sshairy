@@ -342,7 +342,7 @@ abstract final class SettingKeys {
   /// Asks before every quit; running transfers, unsaved edits and tunnels ask regardless.
   static const confirmQuit = BoolSetting('confirmQuit', true, agentExposed: false);
 
-  static const showHidden = BoolSetting('showHidden', false);
+  static const showHidden = BoolSetting('showHidden', true);
 
   /// The import dialog has opened by itself once, for an empty host library (docs/HOST_IMPORT.md).
   static const importOffered = BoolSetting('importOffered', false, agentExposed: false);

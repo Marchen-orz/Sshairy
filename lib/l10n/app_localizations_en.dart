@@ -906,7 +906,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newFolder => 'New folder';
 
   @override
-  String get hiddenFiles => 'Hidden files';
+  String get hiddenFiles => 'Show hidden files';
 
   @override
   String get uploadFiles => 'Upload files…';
