@@ -395,6 +395,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
         return Stack(
           fit: StackFit.expand,
           children: [
+            // A frozen character grid keeps its old size while a dock resizes the pane; the area it no longer fills
+            // must stay terminal-coloured instead of showing the workspace behind it.
+            Positioned.fill(child: ColoredBox(color: palette.background)),
             Positioned.fill(
               // xterm2 draws every cell on its own; on Impeller a full screen costs tens of milliseconds a frame, so
               // transitions elsewhere see it as a still image.

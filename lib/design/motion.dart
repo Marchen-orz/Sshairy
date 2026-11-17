@@ -210,6 +210,31 @@ class _RenderSnapshotLayout extends RenderProxyBox {
     child!.layout(_liveConstraints!, parentUsesSize: true);
     size = constraints.constrain(child!.size);
   }
+
+  /// While the frozen content outgrows (or no longer fills) the box, keep its bottom edge at the box's bottom.
+  /// A terminal's view is anchored at its last line, so the lines on screen stay put as the panel takes space
+  /// instead of moving up by the whole resize at the end of the transition.
+  double _bottomShift(RenderBox child) =>
+      _freeze && _controller.allowSnapshotting ? size.height - child.size.height : 0;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child == null) return;
+    context.paintChild(child, offset + Offset(0, _bottomShift(child)));
+  }
+
+  @override
+  void applyPaintTransform(RenderObject child, Matrix4 transform) {
+    transform.translateByDouble(0.0, _bottomShift(child as RenderBox), 0.0, 1.0);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final child = this.child;
+    if (child == null) return false;
+    return child.hitTest(result, position: position - Offset(0, _bottomShift(child)));
+  }
 }
 
 /// Whether popups reveal by clipping their card instead of fading it. Skia spends about 130 ms the first
