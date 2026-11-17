@@ -232,7 +232,7 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     if (!mounted || !widget.active || _browser.loading) return;
     final to = widget.directory?.value;
     if (to != null && to != _browser.path) return;
-    _browser.refresh();
+    _browser.refresh(quiet: true);
   }
 
   void _follow() {
@@ -247,7 +247,7 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     final to = _wanted;
     if (to == null || !mounted || !widget.active || !_browser.ready || _browser.path.isEmpty) return;
     _wanted = null;
-    if (to != _browser.path) _browser.go(to);
+    if (to != _browser.path) _browser.go(to, quiet: true);
   }
 
   @override

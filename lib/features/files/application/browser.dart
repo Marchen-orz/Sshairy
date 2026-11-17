@@ -10,6 +10,24 @@ enum BrowserStatus { idle, connecting, ready, failed, lost }
 
 enum FileSort { name, modified, size }
 
+bool _sameEntries(List<FileEntry> a, List<FileEntry> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    final x = a[i], y = b[i];
+    if (x.name != y.name ||
+        x.kind != y.kind ||
+        x.size != y.size ||
+        x.modified != y.modified ||
+        x.mode != y.mode ||
+        x.owner != y.owner ||
+        x.group != y.group ||
+        x.linkToDir != y.linkToDir) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// What one pane browses, on its own SFTP channel (docs/CONTRACTS.md §2): disposing the browser releases it.
 class FileBrowser extends ChangeNotifier {
   FileBrowser(this._connections, {this.showHidden = false});
@@ -40,6 +58,7 @@ class FileBrowser extends ChangeNotifier {
 
   /// Results of a load or connect that has since been replaced are dropped.
   var _generation = 0;
+  var _loads = 0;
   var _disposed = false;
   var _suspended = false;
   var _operations = 0;
@@ -178,9 +197,9 @@ class FileBrowser extends ChangeNotifier {
     }
   }
 
-  Future<bool> go(String to) async {
+  Future<bool> go(String to, {bool quiet = false}) async {
     final from = path;
-    final ok = await _load(to, _generation);
+    final ok = await _load(to, _generation, quiet: quiet);
     if (ok && from != to) {
       _remember(_back, from);
       _forward.clear();
@@ -217,17 +236,25 @@ class FileBrowser extends ChangeNotifier {
     }
   }
 
-  Future<void> refresh() => _load(path, _generation, keepSelection: true);
+  /// A [quiet] read shows no progress and tells listeners only when what it found differs from what is shown.
+  Future<void> refresh({bool quiet = false}) => _load(path, _generation, keepSelection: true, quiet: quiet);
 
-  Future<bool> _load(String to, int gen, {bool keepSelection = false}) async {
+  Future<bool> _load(String to, int gen, {bool keepSelection = false, bool quiet = false}) async {
     final fs = this.fs;
     if (fs == null || gen != _generation) return false;
-    loading = true;
-    _notify();
+    final seq = ++_loads;
+    if (!quiet) {
+      loading = true;
+      _notify();
+    }
+    var differs = !quiet;
     try {
       final list = await fs.list(to);
-      if (gen != _generation) return false;
+      // A quiet read is dropped once any later read has started: it is only a guess at what the user wants to see.
+      if (gen != _generation || (quiet && seq != _loads)) return false;
       final changed = to != path;
+      if (quiet && !changed && listError == null && _sameEntries(entries, list)) return true;
+      differs = true;
       path = to;
       entries = list;
       listError = null;
@@ -240,12 +267,15 @@ class FileBrowser extends ChangeNotifier {
       }
       return true;
     } on FsError catch (e) {
-      if (gen == _generation) listError = e;
+      if (gen == _generation && !(quiet && seq != _loads)) {
+        differs = true;
+        listError = e;
+      }
       return false;
     } finally {
       if (gen == _generation) {
-        loading = false;
-        _notify();
+        if (!quiet) loading = false;
+        if (differs) _notify();
       }
     }
   }
