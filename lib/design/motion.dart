@@ -212,7 +212,7 @@ class _RenderSnapshotLayout extends RenderProxyBox {
   }
 }
 
-/// The fade, and unless motion is reduced the shift, every popup arrives with and leaves with. It arrives on its own
+/// A popup's optional fade and shift (a fade only when motion is reduced). It arrives on its own
 /// clock, started once the popup's first frame is built: a route's clock starts with the tap, so a costly first
 /// frame would otherwise skip half the entrance.
 Widget popupTransition(
@@ -221,16 +221,25 @@ Widget popupTransition(
   Widget child, {
   Offset offset = Offset.zero,
   Duration duration = Motion.panel,
+  bool fade = true,
 }) => _PopupMotion(
   route: animation,
   offset: Motion.reduced(context) ? Offset.zero : offset,
   duration: duration,
+  fade: fade || Motion.reduced(context),
   child: child,
 );
 
 class _PopupMotion extends StatefulWidget {
-  const _PopupMotion({required this.route, required this.offset, required this.duration, required this.child});
+  const _PopupMotion({
+    required this.route,
+    required this.offset,
+    required this.duration,
+    required this.fade,
+    required this.child,
+  });
 
+  final bool fade;
   final Animation<double> route;
   final Offset offset;
   final Duration duration;
@@ -305,6 +314,7 @@ class _PopupMotionState extends State<_PopupMotion> with SingleTickerProviderSta
     builder: (context, child) => _Shifted(
       t: _fade.value,
       offset: widget.offset,
+      fade: widget.fade,
       // Paint the content before starting the clock; an exactly transparent layer would skip that paint.
       paintAtZero: _enter.value == 0 && widget.route.status == AnimationStatus.forward,
       child: child!,
@@ -314,18 +324,24 @@ class _PopupMotionState extends State<_PopupMotion> with SingleTickerProviderSta
 
 /// [child] at opacity [t], moved by [offset] scaled by what is left of the way.
 class _Shifted extends StatelessWidget {
-  const _Shifted({required this.t, required this.offset, required this.child, this.paintAtZero = false});
+  const _Shifted({
+    required this.t,
+    required this.offset,
+    required this.child,
+    this.paintAtZero = false,
+    this.fade = true,
+  });
 
   final double t;
   final Offset offset;
   final Widget child;
-  final bool paintAtZero;
+  final bool paintAtZero, fade;
 
   @override
-  Widget build(BuildContext context) => Opacity(
-    opacity: paintAtZero ? 1 / 255 : t.clamp(0.0, 1.0),
-    child: Transform.translate(offset: offset * (1 - t), child: child),
-  );
+  Widget build(BuildContext context) {
+    final shifted = Transform.translate(offset: offset * (1 - t), child: child);
+    return fade ? Opacity(opacity: paintAtZero ? 1 / 255 : t.clamp(0.0, 1.0), child: shifted) : shifted;
+  }
 }
 
 /// Plays once when [child] first appears: it fades in while moving from [offset]. Only [play] as first built counts,

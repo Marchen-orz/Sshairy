@@ -35,7 +35,7 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
     barrierColor: Colors.black.withValues(alpha: right ? (dark ? .4 : .18) : (dark ? .25 : .08)),
     transitionDuration: Motion.panel,
     // Focus starts inside, so Escape closes the panel even when nothing in it takes focus.
-    pageBuilder: (context, _, _) => CallbackShortcuts(
+    pageBuilder: (context, animation, _) => CallbackShortcuts(
       bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context)},
       child: Focus(
         autofocus: true,
@@ -53,10 +53,16 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
               child: SizedBox(
                 width: width,
                 height: double.infinity,
-                child: PopupSurface(
-                  radius: Radii.panel,
-                  padding: const EdgeInsets.all(20),
-                  child: Builder(builder: builder),
+                child: popupTransition(
+                  context,
+                  animation,
+                  PopupSurface(
+                    radius: Radii.panel,
+                    padding: const EdgeInsets.all(20),
+                    child: Builder(builder: builder),
+                  ),
+                  offset: Offset(right ? width + Space.sm : -32, 0),
+                  fade: !right,
                 ),
               ),
             ),
@@ -64,7 +70,6 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
         ),
       ),
     ),
-    transitionBuilder: (context, animation, _, child) =>
-        popupTransition(context, animation, child, offset: Offset(right ? 32 : -32, 0)),
+    transitionBuilder: (context, animation, _, child) => child,
   );
 }
