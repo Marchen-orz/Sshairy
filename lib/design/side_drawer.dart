@@ -61,13 +61,9 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
                     padding: const EdgeInsets.all(20),
                     child: Builder(builder: builder),
                   ),
-                  // Blending a full-height panel and its shadow every frame costs 40–200 ms under Impeller,
-                  // so it wipes in from the rail instead. Skia keeps the short shift (its first clip is costly).
-                  offset: right
-                      ? Offset(width + Space.sm, 0)
-                      : (PopupReveal.byClip ? Offset.zero : const Offset(-32, 0)),
-                  fade: !right && !PopupReveal.byClip,
-                  clipper: !right && PopupReveal.byClip ? (progress) => _FlyoutReveal(progress) : null,
+                  // The right drawer slides in solid from off-screen; a flyout beside the rail fades in from it.
+                  offset: right ? Offset(width + Space.sm, 0) : const Offset(-32, 0),
+                  fade: !right,
                 ),
               ),
             ),
@@ -77,29 +73,4 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
     ),
     transitionBuilder: (context, animation, _, child) => child,
   );
-}
-
-/// Reveals a flyout from the rail's edge without blending the whole panel each frame.
-class _FlyoutReveal extends CustomClipper<Rect> {
-  _FlyoutReveal(this.progress) : super(reclip: progress);
-
-  final Animation<double> progress;
-
-  @override
-  Rect getClip(Size size) {
-    // Include the panel's existing shadow, so completion does not suddenly add it.
-    final bounds = (Offset.zero & size).inflate(Space.xxl * 2);
-    return Rect.fromLTRB(
-      bounds.left,
-      bounds.top,
-      bounds.left + bounds.width * progress.value.clamp(0.0, 1.0),
-      bounds.bottom,
-    );
-  }
-
-  @override
-  Rect getApproximateClipRect(Size size) => getClip(size);
-
-  @override
-  bool shouldReclip(_FlyoutReveal old) => progress != old.progress;
 }

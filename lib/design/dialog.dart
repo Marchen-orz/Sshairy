@@ -50,41 +50,8 @@ class DialogMotion extends StatelessWidget {
   Widget build(BuildContext context) {
     final animation = _DialogMotion.of(context);
     if (animation == null) return child;
-    final clip = PopupReveal.byClip;
-    return popupTransition(
-      context,
-      animation,
-      child,
-      offset: clip ? Offset.zero : const Offset(0, 12),
-      fade: !clip,
-      clipper: clip ? (progress) => _DialogReveal(progress) : null,
-    );
+    return popupTransition(context, animation, child, offset: const Offset(0, 12));
   }
-}
-
-/// Reveals a centred card from its top edge without blending the whole window each frame.
-class _DialogReveal extends CustomClipper<Rect> {
-  _DialogReveal(this.progress) : super(reclip: progress);
-
-  final Animation<double> progress;
-
-  @override
-  Rect getClip(Size size) {
-    // Include the card's existing shadow, so completion does not suddenly add it.
-    final bounds = (Offset.zero & size).inflate(Space.xxl * 2);
-    return Rect.fromLTRB(
-      bounds.left,
-      bounds.top,
-      bounds.right,
-      bounds.top + bounds.height * progress.value.clamp(0.0, 1.0),
-    );
-  }
-
-  @override
-  Rect getApproximateClipRect(Size size) => getClip(size);
-
-  @override
-  bool shouldReclip(_DialogReveal old) => progress != old.progress;
 }
 
 class AppDialog extends StatelessWidget {

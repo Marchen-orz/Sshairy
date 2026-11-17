@@ -76,7 +76,6 @@ class _SshairyAppState extends ConsumerState<SshairyApp> {
   Widget build(BuildContext context) {
     final problem = ref.watch(configurationCheckProvider);
     final settings = problem == null ? ref.watch(settingsProvider) : const Settings();
-    PopupReveal.byClip = ref.watch(runningRendererProvider) != Renderer.skia;
     final inputs = (settings.accent, settings.uiFontSize, settings.uiFontFamily, settings.terminalFontFamily);
     if (_themeInputs != inputs) {
       _themeInputs = inputs;

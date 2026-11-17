@@ -83,17 +83,14 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
       LayoutBuilder(
         builder: (context, box) {
           final layout = _AnchorLayout(anchor, placement, width, maxHeight, gap);
-          final clip = PopupReveal.byClip;
           return CustomSingleChildLayout(
             delegate: layout,
             child: popupTransition(
               context,
               animation,
               capturedThemes.wrap(Builder(builder: builder)),
-              offset: clip ? Offset.zero : (placement == PopupPlacement.below ? const Offset(0, -6) : const Offset(-6, 0)),
+              offset: placement == PopupPlacement.below ? const Offset(0, -6) : const Offset(-6, 0),
               duration: Motion.normal,
-              fade: !clip,
-              clipper: clip ? (progress) => _AnchorReveal(layout, box.biggest, progress) : null,
             ),
           );
         },
@@ -149,38 +146,6 @@ class _AnchorLayout extends SingleChildLayoutDelegate {
       width != old.width ||
       maxHeight != old.maxHeight ||
       gap != old.gap;
-}
-
-/// Reveals the final layout from the edge nearest its anchor, without blending the whole card each frame.
-class _AnchorReveal extends CustomClipper<Rect> {
-  _AnchorReveal(this.layout, this.viewport, this.progress) : super(reclip: progress);
-
-  final _AnchorLayout layout;
-  final Size viewport;
-  final Animation<double> progress;
-
-  @override
-  Rect getClip(Size size) {
-    // Include the popup's existing blur and offset, so completion does not suddenly add a shadow.
-    final bounds = (Offset.zero & size).inflate(Space.xxl * 2);
-    final t = progress.value.clamp(0.0, 1.0);
-    final position = layout.getPositionForChild(viewport, size);
-    if (layout.placement == PopupPlacement.right) {
-      return position.dx < layout.anchor.left
-          ? Rect.fromLTRB(bounds.right - bounds.width * t, bounds.top, bounds.right, bounds.bottom)
-          : Rect.fromLTRB(bounds.left, bounds.top, bounds.left + bounds.width * t, bounds.bottom);
-    }
-    return position.dy + size.height <= layout.anchor.top
-        ? Rect.fromLTRB(bounds.left, bounds.bottom - bounds.height * t, bounds.right, bounds.bottom)
-        : Rect.fromLTRB(bounds.left, bounds.top, bounds.right, bounds.top + bounds.height * t);
-  }
-
-  @override
-  Rect getApproximateClipRect(Size size) => getClip(size);
-
-  @override
-  bool shouldReclip(_AnchorReveal old) =>
-      progress != old.progress || viewport != old.viewport || layout.shouldRelayout(old.layout);
 }
 
 /// The rounded, bordered, shadowed card every popup draws on.

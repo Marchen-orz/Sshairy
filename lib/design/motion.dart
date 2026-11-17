@@ -237,13 +237,6 @@ class _RenderSnapshotLayout extends RenderProxyBox {
   }
 }
 
-/// Whether popups reveal by clipping their card instead of fading it. Skia spends about 130 ms the first
-/// time it clips a popup (measured on Windows), where Impeller draws the same reveal in a few milliseconds;
-/// the app sets this from the renderer in use.
-abstract final class PopupReveal {
-  static bool byClip = true;
-}
-
 /// A popup's optional fade and shift (a fade only when motion is reduced). It arrives on its own
 /// clock, started once the popup's first frame is built: a route's clock starts with the tap, so a costly first
 /// frame would otherwise skip half the entrance.
@@ -254,13 +247,11 @@ Widget popupTransition(
   Offset offset = Offset.zero,
   Duration duration = Motion.panel,
   bool fade = true,
-  CustomClipper<Rect> Function(Animation<double>)? clipper,
 }) => _PopupMotion(
   route: animation,
   offset: Motion.reduced(context) ? Offset.zero : offset,
   duration: duration,
   fade: fade || Motion.reduced(context),
-  clipper: Motion.reduced(context) ? null : clipper,
   child: child,
 );
 
@@ -270,11 +261,9 @@ class _PopupMotion extends StatefulWidget {
     required this.offset,
     required this.duration,
     required this.fade,
-    required this.clipper,
     required this.child,
   });
 
-  final CustomClipper<Rect> Function(Animation<double>)? clipper;
   final bool fade;
   final Animation<double> route;
   final Offset offset;
@@ -344,10 +333,7 @@ class _PopupMotionState extends State<_PopupMotion> with SingleTickerProviderSta
   @override
   Widget build(BuildContext context) {
     // Keep scrollbars and async content live; a cached first frame can reveal a different width at the end.
-    Widget child = RepaintBoundary(child: widget.child);
-    final clipper = widget.clipper;
-    if (clipper != null) child = ClipRect(clipper: clipper(_fade), child: child);
-    // A reclip listener updates only paint/semantics, keeping the popup's build and layout out of each tick.
+    final child = RepaintBoundary(child: widget.child);
     if (!widget.fade && widget.offset == Offset.zero) return child;
     return AnimatedBuilder(
       animation: _fade,
