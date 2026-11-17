@@ -1436,6 +1436,66 @@ abstract class AppLocalizations {
   /// **'Open release page'**
   String get openReleasePage;
 
+  /// No description provided for @updateDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download update'**
+  String get updateDownload;
+
+  /// No description provided for @updateDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading update…'**
+  String get updateDownloading;
+
+  /// No description provided for @updateVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking the download…'**
+  String get updateVerifying;
+
+  /// No description provided for @updateDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded to {path}'**
+  String updateDownloaded(String path);
+
+  /// No description provided for @updateInstallPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Install it now? The app will close first.'**
+  String get updateInstallPrompt;
+
+  /// No description provided for @updateDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed. Check your connection and try again.'**
+  String get updateDownloadFailed;
+
+  /// No description provided for @updateNoPackage.
+  ///
+  /// In en, this message translates to:
+  /// **'No installable package is available for this platform. Open the release page instead.'**
+  String get updateNoPackage;
+
+  /// No description provided for @installNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Install now'**
+  String get installNow;
+
+  /// No description provided for @later.
+  ///
+  /// In en, this message translates to:
+  /// **'Later'**
+  String get later;
+
+  /// No description provided for @cancelDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel download'**
+  String get cancelDownload;
+
   /// No description provided for @dataDir.
   ///
   /// In en, this message translates to:

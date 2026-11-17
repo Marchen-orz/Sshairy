@@ -757,6 +757,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String get openReleasePage => 'Open release page';
 
   @override
+  String get updateDownload => 'Download update';
+
+  @override
+  String get updateDownloading => 'Downloading update…';
+
+  @override
+  String get updateVerifying => 'Checking the download…';
+
+  @override
+  String updateDownloaded(String path) {
+    return 'Downloaded to $path';
+  }
+
+  @override
+  String get updateInstallPrompt => 'Install it now? The app will close first.';
+
+  @override
+  String get updateDownloadFailed =>
+      'Download failed. Check your connection and try again.';
+
+  @override
+  String get updateNoPackage =>
+      'No installable package is available for this platform. Open the release page instead.';
+
+  @override
+  String get installNow => 'Install now';
+
+  @override
+  String get later => 'Later';
+
+  @override
+  String get cancelDownload => 'Cancel download';
+
+  @override
   String get dataDir => 'Data folder';
 
   @override

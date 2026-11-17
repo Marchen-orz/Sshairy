@@ -5,14 +5,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/app_info.dart';
 
+/// One file attached to a published release.
+class ReleaseAsset {
+  const ReleaseAsset({required this.name, required this.url, required this.size});
+
+  final String name;
+  final String url;
+  final int size;
+
+  bool get isChecksums => name.toLowerCase() == 'sha256sums';
+}
+
 /// One published release, newest first.
 class ReleaseNote {
-  const ReleaseNote({required this.version, required this.title, required this.notes, required this.url});
+  const ReleaseNote({
+    required this.version,
+    required this.title,
+    required this.notes,
+    required this.url,
+    this.assets = const [],
+  });
 
   final String version;
   final String title;
   final String notes;
   final String url;
+  final List<ReleaseAsset> assets;
+
+  ReleaseAsset? get checksums {
+    for (final asset in assets) {
+      if (asset.isChecksums) return asset;
+    }
+    return null;
+  }
 }
 
 const _releasesUrl = 'https://api.github.com/repos/Marchen-orz/Sshairy/releases?per_page=20';
@@ -22,7 +47,9 @@ List<ReleaseNote> parseReleases(Object? json) {
   if (json is! List) return const [];
   final out = <ReleaseNote>[];
   for (final entry in json) {
-    if (entry is! Map<String, dynamic> || entry['draft'] == true || entry['prerelease'] == true) continue;
+    if (entry is! Map<String, dynamic> || entry['draft'] == true || entry['prerelease'] == true) {
+      continue;
+    }
     if (_note(entry) case final note?) out.add(note);
   }
   return out;
@@ -42,7 +69,85 @@ ReleaseNote? _note(Map<String, dynamic> entry) {
     final String body => body.trim(),
     _ => '',
   };
-  return ReleaseNote(version: version, title: title, notes: notes, url: url);
+  return ReleaseNote(version: version, title: title, notes: notes, url: url, assets: _assets(entry['assets']));
+}
+
+List<ReleaseAsset> _assets(Object? json) {
+  if (json is! List) return const [];
+  final out = <ReleaseAsset>[];
+  for (final entry in json) {
+    if (entry is! Map) continue;
+    final name = entry['name'], url = entry['browser_download_url'], size = entry['size'];
+    if (name is! String || name.isEmpty || url is! String) continue;
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) continue;
+    out.add(ReleaseAsset(name: name, url: url, size: size is int && size > 0 ? size : 0));
+  }
+  return out;
+}
+
+/// How this copy of the app reached the machine; the download follows the same habit.
+class UpdateDelivery {
+  const UpdateDelivery({required this.operatingSystem, this.installed = false, this.portableAppImage = false});
+
+  factory UpdateDelivery.current() {
+    final operatingSystem = Platform.operatingSystem;
+    return UpdateDelivery(
+      operatingSystem: operatingSystem,
+      installed: operatingSystem == 'windows' && _hasUninstaller(),
+      portableAppImage:
+          operatingSystem == 'linux' &&
+          ((Platform.environment['APPIMAGE']?.isNotEmpty ?? false) ||
+              Platform.resolvedExecutable.toLowerCase().endsWith('.appimage')),
+    );
+  }
+
+  final String operatingSystem;
+  final bool installed;
+  final bool portableAppImage;
+
+  ReleaseAsset? assetFor(List<ReleaseAsset> assets) => selectUpdateAsset(
+    assets,
+    operatingSystem: operatingSystem,
+    installed: installed,
+    portableAppImage: portableAppImage,
+  );
+}
+
+/// A packaged install for the running platform, preferring the kind of build the app was started from.
+ReleaseAsset? selectUpdateAsset(
+  List<ReleaseAsset> assets, {
+  required String operatingSystem,
+  bool installed = false,
+  bool portableAppImage = false,
+}) {
+  ReleaseAsset? ending(String suffix) {
+    for (final asset in assets) {
+      if (asset.name.toLowerCase().endsWith(suffix)) return asset;
+    }
+    return null;
+  }
+
+  return switch (operatingSystem) {
+    'windows' =>
+      installed ? ending('-setup.exe') ?? ending('-portable.exe') : ending('-portable.exe') ?? ending('-setup.exe'),
+    'macos' => ending('.dmg') ?? ending('.zip'),
+    'linux' => portableAppImage ? ending('.appimage') ?? ending('.deb') : ending('.deb') ?? ending('.appimage'),
+    _ => null,
+  };
+}
+
+/// Inno Setup keeps `unins000.exe` next to the app; the portable launcher unpacks without one.
+bool _hasUninstaller() {
+  try {
+    for (final entry in File(Platform.resolvedExecutable).parent.listSync()) {
+      final name = entry.uri.pathSegments.last.toLowerCase();
+      if (name.startsWith('unins') && name.endsWith('.exe')) return true;
+    }
+  } on FileSystemException {
+    return false;
+  }
+  return false;
 }
 
 final _languageBlock = RegExp(r'<!--\s*([a-zA-Z-]+)\s*-->([\s\S]*?)<!--\s*/\1\s*-->');

@@ -716,6 +716,38 @@ class AppLocalizationsZh extends AppLocalizations {
   String get openReleasePage => '打开发布页';
 
   @override
+  String get updateDownload => '下载更新';
+
+  @override
+  String get updateDownloading => '正在下载更新…';
+
+  @override
+  String get updateVerifying => '正在校验下载…';
+
+  @override
+  String updateDownloaded(String path) {
+    return '已下载到 $path';
+  }
+
+  @override
+  String get updateInstallPrompt => '现在安装吗？安装前会退出当前软件。';
+
+  @override
+  String get updateDownloadFailed => '下载失败，请检查网络后重试。';
+
+  @override
+  String get updateNoPackage => '当前平台没有可自动安装的包，请打开发布页下载。';
+
+  @override
+  String get installNow => '立即安装';
+
+  @override
+  String get later => '稍后';
+
+  @override
+  String get cancelDownload => '取消下载';
+
+  @override
   String get dataDir => '数据目录';
 
   @override
