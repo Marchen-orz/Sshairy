@@ -78,58 +78,60 @@ class _CommandPaletteState extends ConsumerState<_CommandPalette> {
     if (_selected >= entries.length) _selected = 0;
     return Align(
       alignment: const Alignment(0, -0.5),
-      child: Padding(
-        padding: const EdgeInsets.all(Space.xl),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640, maxHeight: 480),
-          child: PopupSurface(
-            radius: Radii.panel,
-            child: CallbackShortcuts(
-              bindings: {
-                const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1, entries.length),
-                const SingleActivator(LogicalKeyboardKey.arrowUp): () => _move(-1, entries.length),
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(Space.sm),
-                    child: TextField(
-                      controller: _query,
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: l.paletteHint,
-                        prefixIcon: const Icon(Icons.search, size: 18),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: false,
+      child: DialogMotion(
+        child: Padding(
+          padding: const EdgeInsets.all(Space.xl),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640, maxHeight: 480),
+            child: PopupSurface(
+              radius: Radii.panel,
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1, entries.length),
+                  const SingleActivator(LogicalKeyboardKey.arrowUp): () => _move(-1, entries.length),
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(Space.sm),
+                      child: TextField(
+                        controller: _query,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          hintText: l.paletteHint,
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          filled: false,
+                        ),
+                        onChanged: (_) => setState(() => _selected = 0),
+                        onSubmitted: (_) {
+                          if (entries.isNotEmpty) _run(entries[_selected]);
+                        },
                       ),
-                      onChanged: (_) => setState(() => _selected = 0),
-                      onSubmitted: (_) {
-                        if (entries.isNotEmpty) _run(entries[_selected]);
-                      },
                     ),
-                  ),
-                  const Divider(),
-                  Flexible(
-                    child: entries.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.all(Space.lg),
-                            child: Text(l.noMatches, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-                          )
-                        : ListView.builder(
-                            controller: _scroll,
-                            shrinkWrap: true,
-                            padding: const EdgeInsets.symmetric(vertical: Space.xs),
-                            itemExtent: _rowHeight,
-                            itemCount: entries.length,
-                            itemBuilder: (context, i) =>
-                                _Row(entry: entries[i], selected: i == _selected, onTap: () => _run(entries[i])),
-                          ),
-                  ),
-                ],
+                    const Divider(),
+                    Flexible(
+                      child: entries.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(Space.lg),
+                              child: Text(l.noMatches, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                            )
+                          : ListView.builder(
+                              controller: _scroll,
+                              shrinkWrap: true,
+                              padding: const EdgeInsets.symmetric(vertical: Space.xs),
+                              itemExtent: _rowHeight,
+                              itemCount: entries.length,
+                              itemBuilder: (context, i) =>
+                                  _Row(entry: entries[i], selected: i == _selected, onTap: () => _run(entries[i])),
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
