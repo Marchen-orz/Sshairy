@@ -9,6 +9,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
+import '../adapters/local_exec.dart';
 import '../application/monitor.dart';
 import '../domain/stats.dart';
 import 'monitor_widgets.dart';
@@ -20,9 +21,13 @@ enum _Page { system, gpu }
 
 /// The server's vital signs beside its terminal (docs/MODULES.md §8). Polls only while [active].
 class MonitorPanel extends ConsumerStatefulWidget {
-  const MonitorPanel({super.key, required this.host, required this.active});
+  const MonitorPanel({super.key, required this.host, required this.active}) : local = null;
 
-  final Host host;
+  /// This computer, for a local terminal on macOS or Linux.
+  const MonitorPanel.local({super.key, required LocalMonitorExec this.local, required this.active}) : host = null;
+
+  final Host? host;
+  final LocalMonitorExec? local;
   final bool active;
 
   @override
@@ -37,8 +42,12 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
   Duration get _interval => Duration(seconds: ref.read(settingsProvider).get(SettingKeys.monitorInterval));
 
   ServerMonitor _create() {
-    final m = ServerMonitor(ref.read(connectionManagerProvider), widget.host, interval: _interval)
-      ..gpuVisible = _page == _Page.gpu;
+    final local = widget.local;
+    final m =
+        (local == null
+              ? ServerMonitor(ref.read(connectionManagerProvider), widget.host!, interval: _interval)
+              : ServerMonitor.local(local, localName: local.name, interval: _interval))
+          ..gpuVisible = _page == _Page.gpu;
     if (widget.active) m.start();
     return m;
   }
@@ -46,7 +55,7 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
   @override
   void didUpdateWidget(MonitorPanel old) {
     super.didUpdateWidget(old);
-    if (old.host.id != widget.host.id) {
+    if (old.host?.id != widget.host?.id || !identical(old.local, widget.local)) {
       _monitor.dispose();
       _monitor = _create();
     } else if (widget.active != old.active) {
@@ -80,7 +89,8 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
           final gpus = _monitor.snapshot?.sample.gpuVendors.isNotEmpty ?? false;
           return _Content(
             monitor: _monitor,
-            host: widget.host,
+            title: widget.host?.title ?? widget.local!.name,
+            address: widget.host?.address,
             page: gpus ? _page : _Page.system,
             onPage: gpus ? _show : null,
             interface: _interface,
@@ -95,7 +105,8 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
 class _Content extends ConsumerWidget {
   const _Content({
     required this.monitor,
-    required this.host,
+    required this.title,
+    this.address,
     required this.page,
     required this.onPage,
     required this.interface,
@@ -103,7 +114,10 @@ class _Content extends ConsumerWidget {
   });
 
   final ServerMonitor monitor;
-  final Host host;
+  final String title;
+
+  /// Null for this computer; the address row is then left out.
+  final String? address;
   final _Page page;
 
   /// Null while the server shows no graphics card.
@@ -141,7 +155,7 @@ class _Content extends ConsumerWidget {
             children: [
               Expanded(
                 child: Text(
-                  host.title,
+                  title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
@@ -168,20 +182,21 @@ class _Content extends ConsumerWidget {
             ],
           ),
         ),
-        _Info(
-          icon: Icons.lan_outlined,
-          tooltip: l.address,
-          text: host.address,
-          trailing: IconButton(
-            tooltip: l.copyAddress,
-            visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints.tightFor(width: 24, height: 24),
-            padding: EdgeInsets.zero,
-            iconSize: 13,
-            onPressed: () => Clipboard.setData(ClipboardData(text: host.address)),
-            icon: const Icon(Icons.copy_rounded),
+        if (address case final address?)
+          _Info(
+            icon: Icons.lan_outlined,
+            tooltip: l.address,
+            text: address,
+            trailing: IconButton(
+              tooltip: l.copyAddress,
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+              padding: EdgeInsets.zero,
+              iconSize: 13,
+              onPressed: () => Clipboard.setData(ClipboardData(text: address)),
+              icon: const Icon(Icons.copy_rounded),
+            ),
           ),
-        ),
         if (s != null)
           Row(
             children: [

@@ -482,12 +482,20 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     Widget tabBody(WorkspaceTab tab) {
       final session = sessions[tab.layout.focusedLeaf.session];
       final host = session?.sshHost;
+      // A local terminal on Windows has no POSIX tools to sample; it shows no panel instead of a permanent error.
+      final monitored = host != null || (session?.isLocal == true && LocalMonitorExec.supported);
       return SidebarFrame(
         width: _monitorWidth,
         onResize: _setMonitorWidth,
         resizeLabel: l.resizeMonitor,
-        sidebar: host != null && showMonitor && wide
-            ? MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: host, active: state.active == tab.id)
+        sidebar: monitored && showMonitor && wide
+            ? host != null
+                  ? MonitorPanel(key: ValueKey('monitor-${tab.id.value}'), host: host, active: state.active == tab.id)
+                  : MonitorPanel.local(
+                      key: ValueKey('monitor-${tab.id.value}'),
+                      local: const LocalMonitorExec(),
+                      active: state.active == tab.id,
+                    )
             : null,
         // Rebuilt as the session changes: the panel dials, so it waits for the terminal's connection and joins it.
         // A restored, refused or dropped session shows no panel instead of dialing again.
@@ -500,7 +508,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             onResize: (path, ratios) => _workspace.resize(tab.id, path, ratios),
           ),
           builder: (context, panes) => DockPanel(
-            open: showFiles && host != null && session?.status == SessionStatus.connected,
+            open: showFiles && session?.status == SessionStatus.connected,
             side: switch (dock) {
               FilesDock.left => DockSide.left,
               FilesDock.right => DockSide.right,
@@ -510,7 +518,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             closeLabel: l.closePane,
             resizeLabel: l.resizeToolPanel,
             showHeader: false,
-            panel: host != null && session != null
+            panel: session != null
                 ? SideFilesPanel(
                     host: host,
                     active: state.active == tab.id,
@@ -526,7 +534,9 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     }
 
     final activeTab = state.activeTab;
-    final activeHost = activeTab == null ? null : sessions[activeTab.layout.focusedLeaf.session]?.sshHost;
+    final activeSession = activeTab == null ? null : sessions[activeTab.layout.focusedLeaf.session];
+    final activeHost = activeSession?.sshHost;
+    final activeMonitored = activeHost != null || (activeSession?.isLocal == true && LocalMonitorExec.supported);
     final titleBar = Container(
       height: WorkspaceSize.titleBar,
       padding: const EdgeInsets.fromLTRB(Space.xs, Space.xs, 0, Space.xs),
@@ -565,21 +575,20 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             spacing: Space.xs / 2,
             children: [
               if (activeTab != null) ...[
-                if (activeHost != null) ...[
-                  if (wide)
-                    _BarToggle(
-                      tooltip: l.monitor,
-                      icon: Icons.monitor_heart_outlined,
-                      selected: showMonitor,
-                      onPressed: () => settingsNotifier.set(SettingKeys.showMonitor, !showMonitor),
-                    ),
+                if (activeMonitored && wide)
+                  _BarToggle(
+                    tooltip: l.monitor,
+                    icon: Icons.monitor_heart_outlined,
+                    selected: showMonitor,
+                    onPressed: () => settingsNotifier.set(SettingKeys.showMonitor, !showMonitor),
+                  ),
+                if (activeSession != null)
                   _BarToggle(
                     tooltip: l.files,
                     icon: Icons.folder_outlined,
                     selected: showFiles,
                     onPressed: () => _setSideFiles(!showFiles),
                   ),
-                ],
                 AppMenuButton<SplitAxis>(
                   tooltip: l.split,
                   icon: const Icon(Icons.vertical_split_outlined, size: 18),

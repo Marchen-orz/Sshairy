@@ -15,14 +15,33 @@ enum MonitorState { waiting, live, offline, unsupported, failed }
 /// SIGTERM asks a process to exit; SIGKILL cannot be caught.
 enum ProcessSignal { term, kill }
 
-/// Polls one connected host with [statsCommand] over an exec lease (docs/MODULES.md §8, ADR-14). It never dials:
-/// with no live connection to the host it reports [MonitorState.offline] and looks again on the next tick.
+/// Runs the read-only probe: an SSH lease does it on the server, [LocalMonitorExec] on this computer.
+abstract interface class MonitorExec {
+  Future<ExecResult> exec(String command, {required int limit, Duration? timeout, CancellationToken? cancel});
+}
+
+/// Polls one target with [statsCommand] (docs/MODULES.md §8, ADR-14). For a host it uses an exec lease and never
+/// dials: with no live connection it reports [MonitorState.offline] and looks again on the next tick. For this
+/// computer it runs the same probe locally.
 class ServerMonitor extends ChangeNotifier {
   ServerMonitor(this._connections, this.host, {Duration interval = const Duration(seconds: 3)})
-    : _interval = interval; // ignore: prefer_initializing_formals, a private named parameter is not allowed
+    : _local = null,
+      localName = null,
+      _interval = interval; // ignore: prefer_initializing_formals, a private named parameter is not allowed
 
-  final ConnectionManager _connections;
-  final Host host;
+  ServerMonitor.local(MonitorExec local, {required this.localName, Duration interval = const Duration(seconds: 3)})
+    : _connections = null,
+      host = null,
+      _local = local,
+      _interval = interval; // ignore: prefer_initializing_formals, a private named parameter is not allowed
+
+  final ConnectionManager? _connections;
+  final Host? host;
+  final MonitorExec? _local;
+  final String? localName;
+
+  /// What the process window titles itself.
+  String get name => host?.title ?? localName ?? '';
 
   static const historyLength = 60;
   static const _timeout = Duration(seconds: 10);
@@ -90,14 +109,16 @@ class ServerMonitor extends ChangeNotifier {
     if (_running || _disposed) return;
     _running = true;
     _generation++;
-    _connected = _connections.connected.listen((id) {
-      if (id != host.id) return;
-      if (_busy) {
-        _connectionPending = true;
-      } else {
-        refresh();
-      }
-    });
+    if ((_connections, host) case (final connections?, final host?)) {
+      _connected = connections.connected.listen((id) {
+        if (id != host.id) return;
+        if (_busy) {
+          _connectionPending = true;
+        } else {
+          refresh();
+        }
+      });
+    }
     _tick();
   }
 
@@ -157,12 +178,14 @@ class ServerMonitor extends ChangeNotifier {
   }
 
   Future<TransportLease?> _acquire({int? generation}) async {
+    final connections = _connections, host = this.host;
+    if (connections == null || host == null) return null;
     var lease = _lease;
     if (lease != null && !lease.lost) return lease;
     _drop();
-    if (!_connections.hosts.any((h) => h.id == host.id)) return null;
+    if (!connections.hosts.any((h) => h.id == host.id)) return null;
     try {
-      lease = await _connections.acquire(host, const _Refuse(), purpose: LeasePurpose.exec);
+      lease = await connections.acquire(host, const _Refuse(), purpose: LeasePurpose.exec);
     } on Object {
       return null;
     }
@@ -180,10 +203,15 @@ class ServerMonitor extends ChangeNotifier {
     return lease;
   }
 
-  Future<ExecResult> _exec(TransportLease lease, String command, {required int limit}) async {
+  /// Runs one probe, allowing [stop] and a dropped lease to cancel it.
+  Future<ExecResult> _run(String command, {required int limit, TransportLease? lease}) async {
     final cancel = CancellationToken();
     _executions.add(cancel);
     try {
+      if (_local case final local?) {
+        return await local.exec(command, limit: limit, timeout: _timeout, cancel: cancel);
+      }
+      if (lease == null) throw StateError('no lease to sample with');
       return await lease.exec(command, limit: limit, timeout: _timeout, cancel: cancel);
     } finally {
       _executions.remove(cancel);
@@ -191,22 +219,23 @@ class ServerMonitor extends ChangeNotifier {
   }
 
   Future<void> _poll(int generation) async {
-    final lease = await _acquire(generation: generation);
+    final lease = _local == null ? await _acquire(generation: generation) : null;
     if (!_running || generation != _generation) return;
-    if (lease == null) return _set(MonitorState.offline);
+    if (_local == null && lease == null) return _set(MonitorState.offline);
     final ExecResult result;
     try {
       final command = statsCommand(processes: _processViews > 0, gpu: _gpuVisible);
-      result = await _exec(lease, command, limit: _limit);
+      result = await _run(command, limit: _limit, lease: lease);
     } on Object {
       if (!_running || generation != _generation) return;
-      if (lease.lost) {
+      if (lease != null && lease.lost) {
         _drop();
         return _set(MonitorState.offline);
       }
       return _set(MonitorState.failed);
     }
-    if (!_running || generation != _generation || !identical(_lease, lease) || lease.lost) return;
+    if (!_running || generation != _generation) return;
+    if (lease != null && (!identical(_lease, lease) || lease.lost)) return;
     final sample = parseStats(utf8.decode(result.stdout, allowMalformed: true));
     if (!sample.supported) {
       _drop();
@@ -243,15 +272,19 @@ class ServerMonitor extends ChangeNotifier {
   /// and an enum; pids 0 and 1 and negative ones, which address groups or init, are refused.
   Future<Result<void>> signal(int pid, ProcessSignal signal) async {
     if (pid <= 1) return Err(AppError('invalidArgument', detail: '$pid'));
-    final lease = await _acquire();
-    if (lease == null) return const Err(AppError('offline'));
     final name = switch (signal) {
       ProcessSignal.term => 'TERM',
       ProcessSignal.kill => 'KILL',
     };
     final ExecResult result;
     try {
-      result = await _exec(lease, 'kill -s $name $pid', limit: 4096);
+      if (_local == null) {
+        final lease = await _acquire();
+        if (lease == null) return const Err(AppError('offline'));
+        result = await _run('kill -s $name $pid', limit: 4096, lease: lease);
+      } else {
+        result = await _run('kill -s $name $pid', limit: 4096);
+      }
     } on Object catch (e) {
       return Err(AppError('failed', detail: '$e', retryable: true));
     }

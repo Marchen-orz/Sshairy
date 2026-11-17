@@ -235,7 +235,7 @@ class _ProcessDialogState extends State<ProcessDialog> {
     return AppDialog(
       width: min(1100, size.width - 2 * Space.xl),
       icon: const Icon(Icons.view_list_outlined),
-      title: Text(widget.monitor.host.title),
+      title: Text(widget.monitor.name),
       content: SizedBox(
         height: max(320, size.height * .72),
         child: ListenableBuilder(
@@ -512,7 +512,7 @@ class _ProcessDialogState extends State<ProcessDialog> {
             cell(_Column.memory, (p.memory * 100).toStringAsFixed(1)),
             cell(_Column.resident, formatShortBytes(p.residentBytes)),
             cell(_Column.state, p.stat.state, color: scheme.onSurfaceVariant),
-            cell(_Column.threads, '${p.stat.threads}'),
+            cell(_Column.threads, p.stat.threads <= 0 ? '–' : '${p.stat.threads}'),
             cell(_Column.elapsed, formatElapsed(p.elapsed), color: scheme.onSurfaceVariant),
             cell(_Column.command, p.command),
           ],

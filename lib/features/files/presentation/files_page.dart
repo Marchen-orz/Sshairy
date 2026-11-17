@@ -117,7 +117,8 @@ class _FilesPageState extends ConsumerState<FilesPage> {
   );
 }
 
-/// The terminal's side panel: one remote pane on [host], reopened when the focused pane moves to another host.
+/// The terminal's side panel: one pane on [host], or this computer when it is null, reopened when the focused
+/// pane moves to another target.
 class SideFilesPanel extends ConsumerStatefulWidget {
   const SideFilesPanel({
     super.key,
@@ -127,7 +128,9 @@ class SideFilesPanel extends ConsumerStatefulWidget {
     this.directory,
     this.toolbarActions = const [],
   });
-  final Host host;
+
+  /// Null for this computer.
+  final Host? host;
   final bool active;
 
   /// Docked below: a directory tree beside the list.
@@ -167,7 +170,7 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   void didUpdateWidget(SideFilesPanel old) {
     super.didUpdateWidget(old);
     final directoryChanged = !identical(old.directory, widget.directory);
-    final hostChanged = old.host.id != widget.host.id;
+    final hostChanged = old.host?.id != widget.host?.id;
     if (old.active && (!widget.active || directoryChanged)) old.directory?.removeListener(_follow);
     if (widget.active && (!old.active || directoryChanged)) widget.directory?.addListener(_follow);
     if (old.active != widget.active || hostChanged) _generation++;
@@ -193,7 +196,7 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     if (!mounted || !widget.active) return;
     final gen = _generation;
     final prompts = _ActivePrompts(DialogPrompts(context), () => mounted && widget.active && gen == _generation);
-    if (_browser.host?.id != widget.host.id || (_browser.status == BrowserStatus.idle && !_browser.suspended)) {
+    if (_browser.host?.id != widget.host?.id || (_browser.status == BrowserStatus.idle && !_browser.suspended)) {
       _wanted = null;
       await _browser.open(widget.host, prompts, at: widget.directory?.value);
     } else {

@@ -19,8 +19,7 @@ const _processes =
     'f[22], c }'
     '$_quote; ';
 
-const _base =
-    'export LC_ALL=C; [ -r /proc/stat ] || { echo @@unsupported; exit 0; }; '
+const _linux =
     'echo @@stat; grep ^cpu /proc/stat; '
     'echo @@mem; cat /proc/meminfo; '
     'echo @@load; cat /proc/loadavg; '
@@ -57,11 +56,71 @@ const _amd =
     'if [ -n "\$a" ]; then echo @@amdfd; '
     'grep -s -H -E "^drm-(driver|client-id|pdev|memory-vram):" /proc/[0-9]*/fdinfo/* 2>/dev/null; fi; ';
 
+/// macOS has no `/proc`, so the same readings come from sysctl, vm_stat, netstat and ps and are converted into
+/// the units [parseStats] expects. `rss` is reported in 1024-byte pages, matching the @@conf written here, and
+/// ps cannot report thread counts, so those stay 0 (shown as unknown). Graphics cards are not probed.
+const _darwin =
+    'boot=\$(sysctl -n kern.boottime 2>/dev/null | sed -n $_quote'
+    's/.* sec = \\([0-9]*\\),.*/\\1/p'
+    '$_quote); up=\$(( \$(date +%s) - \${boot:-0} )); '
+    'echo @@stat; sysctl -n kern.cp_time 2>/dev/null | awk $_quote'
+    '{ printf "cpu "; for (i = 1; i <= NF; i++) printf "%s ", \$i; print "" }'
+    '$_quote; '
+    'echo @@mem; '
+    'sysctl -n hw.memsize 2>/dev/null | awk $_quote'
+    '{ if (\$1 ~ /^[0-9]+\$/) printf "MemTotal: %d kB\\n", \$1 / 1024 }'
+    '$_quote; '
+    'vm_stat 2>/dev/null | awk $_quote'
+    'function n(v) { gsub(/[^0-9]/, "", v); return v + 0 } '
+    '/^Mach Virtual Memory/ { page = n(\$8) } '
+    '/^Pages free:/ { free = n(\$3) } '
+    '/^Pages inactive:/ { inactive = n(\$3) } '
+    '/^Pages speculative:/ { spec = n(\$3) } '
+    'END { if (page >= 1) printf "MemAvailable: %d kB\\n", (free + inactive + spec) * page / 1024 }'
+    '$_quote; '
+    'sysctl -n vm.swapusage 2>/dev/null | awk $_quote'
+    'function k(v) { u = substr(v, length(v), 1); x = substr(v, 1, length(v) - 1) + 0; '
+    'if (u == "G") return x * 1048576; if (u == "M") return x * 1024; if (u == "K") return x; return x / 1024 } '
+    '{ gsub(/=/, ""); for (i = 1; i < NF; i++) { if (\$i == "total") t = \$(i + 1); '
+    'else if (\$i == "free") f = \$(i + 1) } } '
+    'END { if (t != "") printf "SwapTotal: %d kB\\nSwapFree: %d kB\\n", k(t), k(f) }'
+    '$_quote; '
+    'echo @@load; sysctl -n vm.loadavg 2>/dev/null | awk $_quote'
+    '{ gsub(/[{}]/, ""); if (NF >= 3) print \$1, \$2, \$3 }'
+    '$_quote; '
+    'echo @@up; echo "\$up 0"; '
+    'echo @@net; netstat -ibn 2>/dev/null | awk $_quote'
+    'NR == 1 { for (i = 1; i <= NF; i++) { if (\$i == "Name") name = i; else if (\$i == "Ibytes") rx = i; '
+    'else if (\$i == "Obytes") tx = i } next } '
+    'name && rx && tx && NF >= tx { if (seen[\$name]++) next; '
+    'printf "%s: %s 0 0 0 0 0 0 0 %s\\n", \$name, \$rx, \$tx }'
+    '$_quote; '
+    'echo @@conf; echo 1024; '
+    'sysctl -n kern.clockrate 2>/dev/null | sed -n $_quote'
+    's/.*hz = \\([0-9]*\\).*/\\1/p'
+    '$_quote; '
+    'echo @@df; df -kP 2>/dev/null; '
+    'echo @@proc; '
+    'ps -axo pid=,state=,ppid=,time=,rss=,etime=,comm= 2>/dev/null | awk -v up="\$up" $_quote'
+    'function secs(t, p, n, s) { gsub(/-/, ":", t); n = split(t, p, ":"); s = p[n] + 0; '
+    'if (n >= 2) s += p[n - 1] * 60; if (n >= 3) s += p[n - 2] * 3600; if (n >= 4) s += p[n - 3] * 86400; return s } '
+    '{ name = \$7; for (i = 8; i <= NF; i++) name = name " " \$i; et = secs(\$6); '
+    'start = int((up - et) * 100); if (start < 0) start = 0; '
+    'printf "%d %s %d %d 0 %d %d %s\\n", \$1, \$2, \$3, int(secs(\$4) * 100), start, \$5, name }'
+    '$_quote; ';
+
+/// Owners and full command lines for the process window; BSD ps needs `-ww` to keep them untruncated.
+const _darwinOwners = 'echo @@ps; ps axww -o pid=,user=,args= 2>/dev/null; ';
+
 /// A read-only probe built only from the constant fragments above; nothing from hosts, paths or users is ever
 /// spliced in. It runs under `sh -c` so it behaves the same whatever the login shell, and `df -l` keeps network
 /// mounts, which can hang, out of it. [processes] adds owners and command lines; [gpu] adds the graphics queries.
+/// Linux and macOS are covered; any other system reports @@unsupported.
 String statsCommand({bool processes = false, bool gpu = false}) =>
-    "sh -c '$_base${processes || gpu ? _owners : ''}${gpu ? '$_nvidia$_amd' : ''}'";
+    "sh -c 'export LC_ALL=C; if [ -r /proc/stat ]; then $_linux${processes || gpu ? _owners : ''}"
+    "${gpu ? '$_nvidia$_amd' : ''}"
+    "elif [ \"\$(uname -s)\" = Darwin ]; then $_darwin${processes || gpu ? _darwinOwners : ''}"
+    "else echo @@unsupported; fi'";
 
 class CpuTimes {
   const CpuTimes(this.busy, this.total);
