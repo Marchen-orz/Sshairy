@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -109,7 +110,11 @@ class _SshairyAppState extends ConsumerState<SshairyApp> {
       home: problem == null
           ? ShutdownGuard(
               window: widget.window,
-              child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
+              child: StartupUpdatePrompt(
+                // Widget tests and probes keep their network and dialogs out of the start-up frames.
+                enabled: Platform.environment['FLUTTER_TEST'] != 'true',
+                child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
+              ),
             )
           : ConfigurationErrorPage(problem),
     );
