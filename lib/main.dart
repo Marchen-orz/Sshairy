@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, Platform;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -29,7 +29,8 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   registerCompletionLicenses();
   await DesktopWindow.instance.initialize();
-  final dir = await getApplicationSupportDirectory();
+  final requestedDir = dataDirOverride(args, Platform.environment);
+  final dir = requestedDir == null ? await getApplicationSupportDirectory() : Directory(requestedDir);
   await dir.create(recursive: true);
   final diagnostics = DiagnosticLog('${dir.path}/logs');
   diagnostics.record(DiagnosticArea.application, DiagnosticAction.start, DiagnosticOutcome.started);
