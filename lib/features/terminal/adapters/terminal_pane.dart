@@ -395,13 +395,17 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
         return Stack(
           fit: StackFit.expand,
           children: [
-            // The image is drawn opaque over the theme colour; the renderer's own fill above it carries
-            // 1 - opacity, so the image shows through at exactly the chosen opacity. It stays outside the frozen
-            // snapshot: a dock resizes the pane every frame, and a picture dragged along by the grid's bottom edge
-            // would slide and jump instead of simply keeping the image covering the viewport.
+            // The image is composed at the chosen opacity here, rather than drawn opaque under a terminal surface
+            // that carries the remaining 1 - opacity: while a dock resizes the pane the frozen grid no longer
+            // covers all of it, and a strip showing the raw image would flash brighter for a moment. It stays
+            // outside the snapshot so the picture keeps covering the viewport instead of sliding with the grid.
             Positioned.fill(
               child: hasImage
-                  ? BackgroundImageView(slot: BackgroundSlot.terminal, baseColor: palette.background, opacity: 1)
+                  ? BackgroundImageView(
+                      slot: BackgroundSlot.terminal,
+                      baseColor: palette.background,
+                      opacity: imageOpacity,
+                    )
                   : ColoredBox(color: palette.background),
             ),
             Positioned.fill(
@@ -422,7 +426,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                       onKeyEvent: _onKey,
                       padding: const EdgeInsets.all(Space.sm),
                       theme: _terminalTheme(palette),
-                      backgroundOpacity: hasImage ? 1 - imageOpacity : 1,
+                      // The backdrop already carries the image's transparency; a second veil would tint it twice.
+                      backgroundOpacity: hasImage ? 0 : 1,
                       cursorType: switch (settings.get(SettingKeys.cursorShape)) {
                         CursorShape.block => TerminalCursorType.block,
                         CursorShape.underline => TerminalCursorType.underline,
