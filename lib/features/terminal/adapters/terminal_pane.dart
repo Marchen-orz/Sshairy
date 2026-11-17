@@ -395,52 +395,49 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
         return Stack(
           fit: StackFit.expand,
           children: [
-            // A frozen character grid keeps its old size while a dock resizes the pane; the area it no longer fills
-            // must stay terminal-coloured instead of showing the workspace behind it.
-            Positioned.fill(child: ColoredBox(color: palette.background)),
+            // The image is drawn opaque over the theme colour; the renderer's own fill above it carries
+            // 1 - opacity, so the image shows through at exactly the chosen opacity. It stays outside the frozen
+            // snapshot: a dock resizes the pane every frame, and a picture dragged along by the grid's bottom edge
+            // would slide and jump instead of simply keeping the image covering the viewport.
+            Positioned.fill(
+              child: hasImage
+                  ? BackgroundImageView(slot: BackgroundSlot.terminal, baseColor: palette.background, opacity: 1)
+                  : ColoredBox(color: palette.background),
+            ),
             Positioned.fill(
               // xterm2 draws every cell on its own; on Impeller a full screen costs tens of milliseconds a frame, so
               // transitions elsewhere see it as a still image.
               child: MotionSnapshot(
                 freezeLayout: true,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // The image is drawn opaque over the theme colour; the renderer's own fill above it
-                    // carries 1 - opacity, so the image shows through at exactly the chosen opacity.
-                    if (hasImage)
-                      BackgroundImageView(slot: BackgroundSlot.terminal, baseColor: palette.background, opacity: 1),
-                    Listener(
-                      onPointerUp: copyOnSelect ? (_) => _copy() : null,
-                      child: ScrollConfiguration(
-                        behavior: const AppScrollBehavior(gutter: 0),
-                        child: TerminalView(
-                          _terminal,
-                          key: _view,
-                          focusNode: _focus,
-                          controller: _controller,
-                          scrollController: _scroll,
-                          onKeyEvent: _onKey,
-                          padding: const EdgeInsets.all(Space.sm),
-                          theme: _terminalTheme(palette),
-                          backgroundOpacity: hasImage ? 1 - imageOpacity : 1,
-                          cursorType: switch (settings.get(SettingKeys.cursorShape)) {
-                            CursorShape.block => TerminalCursorType.block,
-                            CursorShape.underline => TerminalCursorType.underline,
-                            CursorShape.bar => TerminalCursorType.verticalBar,
-                          },
-                          onPaste: _paste,
-                          onTapUp: _onTapUp,
-                          onSecondaryTapUp: _onSecondaryTapUp,
-                          textStyle: TerminalStyle(
-                            fontSize: settings.fontSize,
-                            fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
-                            fontFamilyFallback: AppFonts.monoFallback,
-                          ),
-                        ),
+                child: Listener(
+                  onPointerUp: copyOnSelect ? (_) => _copy() : null,
+                  child: ScrollConfiguration(
+                    behavior: const AppScrollBehavior(gutter: 0),
+                    child: TerminalView(
+                      _terminal,
+                      key: _view,
+                      focusNode: _focus,
+                      controller: _controller,
+                      scrollController: _scroll,
+                      onKeyEvent: _onKey,
+                      padding: const EdgeInsets.all(Space.sm),
+                      theme: _terminalTheme(palette),
+                      backgroundOpacity: hasImage ? 1 - imageOpacity : 1,
+                      cursorType: switch (settings.get(SettingKeys.cursorShape)) {
+                        CursorShape.block => TerminalCursorType.block,
+                        CursorShape.underline => TerminalCursorType.underline,
+                        CursorShape.bar => TerminalCursorType.verticalBar,
+                      },
+                      onPaste: _paste,
+                      onTapUp: _onTapUp,
+                      onSecondaryTapUp: _onSecondaryTapUp,
+                      textStyle: TerminalStyle(
+                        fontSize: settings.fontSize,
+                        fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
+                        fontFamilyFallback: AppFonts.monoFallback,
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
