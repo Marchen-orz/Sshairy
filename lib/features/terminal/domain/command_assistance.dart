@@ -99,7 +99,9 @@ class CommandHistory {
 
 String? visibleShellCommand(String beforeCursor, String afterCursor) {
   if (afterCursor.trim().isNotEmpty) return null;
-  final prompt = RegExp(r'^(?:\[[^\]\r\n]*@[^\]\r\n]+\]|[\w.-]+@[\w.-]+:[^\r\n]*?)[#$] ').firstMatch(beforeCursor);
+  // Conda and virtualenv put `(env) ` in front of the usual user@host prompt.
+  final prompt = RegExp(r'^(?:\([^)\r\n]+\) )*(?:\[[^\]\r\n]*@[^\]\r\n]+\]|[\w.-]+@[\w.-]+:[^\r\n]*?)[#$] ')
+      .firstMatch(beforeCursor);
   if (prompt == null) return null;
   final command = beforeCursor.substring(prompt.end);
   return commandIsSingleLine(command) ? command : null;
@@ -114,11 +116,18 @@ String? visibleUnixShellCommand(String beforeCursor, String afterCursor, {bool p
         visibleLocalShellCommand(beforeCursor, afterCursor, powershell: false, bash: true);
     if (known != null) return known;
   }
+  const envPrefix = r'(?:\([^)\r\n]+\) )*';
   final prompt =
       (fish
-              ? RegExp(r'^[\w.-]+@[\w.-]+ [^\r\n>]*> ')
+              ? RegExp(
+                  '^$envPrefix'
+                  r'[\w.-]+@[\w.-]+ [^\r\n>]*> ',
+                )
               : percent
-              ? RegExp(r'^(?:[\w.-]+@[\w.-]+ [^\r\n]*?|[\w.-]+)[%#] ')
+              ? RegExp(
+                  '^$envPrefix'
+                  r'(?:[\w.-]+@[\w.-]+ [^\r\n]*?|[\w.-]+)[%#] ',
+                )
               : null)
           ?.firstMatch(beforeCursor);
   if (prompt == null) return null;
@@ -134,12 +143,22 @@ String? visibleLocalShellCommand(
   required bool bash,
 }) {
   if (afterCursor.trim().isNotEmpty) return null;
+  const envPrefix = r'(?:\([^)\r\n]+\) )*';
   final prompt =
       (bash
-              ? RegExp(r'^[#$] ')
+              ? RegExp(
+                  '^$envPrefix'
+                  r'[#$] ',
+                )
               : powershell
-              ? RegExp(r'^PS (?:[A-Za-z]:\\|\\\\)[^\r\n>]*> ')
-              : RegExp(r'^(?:[A-Za-z]:\\|\\\\)[^\r\n>]*>'))
+              ? RegExp(
+                  '^$envPrefix'
+                  r'PS (?:[A-Za-z]:\\|\\\\)[^\r\n>]*> ',
+                )
+              : RegExp(
+                  '^$envPrefix'
+                  r'(?:[A-Za-z]:\\|\\\\)[^\r\n>]*>',
+                ))
           .firstMatch(beforeCursor);
   if (prompt == null) return null;
   final command = beforeCursor.substring(prompt.end);
