@@ -557,6 +557,9 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                   key: const ValueKey('terminal-ai-instruction'),
                   controller: _instruction,
                   focusNode: _focus,
+                  // On desktop a tap outside a focused field unfocuses it before the button runs, and both
+                  // Generate and Insert refuse to act once the composer has lost focus.
+                  onTapOutside: (_) {},
                   minLines: 1,
                   maxLines: 3,
                   maxLength: 2048,
@@ -588,6 +591,7 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
                     TextField(
                       key: const ValueKey('terminal-ai-command'),
                       controller: _command,
+                      onTapOutside: (_) {},
                       minLines: 1,
                       maxLines: 3,
                       style: mono(context),
