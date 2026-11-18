@@ -155,6 +155,8 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     showHidden: ref.read(settingsProvider).get(SettingKeys.showHidden),
   );
 
+  String? _lastDirectory;
+
   /// Where the terminal went while the browser could not follow yet.
   String? _wanted;
   Timer? _idleTimer;
@@ -184,6 +186,10 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     if (widget.active && (!old.active || directoryChanged)) widget.directory?.addListener(_follow);
     if (widget.active && (!old.active || listingChanged)) widget.listing?.addListener(_listingChanged);
     if (old.active != widget.active || hostChanged) _generation++;
+    if (directoryChanged || hostChanged) {
+      _lastDirectory = null;
+      _wanted = null;
+    }
     if (widget.active) _idleTimer?.cancel();
     if (!widget.active) {
       if (hostChanged || _browser.status == BrowserStatus.connecting) _browser.suspend();
@@ -230,7 +236,7 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   /// [_follow], while this re-reads whatever the panel shows when it is still the shell's directory.
   void _listingChanged() {
     if (!mounted || !widget.active || _browser.loading) return;
-    final to = widget.directory?.value;
+    final to = widget.directory?.value ?? _lastDirectory;
     if (to != null && to != _browser.path) return;
     _browser.refresh(quiet: true);
   }
@@ -238,8 +244,12 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
   void _follow() {
     if (!mounted || !widget.active) return;
     final to = widget.directory?.value;
+    // Directory probes clear the value while checking, even if the shell never moved.
     if (to == null) return;
-    _wanted = to;
+    if (to != _lastDirectory) {
+      _lastDirectory = to;
+      _wanted = to;
+    }
     _catchUp();
   }
 

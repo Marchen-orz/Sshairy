@@ -14,16 +14,15 @@ enum FileSort { name, modified, size }
 
 bool _sameEntries(List<FileEntry> a, List<FileEntry> b) {
   if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    final x = a[i], y = b[i];
-    if (x.name != y.name ||
-        x.kind != y.kind ||
-        x.size != y.size ||
-        x.modified != y.modified ||
-        x.mode != y.mode ||
-        x.owner != y.owner ||
-        x.group != y.group ||
-        x.linkToDir != y.linkToDir) {
+  final byName = {for (final entry in b) entry.name: entry};
+  for (final entry in a) {
+    final other = byName[entry.name];
+    if (other == null ||
+        !entry.sameAs(other) ||
+        entry.mode != other.mode ||
+        entry.owner != other.owner ||
+        entry.group != other.group ||
+        entry.linkToDir != other.linkToDir) {
       return false;
     }
   }
@@ -244,7 +243,7 @@ class FileBrowser extends ChangeNotifier {
     }
   }
 
-  /// A [quiet] read shows no progress and tells listeners only when what it found differs from what is shown.
+  /// A [quiet] read stays in the background until it finds a change.
   Future<void> refresh({bool quiet = false}) => _load(path, _generation, keepSelection: true, quiet: quiet);
 
   Future<bool> _load(String to, int gen, {bool keepSelection = false, bool quiet = false}) async {
@@ -261,13 +260,15 @@ class FileBrowser extends ChangeNotifier {
       // A quiet read is dropped once any later read has started: it is only a guess at what the user wants to see.
       if (gen != _generation || (quiet && seq != _loads)) return false;
       final changed = to != path;
-      if (quiet && !changed && listError == null && _sameEntries(entries, list)) return true;
-      differs = true;
       if (quiet) {
-        // The new listing replaces the old one at once; the bar only acknowledges that it changed.
-        _refreshPulse?.cancel();
-        _refreshPulse = Timer(quietRefreshPulse, _notify);
+        final listingChanged = changed || !_sameEntries(entries, list);
+        if (!listingChanged && listError == null) return true;
+        if (listingChanged) {
+          _refreshPulse?.cancel();
+          _refreshPulse = Timer(quietRefreshPulse, _notify);
+        }
       }
+      differs = true;
       path = to;
       entries = list;
       listError = null;
