@@ -160,7 +160,7 @@ String releaseNotesFor(String notes, String languageCode) {
     // The first block for a language wins, so a stray repeated marker cannot shadow the real one.
     blocks.putIfAbsent(match[1]!.toLowerCase(), () => match[2]!.trim());
   }
-  if (blocks.isEmpty) return notes.trim();
+  if (blocks.isEmpty) return _alternatingNotes(notes, languageCode);
   final wanted = languageCode.toLowerCase();
   final exact = blocks[wanted];
   if (exact != null) return exact;
@@ -168,6 +168,43 @@ String releaseNotesFor(String notes, String languageCode) {
     if (entry.key.startsWith('$wanted-')) return entry.value;
   }
   return blocks['en'] ?? blocks.values.first;
+}
+
+final _cjk = RegExp(r'[㐀-䶿一-鿿豈-﫿]');
+final _latin = RegExp(r'[A-Za-z]');
+
+/// A body written as one Chinese line followed by its English line, without marker blocks. Only non-empty
+/// lines outside code fences count, and at least two pairs must strictly alternate between the two languages;
+/// a mixed line or any other arrangement is shown as written rather than risking dropped content.
+String _alternatingNotes(String notes, String languageCode) {
+  final lines = notes.split('\n');
+  final chinese = List<bool?>.filled(lines.length, null);
+  var previous = false, seen = 0, zh = 0, en = 0, fenced = false;
+  for (var i = 0; i < lines.length; i++) {
+    final text = lines[i].trim();
+    if (text.startsWith('```')) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced || text.isEmpty) continue;
+    final hasCjk = _cjk.hasMatch(text), hasLatin = _latin.hasMatch(text);
+    if (!hasCjk && !hasLatin) return notes.trim();
+    final isZh = hasCjk;
+    if (seen > 0 && isZh == previous) return notes.trim();
+    previous = isZh;
+    chinese[i] = isZh;
+    seen++;
+    isZh ? zh++ : en++;
+  }
+  // Two pairs is the smallest body that reads as a translation rather than one sentence beside another.
+  if (zh < 2 || en < 2) return notes.trim();
+  final wanted = languageCode.toLowerCase().startsWith('zh');
+  final kept = [
+    for (var i = 0; i < lines.length; i++)
+      if (chinese[i] == null || chinese[i] == wanted) lines[i],
+  ];
+  final text = kept.join('\n').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  return text.isEmpty ? notes.trim() : text;
 }
 
 /// Whether [candidate] is a later dotted number than [current]; anything unreadable counts as not newer.
