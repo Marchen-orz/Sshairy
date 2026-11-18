@@ -12,7 +12,7 @@ import '../adapters/release_notes_view.dart';
 import '../application/update_download.dart';
 import '../application/updates.dart';
 
-const runtimeUpdateInterval = Duration(hours: 6);
+const runtimeUpdateInterval = Duration(minutes: 30);
 
 /// Checks the published releases once at start-up and, when one is newer, shows its notes.
 /// While the app stays open it looks again every [interval]; later looks stay quiet.
