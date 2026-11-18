@@ -1083,5 +1083,47 @@
   "aiAgentLocalAccessFile": "Airy asks to read a file in this conversation.",
   "aiAgentLocalAccessWrite": "Airy asks to read and write a folder in this conversation. Files from servers may be saved into it.",
   "aiAgentLocalAccessChooseFolder": "Choose folder",
-  "aiAgentLocalAccessChooseFile": "Choose file"
+  "aiAgentLocalAccessChooseFile": "Choose file",
+  "mcpTitle": "MCP / Skills",
+  "mcpChangeFailed": "Could not save the change.",
+  "mcpStartFailed": "Could not start MCP. Check the port and system credential storage.",
+  "mcpModeModel": "Model review",
+  "mcpModeHost": "Confirm hosts",
+  "mcpModeAuto": "Automatic within scope",
+  "mcpConnection": "Connection setup",
+  "mcpRevoke": "Revoke client",
+  "mcpAudit": "MCP audit",
+  "mcpAuditEmpty": "No MCP calls recorded.",
+  "mcpSkillConflict": "Existing file kept",
+  "mcpCopyConfig": "Copy configuration",
+  "mcpCopyToken": "Copy token",
+  "mcpTokenSetup": "Provide {variable} to the client through its environment or credential store.",
+  "mcpHeaderSetup": "Set the Authorization header in your private client configuration. Keep the token out of project files and chats.",
+  "mcpHostPrompt": "Allow {client} to run fixed diagnostics on {host} for this MCP session?",
+  "mcpPortSave": "Save port",
+  "mcpScopeChanged": "{host} (connection changed, select again)",
+  "@mcpScopeChanged": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "@mcpTokenSetup": {
+    "placeholders": {
+      "variable": {
+        "type": "String"
+      }
+    }
+  },
+  "@mcpHostPrompt": {
+    "placeholders": {
+      "client": {
+        "type": "String"
+      },
+      "host": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -6,7 +6,7 @@ import '../../../foundation/result.dart';
 enum Effect { query, localChange, connect, remoteWrite, security }
 
 /// Who asked. Set by the caller's wiring, never taken from arguments, so an agent cannot claim to be the UI.
-enum Origin { ui, palette, agent }
+enum Origin { ui, palette, agent, externalAgent }
 
 class RequestContext {
   RequestContext(
@@ -73,9 +73,11 @@ abstract class Capability {
 
   /// Off by default; M4 opts capabilities in after review.
   bool get agentExposed => false;
+  bool get externalAgentExposed => false;
 
   /// JSON Schema of the arguments, used to validate calls and to describe the tool to a model.
   Map<String, Object?> get inputSchema => const {'type': 'object', 'properties': {}};
+  Map<String, Object?> inputSchemaFor(Origin origin) => inputSchema;
 
   Future<Result<Object?>> invoke(Map<String, Object?> args, RequestContext context);
 }
@@ -87,7 +89,9 @@ class FunctionCapability extends Capability {
     this.effect,
     this._handler, {
     this.inputSchema = const {'type': 'object', 'properties': {}},
+    this.externalInputSchema,
     this.agentExposed = false,
+    this.externalAgentExposed = false,
   });
 
   @override
@@ -96,8 +100,14 @@ class FunctionCapability extends Capability {
   final Effect effect;
   @override
   final Map<String, Object?> inputSchema;
+  final Map<String, Object?>? externalInputSchema;
+  @override
+  Map<String, Object?> inputSchemaFor(Origin origin) =>
+      origin == Origin.externalAgent ? externalInputSchema ?? inputSchema : inputSchema;
   @override
   final bool agentExposed;
+  @override
+  final bool externalAgentExposed;
   final Future<Result<Object?>> Function(Args args, RequestContext context) _handler;
 
   @override

@@ -6073,6 +6073,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Choose file'**
   String get aiAgentLocalAccessChooseFile;
+
+  /// No description provided for @mcpTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'MCP / Skills'**
+  String get mcpTitle;
+
+  /// No description provided for @mcpChangeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the change.'**
+  String get mcpChangeFailed;
+
+  /// No description provided for @mcpStartFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not start MCP. Check the port and system credential storage.'**
+  String get mcpStartFailed;
+
+  /// No description provided for @mcpModeModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Model review'**
+  String get mcpModeModel;
+
+  /// No description provided for @mcpModeHost.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm hosts'**
+  String get mcpModeHost;
+
+  /// No description provided for @mcpModeAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic within scope'**
+  String get mcpModeAuto;
+
+  /// No description provided for @mcpConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection setup'**
+  String get mcpConnection;
+
+  /// No description provided for @mcpRevoke.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke client'**
+  String get mcpRevoke;
+
+  /// No description provided for @mcpAudit.
+  ///
+  /// In en, this message translates to:
+  /// **'MCP audit'**
+  String get mcpAudit;
+
+  /// No description provided for @mcpAuditEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No MCP calls recorded.'**
+  String get mcpAuditEmpty;
+
+  /// No description provided for @mcpSkillConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'Existing file kept'**
+  String get mcpSkillConflict;
+
+  /// No description provided for @mcpCopyConfig.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy configuration'**
+  String get mcpCopyConfig;
+
+  /// No description provided for @mcpCopyToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy token'**
+  String get mcpCopyToken;
+
+  /// No description provided for @mcpTokenSetup.
+  ///
+  /// In en, this message translates to:
+  /// **'Provide {variable} to the client through its environment or credential store.'**
+  String mcpTokenSetup(String variable);
+
+  /// No description provided for @mcpHeaderSetup.
+  ///
+  /// In en, this message translates to:
+  /// **'Set the Authorization header in your private client configuration. Keep the token out of project files and chats.'**
+  String get mcpHeaderSetup;
+
+  /// No description provided for @mcpHostPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {client} to run fixed diagnostics on {host} for this MCP session?'**
+  String mcpHostPrompt(String client, String host);
+
+  /// No description provided for @mcpPortSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save port'**
+  String get mcpPortSave;
+
+  /// No description provided for @mcpScopeChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'{host} (connection changed, select again)'**
+  String mcpScopeChanged(String host);
 }
 
 class _AppLocalizationsDelegate

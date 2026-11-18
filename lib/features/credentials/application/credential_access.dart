@@ -67,6 +67,19 @@ final _credentialsProvider = Provider<_StoredCredentials>(
   (ref) => _StoredCredentials(ref.read(secretStoreProvider), ref.read(credentialRevisionProvider)),
 );
 final connectionCredentialsProvider = Provider<ConnectionCredentials>((ref) => ref.read(_credentialsProvider));
+final mcpCredentialsProvider = Provider<McpCredentials>((ref) => McpCredentials._(ref.read(_credentialsProvider)));
+
+/// One independent token per configured client. No SSH or model credential access.
+class McpCredentials {
+  McpCredentials._(this._credentials);
+  final _StoredCredentials _credentials;
+
+  Future<Secret?> read(String client) => _credentials.read(SecretRef.mcp(client));
+  Future<void> save(String client, Secret value) =>
+      _credentials._serial(() => _credentials._store.write(SecretRef.mcp(client), value));
+  Future<void> clear(String client) => _credentials._serial(() => _credentials._store.delete(SecretRef.mcp(client)));
+}
+
 final hostCredentialCleanupProvider = Provider<HostCredentialCleanup>((ref) => ref.read(_credentialsProvider));
 final hostPasswordImportProvider = Provider<HostPasswordImport>((ref) => ref.read(_credentialsProvider));
 final hostPasswordEditorProvider = Provider<HostPasswordEditor>((ref) => ref.read(_credentialsProvider));

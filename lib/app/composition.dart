@@ -27,6 +27,7 @@ import 'capabilities/local_files.dart';
 import 'capabilities/settings.dart';
 import 'capabilities/snippets.dart';
 import 'capabilities/forwarding.dart';
+import 'mcp/settings.dart';
 
 /// The composition root: the one place that knows every feature and registers what each one offers.
 List<Override> appOverrides() => [
@@ -90,6 +91,12 @@ List<Override> appOverrides() => [
         (_) => const AiSettings(),
         id: SettingsSectionId.ai,
         icon: Icons.auto_awesome_outlined,
+      ),
+      SettingsSection(
+        (l) => l.mcpTitle,
+        (_) => const McpSettings(),
+        id: SettingsSectionId.mcp,
+        icon: Icons.extension_outlined,
       ),
       SettingsSection(
         (l) => l.translationService,

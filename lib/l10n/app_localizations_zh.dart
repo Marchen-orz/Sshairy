@@ -3153,4 +3153,64 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAgentLocalAccessChooseFile => '选择文件';
+
+  @override
+  String get mcpTitle => 'MCP / Skill';
+
+  @override
+  String get mcpChangeFailed => '未能保存更改。';
+
+  @override
+  String get mcpStartFailed => 'MCP 启动失败，请检查端口和系统安全存储。';
+
+  @override
+  String get mcpModeModel => '模型审核';
+
+  @override
+  String get mcpModeHost => '主机确认';
+
+  @override
+  String get mcpModeAuto => '范围内自动';
+
+  @override
+  String get mcpConnection => '连接配置';
+
+  @override
+  String get mcpRevoke => '撤销客户端';
+
+  @override
+  String get mcpAudit => 'MCP 审计';
+
+  @override
+  String get mcpAuditEmpty => '暂无 MCP 调用记录。';
+
+  @override
+  String get mcpSkillConflict => '已保留现有文件';
+
+  @override
+  String get mcpCopyConfig => '复制配置';
+
+  @override
+  String get mcpCopyToken => '复制令牌';
+
+  @override
+  String mcpTokenSetup(String variable) {
+    return '通过客户端环境变量或凭据存储提供 $variable。';
+  }
+
+  @override
+  String get mcpHeaderSetup => '请在客户端的私有配置中设置 Authorization 请求头。令牌不要放进项目文件或聊天。';
+
+  @override
+  String mcpHostPrompt(String client, String host) {
+    return '允许 $client 在本次 MCP 会话中诊断「$host」？';
+  }
+
+  @override
+  String get mcpPortSave => '保存端口';
+
+  @override
+  String mcpScopeChanged(String host) {
+    return '$host（连接已变化，请重新选择）';
+  }
 }

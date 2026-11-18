@@ -17,6 +17,7 @@ import '../features/workspace/api.dart';
 import '../foundation/diagnostics.dart';
 import '../l10n/app_localizations.dart';
 import '../platform/desktop_window.dart';
+import 'mcp/controller.dart';
 
 enum _ExitFailureChoice { back, retry, quit }
 
@@ -57,6 +58,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
     final forwards = ref.read(forwardsProvider.notifier);
     try {
       final agent = ref.exists(agentRuntimeProvider) ? ref.read(agentRuntimeProvider) : null;
+      final mcp = ref.exists(mcpControllerProvider) ? ref.read(mcpControllerProvider) : null;
       final running = transfers.activeCount;
       final unsaved = edits.unsavedCount;
       final tunnels = ref.read(forwardsProvider).where((f) => f.active).length;
@@ -85,6 +87,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             edits.shutdown(),
             forwards.shutdown(),
             if (agent != null) agent.shutdown(),
+            if (mcp != null) mcp.shutdown(),
             if (ref.exists(aiTerminalServiceProvider)) ref.read(aiTerminalServiceProvider).shutdown(),
           ]).timeout(const Duration(seconds: 8));
           await Future.wait([
@@ -125,6 +128,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
               transfers.resumeAfterShutdown();
               edits.resumeAfterShutdown();
               forwards.resumeAfterShutdown();
+              mcp?.resume();
               return AppExitResponse.cancel;
           }
         }

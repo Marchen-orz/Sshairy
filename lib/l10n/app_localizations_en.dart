@@ -3306,4 +3306,66 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAgentLocalAccessChooseFile => 'Choose file';
+
+  @override
+  String get mcpTitle => 'MCP / Skills';
+
+  @override
+  String get mcpChangeFailed => 'Could not save the change.';
+
+  @override
+  String get mcpStartFailed =>
+      'Could not start MCP. Check the port and system credential storage.';
+
+  @override
+  String get mcpModeModel => 'Model review';
+
+  @override
+  String get mcpModeHost => 'Confirm hosts';
+
+  @override
+  String get mcpModeAuto => 'Automatic within scope';
+
+  @override
+  String get mcpConnection => 'Connection setup';
+
+  @override
+  String get mcpRevoke => 'Revoke client';
+
+  @override
+  String get mcpAudit => 'MCP audit';
+
+  @override
+  String get mcpAuditEmpty => 'No MCP calls recorded.';
+
+  @override
+  String get mcpSkillConflict => 'Existing file kept';
+
+  @override
+  String get mcpCopyConfig => 'Copy configuration';
+
+  @override
+  String get mcpCopyToken => 'Copy token';
+
+  @override
+  String mcpTokenSetup(String variable) {
+    return 'Provide $variable to the client through its environment or credential store.';
+  }
+
+  @override
+  String get mcpHeaderSetup =>
+      'Set the Authorization header in your private client configuration. Keep the token out of project files and chats.';
+
+  @override
+  String mcpHostPrompt(String client, String host) {
+    return 'Allow $client to run fixed diagnostics on $host for this MCP session?';
+  }
+
+  @override
+  String get mcpPortSave => 'Save port';
+
+  @override
+  String mcpScopeChanged(String host) {
+    return '$host (connection changed, select again)';
+  }
 }

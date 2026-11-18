@@ -18,6 +18,7 @@ import '../domain/local_grant.dart';
 import '../domain/model.dart';
 import '../domain/resources.dart';
 import 'context.dart';
+import 'diagnostic.dart' show agentDiagnosticProjection, runAgentDiagnostic, agentHostPage;
 import 'output_store.dart';
 import 'reviewer.dart';
 
@@ -1461,22 +1462,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       for (final host in _availableHosts)
         if (currentHosts.contains(host.id)) host,
     ];
-    if (offset < 0 || offset > hosts.length) return const Err(AppError('invalidArgument', detail: 'offset'));
-    final page = <Map<String, Object?>>[];
-    Map<String, Object?> data() => {
-      'hosts': page,
-      'total': hosts.length,
-      'nextOffset': offset + page.length < hosts.length ? offset + page.length : null,
-    };
-    for (final host in hosts.skip(offset).take(32)) {
-      page.add({'id': host.id.value, 'alias': _bounded(host.label, 256)});
-      if (utf8.encode(jsonEncode(data())).length > 4096) {
-        page.removeLast();
-        break;
-      }
-    }
-    _hostsListed = true;
-    return Ok(data());
+    final result = agentHostPage(hosts, offset);
+    if (result is Ok) _hostsListed = true;
+    return result;
   }
 
   @override
@@ -1917,18 +1905,21 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           token!.cancel();
         }
       });
-      final wrapped = diagnostic ? command : "sh -c ${_quote('cd -- ${_quote(cwd)} || exit\n$command')}";
+      void append(bool stderr, Uint8List bytes) {
+        if (!identical(token, _cancel) || owner != _owner || token!.isCancelled) return;
+        outputs.append(output, stderr, bytes);
+        _queueEmit();
+      }
+
       submitted = true;
-      execution.exitCode = await target.execute(
-        wrapped,
-        (stderr, bytes) {
-          if (!identical(token, _cancel) || owner != _owner || token.isCancelled) return;
-          outputs.append(output, stderr, bytes);
-          _queueEmit();
-        },
-        timeout: Duration(seconds: diagnostic ? 15 : ((args['timeoutSeconds'] as num?)?.toInt() ?? 60)),
-        cancel: token!,
-      );
+      execution.exitCode = diagnostic
+          ? await runAgentDiagnostic(target, template!, append, token!)
+          : await target.execute(
+              "sh -c ${_quote('cd -- ${_quote(cwd)} || exit\n$command')}",
+              append,
+              timeout: Duration(seconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 60),
+              cancel: token!,
+            );
       remoteFinished = true;
       execution.state = execution.exitCode == null
           ? 'outcomeUnknown'
@@ -1961,21 +1952,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       _checkTurn(token, owner);
       if (!target.current) throw const AgentFailure('scopeChanged');
       if (diagnostic) {
-        final data = Map<String, Object?>.of(parseDiagnostic(template!, output.stdout));
-        for (final key in data.keys.toList()) {
-          if (data[key] case final List entries) {
-            final bounded = List<Object?>.of(entries);
-            data[key] = bounded;
-            while (utf8.encode(jsonEncode(jsonEncode(data))).length > 6500 && bounded.isNotEmpty) {
-              bounded.removeLast();
-              data['truncated'] = true;
-            }
-          }
-        }
+        final data = agentDiagnosticProjection(template!, output.stdout);
         final projection = jsonEncode(data);
-        if (utf8.encode(jsonEncode(projection)).length > 6500) {
-          throw const AgentFailure('outputLimit');
-        }
         execution.historyTruncated = output.truncated || data['truncated'] == true;
         _shareResult(execution, output, token: token, owner: owner, projection: projection);
         return Ok({

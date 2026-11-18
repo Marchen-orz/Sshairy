@@ -15,11 +15,15 @@ class CapabilityDispatcher {
   Capability? operator [](String id) => _byId[id];
 
   Future<Result<Object?>> dispatch(String id, Map<String, Object?> args, RequestContext context) async {
-    final agent = context.origin == Origin.agent;
+    final external = context.origin == Origin.externalAgent;
+    final agent = context.origin == Origin.agent || external;
     final capability = _byId[id];
     if (capability == null) return Err(AppError('unknownCapability', detail: agent ? '' : id));
     // Exposure and authority are separate gates; adding a tool never grants it to every agent turn.
-    if (agent && (!capability.agentExposed || capability.effect == Effect.security)) {
+    if (agent &&
+        (!capability.agentExposed ||
+            capability.effect == Effect.security ||
+            (external && !capability.externalAgentExposed))) {
       return Err(AppError('notExposed', detail: id));
     }
     final stopped = _stopped(context);
@@ -28,7 +32,7 @@ class CapabilityDispatcher {
       if (agent) {
         final authority = context.authority;
         if (authority == null) return const Err(AppError('unauthorized'));
-        final checked = CapabilitySchema.validate(capability.inputSchema, args);
+        final checked = CapabilitySchema.validate(capability.inputSchemaFor(context.origin), args);
         if (checked case Err<Map<String, Object?>>(:final error)) return Err(error);
         args = (checked as Ok<Map<String, Object?>>).value;
         final beforeApproval = _stopped(context);

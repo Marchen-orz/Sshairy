@@ -14,6 +14,8 @@ export 'application/providers.dart';
 export 'application/configuration.dart';
 export 'application/terminal_service.dart';
 export 'application/output_store.dart';
+export 'application/diagnostic.dart';
+export 'application/reviewer.dart';
 export 'presentation/agent_panel.dart';
 export 'presentation/host_approval.dart';
 export 'presentation/ai_settings.dart';

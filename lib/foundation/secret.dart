@@ -36,6 +36,8 @@ final class SecretRef {
     return SecretRef._('ai/${Uri.encodeComponent(identity)}/apiKey');
   }
 
+  factory SecretRef.mcp(String client) => SecretRef._('mcp/${Uri.encodeComponent(client)}/token', canRemember: false);
+
   final String storageKey;
   final bool canRemember;
 

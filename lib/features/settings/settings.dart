@@ -194,6 +194,29 @@ class OptionalStringSetting extends SettingDef<String?> {
   };
 }
 
+enum McpApprovalMode { model, host, automatic }
+
+class McpHostSetting extends SettingDef<Map<String, String>> {
+  const McpHostSetting() : super('mcpHosts', const {}, agentExposed: false);
+
+  static final _digest = RegExp(r'^[a-f0-9]{64}$');
+
+  @override
+  bool accepts(Object? raw) =>
+      raw is Map &&
+      raw.length <= 1000 &&
+      raw.entries.every((entry) {
+        final id = entry.key, digest = entry.value;
+        return id is String && id.isNotEmpty && id.length <= 128 && digest is String && _digest.hasMatch(digest);
+      });
+
+  @override
+  Map<String, String> decode(Object? raw) => Map.unmodifiable((raw as Map).cast<String, String>());
+
+  @override
+  Map<String, Object?> get schema => const {'type': 'object'};
+}
+
 /// User-chosen keys, keyed by [AppShortcutAction]; missing actions keep their platform default.
 class ShortcutSetting extends SettingDef<Map<String, String>> {
   const ShortcutSetting(String key) : super(key, const {}, agentExposed: false);
@@ -358,7 +381,16 @@ abstract final class SettingKeys {
   /// User overrides; actions not present use their platform default.
   static const shortcuts = ShortcutSetting('shortcuts');
 
+  static const mcpEnabled = BoolSetting('mcpEnabled', false, agentExposed: false);
+  static const mcpPort = IntSetting('mcpPort', 47826, 1024, 65535, agentExposed: false);
+  static const mcpMode = EnumSetting('mcpMode', McpApprovalMode.host, McpApprovalMode.values, agentExposed: false);
+  static const mcpHosts = McpHostSetting();
+
   static const List<SettingDef<Object?>> all = [
+    mcpEnabled,
+    mcpPort,
+    mcpMode,
+    mcpHosts,
     themeMode,
     accent,
     locale,

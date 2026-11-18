@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/ai/api.dart';
 import '../../features/capabilities/api.dart';
 import '../../foundation/result.dart';
+import '../mcp/controller.dart';
 
 /// Purpose-built safe projections; existing host/file/settings capabilities stay private.
 List<Capability> aiCapabilities(Ref ref) {
@@ -21,12 +22,22 @@ List<Capability> aiCapabilities(Ref ref) {
     'additionalProperties': false,
   };
   const host = {'type': 'string', 'minLength': 1, 'maxLength': 128};
+  Map<String, Object?> diagnosticSchema(Iterable<DiagnosticTemplate> templates) => schema(
+    {
+      'hostId': host,
+      'template': {'type': 'string', 'enum': templates.map((template) => template.name).toList()},
+    },
+    ['hostId', 'template'],
+  );
   return [
     FunctionCapability(
       'agent.hosts',
       Effect.query,
-      (a, c) => call(c, (r) async => r.listHosts(a.raw)),
+      (a, c) async => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).listHosts(a.raw)
+          : call(c, (r) async => r.listHosts(a.raw)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema({
         'offset': {'type': 'integer', 'minimum': 0},
       }, []),
@@ -60,18 +71,13 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.diagnose',
       Effect.connect,
-      (a, c) => call(c, (r) => r.diagnose(a.raw, c)),
+      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).diagnose(c)
+          : call(c, (r) => r.diagnose(a.raw, c)),
       agentExposed: true,
-      inputSchema: schema(
-        {
-          'hostId': host,
-          'template': {
-            'type': 'string',
-            'enum': ['systemSummary', 'storageCapacity', 'processSummary', 'listeningPorts', 'serviceStates'],
-          },
-        },
-        ['hostId', 'template'],
-      ),
+      externalAgentExposed: true,
+      inputSchema: diagnosticSchema(DiagnosticTemplate.values),
+      externalInputSchema: diagnosticSchema(mcpDiagnosticTemplates),
     ),
     FunctionCapability(
       'agent.execute',

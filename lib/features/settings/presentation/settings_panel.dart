@@ -35,6 +35,7 @@ enum SettingsSectionId {
   connection,
   files,
   ai,
+  mcp,
   translation,
   security,
   about,

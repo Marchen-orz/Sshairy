@@ -45,6 +45,12 @@ Four permission modes cover the range from watching to hands-off: **Observe**, *
 
 <img src="media/airy.png" alt="Airy diagnosing a failing endpoint and asking for approval before restarting a container, with an inline command suggestion beside it." width="100%">
 
+## MCP / Skill
+
+Open **Settings → MCP / Skill** to enable local MCP, choose an approval mode and copy connection settings for Claude Code, Codex, Zcode or DeepSeek Harness. Install the Sshairy Skill for each client using its own switch. The MCP tools list saved host aliases and collect fixed Linux system or disk-capacity diagnostics.
+
+**Host confirmation** is the default and asks once per host in each MCP session. **Model review** also requires an explicit model approval for every tool call. **Automatic within scope** runs on the hosts you select. The same settings page shows the audit and lets you revoke a client’s token.
+
 ## Themes
 
 Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pink. Each palette carries through the interface, the terminal and Airy's artwork, in light and dark.
