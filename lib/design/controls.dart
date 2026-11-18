@@ -61,7 +61,7 @@ class AppSwitch extends StatelessWidget {
         child: _Pressable(
           onTap: enabled ? () => onChanged!(!value) : null,
           builder: (context, hovered, focused) => AnimatedContainer(
-            duration: Motion.quick,
+            duration: Motion.of(context, Motion.quick),
             width: 34,
             height: 20,
             padding: const EdgeInsets.all(2),
@@ -77,7 +77,7 @@ class AppSwitch extends StatelessWidget {
               border: _ring(context, focused, 2),
             ),
             child: AnimatedAlign(
-              duration: Motion.normal,
+              duration: Motion.of(context, Motion.normal),
               curve: Curves.easeOutCubic,
               alignment: value ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
@@ -121,7 +121,7 @@ class AppCheckbox extends StatelessWidget {
           radius: 5,
           onTap: enabled ? () => onChanged!(!value) : null,
           builder: (context, hovered, focused) => AnimatedContainer(
-            duration: Motion.quick,
+            duration: Motion.of(context, Motion.quick),
             width: 16,
             height: 16,
             decoration: BoxDecoration(

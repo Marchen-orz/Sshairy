@@ -33,7 +33,7 @@ Future<T?> _showPanel<T>(BuildContext context, WidgetBuilder builder, {required 
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black.withValues(alpha: right ? (dark ? .4 : .18) : (dark ? .25 : .08)),
-    transitionDuration: Motion.panel,
+    transitionDuration: Motion.overlay(context, Motion.panel),
     // Focus starts inside, so Escape closes the panel even when nothing in it takes focus.
     pageBuilder: (context, animation, _) => CallbackShortcuts(
       bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context)},

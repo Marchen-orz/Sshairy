@@ -272,6 +272,9 @@ abstract final class SettingKeys {
   );
 
   static const uiScale = DoubleSetting('uiScale', 1, .8, 1.5);
+
+  /// Off, overlay-only or full motion; the user's own preference.
+  static const motion = EnumSetting('motion', MotionLevel.full, MotionLevel.values, agentExposed: false);
   static const uiFontFamily = FontSetting('uiFontFamily');
   static const uiFontSize = DoubleSetting('uiFontSize', AppFonts.uiSize, AppFonts.uiSizeMin, AppFonts.uiSizeMax);
 
@@ -361,6 +364,7 @@ abstract final class SettingKeys {
     locale,
     renderer,
     uiScale,
+    motion,
     uiFontFamily,
     uiFontSize,
     backgroundGallery,
@@ -419,6 +423,7 @@ class Settings {
   String? get uiFontFamily => get(SettingKeys.uiFontFamily);
   double get uiFontSize => get(SettingKeys.uiFontSize);
   double get uiScale => get(SettingKeys.uiScale);
+  MotionLevel get motion => get(SettingKeys.motion);
   String? get terminalFontFamily => get(SettingKeys.terminalFontFamily);
   Map<String, String> get shortcuts => get(SettingKeys.shortcuts);
 

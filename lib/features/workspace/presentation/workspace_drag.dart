@@ -233,7 +233,11 @@ class _TabDropTargetState extends State<_TabDropTarget> {
     final after = box.globalToLocal(details.offset).dx > box.size.width / 2;
     if (_after != after) setState(() => _after = after);
     widget.onHover?.call(details.data);
-    Scrollable.maybeOf(context)?.position.ensureVisible(box, alignment: after ? 1 : 0, duration: Motion.quick);
+    Scrollable.maybeOf(context)?.position.ensureVisible(
+      box,
+      alignment: after ? 1 : 0,
+      duration: Motion.of(context, Motion.quick),
+    );
   }
 
   @override

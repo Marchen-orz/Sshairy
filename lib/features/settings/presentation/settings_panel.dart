@@ -213,7 +213,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       if (context != null) {
         Scrollable.ensureVisible(
           context,
-          duration: Motion.quick,
+          duration: Motion.of(context, Motion.quick),
           alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
         );
       }
@@ -253,7 +253,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     _select(index);
     await _scroll.animateTo(
       offset.clamp(0.0, _scroll.position.maxScrollExtent),
-      duration: Motion.panel,
+      duration: Motion.of(context, Motion.panel),
       curve: Curves.easeOutCubic,
     );
     if (!mounted || generation != _navigationGeneration) return;
@@ -396,6 +396,14 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
             label: (value) => '${(value * 100).round()}%',
             onChanged: (value) => notifier.set(SettingKeys.uiScale, value),
           ),
+        ),
+        _Field.stacked(
+          l.motion,
+          segmented(SettingKeys.motion, {
+            MotionLevel.off: l.off,
+            MotionLevel.light: l.motionLight,
+            MotionLevel.full: l.motionFull,
+          }),
         ),
         _Field.stacked(l.appBackgroundImage, const BackgroundImageControls(slot: BackgroundSlot.app)),
         if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)

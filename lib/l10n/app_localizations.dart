@@ -440,6 +440,24 @@ abstract class AppLocalizations {
   /// **'Interface scale'**
   String get uiScale;
 
+  /// No description provided for @motion.
+  ///
+  /// In en, this message translates to:
+  /// **'Motion'**
+  String get motion;
+
+  /// No description provided for @motionLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get motionLight;
+
+  /// No description provided for @motionFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Full'**
+  String get motionFull;
+
   /// No description provided for @importChooseAgain.
   ///
   /// In en, this message translates to:

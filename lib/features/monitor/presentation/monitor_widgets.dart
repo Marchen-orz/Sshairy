@@ -105,7 +105,7 @@ class MonitorRing extends StatelessWidget {
           dimension: size,
           child: TweenAnimationBuilder<double>(
             tween: Tween(end: f ?? 0),
-            duration: Motion.normal,
+            duration: Motion.of(context, Motion.normal),
             builder: (context, value, _) => CustomPaint(
               painter: _RingPainter(
                 value,
@@ -174,7 +174,7 @@ class MonitorBar extends StatelessWidget {
               alignment: Alignment.centerLeft,
               widthFactor: f,
               child: AnimatedContainer(
-                duration: Motion.normal,
+                duration: Motion.of(context, Motion.normal),
                 decoration: BoxDecoration(
                   color: fillColor(context, f, color),
                   borderRadius: BorderRadius.circular(height),

@@ -114,7 +114,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
           onTap: enabled ? _show : null,
           child: AnimatedContainer(
             key: _field,
-            duration: Motion.quick,
+            duration: Motion.of(context, Motion.quick),
             width: widget.width,
             constraints: BoxConstraints(minHeight: AppFormField.height(context)),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: Space.xs),
@@ -139,7 +139,7 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
                 ),
                 AnimatedRotation(
                   turns: _open ? .5 : 0,
-                  duration: Motion.normal,
+                  duration: Motion.of(context, Motion.normal),
                   child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: foreground),
                 ),
               ],

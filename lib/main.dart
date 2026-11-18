@@ -93,10 +93,13 @@ class _SshairyAppState extends ConsumerState<SshairyApp> {
       // Apply the palette once; controls keep their own local transitions.
       themeAnimationDuration: Duration.zero,
       themeMode: settings.themeMode,
-      builder: (context, child) => ImageCacheBudget(
-        child: WindowBrandIcon(
-          window: widget.window,
-          child: InterfaceScale(scale: settings.uiScale, child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => MotionScope(
+        level: settings.motion,
+        child: ImageCacheBudget(
+          child: WindowBrandIcon(
+            window: widget.window,
+            child: InterfaceScale(scale: settings.uiScale, child: child ?? const SizedBox.shrink()),
+          ),
         ),
       ),
       locale: settings.locale == null ? null : Locale(settings.locale!),

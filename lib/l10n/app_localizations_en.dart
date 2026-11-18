@@ -215,6 +215,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uiScale => 'Interface scale';
 
   @override
+  String get motion => 'Motion';
+
+  @override
+  String get motionLight => 'Light';
+
+  @override
+  String get motionFull => 'Full';
+
+  @override
   String get importChooseAgain => 'Choose another source';
 
   @override

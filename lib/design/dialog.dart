@@ -21,7 +21,7 @@ Future<T?> showAppDialog<T>({
     barrierDismissible: barrierDismissible,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black.withValues(alpha: dark ? .5 : .28),
-    transitionDuration: Motion.panel,
+    transitionDuration: Motion.overlay(context, Motion.panel),
     pageBuilder: (context, _, _) => Builder(builder: builder),
     // Only the card animates: fading the full-screen page blended a whole window-sized layer every frame.
     transitionBuilder: (context, animation, _, child) => _DialogMotion(animation: animation, child: child),

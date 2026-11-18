@@ -3,6 +3,21 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+/// How much the interface animates (docs/UI.md §2). The app setting is published by [MotionScope].
+///
+/// [light] keeps only overlays such as menus, dropdowns, pickers and dialogs; layout and in-place
+/// changes switch at once. [off] makes even overlays appear and disappear at once.
+enum MotionLevel { off, light, full }
+
+class MotionScope extends InheritedWidget {
+  const MotionScope({super.key, required this.level, required super.child});
+
+  final MotionLevel level;
+
+  @override
+  bool updateShouldNotify(MotionScope oldWidget) => level != oldWidget.level;
+}
+
 /// Motion tokens from docs/UI.md §2.
 ///
 /// Transitions fade and shift without scaling text. Profile measurements over a full terminal show repeated
@@ -18,10 +33,25 @@ abstract final class Motion {
   /// Something already on screen moving or resizing.
   static const move = Curves.easeInOutCubic;
 
+  /// The app's choice, lowered to [MotionLevel.light] when the system asks for less motion. The system
+  /// request can only remove motion, never add it back.
+  static MotionLevel levelOf(BuildContext context) {
+    final chosen = context.dependOnInheritedWidgetOfExactType<MotionScope>()?.level ?? MotionLevel.full;
+    return chosen == MotionLevel.off || !reduced(context) ? chosen : MotionLevel.light;
+  }
+
+  /// The system's own request, separate from the app's setting.
   static bool reduced(BuildContext context) => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
-  /// [duration], or none when the system asks for less motion.
-  static Duration of(BuildContext context, Duration duration) => reduced(context) ? Duration.zero : duration;
+  /// Layout and in-place changes animate only at [MotionLevel.full].
+  static bool layout(BuildContext context) => levelOf(context) == MotionLevel.full;
+
+  /// [duration] for layout and in-place changes, or none when only [MotionLevel.full] animates.
+  static Duration of(BuildContext context, Duration duration) => layout(context) ? duration : Duration.zero;
+
+  /// [duration] for overlays, which [MotionLevel.light] keeps; [MotionLevel.off] shows them at once.
+  static Duration overlay(BuildContext context, Duration duration) =>
+      levelOf(context) == MotionLevel.off ? Duration.zero : duration;
 
   /// [parent] eased in with [enter] and out with [exit].
   static CurvedAnimation curve(Animation<double> parent) =>
@@ -247,13 +277,18 @@ Widget popupTransition(
   Offset offset = Offset.zero,
   Duration duration = Motion.panel,
   bool fade = true,
-}) => _PopupMotion(
-  route: animation,
-  offset: Motion.reduced(context) ? Offset.zero : offset,
-  duration: duration,
-  fade: fade || Motion.reduced(context),
-  child: child,
-);
+}) {
+  final level = Motion.levelOf(context);
+  if (level == MotionLevel.off) return child;
+  // Light motion keeps overlays but drops their shift, leaving a plain fade.
+  return _PopupMotion(
+    route: animation,
+    offset: level == MotionLevel.full ? offset : Offset.zero,
+    duration: duration,
+    fade: fade || level == MotionLevel.light,
+    child: child,
+  );
+}
 
 class _PopupMotion extends StatefulWidget {
   const _PopupMotion({
@@ -402,7 +437,7 @@ class _EntranceState extends State<Entrance> with SingleTickerProviderStateMixin
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
-    if (!widget.play || Motion.reduced(context)) {
+    if (!widget.play || !Motion.layout(context)) {
       _controller.value = 1;
     } else {
       _controller
@@ -539,7 +574,7 @@ class _PageVisibilityState extends State<PageVisibility> with SingleTickerProvid
   void didUpdateWidget(PageVisibility old) {
     super.didUpdateWidget(old);
     if (widget.visible == old.visible) return;
-    if (!widget.animate || Motion.reduced(context)) {
+    if (!widget.animate || !Motion.layout(context)) {
       _controller.value = widget.visible ? 1 : 0;
     } else if (widget.visible) {
       _controller.forward();

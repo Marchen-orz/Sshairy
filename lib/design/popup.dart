@@ -38,6 +38,7 @@ Future<T?> showAnchoredPopup<T>({
       width: width,
       maxHeight: maxHeight,
       gap: gap,
+      duration: Motion.overlay(context, Motion.normal),
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       capturedThemes: InheritedTheme.capture(from: context, to: navigator.context),
     ),
@@ -52,6 +53,7 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
     required this.width,
     required this.maxHeight,
     required this.gap,
+    required this.duration,
     required this.barrierLabel,
     required this.capturedThemes,
   });
@@ -61,6 +63,7 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
   final PopupPlacement placement;
   final double? width;
   final double maxHeight, gap;
+  final Duration duration;
   final CapturedThemes capturedThemes;
 
   @override
@@ -73,10 +76,10 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
   bool get barrierDismissible => true;
 
   @override
-  Duration get transitionDuration => Motion.normal;
+  Duration get transitionDuration => duration;
 
   @override
-  Duration get reverseTransitionDuration => Motion.quick;
+  Duration get reverseTransitionDuration => duration == Duration.zero ? Duration.zero : Motion.quick;
 
   @override
   Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) =>

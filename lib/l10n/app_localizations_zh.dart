@@ -195,6 +195,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uiScale => '界面缩放';
 
   @override
+  String get motion => '动效';
+
+  @override
+  String get motionLight => '轻动效';
+
+  @override
+  String get motionFull => '全部动效';
+
+  @override
   String get importChooseAgain => '重新选择来源';
 
   @override

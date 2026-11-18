@@ -115,7 +115,7 @@ class _ShortcutFieldState extends State<ShortcutField> {
               child: GestureDetector(
                 onTap: _begin,
                 child: AnimatedContainer(
-                  duration: Motion.quick,
+                  duration: Motion.of(context, Motion.quick),
                   height: AppFormField.height(context),
                   constraints: const BoxConstraints(minWidth: 180),
                   padding: const EdgeInsets.symmetric(horizontal: 10),

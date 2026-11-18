@@ -130,9 +130,9 @@ class _HomePoseState extends State<_HomePose> {
     super.dispose();
   }
 
-  /// Only a visible library rotates; reduced motion keeps the pose picked on arrival.
+  /// Only a visible library rotates; less than full motion keeps the pose picked on arrival.
   void _schedule() {
-    if (widget.active && !MediaQuery.disableAnimationsOf(context)) {
+    if (widget.active && Motion.layout(context)) {
       _timer ??= Timer.periodic(BrandRotation.interval, (_) => _next());
     } else {
       _timer?.cancel();
@@ -153,7 +153,7 @@ class _HomePoseState extends State<_HomePose> {
     height: widget.height,
     child: AnimatedSwitcher(
       key: ValueKey(_visit),
-      duration: BrandRotation.fade,
+      duration: Motion.of(context, BrandRotation.fade),
       child: _Art(
         BrandAssets.pose(BrandPalette.of(context).theme, _pose),
         key: ValueKey(_pose),
