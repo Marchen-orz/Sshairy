@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, exit;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +13,7 @@ import 'app/image_cache_budget.dart';
 import 'features/capabilities/api.dart';
 import 'features/ai/api.dart' show AgentHostApprovalPrompts;
 import 'platform/desktop_window.dart';
+import 'platform/single_instance.dart';
 import 'app/shutdown.dart';
 import 'app/window_brand_icon.dart';
 import 'design/theme.dart';
@@ -25,12 +26,20 @@ import 'foundation/data_dir.dart';
 import 'foundation/diagnostics.dart';
 import 'l10n/app_localizations.dart';
 
+/// Held for the process lifetime, so the lock and the loopback listener stay alive with it.
+SingleInstance? _instance;
+
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   registerCompletionLicenses();
   await DesktopWindow.instance.initialize();
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);
+  // A second launch only brings the running window forward; tests start their own copy, like the update prompt.
+  if (Platform.environment['FLUTTER_TEST'] != 'true') {
+    _instance = await SingleInstance.acquire(dir.path, show: DesktopWindow.instance.show);
+    if (!_instance!.isPrimary) exit(0);
+  }
   final diagnostics = DiagnosticLog('${dir.path}/logs');
   diagnostics.record(DiagnosticArea.application, DiagnosticAction.start, DiagnosticOutcome.started);
   // The log keeps no error text (docs/DIAGNOSTICS.md); a debug run still shows it on the console.
