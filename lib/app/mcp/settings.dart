@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/controls.dart';
 import '../../design/dialog.dart';
+import '../../design/form_field.dart';
 import '../../design/select.dart';
 import '../../design/theme.dart';
 import '../../features/hosts/api.dart';
@@ -26,7 +27,6 @@ class McpSettings extends ConsumerStatefulWidget {
 class _McpSettingsState extends ConsumerState<McpSettings> {
   bool _busy = false;
   String? _error;
-  McpClient _client = McpClient.claude;
   String? _portDraft;
 
   Future<void> _change(FutureOr<void> Function() action) async {
@@ -44,11 +44,11 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     }
   }
 
-  Future<void> _copy(McpController controller) async {
-    final token = (await controller.pair(_client)).reveal();
+  Future<void> _copy(McpController controller, McpClient client) async {
+    final token = (await controller.pair(client)).reveal();
     final url = controller.url;
-    final variable = 'SSHAIRY_MCP_${_client.name.toUpperCase()}_TOKEN';
-    final config = switch (_client) {
+    final variable = 'SSHAIRY_MCP_${client.name.toUpperCase()}_TOKEN';
+    final config = switch (client) {
       McpClient.claude => const JsonEncoder.withIndent('  ').convert({
         'mcpServers': {
           'sshairy': {
@@ -90,12 +90,12 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
       builder: (context) {
         final l = AppLocalizations.of(context);
         return AppDialog(
-          title: Text(_client.label),
+          title: Text(client.label),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_client == McpClient.zcode ? l.mcpHeaderSetup : l.mcpTokenSetup(variable)),
+                Text(client == McpClient.zcode ? l.mcpHeaderSetup : l.mcpTokenSetup(variable)),
                 const SizedBox(height: Space.sm),
                 SelectableText(config),
               ],
@@ -146,101 +146,129 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     final digests = mode == McpApprovalMode.automatic ? ref.watch(mcpRouteDigestsProvider) : const <HostId, String>{};
     final routes = mode == McpApprovalMode.automatic ? controller.routes() : const <HostId, String>{};
     final port = settings.get(SettingKeys.mcpPort);
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final fieldHeight = AppFormField.height(context);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _row(
-            'MCP',
-            AppSwitch(
-              value: enabled,
-              onChanged: _busy ? null : (value) => _change(() => write.set(SettingKeys.mcpEnabled, value)),
-              semanticLabel: 'MCP',
+          AppToggleRow(
+            title: 'MCP',
+            subtitle: controller.failed
+                ? l.mcpStartFailed
+                : controller.running
+                ? controller.url
+                : null,
+            value: enabled,
+            onChanged: _busy ? null : (value) => _change(() => write.set(SettingKeys.mcpEnabled, value)),
+          ),
+          const SizedBox(height: Space.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Flexible(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 160),
+                        child: AppFormField(
+                          label: l.port,
+                          child: TextFormField(
+                            key: ValueKey(port),
+                            initialValue: '$port',
+                            enabled: !_busy,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(5),
+                            ],
+                            decoration: AppFormField.decoration(context),
+                            onChanged: (text) => setState(() => _portDraft = text),
+                            onFieldSubmitted: (text) => _savePort(write, text),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: Space.sm),
+                    SizedBox(
+                      height: fieldHeight,
+                      child: TextButton(
+                        onPressed: _busy || _portDraft == null || _portDraft == '$port'
+                            ? null
+                            : () => _savePort(write, _portDraft!),
+                        child: Text(l.mcpPortSave),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: Space.md),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final options = {
+                      McpApprovalMode.model: l.mcpModeModel,
+                      McpApprovalMode.host: l.mcpModeHost,
+                      McpApprovalMode.automatic: l.mcpModeAuto,
+                    };
+                    void select(McpApprovalMode value) => _change(() => write.set(SettingKeys.mcpMode, value));
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: constraints.maxWidth < WorkspaceSize.toolPanel
+                          ? AppSelect<McpApprovalMode>(
+                              value: mode,
+                              options: [for (final entry in options.entries) AppOption(entry.key, entry.value)],
+                              onChanged: _busy ? null : select,
+                            )
+                          : AppSegmented<McpApprovalMode>(
+                              segments: options,
+                              selected: mode,
+                              onChanged: _busy ? null : select,
+                            ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
-          if (controller.failed) Text(l.mcpStartFailed),
-          if (controller.running) SelectableText(controller.url),
-          const SizedBox(height: Space.sm),
-          Row(
-            children: [
-              SizedBox(
-                width: 130,
-                child: TextFormField(
-                  key: ValueKey(port),
-                  initialValue: '$port',
-                  enabled: !_busy,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(5)],
-                  decoration: InputDecoration(labelText: l.port),
-                  onChanged: (text) => setState(() => _portDraft = text),
-                  onFieldSubmitted: (text) => _savePort(write, text),
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              TextButton(
-                onPressed: _busy || _portDraft == null || _portDraft == '$port'
-                    ? null
-                    : () => _savePort(write, _portDraft!),
-                child: Text(l.mcpPortSave),
-              ),
-            ],
-          ),
-          const SizedBox(height: Space.sm),
-          AppSelect<McpApprovalMode>(
-            value: mode,
-            options: [
-              AppOption(McpApprovalMode.model, l.mcpModeModel),
-              AppOption(McpApprovalMode.host, l.mcpModeHost),
-              AppOption(McpApprovalMode.automatic, l.mcpModeAuto),
-            ],
-            onChanged: _busy ? null : (value) => _change(() => write.set(SettingKeys.mcpMode, value)),
-          ),
-          if (mode == McpApprovalMode.automatic)
+          if (mode == McpApprovalMode.automatic) ...[
+            const SizedBox(height: Space.sm),
             for (final host in ref.watch(hostsProvider).where((host) => !host.transient))
-              _row(
-                hosts.containsKey(host.id.value) && !controller.inAutomaticScope(host.id, routes)
+              AppToggleRow(
+                title: hosts.containsKey(host.id.value) && !controller.inAutomaticScope(host.id, routes)
                     ? l.mcpScopeChanged(host.title)
                     : host.title,
-                AppCheckbox(
-                  value: hosts.containsKey(host.id.value),
-                  semanticLabel: host.title,
-                  onChanged: _busy || (!hosts.containsKey(host.id.value) && !digests.containsKey(host.id))
-                      ? null
-                      : (value) => _change(() {
-                          final next = {...hosts};
-                          if (value) {
-                            next[host.id.value] = digests[host.id]!;
-                          } else {
-                            next.remove(host.id.value);
-                          }
-                          return write.set(SettingKeys.mcpHosts, next);
-                        }),
-                ),
+                checkbox: true,
+                value: hosts.containsKey(host.id.value),
+                onChanged: _busy || (!hosts.containsKey(host.id.value) && !digests.containsKey(host.id))
+                    ? null
+                    : (value) => _change(() {
+                        final next = {...hosts};
+                        if (value) {
+                          next[host.id.value] = digests[host.id]!;
+                        } else {
+                          next.remove(host.id.value);
+                        }
+                        return write.set(SettingKeys.mcpHosts, next);
+                      }),
               ),
+          ],
+          const SizedBox(height: Space.lg),
+          for (final client in McpClient.values) _client(controller, client, l, muted),
           const SizedBox(height: Space.sm),
-          AppSelect<McpClient>(
-            value: _client,
-            options: [for (final client in McpClient.values) AppOption(client, client.label)],
-            onChanged: _busy ? null : (client) => setState(() => _client = client),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _busy ? null : () => _change(() => _audit(controller)),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.xs)),
+              icon: const Icon(Icons.history_rounded, size: 16),
+              label: Text(l.mcpAudit),
+            ),
           ),
-          Wrap(
-            spacing: Space.sm,
-            children: [
-              TextButton(
-                onPressed: !_busy && controller.running ? () => _change(() => _copy(controller)) : null,
-                child: Text(l.mcpConnection),
-              ),
-              if (!controller.running || controller.paired(_client))
-                TextButton(
-                  onPressed: _busy ? null : () => _change(() => controller.revoke(_client)),
-                  child: Text(l.mcpRevoke),
-                ),
-              TextButton(onPressed: _busy ? null : () => _change(() => _audit(controller)), child: Text(l.mcpAudit)),
-            ],
-          ),
-          const Divider(),
-          for (final client in McpClient.values) _row('${client.label} Skill', _skill(controller, client, l)),
-          if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (_error != null) Text(_error!, style: muted?.copyWith(color: theme.colorScheme.error)),
         ],
       ),
     );
@@ -251,26 +279,62 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     _portDraft = null;
   });
 
-  Widget _skill(McpController controller, McpClient client, AppLocalizations l) {
-    final state = controller.skills.status(client);
-    if (state == SkillStatus.conflict) return Text(l.mcpSkillConflict);
-    if (state == SkillStatus.unavailable) return Text(l.mcpChangeFailed);
-    return AppSwitch(
-      value: state == SkillStatus.installed,
-      semanticLabel: '${client.label} Skill',
-      onChanged: _busy ? null : (value) => _change(() => controller.skills.setInstalled(client, value)),
+  Widget _client(McpController controller, McpClient client, AppLocalizations l, TextStyle? muted) {
+    final actions = [
+      TextButton(
+        onPressed: !_busy && controller.running ? () => _change(() => _copy(controller, client)) : null,
+        child: Text(l.mcpConnection),
+      ),
+      TextButton(
+        onPressed: _busy || (controller.running && !controller.paired(client))
+            ? null
+            : () => _change(() => controller.revoke(client)),
+        child: Text(l.mcpRevoke),
+      ),
+    ];
+    final name = Expanded(child: Text(client.label, overflow: TextOverflow.ellipsis));
+    final skill = _skill(controller, client, l, muted);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+      child: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth < 480
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [name, ...skill]),
+                  Wrap(children: actions),
+                ],
+              )
+            : Row(
+                children: [
+                  name,
+                  ...actions,
+                  const SizedBox(width: Space.sm),
+                  ...skill,
+                ],
+              ),
+      ),
     );
   }
 
-  Widget _row(String label, Widget action) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: Space.xs),
-    child: Row(
-      children: [
-        Expanded(child: Text(label)),
-        action,
-      ],
-    ),
-  );
+  List<Widget> _skill(McpController controller, McpClient client, AppLocalizations l, TextStyle? muted) {
+    final state = controller.skills.status(client);
+    return [
+      Text(switch (state) {
+        SkillStatus.conflict => l.mcpSkillConflict,
+        SkillStatus.unavailable => l.mcpChangeFailed,
+        _ => 'Skill',
+      }, style: muted),
+      const SizedBox(width: Space.sm),
+      AppSwitch(
+        value: state == SkillStatus.installed,
+        semanticLabel: '${client.label} Skill',
+        onChanged: _busy || state == SkillStatus.conflict || state == SkillStatus.unavailable
+            ? null
+            : (value) => _change(() => controller.skills.setInstalled(client, value)),
+      ),
+    ];
+  }
 }
 
 class McpHostPrompts extends ConsumerStatefulWidget {
