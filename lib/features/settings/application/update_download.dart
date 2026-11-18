@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../foundation/app_info.dart';
+import '../adapters/file_digest.dart';
 import 'updates.dart';
 
 enum UpdateDownloadStatus { idle, downloading, verifying, ready, failed }
@@ -92,7 +92,7 @@ class UpdateDownloader {
       onProgress(UpdateDownloadState(UpdateDownloadStatus.verifying, received: received, total: total));
       final expected = await _expectedDigest(client, release, name);
       if (expected != null) {
-        final actual = (await sha256.bind(part.openRead()).first).toString();
+        final actual = await fileSha256(part);
         if (actual != expected) throw const UpdateDownloadFailure();
       }
       if (await target.exists()) await target.delete();
