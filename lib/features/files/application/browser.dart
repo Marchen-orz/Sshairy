@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../foundation/file_system.dart';
@@ -62,6 +64,12 @@ class FileBrowser extends ChangeNotifier {
   var _disposed = false;
   var _suspended = false;
   var _operations = 0;
+  Timer? _refreshPulse;
+
+  /// A quiet read that found a different listing shows the refresh bar briefly; an unchanged one stays still.
+  static const quietRefreshPulse = Duration(milliseconds: 500);
+
+  bool get refreshingQuietly => _refreshPulse?.isActive ?? false;
 
   bool get local => host == null;
   bool get suspended => _suspended;
@@ -255,6 +263,11 @@ class FileBrowser extends ChangeNotifier {
       final changed = to != path;
       if (quiet && !changed && listError == null && _sameEntries(entries, list)) return true;
       differs = true;
+      if (quiet) {
+        // The new listing replaces the old one at once; the bar only acknowledges that it changed.
+        _refreshPulse?.cancel();
+        _refreshPulse = Timer(quietRefreshPulse, _notify);
+      }
       path = to;
       entries = list;
       listError = null;
@@ -373,6 +386,8 @@ class FileBrowser extends ChangeNotifier {
   }
 
   void _closeFs() {
+    _refreshPulse?.cancel();
+    _refreshPulse = null;
     _generation++;
     final fs = this.fs, lease = _lease;
     this.fs = null;

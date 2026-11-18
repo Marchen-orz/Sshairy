@@ -583,7 +583,10 @@ class _FilePaneState extends ConsumerState<FilePane> {
             ScrollGutter(
               child: _Header(browser: b, columns: columns),
             ),
-            if (b.loading) const LinearProgressIndicator(minHeight: 2) else const SizedBox(height: 2),
+            if (b.loading || b.refreshingQuietly)
+              const LinearProgressIndicator(minHeight: 2)
+            else
+              const SizedBox(height: 2),
             Expanded(
               child: Focus(
                 focusNode: _list,
