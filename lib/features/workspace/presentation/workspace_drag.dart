@@ -257,6 +257,8 @@ class _TabDropTargetState extends State<_TabDropTarget> {
       setState(() => _after = null);
     },
     builder: (context, candidates, _) => Stack(
+      // The tab row is shorter than the title bar; center it so the new-tab button has even room above and below.
+      alignment: AlignmentDirectional.centerStart,
       children: [
         widget.child,
         if (_after != null && candidates.whereType<_TerminalDrag>().any(widget.enabled))
