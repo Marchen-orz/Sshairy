@@ -248,9 +248,11 @@ class UpdateCheck extends Notifier<UpdateState> {
   @override
   UpdateState build() => const UpdateState(UpdateStatus.idle);
 
-  Future<void> check() async {
+  /// A [silent] check runs behind the user's back: it shows no checking or failed state and keeps
+  /// whatever the last visible answer was, so the title-bar reminder does not flicker or lie.
+  Future<void> check({bool silent = false}) async {
     if (state.status == UpdateStatus.checking) return;
-    state = const UpdateState(UpdateStatus.checking);
+    if (!silent) state = const UpdateState(UpdateStatus.checking);
     try {
       final releases = await ref.read(releaseSourceProvider).fetch();
       final newest = releases.isEmpty ? null : releases.first;
@@ -259,7 +261,7 @@ class UpdateCheck extends Notifier<UpdateState> {
         releases: releases,
       );
     } on Object {
-      state = const UpdateState(UpdateStatus.failed);
+      if (!silent) state = const UpdateState(UpdateStatus.failed);
     }
   }
 }

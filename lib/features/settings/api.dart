@@ -5,4 +5,4 @@ export 'domain/translation_config.dart' show TranslationConfig, TranslationProvi
 export 'application/background_images.dart'
     show backgroundImagesProvider, backgroundImageStoreProvider, imageSetting, imageOpacitySetting;
 export 'presentation/background_image.dart' show BackgroundImageView;
-export 'presentation/update_check.dart' show StartupUpdatePrompt;
+export 'presentation/update_check.dart' show StartupUpdatePrompt, UpdateAvailableButton;

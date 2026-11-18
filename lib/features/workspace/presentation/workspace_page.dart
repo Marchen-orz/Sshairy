@@ -604,6 +604,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 ),
               ],
               const TransfersButton(),
+              const UpdateAvailableButton(),
             ],
           ),
           const SizedBox(width: Space.xs),
@@ -968,7 +969,7 @@ class _TabState extends ConsumerState<_Tab> {
           onEnter: (_) => setState(() => _hovered = true),
           onExit: (_) => setState(() => _hovered = false),
           child: AnimatedContainer(
-            duration: Motion.quick,
+            duration: Motion.of(context, Motion.quick),
             decoration: BoxDecoration(
               color: selected
                   ? scheme.surface

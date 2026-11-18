@@ -12,24 +12,48 @@ import '../adapters/release_notes_view.dart';
 import '../application/update_download.dart';
 import '../application/updates.dart';
 
+const runtimeUpdateInterval = Duration(hours: 6);
+
 /// Checks the published releases once at start-up and, when one is newer, shows its notes.
+/// While the app stays open it looks again every [interval]; later looks stay quiet.
 class StartupUpdatePrompt extends ConsumerStatefulWidget {
-  const StartupUpdatePrompt({super.key, required this.child, this.enabled = true});
+  const StartupUpdatePrompt({
+    super.key,
+    required this.child,
+    this.enabled = true,
+    this.interval = runtimeUpdateInterval,
+  });
 
   final Widget child;
 
   /// Tests and probes measure their own frames, so they keep the network and the dialog out of start-up.
   final bool enabled;
 
+  final Duration interval;
+
   @override
   ConsumerState<StartupUpdatePrompt> createState() => _StartupUpdatePromptState();
 }
 
 class _StartupUpdatePromptState extends ConsumerState<StartupUpdatePrompt> {
+  Timer? _timer;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    await _check();
+    if (!mounted || !widget.enabled) return;
+    _timer = Timer.periodic(widget.interval, (_) => _recheck());
   }
 
   Future<void> _check() async {
@@ -42,8 +66,35 @@ class _StartupUpdatePromptState extends ConsumerState<StartupUpdatePrompt> {
     }
   }
 
+  /// Later checks only feed the title-bar reminder; the start-up dialog stays a one-time interruption.
+  Future<void> _recheck() async {
+    if (!mounted) return;
+    await ref.read(updateCheckProvider.notifier).check(silent: true);
+  }
+
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// A quiet title-bar reminder that a newer release exists; it opens the same notes as a manual check.
+class UpdateAvailableButton extends ConsumerWidget {
+  const UpdateAvailableButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(updateCheckProvider);
+    final latest = state.latest;
+    if (state.status != UpdateStatus.available || latest == null) return const SizedBox.shrink();
+    return IconButton(
+      tooltip: AppLocalizations.of(context).updateAvailable(latest.version),
+      onPressed: () => showReleaseNotes(context, state),
+      icon: Badge(
+        smallSize: 6,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        child: const Icon(Icons.system_update_alt, size: 18),
+      ),
+    );
+  }
 }
 
 /// Checks the project's published releases on demand; nothing is fetched until the user asks.
