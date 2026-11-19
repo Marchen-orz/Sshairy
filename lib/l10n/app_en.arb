@@ -1090,28 +1090,22 @@
   "mcpModeModel": "Model review",
   "mcpModeHost": "Confirm hosts",
   "mcpModeAuto": "Automatic within scope",
-  "mcpConnection": "Connection setup",
-  "mcpRevoke": "Revoke client",
   "mcpAudit": "MCP audit",
   "mcpAuditEmpty": "No MCP calls recorded.",
-  "mcpSkillConflict": "Existing file kept",
-  "mcpCopyConfig": "Copy configuration",
-  "mcpCopyToken": "Copy token",
-  "mcpTokenSetup": "Provide {variable} to the client through its environment or credential store.",
-  "mcpHeaderSetup": "Set the Authorization header in your private client configuration. Keep the token out of project files and chats.",
+  "mcpClientConflict": "Existing configuration kept",
+  "mcpClientUnavailable": "Client configuration unavailable",
+  "mcpClientConnected": "{client} connected",
+  "@mcpClientConnected": {
+    "placeholders": {
+      "client": {"type": "String"}
+    }
+  },
   "mcpHostPrompt": "Allow {client} to run fixed diagnostics on {host} for this MCP session?",
   "mcpPortSave": "Save port",
   "mcpScopeChanged": "{host} (connection changed, select again)",
   "@mcpScopeChanged": {
     "placeholders": {
       "host": {
-        "type": "String"
-      }
-    }
-  },
-  "@mcpTokenSetup": {
-    "placeholders": {
-      "variable": {
         "type": "String"
       }
     }

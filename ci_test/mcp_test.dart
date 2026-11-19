@@ -34,7 +34,8 @@ void main() {
     expect((await h.post('initialize', origin: 'http://localhost')).status, 403);
     expect((await h.post('initialize', host: 'localhost')).status, 403);
     final session = await h.open();
-    final other = (await h.controller.pair(McpClient.codex)).reveal();
+    await h.controller.connect(McpClient.codex);
+    final other = (await h.credentials.read(McpClient.codex.name))!.reveal();
     expect((await h.post('tools/list', session: session, bearer: other)).status, 404);
     final catalog = (await h.post('tools/list', session: session)).body!['result'] as Map;
     final tools = (catalog['tools'] as List).cast<Map>();
@@ -122,12 +123,16 @@ void main() {
     final pending = h.error(session);
     await h.backend.started.future.timeout(const Duration(seconds: 5));
     final old = h.token;
-    await h.controller.revoke(McpClient.claude);
+    final skill = File('${h.dir.path}/.claude/skills/sshairy/SKILL.md')..writeAsStringSync('user-owned content');
+    await expectLater(h.controller.disconnect(McpClient.claude), throwsA(isA<FileSystemException>()));
+    expect(skill.readAsStringSync(), 'user-owned content');
     expect(await pending, 'cancelled');
     expect((await h.post('tools/list', session: session, bearer: old)).status, 401);
     expect((await h.records()).first['outcome'], 'cancelled');
     expect(h.backend.releases, 1);
-    expect((await h.controller.pair(McpClient.claude)).reveal(), isNot(old));
+    skill.deleteSync();
+    await h.controller.connect(McpClient.claude);
+    expect((await h.credentials.read(McpClient.claude.name))!.reveal(), isNot(old));
   });
 
   test('MCP settings round-trip and cannot be changed through Agent settings', () async {
@@ -175,6 +180,130 @@ void main() {
     expect(file.readAsStringSync(), 'user-owned content');
     expect(skills.status(McpClient.deepseek), SkillStatus.installed);
   });
+
+  test('one switch writes and removes the MCP entry and Skill, merging into existing client configs', () {
+    final home = Directory('${h.dir.path}/home')..createSync();
+    final clients = McpClients(environment: {Platform.isWindows ? 'USERPROFILE' : 'HOME': home.path});
+    File('${home.path}/.claude.json').writeAsStringSync('{"keep": 1, "mcpServers": {"other": {"url": "x"}}}');
+    File('${home.path}/.codex/config.toml')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('[mcp_servers.node]\ncommand = "x"');
+    File('${home.path}/.zcode/cli/config.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"mcp": {"servers": {}}}');
+    final patch = File('${home.path}/.dsh/profiles/desktop/cordis.patch.yml')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('# header\n- id: a\n');
+    final token = mcpRandomToken();
+    for (final client in McpClient.values) {
+      expect(clients.status(client), SkillStatus.absent);
+      clients.connect(client, 'http://127.0.0.1:1234/mcp', token);
+      expect(clients.status(client), SkillStatus.installed);
+    }
+    final claude = jsonDecode(File('${home.path}/.claude.json').readAsStringSync()) as Map;
+    expect(claude['keep'], 1);
+    expect((claude['mcpServers'] as Map)['other'], {'url': 'x'});
+    expect((claude['mcpServers'] as Map)['sshairy']['headers']['Authorization'], 'Bearer $token');
+    final codex = File('${home.path}/.codex/config.toml').readAsStringSync();
+    expect(codex, startsWith('[mcp_servers.node]\ncommand = "x"\n# sshairy:begin\n[mcp_servers.sshairy]'));
+    expect(codex, contains('Bearer $token'));
+    final zcode = jsonDecode(File('${home.path}/.zcode/cli/config.json').readAsStringSync()) as Map;
+    expect(zcode['features'], {'mcp': true});
+    expect(zcode['mcp']['servers']['sshairy']['url'], 'http://127.0.0.1:1234/mcp');
+    expect(
+      patch.readAsStringSync(),
+      allOf(startsWith('# header\n- id: a\n# sshairy:begin\n- insert:'), contains(token)),
+    );
+
+    final next = mcpRandomToken();
+    for (final client in McpClient.values) {
+      clients.refresh(client, 'http://127.0.0.1:99/mcp', next);
+    }
+    for (final path in ['.codex/config.toml', '.dsh/profiles/desktop/cordis.patch.yml', '.claude.json']) {
+      final text = File('${home.path}/$path').readAsStringSync();
+      expect(text, contains(next), reason: path);
+      expect(text, isNot(contains(token)), reason: path);
+      expect(text, contains('127.0.0.1:99'), reason: path);
+      expect('# sshairy:begin'.allMatches(text).length, path == '.claude.json' ? 0 : 1, reason: path);
+    }
+
+    for (final client in McpClient.values) {
+      clients.disconnect(client);
+      expect(clients.status(client), SkillStatus.absent);
+    }
+    final restored = jsonDecode(File('${home.path}/.claude.json').readAsStringSync()) as Map;
+    expect(restored, {
+      'keep': 1,
+      'mcpServers': {
+        'other': {'url': 'x'},
+      },
+    });
+    expect(File('${home.path}/.codex/config.toml').readAsStringSync().trimRight(), '[mcp_servers.node]\ncommand = "x"');
+    expect(patch.readAsStringSync(), '# header\n- id: a\n');
+  });
+
+  test('client configs we cannot edit safely are left untouched', () {
+    final home = Directory('${h.dir.path}/home')..createSync();
+    final clients = McpClients(environment: {Platform.isWindows ? 'USERPROFILE' : 'HOME': home.path});
+    final claude = File('${home.path}/.claude.json')
+      ..writeAsStringSync('{"mcpServers": {"sshairy": {"url": "https://elsewhere"}}}');
+    final codex = File('${home.path}/.codex/config.toml')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('[mcp_servers.sshairy]\nurl = "https://elsewhere"\n');
+    final zcode = File('${home.path}/.zcode/cli/config.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{broken');
+    for (final (client, file, state) in [
+      (McpClient.claude, claude, SkillStatus.conflict),
+      (McpClient.codex, codex, SkillStatus.conflict),
+      (McpClient.zcode, zcode, SkillStatus.conflict),
+      (McpClient.deepseek, claude, SkillStatus.unavailable),
+    ]) {
+      final before = file.readAsStringSync();
+      expect(clients.status(client), state, reason: '$client');
+      expect(
+        () => clients.connect(client, 'http://127.0.0.1:1/mcp', mcpRandomToken()),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(() => clients.disconnect(client), throwsA(isA<FileSystemException>()));
+      expect(file.readAsStringSync(), before);
+      expect(File('${home.path}/${client.directory}/skills/sshairy/SKILL.md').existsSync(), false);
+    }
+  });
+
+  test('connecting a client writes its live token, follows a new address, and disconnecting revokes it', () async {
+    await h.start(connect: false);
+    final config = File('${h.dir.path}/.claude.json');
+    await h.connectClaude();
+    final entry = (jsonDecode(config.readAsStringSync())['mcpServers']['sshairy']) as Map;
+    expect(entry['url'], h.controller.url);
+    expect(entry['headers']['Authorization'], 'Bearer ${h.token}');
+    expect((await h.post('initialize', bearer: 'bad')).status, 401);
+    expect(h.controller.takeConnectedClients(), isEmpty);
+    final session = await h.open();
+    expect(h.controller.takeConnectedClients(), [McpClient.claude]);
+    await h.open();
+    expect(h.controller.takeConnectedClients(), isEmpty);
+    expect(
+      (await h.post('tools/list', session: session, bearer: entry['headers']['Authorization'].substring(7))).status,
+      200,
+    );
+
+    h.controller.configure((enabled: true, port: 0, mode: McpApprovalMode.automatic, hosts: const {}));
+    await h._until(() => h.controller.running);
+    expect(((jsonDecode(config.readAsStringSync())['mcpServers']['sshairy']) as Map)['url'], h.controller.url);
+    await h.open();
+    expect(h.controller.takeConnectedClients(), isEmpty);
+
+    await h.controller.disconnect(McpClient.claude);
+    expect(jsonDecode(config.readAsStringSync())['mcpServers'], isEmpty);
+    expect((await h.post('initialize', bearer: h.token)).status, 401);
+
+    config.writeAsStringSync('{broken');
+    await expectLater(h.controller.connect(McpClient.claude), throwsA(isA<FileSystemException>()));
+    expect(h.controller.paired(McpClient.claude), false);
+    expect(config.readAsStringSync(), '{broken');
+  });
 }
 
 class _Harness {
@@ -190,13 +319,15 @@ class _Harness {
         return decision;
       },
       audit: McpAudit(dir.path),
-      credentials: _MemoryCredentials(),
+      credentials: credentials,
+      clients: McpClients(environment: {Platform.isWindows ? 'USERPROFILE' : 'HOME': dir.path}),
     );
   }
 
   final dir = Directory.systemTemp.createTempSync('sshairy-mcp-');
   final http = HttpClient()..findProxy = (_) => 'DIRECT';
   final backend = _Backend();
+  final credentials = _MemoryCredentials();
   final routes = {_first: 'first-route', _second: 'second-route'};
   final digests = {_first: 'a' * 64, _second: 'b' * 64};
   late final ProviderContainer container;
@@ -205,11 +336,21 @@ class _Harness {
   int reviewed = 0, _id = 0;
   var decision = AgentReviewDecision.deny;
 
-  Future<void> start({McpApprovalMode mode = McpApprovalMode.host, Map<String, String> scope = const {}}) async {
+  Future<void> start({
+    McpApprovalMode mode = McpApprovalMode.host,
+    Map<String, String> scope = const {},
+    bool connect = true,
+  }) async {
     controller.configure((enabled: true, port: 0, mode: mode, hosts: scope));
     await _until(() => controller.running || controller.failed);
     expect(controller.running, true);
-    token = (await controller.pair(McpClient.claude)).reveal();
+    if (connect) await connectClaude();
+  }
+
+  Future<void> connectClaude() async {
+    await controller.connect(McpClient.claude);
+    final config = jsonDecode(File('${dir.path}/.claude.json').readAsStringSync());
+    token = (config['mcpServers']['sshairy']['headers']['Authorization'] as String).substring(7);
   }
 
   Future<McpHostApproval> approval() async {

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,79 +41,6 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<void> _copy(McpController controller, McpClient client) async {
-    final token = (await controller.pair(client)).reveal();
-    final url = controller.url;
-    final variable = 'SSHAIRY_MCP_${client.name.toUpperCase()}_TOKEN';
-    final config = switch (client) {
-      McpClient.claude => const JsonEncoder.withIndent('  ').convert({
-        'mcpServers': {
-          'sshairy': {
-            'type': 'http',
-            'url': url,
-            'headers': {'Authorization': 'Bearer \${$variable}'},
-          },
-        },
-      }),
-      McpClient.codex => '[mcp_servers.sshairy]\nurl = "$url"\nbearer_token_env_var = "$variable"',
-      McpClient.zcode => const JsonEncoder.withIndent('  ').convert({
-        'features': {'mcp': true},
-        'mcp': {
-          'servers': {
-            'sshairy': {
-              'type': 'http',
-              'url': url,
-              'timeoutMs': 60000,
-              'headers': {'Authorization': 'Bearer <TOKEN>'},
-            },
-          },
-        },
-      }),
-      McpClient.deepseek =>
-        '- insert:\n'
-            '    - id: mcp-sshairy\n'
-            '      name: "@deepseek-ai/dsh-mcp-client"\n'
-            '      config:\n'
-            '        serverName: sshairy\n'
-            '        transport: streamable-http\n'
-            '        url: $url\n'
-            '        headers:\n'
-            '          Authorization: "Bearer \${credential:$variable}"\n'
-            '        expandTemplates: true',
-    };
-    if (!mounted) return;
-    await showAppDialog<void>(
-      context: context,
-      builder: (context) {
-        final l = AppLocalizations.of(context);
-        return AppDialog(
-          title: Text(client.label),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(client == McpClient.zcode ? l.mcpHeaderSetup : l.mcpTokenSetup(variable)),
-                const SizedBox(height: Space.sm),
-                SelectableText(config),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Clipboard.setData(ClipboardData(text: config)),
-              child: Text(l.mcpCopyConfig),
-            ),
-            TextButton(
-              onPressed: () => Clipboard.setData(ClipboardData(text: token)),
-              child: Text(l.mcpCopyToken),
-            ),
-            FilledButton(onPressed: () => Navigator.pop(context), child: Text(l.close)),
-          ],
-        );
-      },
-    );
   }
 
   Future<void> _audit(McpController controller) async {
@@ -257,7 +183,7 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
               ),
           ],
           const SizedBox(height: Space.lg),
-          for (final client in McpClient.values) _client(controller, client, l, muted),
+          for (final client in McpClient.values) _client(controller, client, l),
           const SizedBox(height: Space.sm),
           Align(
             alignment: Alignment.centerLeft,
@@ -279,61 +205,24 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     _portDraft = null;
   });
 
-  Widget _client(McpController controller, McpClient client, AppLocalizations l, TextStyle? muted) {
-    final actions = [
-      TextButton(
-        onPressed: !_busy && controller.running ? () => _change(() => _copy(controller, client)) : null,
-        child: Text(l.mcpConnection),
-      ),
-      TextButton(
-        onPressed: _busy || (controller.running && !controller.paired(client))
-            ? null
-            : () => _change(() => controller.revoke(client)),
-        child: Text(l.mcpRevoke),
-      ),
-    ];
-    final name = Expanded(child: Text(client.label, overflow: TextOverflow.ellipsis));
-    final skill = _skill(controller, client, l, muted);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.xs),
-      child: LayoutBuilder(
-        builder: (context, constraints) => constraints.maxWidth < 480
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [name, ...skill]),
-                  Wrap(children: actions),
-                ],
-              )
-            : Row(
-                children: [
-                  name,
-                  ...actions,
-                  const SizedBox(width: Space.sm),
-                  ...skill,
-                ],
-              ),
-      ),
+  Widget _client(McpController controller, McpClient client, AppLocalizations l) {
+    final state = controller.clients.status(client);
+    final on = controller.paired(client);
+    final blocked = state == SkillStatus.conflict || state == SkillStatus.unavailable;
+    return AppToggleRow(
+      title: client.label,
+      subtitle: switch (state) {
+        SkillStatus.conflict => l.mcpClientConflict,
+        SkillStatus.unavailable => l.mcpClientUnavailable,
+        SkillStatus.absent when on => l.mcpClientUnavailable,
+        _ when controller.clientUpdateFailed(client) => l.mcpChangeFailed,
+        _ => null,
+      },
+      value: on,
+      onChanged: _busy || (!on && (blocked || !controller.running))
+          ? null
+          : (value) => _change(() => value ? controller.connect(client) : controller.disconnect(client)),
     );
-  }
-
-  List<Widget> _skill(McpController controller, McpClient client, AppLocalizations l, TextStyle? muted) {
-    final state = controller.skills.status(client);
-    return [
-      Text(switch (state) {
-        SkillStatus.conflict => l.mcpSkillConflict,
-        SkillStatus.unavailable => l.mcpChangeFailed,
-        _ => 'Skill',
-      }, style: muted),
-      const SizedBox(width: Space.sm),
-      AppSwitch(
-        value: state == SkillStatus.installed,
-        semanticLabel: '${client.label} Skill',
-        onChanged: _busy || state == SkillStatus.conflict || state == SkillStatus.unavailable
-            ? null
-            : (value) => _change(() => controller.skills.setInstalled(client, value)),
-      ),
-    ];
   }
 }
 
@@ -407,6 +296,14 @@ class _McpHostPromptsState extends ConsumerState<McpHostPrompts> {
       listenable: controller,
       child: widget.child,
       builder: (context, child) {
+        for (final client in controller.takeConnectedClients()) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || !controller.paired(client)) return;
+            final l = AppLocalizations.of(context);
+            ScaffoldMessenger.maybeOf(context)
+                ?.showSnackBar(SnackBar(content: Text(l.mcpClientConnected(client.label))));
+          });
+        }
         final approval = controller.approval;
         if (_shown == null && approval != null) {
           _shown = approval;

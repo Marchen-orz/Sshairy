@@ -6110,18 +6110,6 @@ abstract class AppLocalizations {
   /// **'Automatic within scope'**
   String get mcpModeAuto;
 
-  /// No description provided for @mcpConnection.
-  ///
-  /// In en, this message translates to:
-  /// **'Connection setup'**
-  String get mcpConnection;
-
-  /// No description provided for @mcpRevoke.
-  ///
-  /// In en, this message translates to:
-  /// **'Revoke client'**
-  String get mcpRevoke;
-
   /// No description provided for @mcpAudit.
   ///
   /// In en, this message translates to:
@@ -6134,35 +6122,23 @@ abstract class AppLocalizations {
   /// **'No MCP calls recorded.'**
   String get mcpAuditEmpty;
 
-  /// No description provided for @mcpSkillConflict.
+  /// No description provided for @mcpClientConflict.
   ///
   /// In en, this message translates to:
-  /// **'Existing file kept'**
-  String get mcpSkillConflict;
+  /// **'Existing configuration kept'**
+  String get mcpClientConflict;
 
-  /// No description provided for @mcpCopyConfig.
+  /// No description provided for @mcpClientUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'Copy configuration'**
-  String get mcpCopyConfig;
+  /// **'Client configuration unavailable'**
+  String get mcpClientUnavailable;
 
-  /// No description provided for @mcpCopyToken.
+  /// No description provided for @mcpClientConnected.
   ///
   /// In en, this message translates to:
-  /// **'Copy token'**
-  String get mcpCopyToken;
-
-  /// No description provided for @mcpTokenSetup.
-  ///
-  /// In en, this message translates to:
-  /// **'Provide {variable} to the client through its environment or credential store.'**
-  String mcpTokenSetup(String variable);
-
-  /// No description provided for @mcpHeaderSetup.
-  ///
-  /// In en, this message translates to:
-  /// **'Set the Authorization header in your private client configuration. Keep the token out of project files and chats.'**
-  String get mcpHeaderSetup;
+  /// **'{client} connected'**
+  String mcpClientConnected(String client);
 
   /// No description provided for @mcpHostPrompt.
   ///

@@ -3327,34 +3327,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mcpModeAuto => 'Automatic within scope';
 
   @override
-  String get mcpConnection => 'Connection setup';
-
-  @override
-  String get mcpRevoke => 'Revoke client';
-
-  @override
   String get mcpAudit => 'MCP audit';
 
   @override
   String get mcpAuditEmpty => 'No MCP calls recorded.';
 
   @override
-  String get mcpSkillConflict => 'Existing file kept';
+  String get mcpClientConflict => 'Existing configuration kept';
 
   @override
-  String get mcpCopyConfig => 'Copy configuration';
+  String get mcpClientUnavailable => 'Client configuration unavailable';
 
   @override
-  String get mcpCopyToken => 'Copy token';
-
-  @override
-  String mcpTokenSetup(String variable) {
-    return 'Provide $variable to the client through its environment or credential store.';
+  String mcpClientConnected(String client) {
+    return '$client connected';
   }
-
-  @override
-  String get mcpHeaderSetup =>
-      'Set the Authorization header in your private client configuration. Keep the token out of project files and chats.';
 
   @override
   String mcpHostPrompt(String client, String host) {

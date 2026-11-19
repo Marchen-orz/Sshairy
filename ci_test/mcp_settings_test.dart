@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
+import 'package:sshairy/app/mcp/controller.dart';
 import 'package:sshairy/app/mcp/settings.dart';
+import 'package:sshairy/app/mcp/storage.dart';
 import 'package:sshairy/design/controls.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/credentials/api.dart';
@@ -22,6 +24,9 @@ void main() {
       overrides: [
         dataDirProvider.overrideWithValue(dir.path),
         mcpCredentialsProvider.overrideWithValue(_NoCredentials()),
+        mcpClientsProvider.overrideWithValue(
+          McpClients(environment: {Platform.isWindows ? 'USERPROFILE' : 'HOME': dir.path}),
+        ),
         ...appOverrides(),
       ],
     );
@@ -45,6 +50,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '$locale $width');
+      for (final client in McpClient.values) {
+        final row = find.widgetWithText(AppToggleRow, client.label);
+        expect(row, findsOneWidget);
+        expect(find.descendant(of: row, matching: find.byType(AppSwitch)), findsOneWidget);
+        expect(find.descendant(of: row, matching: find.byType(TextButton)), findsNothing);
+      }
       expect(
         find.byType(AppSegmented<McpApprovalMode>),
         width >= WorkspaceSize.toolPanel ? findsOneWidget : findsNothing,

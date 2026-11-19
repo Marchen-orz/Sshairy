@@ -39,6 +39,8 @@ McpConfig _config(Settings settings) => (
   hosts: settings.get(SettingKeys.mcpHosts),
 );
 
+final mcpClientsProvider = Provider<McpClients>((_) => McpClients());
+
 final mcpControllerProvider = Provider<McpController>((ref) {
   final controller = McpController(
     dispatcher: ref.read(capabilityDispatcherProvider),
@@ -58,6 +60,7 @@ final mcpControllerProvider = Provider<McpController>((ref) {
     },
     audit: McpAudit(ref.read(dataDirProvider)),
     credentials: ref.read(mcpCredentialsProvider),
+    clients: ref.read(mcpClientsProvider),
   );
   ref.listen(settingsProvider, (_, settings) => controller.configure(_config(settings)), fireImmediately: true);
   ref.listen(aiConfigurationProvider, (_, _) => controller.invalidateReview());
@@ -86,7 +89,8 @@ class McpController extends ChangeNotifier {
     required this.review,
     required this.audit,
     required this.credentials,
-  });
+    McpClients? clients,
+  }) : clients = clients ?? McpClients();
 
   final CapabilityDispatcher dispatcher;
   final AgentBackend Function() backend;
@@ -94,10 +98,13 @@ class McpController extends ChangeNotifier {
   final Future<AgentReviewDecision> Function(Map<String, Object?>, CancellationToken) review;
   final McpAudit audit;
   final McpCredentials credentials;
-  final skills = McpSkills();
+  final McpClients clients;
   final _tokens = <McpClient, Secret>{};
   final _revoked = <McpClient>{};
   final _changing = <McpClient>{};
+  final _announced = <McpClient>{};
+  final _connected = <McpClient>[];
+  final _clientUpdateFailed = <McpClient>{};
   final _approvals = <McpHostApproval>[];
   final _active = <Future<Map<String, Object?>>>{};
   final _autoRoutes = <HostId, String>{};
@@ -112,6 +119,23 @@ class McpController extends ChangeNotifier {
   String get url => 'http://127.0.0.1:${_http?.port ?? _settings.port}/mcp';
   McpHostApproval? get approval => _approvals.firstOrNull;
   bool paired(McpClient client) => _tokens.containsKey(client) || _revoked.contains(client);
+  bool clientUpdateFailed(McpClient client) => _clientUpdateFailed.contains(client);
+
+  List<McpClient> takeConnectedClients() {
+    final connected = _connected.toList();
+    _connected.clear();
+    return connected;
+  }
+
+  void _clientOpened(McpClient client) {
+    if (!_announced.add(client)) return;
+    _connected.add(client);
+    final token = _tokens[client]!;
+    // Enqueue before notifying listeners so a subsequent revoke clears this record.
+    unawaited(credentials.save(client.name, Secret('${token.reveal()}:seen')).catchError((Object _) {}));
+    _notify();
+  }
+
   bool inAutomaticScope(HostId id, Map<HostId, String> current) =>
       _autoRoutes[id] != null && _autoRoutes[id] == current[id];
 
@@ -149,26 +173,45 @@ class McpController extends ChangeNotifier {
     _http = null;
     final stopped = old?.close();
     failed = false;
-    bool live() => !_disposed && generation == _generation && _settings.enabled && !_paused;
+    bool current() => !_disposed && generation == _generation && !_paused;
+    bool live() => current() && _settings.enabled;
     _sync = _sync.then((_) async {
       try {
         await stopped;
-        if (!live()) return;
+        if (!current()) return;
         for (final client in McpClient.values) {
+          if (_changing.contains(client)) continue;
           final value = await credentials.read(client.name);
-          if (!live()) return;
-          if (!_revoked.contains(client) && value != null && RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(value.reveal())) {
-            _tokens[client] = value;
+          if (!current()) return;
+          if (_changing.contains(client)) continue;
+          final stored = value?.reveal();
+          final seen = stored?.endsWith(':seen') ?? false;
+          final raw = seen ? stored!.substring(0, stored.length - 5) : stored;
+          if (!_revoked.contains(client) && raw != null && mcpTokenPattern.hasMatch(raw)) {
+            _tokens[client] = seen ? Secret(raw) : value!;
+            if (seen) _announced.add(client);
           } else {
             _tokens.remove(client);
           }
+        }
+        if (!live()) {
+          _notify();
+          return;
         }
         final listener = await McpHttp.bind(_settings.port);
         if (!live()) {
           await listener.close(force: true);
           return;
         }
-        _http = McpHttp(listener, _authenticate, _tools, _call, _closeSession);
+        _http = McpHttp(listener, _authenticate, _tools, _call, _closeSession, _clientOpened);
+        for (final entry in _tokens.entries) {
+          try {
+            clients.refresh(entry.key, url, entry.value.reveal());
+            _clientUpdateFailed.remove(entry.key);
+          } on Object {
+            _clientUpdateFailed.add(entry.key);
+          }
+        }
       } on Object {
         if (live()) failed = true;
       }
@@ -200,36 +243,51 @@ class McpController extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<Secret> pair(McpClient client) async {
+  Future<void> connect(McpClient client) async {
     if (!running) throw StateError('MCP disabled');
-    if (_tokens[client] case final token?) return token;
     if (!_changing.add(client)) throw StateError('MCP credential change pending');
     final generation = _generation;
-    final token = Secret(mcpRandomToken());
+    final existing = _tokens[client];
+    final token = existing ?? Secret(mcpRandomToken());
     try {
-      await credentials.save(client.name, token);
-      _revoked.remove(client);
+      if (existing == null) await credentials.save(client.name, token);
       if (_disposed || generation != _generation || !running) throw StateError('MCP unavailable');
+      clients.connect(client, url, token.reveal());
       _tokens[client] = token;
-      _notify();
-      return token;
+      _revoked.remove(client);
+      _clientUpdateFailed.remove(client);
+    } on Object {
+      if (existing == null) {
+        _revoked.add(client);
+        await credentials.clear(client.name);
+        _revoked.remove(client);
+      }
+      rethrow;
     } finally {
       _changing.remove(client);
+      _notify();
     }
   }
 
-  Future<void> revoke(McpClient client) async {
+  Future<void> disconnect(McpClient client) async {
     if (!_changing.add(client)) throw StateError('MCP credential change pending');
     _revoked.add(client);
     _tokens.remove(client);
+    _announced.remove(client);
+    _connected.remove(client);
     _http?.revoke(client);
     _notify();
     try {
-      await credentials.clear(client.name);
-      _revoked.remove(client);
-      _notify();
+      try {
+        await credentials.clear(client.name);
+        _revoked.remove(client);
+      } finally {
+        clients.disconnect(client);
+        _clientUpdateFailed.remove(client);
+      }
     } finally {
       _changing.remove(client);
+      _notify();
     }
   }
 

@@ -3173,33 +3173,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mcpModeAuto => '范围内自动';
 
   @override
-  String get mcpConnection => '连接配置';
-
-  @override
-  String get mcpRevoke => '撤销客户端';
-
-  @override
   String get mcpAudit => 'MCP 审计';
 
   @override
   String get mcpAuditEmpty => '暂无 MCP 调用记录。';
 
   @override
-  String get mcpSkillConflict => '已保留现有文件';
+  String get mcpClientConflict => '已保留现有配置';
 
   @override
-  String get mcpCopyConfig => '复制配置';
+  String get mcpClientUnavailable => '客户端配置不可用';
 
   @override
-  String get mcpCopyToken => '复制令牌';
-
-  @override
-  String mcpTokenSetup(String variable) {
-    return '通过客户端环境变量或凭据存储提供 $variable。';
+  String mcpClientConnected(String client) {
+    return '$client 已连接';
   }
-
-  @override
-  String get mcpHeaderSetup => '请在客户端的私有配置中设置 Authorization 请求头。令牌不要放进项目文件或聊天。';
 
   @override
   String mcpHostPrompt(String client, String host) {

@@ -30,7 +30,7 @@ class McpSession {
 }
 
 class McpHttp {
-  McpHttp(this._server, this.authenticate, this.tools, this.call, this.onClose) {
+  McpHttp(this._server, this.authenticate, this.tools, this.call, this.onClose, this.onOpen) {
     _server.listen((request) => unawaited(_serve(request)), onError: (Object _) {});
     _sweep = Timer.periodic(const Duration(seconds: 30), (_) {
       for (final session in _sessions.values.toList()) {
@@ -44,6 +44,7 @@ class McpHttp {
   final List<Map<String, Object?>> Function() tools;
   final Future<Map<String, Object?>> Function(McpSession, Map<String, Object?>, CancellationToken) call;
   final void Function(McpSession) onClose;
+  final void Function(McpClient) onOpen;
   final _sessions = <String, McpSession>{};
   late final Timer _sweep;
   var _active = 0, _closed = false;
@@ -160,6 +161,7 @@ class McpHttp {
           final opened = McpSession(client, negotiated);
           _sessions[opened.id] = opened;
           response.headers.set('Mcp-Session-Id', opened.id);
+          onOpen(client);
           write(
             id,
             result: {
