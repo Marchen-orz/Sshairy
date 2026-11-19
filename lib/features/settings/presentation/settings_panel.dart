@@ -252,11 +252,13 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     final generation = ++_navigationGeneration;
     _navigating = index;
     _select(index);
-    await _scroll.animateTo(
-      offset.clamp(0.0, _scroll.position.maxScrollExtent),
-      duration: Motion.of(context, Motion.panel),
-      curve: Curves.easeOutCubic,
-    );
+    final target = offset.clamp(0.0, _scroll.position.maxScrollExtent);
+    final duration = Motion.of(context, Motion.panel);
+    if (duration == Duration.zero) {
+      _scroll.jumpTo(target);
+    } else {
+      await _scroll.animateTo(target, duration: duration, curve: Curves.easeOutCubic);
+    }
     if (!mounted || generation != _navigationGeneration) return;
     _navigating = null;
     _syncSelection();
