@@ -13,7 +13,8 @@ class SingleInstance {
   final ServerSocket? _server;
   final StreamSubscription<Socket>? _clients;
 
-  bool get isPrimary => _server != null;
+  // Reading the lock here keeps AOT from dropping an otherwise unread field, whose handle the GC would then close.
+  bool get isPrimary => _lock != null && _server != null;
 
   static const _lockName = 'instance.lock', _portName = 'instance.port';
   static const _retry = Duration(milliseconds: 80);
