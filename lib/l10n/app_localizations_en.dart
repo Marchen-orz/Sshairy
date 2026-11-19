@@ -3327,6 +3327,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mcpModeAuto => 'Automatic within scope';
 
   @override
+  String get mcpModeModelHint =>
+      'You confirm each host on its first use in a session, then the review model checks every call. Calls it denies or cannot judge are not run.';
+
+  @override
+  String get mcpModeHostHint =>
+      'You confirm each host on its first use in a session. Approved hosts then run fixed diagnostics without asking again.';
+
+  @override
+  String get mcpModeAutoHint =>
+      'Only the hosts you select are reachable, and fixed diagnostics run without asking. Other hosts are refused.';
+
+  @override
+  String mcpScopeHosts(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hosts',
+      one: '1 host',
+      zero: 'No hosts',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get mcpAudit => 'MCP audit';
 
   @override

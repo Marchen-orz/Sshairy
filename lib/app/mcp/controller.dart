@@ -17,7 +17,7 @@ import '../ai_terminal_hosts.dart';
 import 'http.dart';
 import 'storage.dart';
 
-const mcpDiagnosticTemplates = {DiagnosticTemplate.systemSummary, DiagnosticTemplate.storageCapacity};
+const mcpDiagnosticTemplates = DiagnosticTemplate.values;
 
 typedef McpConfig = ({bool enabled, int port, McpApprovalMode mode, Map<String, String> hosts});
 
@@ -162,9 +162,16 @@ class McpController extends ChangeNotifier {
         if (binding != null && digests[id] == entry.value) _autoRoutes[id] = binding;
       }
     }
+    final listen = !_configured || next.enabled != _settings.enabled || next.port != _settings.port;
     _settings = next;
     _configured = true;
-    _restart();
+    if (listen) {
+      _restart();
+    } else {
+      // Mode and scope changes only end current grants; the listener and address stay up.
+      _http?.revoke();
+      _notify();
+    }
   }
 
   void _restart() {
@@ -319,7 +326,8 @@ class McpController extends ChangeNotifier {
         'name': tool.name,
         'description': tool.capability == 'agent.hosts'
             ? 'List available saved host IDs and aliases in pages.'
-            : 'Collect a fixed Linux system summary or disk-capacity report for a saved host.',
+            : 'Collect a fixed read-only Linux report for a saved host: system summary, disk capacity, processes, '
+                  'listening ports or service states.',
         'inputSchema': dispatcher[tool.capability]!.inputSchemaFor(Origin.externalAgent),
         'annotations': {'readOnlyHint': true},
       },

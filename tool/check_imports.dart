@@ -18,7 +18,7 @@ const adapters = {
   'pointycastle': ['lib/features/hosts/adapters/finalshell_login.dart'],
   'xterm2': ['lib/features/terminal/adapters/'],
   'flutter_pty': ['lib/features/terminal/adapters/'],
-  'flutter_svg': ['lib/features/hosts/adapters/import_source_icon.dart'],
+  'flutter_svg': ['lib/features/hosts/adapters/import_source_icon.dart', 'lib/app/mcp/adapters/client_icon.dart'],
   'flutter_markdown_plus': [
     'lib/features/ai/adapters/markdown_view.dart',
     'lib/features/settings/adapters/release_notes_view.dart',

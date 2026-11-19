@@ -42,6 +42,7 @@ flutter:
   generate: true
   assets:
     - assets/import_sources/
+    - assets/mcp_clients/
     - assets/completions/
     - assets/completions/specs/
     - assets/brand/blue/

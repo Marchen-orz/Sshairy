@@ -1090,6 +1090,15 @@
   "mcpModeModel": "Model review",
   "mcpModeHost": "Confirm hosts",
   "mcpModeAuto": "Automatic within scope",
+  "mcpModeModelHint": "You confirm each host on its first use in a session, then the review model checks every call. Calls it denies or cannot judge are not run.",
+  "mcpModeHostHint": "You confirm each host on its first use in a session. Approved hosts then run fixed diagnostics without asking again.",
+  "mcpModeAutoHint": "Only the hosts you select are reachable, and fixed diagnostics run without asking. Other hosts are refused.",
+  "mcpScopeHosts": "{count, plural, =0{No hosts} =1{1 host} other{{count} hosts}}",
+  "@mcpScopeHosts": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
   "mcpAudit": "MCP audit",
   "mcpAuditEmpty": "No MCP calls recorded.",
   "mcpClientConflict": "Existing configuration kept",

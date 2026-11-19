@@ -13,6 +13,7 @@ import '../../features/hosts/api.dart';
 import '../../features/settings/api.dart';
 import '../../foundation/ids.dart';
 import '../../l10n/app_localizations.dart';
+import 'adapters/client_icon.dart';
 import 'controller.dart';
 import 'storage.dart';
 
@@ -24,24 +25,69 @@ class McpSettings extends ConsumerStatefulWidget {
 }
 
 class _McpSettingsState extends ConsumerState<McpSettings> {
-  bool _busy = false;
+  final _pending = <McpClient>{};
   String? _error;
   String? _portDraft;
 
+  // Controls stay as they are while a change runs, so quick settings never flash a disabled state.
   Future<void> _change(FutureOr<void> Function() action) async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
+    if (_error != null) setState(() => _error = null);
     try {
       await action();
     } on Object {
-      if (mounted) _error = AppLocalizations.of(context).mcpChangeFailed;
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _error = AppLocalizations.of(context).mcpChangeFailed);
     }
   }
+
+  Future<void> _scope() => showAppDialog<void>(
+    context: context,
+    builder: (context) => Consumer(
+      builder: (context, ref, _) {
+        final l = AppLocalizations.of(context);
+        final controller = ref.watch(mcpControllerProvider);
+        final hosts = ref.watch(settingsProvider).get(SettingKeys.mcpHosts);
+        final digests = ref.watch(mcpRouteDigestsProvider);
+        final write = ref.read(settingsProvider.notifier);
+        return ListenableBuilder(
+          listenable: controller,
+          builder: (context, _) {
+            final routes = controller.routes();
+            return AppDialog(
+              title: Text(l.mcpModeAuto),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final host in ref.watch(hostsProvider).where((host) => !host.transient))
+                      AppToggleRow(
+                        title: hosts.containsKey(host.id.value) && !controller.inAutomaticScope(host.id, routes)
+                            ? l.mcpScopeChanged(host.title)
+                            : host.title,
+                        checkbox: true,
+                        value: hosts.containsKey(host.id.value),
+                        onChanged: !hosts.containsKey(host.id.value) && !digests.containsKey(host.id)
+                            ? null
+                            : (value) => _change(() {
+                                final next = {...hosts};
+                                if (value) {
+                                  next[host.id.value] = digests[host.id]!;
+                                } else {
+                                  next.remove(host.id.value);
+                                }
+                                return write.set(SettingKeys.mcpHosts, next);
+                              }),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(l.close))],
+            );
+          },
+        );
+      },
+    ),
+  );
 
   Future<void> _audit(McpController controller) async {
     final rows = await controller.audit.recent();
@@ -69,8 +115,9 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     final enabled = settings.get(SettingKeys.mcpEnabled);
     final mode = settings.get(SettingKeys.mcpMode);
     final hosts = settings.get(SettingKeys.mcpHosts);
-    final digests = mode == McpApprovalMode.automatic ? ref.watch(mcpRouteDigestsProvider) : const <HostId, String>{};
-    final routes = mode == McpApprovalMode.automatic ? controller.routes() : const <HostId, String>{};
+    final scoped = mode == McpApprovalMode.automatic
+        ? ref.watch(hostsProvider).where((host) => !host.transient && hosts.containsKey(host.id.value)).toList()
+        : const <Host>[];
     final port = settings.get(SettingKeys.mcpPort);
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
@@ -82,13 +129,10 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
         children: [
           AppToggleRow(
             title: 'MCP',
-            subtitle: controller.failed
-                ? l.mcpStartFailed
-                : controller.running
-                ? controller.url
-                : null,
+            // The address keeps its line whether or not the listener is up, so toggling never shifts the layout.
+            subtitle: controller.failed ? l.mcpStartFailed : controller.url,
             value: enabled,
-            onChanged: _busy ? null : (value) => _change(() => write.set(SettingKeys.mcpEnabled, value)),
+            onChanged: (value) => _change(() => write.set(SettingKeys.mcpEnabled, value)),
           ),
           const SizedBox(height: Space.md),
           Padding(
@@ -107,7 +151,6 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
                           child: TextFormField(
                             key: ValueKey(port),
                             initialValue: '$port',
-                            enabled: !_busy,
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
@@ -124,7 +167,7 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
                     SizedBox(
                       height: fieldHeight,
                       child: TextButton(
-                        onPressed: _busy || _portDraft == null || _portDraft == '$port'
+                        onPressed: _portDraft == null || _portDraft == '$port'
                             ? null
                             : () => _savePort(write, _portDraft!),
                         child: Text(l.mcpPortSave),
@@ -141,54 +184,59 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
                       McpApprovalMode.automatic: l.mcpModeAuto,
                     };
                     void select(McpApprovalMode value) => _change(() => write.set(SettingKeys.mcpMode, value));
-                    return Align(
-                      alignment: Alignment.centerLeft,
-                      child: constraints.maxWidth < WorkspaceSize.toolPanel
-                          ? AppSelect<McpApprovalMode>(
-                              value: mode,
-                              options: [for (final entry in options.entries) AppOption(entry.key, entry.value)],
-                              onChanged: _busy ? null : select,
-                            )
-                          : AppSegmented<McpApprovalMode>(
-                              segments: options,
-                              selected: mode,
-                              onChanged: _busy ? null : select,
+                    final routes = scoped.isEmpty ? const <HostId, String>{} : controller.routes();
+                    final changed = scoped.any((host) => !controller.inAutomaticScope(host.id, routes));
+                    return Wrap(
+                      spacing: Space.sm,
+                      runSpacing: Space.sm,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (constraints.maxWidth < WorkspaceSize.toolPanel)
+                          AppSelect<McpApprovalMode>(
+                            value: mode,
+                            options: [for (final entry in options.entries) AppOption(entry.key, entry.value)],
+                            onChanged: select,
+                          )
+                        else
+                          AppSegmented<McpApprovalMode>(
+                            segments: options,
+                            tooltips: {
+                              McpApprovalMode.model: l.mcpModeModelHint,
+                              McpApprovalMode.host: l.mcpModeHostHint,
+                              McpApprovalMode.automatic: l.mcpModeAutoHint,
+                            },
+                            selected: mode,
+                            onChanged: select,
+                          ),
+                        if (mode == McpApprovalMode.automatic)
+                          TextButton.icon(
+                            onPressed: _scope,
+                            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.sm)),
+                            icon: Icon(
+                              changed ? Icons.error_outline_rounded : Icons.dns_outlined,
+                              size: 16,
+                              color: changed ? theme.colorScheme.error : null,
                             ),
+                            label: Text(l.mcpScopeHosts(scoped.length)),
+                          ),
+                      ],
                     );
                   },
+                ),
+                const SizedBox(height: Space.lg),
+                Wrap(
+                  spacing: Space.sm,
+                  runSpacing: Space.sm,
+                  children: [for (final client in McpClient.values) _client(controller, client, l)],
                 ),
               ],
             ),
           ),
-          if (mode == McpApprovalMode.automatic) ...[
-            const SizedBox(height: Space.sm),
-            for (final host in ref.watch(hostsProvider).where((host) => !host.transient))
-              AppToggleRow(
-                title: hosts.containsKey(host.id.value) && !controller.inAutomaticScope(host.id, routes)
-                    ? l.mcpScopeChanged(host.title)
-                    : host.title,
-                checkbox: true,
-                value: hosts.containsKey(host.id.value),
-                onChanged: _busy || (!hosts.containsKey(host.id.value) && !digests.containsKey(host.id))
-                    ? null
-                    : (value) => _change(() {
-                        final next = {...hosts};
-                        if (value) {
-                          next[host.id.value] = digests[host.id]!;
-                        } else {
-                          next.remove(host.id.value);
-                        }
-                        return write.set(SettingKeys.mcpHosts, next);
-                      }),
-              ),
-          ],
-          const SizedBox(height: Space.lg),
-          for (final client in McpClient.values) _client(controller, client, l),
           const SizedBox(height: Space.sm),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: _busy ? null : () => _change(() => _audit(controller)),
+              onPressed: () => _change(() => _audit(controller)),
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.xs)),
               icon: const Icon(Icons.history_rounded, size: 16),
               label: Text(l.mcpAudit),
@@ -209,19 +257,25 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     final state = controller.clients.status(client);
     final on = controller.paired(client);
     final blocked = state == SkillStatus.conflict || state == SkillStatus.unavailable;
-    return AppToggleRow(
-      title: client.label,
-      subtitle: switch (state) {
-        SkillStatus.conflict => l.mcpClientConflict,
-        SkillStatus.unavailable => l.mcpClientUnavailable,
-        SkillStatus.absent when on => l.mcpClientUnavailable,
-        _ when controller.clientUpdateFailed(client) => l.mcpChangeFailed,
-        _ => null,
-      },
+    final problem = switch (state) {
+      SkillStatus.conflict => l.mcpClientConflict,
+      SkillStatus.unavailable => l.mcpClientUnavailable,
+      SkillStatus.absent when on => l.mcpClientUnavailable,
+      _ when controller.clientUpdateFailed(client) => l.mcpChangeFailed,
+      _ => null,
+    };
+    return AppIconToggle(
+      icon: McpClientIcon(client),
+      tooltip: problem == null ? client.label : '${client.label}\n$problem',
+      alert: problem != null,
       value: on,
-      onChanged: _busy || (!on && (blocked || !controller.running))
+      onChanged: !on && (blocked || !controller.running)
           ? null
-          : (value) => _change(() => value ? controller.connect(client) : controller.disconnect(client)),
+          : (value) {
+              if (!_pending.add(client)) return;
+              _change(() => value ? controller.connect(client) : controller.disconnect(client))
+                  .whenComplete(() => _pending.remove(client));
+            },
     );
   }
 }

@@ -51,11 +51,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '$locale $width');
       for (final client in McpClient.values) {
-        final row = find.widgetWithText(AppToggleRow, client.label);
-        expect(row, findsOneWidget);
-        expect(find.descendant(of: row, matching: find.byType(AppSwitch)), findsOneWidget);
-        expect(find.descendant(of: row, matching: find.byType(TextButton)), findsNothing);
+        expect(find.byWidgetPredicate((w) => w is AppIconToggle && w.tooltip.startsWith(client.label)), findsOneWidget);
       }
+      expect(find.byType(AppToggleRow), findsOneWidget);
+      expect(find.byType(AppCheckbox), findsNothing);
+      expect(find.byIcon(Icons.dns_outlined), findsOneWidget);
       expect(
         find.byType(AppSegmented<McpApprovalMode>),
         width >= WorkspaceSize.toolPanel ? findsOneWidget : findsNothing,

@@ -6110,6 +6110,30 @@ abstract class AppLocalizations {
   /// **'Automatic within scope'**
   String get mcpModeAuto;
 
+  /// No description provided for @mcpModeModelHint.
+  ///
+  /// In en, this message translates to:
+  /// **'You confirm each host on its first use in a session, then the review model checks every call. Calls it denies or cannot judge are not run.'**
+  String get mcpModeModelHint;
+
+  /// No description provided for @mcpModeHostHint.
+  ///
+  /// In en, this message translates to:
+  /// **'You confirm each host on its first use in a session. Approved hosts then run fixed diagnostics without asking again.'**
+  String get mcpModeHostHint;
+
+  /// No description provided for @mcpModeAutoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the hosts you select are reachable, and fixed diagnostics run without asking. Other hosts are refused.'**
+  String get mcpModeAutoHint;
+
+  /// No description provided for @mcpScopeHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No hosts} =1{1 host} other{{count} hosts}}'**
+  String mcpScopeHosts(int count);
+
   /// No description provided for @mcpAudit.
   ///
   /// In en, this message translates to:

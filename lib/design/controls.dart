@@ -145,9 +145,15 @@ class AppCheckbox extends StatelessWidget {
 
 /// A pill track with a sliding highlight; replaces Material's segmented button.
 class AppSegmented<T> extends StatefulWidget {
-  const AppSegmented({super.key, required this.segments, required this.selected, required this.onChanged});
+  const AppSegmented({
+    super.key,
+    required this.segments,
+    required this.selected,
+    required this.onChanged,
+    this.tooltips = const {},
+  });
 
-  final Map<T, String> segments;
+  final Map<T, String> segments, tooltips;
   final T selected;
   final ValueChanged<T>? onChanged;
 
@@ -217,25 +223,28 @@ class _AppSegmentedState<T> extends State<AppSegmented<T>> {
                   button: true,
                   enabled: enabled,
                   selected: value == selected,
-                  child: _Pressable(
-                    onTap: onChanged == null ? null : () => onChanged(value),
-                    builder: (context, hovered, focused) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: Space.md),
-                      alignment: Alignment.center,
-                      decoration: (value == selected && thumb == null ? fill : const BoxDecoration()).copyWith(
-                        borderRadius: BorderRadius.circular(Radii.pill),
-                        border: _ring(context, focused, 0),
-                      ),
-                      child: Text(
-                        label,
-                        // One weight for every segment: a bolder selection would widen it and shift the others.
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          color: !enabled
-                              ? palette.textMuted
-                              : value == selected || hovered
-                              ? scheme.onSurface
-                              : scheme.onSurfaceVariant,
+                  child: _tooltip(
+                    widget.tooltips[value],
+                    _Pressable(
+                      onTap: onChanged == null ? null : () => onChanged(value),
+                      builder: (context, hovered, focused) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                        alignment: Alignment.center,
+                        decoration: (value == selected && thumb == null ? fill : const BoxDecoration()).copyWith(
+                          borderRadius: BorderRadius.circular(Radii.pill),
+                          border: _ring(context, focused, 0),
+                        ),
+                        child: Text(
+                          label,
+                          // One weight for every segment: a bolder selection would widen it and shift the others.
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w500,
+                            color: !enabled
+                                ? palette.textMuted
+                                : value == selected || hovered
+                                ? scheme.onSurface
+                                : scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
@@ -244,6 +253,89 @@ class _AppSegmentedState<T> extends State<AppSegmented<T>> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+Widget _tooltip(String? message, Widget child) =>
+    message == null ? child : Tooltip(message: message, waitDuration: const Duration(milliseconds: 400), child: child);
+
+/// A square tile whose icon lights up while on; the tooltip names it.
+class AppIconToggle extends StatelessWidget {
+  const AppIconToggle({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.value,
+    required this.onChanged,
+    this.alert = false,
+  });
+
+  final Widget icon;
+  final String tooltip;
+  final bool value, alert;
+  final ValueChanged<bool>? onChanged;
+
+  static const _grey = ColorFilter.matrix([
+    .2126, .7152, .0722, 0, 0, //
+    .2126, .7152, .0722, 0, 0,
+    .2126, .7152, .0722, 0, 0,
+    0, 0, 0, 1, 0,
+  ]);
+  static const _color = ColorFilter.matrix([
+    1, 0, 0, 0, 0, //
+    0, 1, 0, 0, 0,
+    0, 0, 1, 0, 0,
+    0, 0, 0, 1, 0,
+  ]);
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onChanged != null;
+    return _tooltip(
+      tooltip,
+      Semantics(
+        label: tooltip,
+        toggled: value,
+        enabled: enabled,
+        child: _Pressable(
+          radius: Radii.control,
+          onTap: enabled ? () => onChanged!(!value) : null,
+          builder: (context, hovered, focused) => AnimatedContainer(
+            duration: Motion.of(context, Motion.quick),
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: value ? scheme.surfaceContainerHighest : scheme.surface,
+              borderRadius: BorderRadius.circular(Radii.control),
+              border: focused
+                  ? Border.all(color: scheme.primary, width: 2)
+                  : Border.all(color: hovered ? scheme.outline : scheme.outlineVariant),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                AnimatedOpacity(
+                  duration: Motion.of(context, Motion.quick),
+                  opacity: value ? 1 : (enabled ? .4 : .2),
+                  child: ColorFiltered(colorFilter: value ? _color : _grey, child: icon),
+                ),
+                if (alert)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(color: scheme.error, shape: BoxShape.circle),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
