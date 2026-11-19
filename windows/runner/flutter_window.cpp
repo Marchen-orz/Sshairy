@@ -275,13 +275,13 @@ void FlutterWindow::HandleWindowMethod(
     // Quitting hides the window first, while its frame is still the one the user left.
     SavePlacement();
     ShowWindow(window, SW_HIDE);
+  } else if (method == "allowForeground") {
+    const auto* pid = call.arguments() ? std::get_if<int32_t>(call.arguments()) : nullptr;
+    if (pid != nullptr && *pid > 0) AllowSetForegroundWindow(static_cast<DWORD>(*pid));
   } else if (method == "show") {
     ShowWindow(window, IsIconic(window) ? SW_RESTORE : SW_SHOW);
-    // Windows may refuse the foreground to a background process; the topmost toggle still raises the window and the
-    // flashing taskbar button tells the user it is waiting.
-    SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    SetWindowPos(window, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    if (!SetForegroundWindow(window)) {
+    if (GetForegroundWindow() != window && !SetForegroundWindow(window)) {
+      SetWindowPos(window, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
       FLASHWINFO flash = {sizeof(flash), window, FLASHW_TRAY | FLASHW_TIMERNOFG, 0, 0};
       FlashWindowEx(&flash);
     }

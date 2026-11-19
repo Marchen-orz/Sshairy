@@ -78,6 +78,9 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
   Future<void> hide() => _invoke('hide');
   Future<void> show() => _invoke('show');
 
+  /// Hands the foreground permission of a new Windows launch to the existing instance.
+  Future<void> allowForeground(int ownerPid) => _invoke('allowForeground', ownerPid);
+
   /// Physical client coordinates let Windows identify the native maximize button for its Snap menu.
   Future<void> setMaximizeRect(Rect? bounds, double pixelRatio) => _invoke(
     'maximizeRect',

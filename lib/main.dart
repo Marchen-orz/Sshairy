@@ -38,7 +38,12 @@ Future<void> main(List<String> args) async {
   await dir.create(recursive: true);
   // A second launch only brings the running window forward; tests start their own copy, like the update prompt.
   if (Platform.environment['FLUTTER_TEST'] != 'true') {
-    _instance = await SingleInstance.acquire(dir.path, show: DesktopWindow.instance.show);
+    final window = DesktopWindow.instance;
+    _instance = await SingleInstance.acquire(
+      dir.path,
+      show: window.show,
+      allowForeground: Platform.isWindows ? window.allowForeground : null,
+    );
     if (!_instance!.isPrimary) exit(0);
   }
   final diagnostics = DiagnosticLog('${dir.path}/logs');
