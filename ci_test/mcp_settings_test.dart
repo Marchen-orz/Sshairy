@@ -56,6 +56,12 @@ void main() {
       expect(find.byType(AppToggleRow), findsOneWidget);
       expect(find.byType(AppCheckbox), findsNothing);
       expect(find.byIcon(Icons.dns_outlined), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.dns_outlined));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppToggleRow, locale == 'en' ? 'Select all' : '全选'), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: 'scope $locale $width');
+      await tester.tap(find.text(locale == 'en' ? 'Close' : '关闭'));
+      await tester.pumpAndSettle();
       expect(
         find.byType(AppSegmented<McpApprovalMode>),
         width >= WorkspaceSize.toolPanel ? findsOneWidget : findsNothing,

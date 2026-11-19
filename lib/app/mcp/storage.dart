@@ -396,6 +396,25 @@ class McpClients {
   }
 }
 
+/// Merges newest-first audit lines into one record per operation; newer stages win, older ones fill gaps.
+List<Map<String, Object?>> mcpAuditOperations(List<String> lines) {
+  final operations = <String, Map<String, Object?>>{};
+  for (final line in lines) {
+    final Object? record;
+    try {
+      record = jsonDecode(line);
+    } on FormatException {
+      continue;
+    }
+    if (record is! Map<String, Object?>) continue;
+    final merged = operations.putIfAbsent('${record['session']}:${record['operation']}', () => {});
+    for (final entry in record.entries) {
+      merged[entry.key] ??= entry.value;
+    }
+  }
+  return operations.values.toList();
+}
+
 /// A bounded, serialized audit file. A write failure propagates to the operation gate.
 class McpAudit {
   McpAudit(String dataDirectory) : _directory = '$dataDirectory/mcp-audit';

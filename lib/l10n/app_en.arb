@@ -1101,6 +1101,22 @@
   },
   "mcpAudit": "MCP audit",
   "mcpAuditEmpty": "No MCP calls recorded.",
+  "mcpAuditCompleted": "Completed",
+  "mcpAuditRunning": "In progress",
+  "mcpAuditCancelled": "Cancelled",
+  "mcpAuditHostDenied": "Host not allowed",
+  "mcpAuditReviewDenied": "Denied by the review model",
+  "mcpAuditReviewUnavailable": "Review model unavailable",
+  "mcpAuditOutsideScope": "Host outside scope",
+  "mcpAuditScopeChanged": "Access changed during the call",
+  "mcpAuditNotExposed": "Tool not available",
+  "mcpAuditInvalid": "Invalid arguments",
+  "mcpAuditFailed": "Failed ({code})",
+  "@mcpAuditFailed": {
+    "placeholders": {
+      "code": {"type": "String"}
+    }
+  },
   "mcpClientConflict": "Existing configuration kept",
   "mcpClientUnavailable": "Client configuration unavailable",
   "mcpClientConnected": "{client} connected",

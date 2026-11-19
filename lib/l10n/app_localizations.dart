@@ -6146,6 +6146,72 @@ abstract class AppLocalizations {
   /// **'No MCP calls recorded.'**
   String get mcpAuditEmpty;
 
+  /// No description provided for @mcpAuditCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed'**
+  String get mcpAuditCompleted;
+
+  /// No description provided for @mcpAuditRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get mcpAuditRunning;
+
+  /// No description provided for @mcpAuditCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get mcpAuditCancelled;
+
+  /// No description provided for @mcpAuditHostDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Host not allowed'**
+  String get mcpAuditHostDenied;
+
+  /// No description provided for @mcpAuditReviewDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Denied by the review model'**
+  String get mcpAuditReviewDenied;
+
+  /// No description provided for @mcpAuditReviewUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Review model unavailable'**
+  String get mcpAuditReviewUnavailable;
+
+  /// No description provided for @mcpAuditOutsideScope.
+  ///
+  /// In en, this message translates to:
+  /// **'Host outside scope'**
+  String get mcpAuditOutsideScope;
+
+  /// No description provided for @mcpAuditScopeChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'Access changed during the call'**
+  String get mcpAuditScopeChanged;
+
+  /// No description provided for @mcpAuditNotExposed.
+  ///
+  /// In en, this message translates to:
+  /// **'Tool not available'**
+  String get mcpAuditNotExposed;
+
+  /// No description provided for @mcpAuditInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid arguments'**
+  String get mcpAuditInvalid;
+
+  /// No description provided for @mcpAuditFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed ({code})'**
+  String mcpAuditFailed(String code);
+
   /// No description provided for @mcpClientConflict.
   ///
   /// In en, this message translates to:

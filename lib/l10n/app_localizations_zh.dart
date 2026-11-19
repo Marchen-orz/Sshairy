@@ -3200,6 +3200,41 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mcpAuditEmpty => '暂无 MCP 调用记录。';
 
   @override
+  String get mcpAuditCompleted => '已完成';
+
+  @override
+  String get mcpAuditRunning => '进行中';
+
+  @override
+  String get mcpAuditCancelled => '已取消';
+
+  @override
+  String get mcpAuditHostDenied => '主机未获允许';
+
+  @override
+  String get mcpAuditReviewDenied => '审批模型拒绝';
+
+  @override
+  String get mcpAuditReviewUnavailable => '审批模型不可用';
+
+  @override
+  String get mcpAuditOutsideScope => '主机不在范围内';
+
+  @override
+  String get mcpAuditScopeChanged => '调用期间授权已变化';
+
+  @override
+  String get mcpAuditNotExposed => '工具未开放';
+
+  @override
+  String get mcpAuditInvalid => '参数无效';
+
+  @override
+  String mcpAuditFailed(String code) {
+    return '失败（$code）';
+  }
+
+  @override
   String get mcpClientConflict => '已保留现有配置';
 
   @override

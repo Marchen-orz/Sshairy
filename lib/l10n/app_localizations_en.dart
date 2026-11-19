@@ -3357,6 +3357,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mcpAuditEmpty => 'No MCP calls recorded.';
 
   @override
+  String get mcpAuditCompleted => 'Completed';
+
+  @override
+  String get mcpAuditRunning => 'In progress';
+
+  @override
+  String get mcpAuditCancelled => 'Cancelled';
+
+  @override
+  String get mcpAuditHostDenied => 'Host not allowed';
+
+  @override
+  String get mcpAuditReviewDenied => 'Denied by the review model';
+
+  @override
+  String get mcpAuditReviewUnavailable => 'Review model unavailable';
+
+  @override
+  String get mcpAuditOutsideScope => 'Host outside scope';
+
+  @override
+  String get mcpAuditScopeChanged => 'Access changed during the call';
+
+  @override
+  String get mcpAuditNotExposed => 'Tool not available';
+
+  @override
+  String get mcpAuditInvalid => 'Invalid arguments';
+
+  @override
+  String mcpAuditFailed(String code) {
+    return 'Failed ($code)';
+  }
+
+  @override
   String get mcpClientConflict => 'Existing configuration kept';
 
   @override

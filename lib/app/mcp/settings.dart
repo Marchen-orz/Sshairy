@@ -52,6 +52,8 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
           listenable: controller,
           builder: (context, _) {
             final routes = controller.routes();
+            final saved = ref.watch(hostsProvider).where((host) => !host.transient).toList();
+            final selectable = saved.where((host) => digests.containsKey(host.id)).toList();
             return AppDialog(
               title: Text(l.mcpModeAuto),
               content: SingleChildScrollView(
@@ -59,7 +61,22 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final host in ref.watch(hostsProvider).where((host) => !host.transient))
+                    AppToggleRow(
+                      title: l.selectAll,
+                      checkbox: true,
+                      value:
+                          selectable.isNotEmpty && selectable.every((host) => hosts[host.id.value] == digests[host.id]),
+                      onChanged: selectable.isEmpty && hosts.isEmpty
+                          ? null
+                          : (value) => _change(
+                              () => write.set(SettingKeys.mcpHosts, {
+                                if (value)
+                                  for (final host in selectable) host.id.value: digests[host.id]!,
+                              }),
+                            ),
+                    ),
+                    const Divider(height: Space.sm),
+                    for (final host in saved)
                       AppToggleRow(
                         title: hosts.containsKey(host.id.value) && !controller.inAutomaticScope(host.id, routes)
                             ? l.mcpScopeChanged(host.title)
@@ -90,19 +107,100 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
   );
 
   Future<void> _audit(McpController controller) async {
-    final rows = await controller.audit.recent();
+    final operations = mcpAuditOperations(await controller.audit.recent());
     if (!mounted) return;
+    final names = {for (final host in ref.read(hostsProvider)) host.id.value: host.title};
     await showAppDialog<void>(
       context: context,
       builder: (context) {
         final l = AppLocalizations.of(context);
         return AppDialog(
           title: Text(l.mcpAudit),
-          width: 700,
-          content: SingleChildScrollView(child: SelectableText(rows.isEmpty ? l.mcpAuditEmpty : rows.join('\n\n'))),
+          width: 600,
+          content: operations.isEmpty
+              ? Text(l.mcpAuditEmpty)
+              : SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [for (final record in operations) _auditRow(context, l, record, names)],
+                  ),
+                ),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(l.close))],
         );
       },
+    );
+  }
+
+  Widget _auditRow(BuildContext context, AppLocalizations l, Map<String, Object?> record, Map<String, String> names) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final outcome = '${record['outcome']}';
+    final finished = record['stage'] == 'finished' || record['stage'] == 'withheld';
+    final (icon, color, status) = switch (outcome) {
+      _ when !finished => (Icons.schedule_rounded, scheme.onSurfaceVariant, l.mcpAuditRunning),
+      'completed' => (Icons.check_circle_outline_rounded, scheme.primary, l.mcpAuditCompleted),
+      'cancelled' => (Icons.remove_circle_outline_rounded, scheme.onSurfaceVariant, l.mcpAuditCancelled),
+      'hostDenied' => (Icons.block_rounded, scheme.error, l.mcpAuditHostDenied),
+      'reviewDenied' => (Icons.block_rounded, scheme.error, l.mcpAuditReviewDenied),
+      'reviewUnavailable' => (Icons.error_outline_rounded, scheme.error, l.mcpAuditReviewUnavailable),
+      'outsideScope' => (Icons.block_rounded, scheme.error, l.mcpAuditOutsideScope),
+      'scopeChanged' => (Icons.error_outline_rounded, scheme.error, l.mcpAuditScopeChanged),
+      'notExposed' => (Icons.block_rounded, scheme.error, l.mcpAuditNotExposed),
+      'invalidArgument' => (Icons.error_outline_rounded, scheme.error, l.mcpAuditInvalid),
+      _ => (Icons.error_outline_rounded, scheme.error, l.mcpAuditFailed(outcome)),
+    };
+    final tool = switch (record['tool']) {
+      'host_list' => l.aiAgentToolHosts,
+      'diagnostics_collect' => switch (record['template']) {
+        'systemSummary' => l.aiAgentDiagnosticSystem,
+        'storageCapacity' => l.aiAgentDiagnosticStorage,
+        'processSummary' => l.aiAgentDiagnosticProcesses,
+        'listeningPorts' => l.aiAgentDiagnosticPorts,
+        'serviceStates' => l.aiAgentDiagnosticServices,
+        _ => l.aiAgentDiagnostics,
+      },
+      _ => l.mcpAuditNotExposed,
+    };
+    final client = McpClient.values.asNameMap()[record['client']]?.label ?? '${record['client']}';
+    final host = record['host'] is String ? names[record['host']] ?? '${record['host']}' : null;
+    final mode = switch (record['mode']) {
+      'model' => l.mcpModeModel,
+      'automatic' => l.mcpModeAuto,
+      _ => l.mcpModeHost,
+    };
+    final time = DateTime.tryParse('${record['time']}')?.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final stamp = time == null
+        ? ''
+        : time.year == now.year && time.month == now.month && time.day == now.day
+        ? '${two(time.hour)}:${two(time.minute)}:${two(time.second)}'
+        : '${two(time.month)}-${two(time.day)} ${two(time.hour)}:${two(time.minute)}';
+    final muted = theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Space.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(host == null ? tool : '$tool · $host'),
+                Text([client, mode, status].join(' · '), style: muted),
+              ],
+            ),
+          ),
+          const SizedBox(width: Space.md),
+          Text(stamp, style: muted?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
+        ],
+      ),
     );
   }
 

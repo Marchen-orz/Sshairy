@@ -167,6 +167,20 @@ void main() {
     }
   });
 
+  test('audit lines merge into one readable record per operation', () {
+    final operations = mcpAuditOperations([
+      '{"session":"s","operation":"b","tool":"host_list","host":null,"stage":"received","outcome":"pending"}',
+      'not json',
+      '{"session":"s","operation":"a","tool":"diagnostics_collect","host":null,"stage":"finished","outcome":"completed"}',
+      '{"session":"s","operation":"a","tool":"diagnostics_collect","host":"first","stage":"starting","outcome":"allowed"}',
+      '{"session":"s","operation":"a","tool":"unavailable","host":null,"stage":"received","outcome":"pending"}',
+    ]);
+    expect(operations.map((record) => record['operation']), ['b', 'a']);
+    expect(operations.last, containsPair('outcome', 'completed'));
+    expect(operations.last, containsPair('host', 'first'));
+    expect(operations.last, containsPair('tool', 'diagnostics_collect'));
+  });
+
   test('audit failure fails closed before diagnostic execution', () async {
     await h.start(mode: McpApprovalMode.automatic, scope: {'first': h.digests[_first]!});
     File('${h.dir.path}/mcp-audit').createSync();
