@@ -248,7 +248,9 @@ class AiTerminalService implements TerminalAiService {
       }
       return command;
     } on Object catch (error) {
-      if (!cancel.isCancelled && revision == _revision) {
+      // A malformed reply is a content result, not a service fault; only transport/HTTP errors cool down.
+      final content = error is ModelFailure && const {'invalidSuggestion', 'suggestionLimit'}.contains(error.code);
+      if (!content && !cancel.isCancelled && revision == _revision) {
         final delay = error is ModelFailure ? error.retryAfter : null;
         _cooldown = _now().add(
           delay != null && delay > const Duration(seconds: 30) ? delay : const Duration(seconds: 30),
@@ -357,6 +359,7 @@ class AiTerminalService implements TerminalAiService {
         tools: false,
         contextWindow: profile.contextWindow,
         maxOutputTokens: profile.maxOutputTokens.clamp(1, inline ? 1024 : 256),
+        reasoningEffort: profile.reasoningEffort,
       );
       onStarted?.call();
       subscription = model
@@ -413,7 +416,7 @@ class AiTerminalService implements TerminalAiService {
       if (request.cancel.isCancelled || caller.isCancelled || revision != _revision) {
         throw const ModelFailure('cancelled');
       }
-      final decoded = jsonDecode(message.text);
+      final decoded = jsonDecode(_fence.firstMatch(message.text)?.group(1) ?? message.text);
       if (decoded is! Map<String, dynamic>) throw const ModelFailure('invalidSuggestion');
       return decoded;
     } on FormatException {
@@ -435,6 +438,8 @@ class AiTerminalService implements TerminalAiService {
       }
     }
   }
+
+  static final _fence = RegExp(r'^\s*```(?:json)?[ \t]*\r?\n([\s\S]*?)\s*```\s*$');
 
   String get _generateSystem =>
       '$_generateSystemBase '
