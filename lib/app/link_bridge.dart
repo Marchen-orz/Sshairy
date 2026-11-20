@@ -320,7 +320,7 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
   }
 }
 
-/// Composition-layer bridge wired on Mobile (and Desktop mobile-preview) to apply synced config/credentials
+/// Composition-layer bridge wired on Mobile to apply synced config/credentials
 /// and open mirrored or desktop-proxied terminal tabs in the workspace.
 class AppLinkMobileBridge implements LinkMobileBridge {
   AppLinkMobileBridge(this._ref);

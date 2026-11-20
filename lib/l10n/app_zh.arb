@@ -1061,7 +1061,6 @@
   "mcpHostPrompt": "允许 {client} 在本次 MCP 会话中诊断「{host}」？",
   "mcpPortSave": "保存端口",
   "mcpScopeChanged": "{host}（连接已变化，请重新选择）",
-  "mobilePreviewLayout": "移动端布局预览",
   "linkTitle": "手机互联",
   "linkTab": "互联",
   "linkEnabled": "启用电脑互联",

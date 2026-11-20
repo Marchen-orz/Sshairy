@@ -11,9 +11,8 @@ bool get isDesktopPlatform =>
 bool get isMobilePlatform =>
     !kIsWeb && const {TargetPlatform.android, TargetPlatform.iOS}.contains(defaultTargetPlatform);
 
-/// True on Android/iOS (under the 720dp tablet breakpoint) or when desktop mobile-preview is toggled on.
-bool isCompactWorkspace(BuildContext context, {bool previewMobile = false}) {
-  if (previewMobile) return true;
+/// True on Android/iOS under the 720dp tablet breakpoint.
+bool isCompactWorkspace(BuildContext context) {
   if (isMobilePlatform) return MediaQuery.sizeOf(context).width < compactWorkspaceBreakpoint;
   return false;
 }

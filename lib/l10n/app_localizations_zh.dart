@@ -3259,9 +3259,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get mobilePreviewLayout => '移动端布局预览';
-
-  @override
   String get linkTitle => '手机互联';
 
   @override

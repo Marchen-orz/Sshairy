@@ -390,7 +390,6 @@ abstract final class SettingKeys {
   static const linkPort = IntSetting('linkPort', 47827, 1024, 65535, agentExposed: false);
   static const linkDiscovery = BoolSetting('linkDiscovery', true, agentExposed: false);
   static const linkDeviceName = OptionalStringSetting('linkDeviceName', maxLength: 64, agentExposed: false);
-  static const mobilePreview = BoolSetting('mobilePreview', false, agentExposed: false);
 
   static const List<SettingDef<Object?>> all = [
     mcpEnabled,
@@ -401,7 +400,6 @@ abstract final class SettingKeys {
     linkPort,
     linkDiscovery,
     linkDeviceName,
-    mobilePreview,
     themeMode,
     accent,
     locale,

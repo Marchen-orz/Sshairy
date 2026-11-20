@@ -460,8 +460,6 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           }),
         ),
         _Field(l.confirmQuit, toggle(SettingKeys.confirmQuit)),
-        if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
-          _Field(l.mobilePreviewLayout, toggle(SettingKeys.mobilePreview)),
       ]),
       _Section(SettingsSectionId.shortcuts, l.shortcuts, Icons.keyboard_outlined, [
         for (final action in AppShortcutAction.values)

@@ -20,8 +20,7 @@ import 'workspace_page.dart' show SessionStatusIcon;
 
 enum _MobileNavTab { hosts, terminal, link, files }
 
-/// Touch-first 4-tab workspace shell shown on Android/iOS, narrow desktop windows (< 720dp),
-/// or when "Mobile layout preview" is enabled in Settings (docs/MOBILE.md §2-3).
+/// Touch-first 4-tab workspace shell shown on Android/iOS under the 720dp tablet breakpoint (docs/MOBILE.md §2-3).
 class MobileWorkspace extends ConsumerStatefulWidget {
   const MobileWorkspace({super.key});
 
@@ -238,7 +237,12 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> {
             title: Text(l.trustedKeys),
             onTap: () {
               Navigator.pop(context);
-              _showSheet(SingleChildScrollView(padding: const EdgeInsets.all(Space.md), child: trustSettingsSection.build(context)));
+              _showSheet(
+                SingleChildScrollView(
+                  padding: const EdgeInsets.all(Space.md),
+                  child: trustSettingsSection.build(context),
+                ),
+              );
             },
           ),
           ListTile(
@@ -357,10 +361,7 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListenableBuilder(
-                listenable: activeSession,
-                builder: (_, _) => SessionStatusIcon(activeSession.status),
-              ),
+              ListenableBuilder(listenable: activeSession, builder: (_, _) => SessionStatusIcon(activeSession.status)),
               const SizedBox(width: Space.xs),
               Flexible(
                 child: Text(
@@ -406,7 +407,9 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> {
               ),
               child: Row(
                 children: [
-                  Expanded(child: Align(alignment: Alignment.centerLeft, child: topBarTitle())),
+                  Expanded(
+                    child: Align(alignment: Alignment.centerLeft, child: topBarTitle()),
+                  ),
                   if (_tab == _MobileNavTab.terminal || _tab == _MobileNavTab.hosts)
                     IconButton(
                       tooltip: l.newConnection,

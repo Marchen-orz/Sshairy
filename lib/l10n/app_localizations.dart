@@ -6248,12 +6248,6 @@ abstract class AppLocalizations {
   /// **'{host} (connection changed, select again)'**
   String mcpScopeChanged(String host);
 
-  /// No description provided for @mobilePreviewLayout.
-  ///
-  /// In en, this message translates to:
-  /// **'Mobile layout preview'**
-  String get mobilePreviewLayout;
-
   /// No description provided for @linkTitle.
   ///
   /// In en, this message translates to:

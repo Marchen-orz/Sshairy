@@ -1145,7 +1145,6 @@
       }
     }
   },
-  "mobilePreviewLayout": "Mobile layout preview",
   "linkTitle": "Device Link",
   "linkTab": "Link",
   "linkEnabled": "Enable desktop link",

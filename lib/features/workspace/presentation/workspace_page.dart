@@ -372,7 +372,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
-    if (isCompactWorkspace(context, previewMobile: settings.get(SettingKeys.mobilePreview))) {
+    if (isCompactWorkspace(context)) {
       return const MobileWorkspace();
     }
     final l = AppLocalizations.of(context);

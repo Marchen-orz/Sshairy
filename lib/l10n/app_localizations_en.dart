@@ -3416,9 +3416,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get mobilePreviewLayout => 'Mobile layout preview';
-
-  @override
   String get linkTitle => 'Device Link';
 
   @override
