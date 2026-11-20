@@ -126,7 +126,7 @@ class UpdateCheckControl extends ConsumerWidget {
             ),
           ),
         if (state.status == UpdateStatus.available)
-          FilledButton(onPressed: () => showReleaseNotes(context, state), child: Text(l.releaseNotes))
+          FilledButton(onPressed: () => showReleaseNotes(context, state), child: Text(l.updateDownload))
         else
           TextButton(
             onPressed: state.status == UpdateStatus.checking
@@ -134,8 +134,7 @@ class UpdateCheckControl extends ConsumerWidget {
                 : () => ref.read(updateCheckProvider.notifier).check(),
             child: Text(l.checkForUpdates),
           ),
-        if (state.status != UpdateStatus.available)
-          TextButton(onPressed: () => _showNotes(context, ref), child: Text(l.releaseNotes)),
+        TextButton(onPressed: () => _showNotes(context, ref), child: Text(l.releaseNotes)),
       ],
     );
   }
@@ -149,20 +148,19 @@ class UpdateCheckControl extends ConsumerWidget {
       state = ref.read(updateCheckProvider);
     }
     if (state.releases.isEmpty) return;
-    if (context.mounted) await showReleaseNotes(context, state);
+    if (context.mounted) await showReleaseNotes(context, state, history: true);
   }
 }
 
-Future<void> showReleaseNotes(BuildContext context, UpdateState state) {
+/// An available update shows only its own notes; [history] lists every release without the download actions.
+Future<void> showReleaseNotes(BuildContext context, UpdateState state, {bool history = false}) {
   final latest = state.latest;
   if (latest == null) return Future.value();
+  final available = !history && state.status == UpdateStatus.available;
   return showAppDialog<void>(
     context: context,
-    builder: (context) => _ReleaseNotesDialog(
-      latest: latest,
-      releases: state.releases,
-      available: state.status == UpdateStatus.available,
-    ),
+    builder: (context) =>
+        _ReleaseNotesDialog(latest: latest, releases: available ? [latest] : state.releases, available: available),
   );
 }
 
