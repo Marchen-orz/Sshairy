@@ -4,5 +4,5 @@ export 'domain/background.dart' show BackgroundSlot;
 export 'domain/translation_config.dart' show TranslationConfig, TranslationProvider;
 export 'application/background_images.dart'
     show backgroundImagesProvider, backgroundImageStoreProvider, imageSetting, imageOpacitySetting;
-export 'presentation/background_image.dart' show BackgroundImageView;
+export 'presentation/background_image.dart' show BackgroundImageControls, BackgroundImageView;
 export 'presentation/update_check.dart' show StartupUpdatePrompt, UpdateAvailableButton;

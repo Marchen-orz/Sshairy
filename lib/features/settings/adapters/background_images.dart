@@ -9,12 +9,12 @@ import '../../../foundation/result.dart';
 import '../domain/background.dart';
 
 class BackgroundImageStore {
-  BackgroundImageStore(this.directory, {Future<String?> Function()? pick}) : _pick = pick ?? _choose;
+  BackgroundImageStore(this.directory, {this.pick});
 
   final String directory;
-  final Future<String?> Function() _pick;
+  final Future<String?> Function()? pick;
 
-  static Future<String?> _choose() async => (await selector.openFile(
+  static Future<selector.XFile?> _chooseFile() => selector.openFile(
     acceptedTypeGroups: [
       const selector.XTypeGroup(
         label: 'PNG / JPEG',
@@ -22,26 +22,46 @@ class BackgroundImageStore {
         mimeTypes: ['image/png', 'image/jpeg'],
       ),
     ],
-  ))?.path;
+  );
 
   /// [retained] is read once a file is picked: the dialog can stay open while the gallery changes.
   Future<Result<String>?> choose(Set<String> Function() retained) async {
     try {
-      final path = await _pick();
-      return path == null ? null : await importFile(path, retained());
+      if (pick != null) {
+        final path = await pick!();
+        return path == null ? null : await importFile(path, retained());
+      }
+      final file = await _chooseFile();
+      if (file == null) return null;
+      final bytes = await _readStream(file.openRead());
+      return await _importRawBytes(bytes, retained());
+    } on _ImageFailure catch (error) {
+      return Err(AppError(error.code));
     } on Object {
       return const Err(AppError('backgroundImageUnreadable'));
     }
   }
 
   Future<Result<String>> importFile(String path, Set<String> retained) async {
-    final Uint8List bytes;
+    final Uint8List raw;
     try {
-      bytes = await _normalize(await _read(path));
+      raw = await _read(path);
     } on _ImageFailure catch (error) {
       return Err(AppError(error.code));
     } on FileSystemException {
       return const Err(AppError('backgroundImageUnreadable'));
+    } on Object {
+      return const Err(AppError('backgroundImageUnsupported'));
+    }
+    return _importRawBytes(raw, retained);
+  }
+
+  Future<Result<String>> _importRawBytes(Uint8List raw, Set<String> retained) async {
+    final Uint8List bytes;
+    try {
+      bytes = await _normalize(raw);
+    } on _ImageFailure catch (error) {
+      return Err(AppError(error.code));
     } on Object {
       return const Err(AppError('backgroundImageUnsupported'));
     }
@@ -113,6 +133,17 @@ class BackgroundImageStore {
       }
     }
     return size;
+  }
+
+  Future<Uint8List> _readStream(Stream<Uint8List> stream) async {
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in stream) {
+      if (bytes.length + chunk.length > BackgroundImageLimits.inputBytes) {
+        throw const _ImageFailure('backgroundImageTooLarge');
+      }
+      bytes.add(chunk);
+    }
+    return bytes.takeBytes();
   }
 
   Future<Uint8List> _read(String path) async {

@@ -310,6 +310,39 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   void _sendTouchSequence(String raw) {
     final ctrl = _touchCtrl != TouchModifierState.off;
     final alt = _touchAlt != TouchModifierState.off;
+    if (!ctrl && !alt) {
+      final prediction = raw == '\x1b[C' ? _prediction : null;
+      if (prediction != null) {
+        unawaited(_acceptPrediction(prediction));
+        return;
+      }
+      final state = _candidateState;
+      if (_popupAvailable(state)) {
+        _syncCandidateSelection(state);
+        if (raw == '\x1b') {
+          _cancelAiCompletion();
+          setState(() {
+            _dismissedCandidateRequest = state.request;
+            _candidateMode = false;
+          });
+          return;
+        }
+        if (raw == '\t' && _candidateMode && state.request != null && state.candidates.isNotEmpty) {
+          final candidate = state.candidates[_candidateIndex.clamp(0, state.candidates.length - 1)];
+          unawaited(_acceptCandidate(state.request!, candidate));
+          return;
+        }
+        if ((raw == '\x1b[A' || raw == '\x1b[B') && state.candidates.isNotEmpty) {
+          setState(() {
+            _candidateIndex = (_candidateIndex + (raw == '\x1b[B' ? 1 : -1)) % state.candidates.length;
+            _candidateText = state.candidates[_candidateIndex].identity;
+            _candidateMode = true;
+          });
+          _scrollCandidateIntoView();
+          return;
+        }
+      }
+    }
     final text = applyTouchModifiers(raw, ctrl: ctrl, alt: alt);
     _terminal.textInput(text);
     if (_touchCtrl == TouchModifierState.oneshot || _touchAlt == TouchModifierState.oneshot) {
@@ -495,7 +528,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                       controller: _controller,
                       scrollController: _scroll,
                       onKeyEvent: _onKey,
-                      padding: const EdgeInsets.all(Space.sm),
+                      padding: widget.compact
+                          ? const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm)
+                          : const EdgeInsets.all(Space.sm),
                       theme: _terminalTheme(palette),
                       // The backdrop already carries the image's transparency; a second veil would tint it twice.
                       backgroundOpacity: hasImage ? 0 : 1,
@@ -641,47 +676,69 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
           children: [
             Expanded(child: zoomed),
             if (_session.status == SessionStatus.connected)
-              MobileTerminalKeyBar(
-                ctrl: _touchCtrl,
-                alt: _touchAlt,
-                hapticsEnabled: ref.watch(settingsProvider).get(SettingKeys.mobileHaptics),
-                onToggleCtrl: _toggleTouchCtrl,
-                onLockCtrl: _lockTouchCtrl,
-                onToggleAlt: _toggleTouchAlt,
-                onLockAlt: _lockTouchAlt,
-                onSendSequence: _sendTouchSequence,
-                onPaste: () => unawaited(_paste()),
-                onOpenComposer: _showComposer,
-                onOpenSearch: () => setState(() => _searching = !_searching),
-                onOpenSnippets: widget.onOpenSnippets,
-                onOpenAiry: widget.onAskAgent == null ? null : () => widget.onAskAgent!(_recentVisibleExcerpt()),
-                onGenerateDraft: _canGenerateMobileDraft() ? _generateMobileDraft : null,
-                keyboardFocused: _focus.hasFocus,
-                onToggleKeyboard: () {
-                  if (_focus.hasFocus) {
-                    _focus.unfocus();
-                  } else {
-                    _focus.requestFocus();
-                  }
-                  setState(() {});
+              ListenableBuilder(
+                listenable: _session.commandAssistance,
+                builder: (context, _) {
+                  final candidateState = _candidateState;
+                  final prediction = _prediction;
+                  final dismissed = identical(_dismissedCandidateRequest, candidateState.request);
+                  final visibleCandidates = dismissed || candidateState.request == null
+                      ? const <CommandCandidate>[]
+                      : candidateState.candidates.take(12).toList();
+                  return MobileTerminalKeyBar(
+                    ctrl: _touchCtrl,
+                    alt: _touchAlt,
+                    hapticsEnabled: ref.watch(settingsProvider).get(SettingKeys.mobileHaptics),
+                    onToggleCtrl: _toggleTouchCtrl,
+                    onLockCtrl: _lockTouchCtrl,
+                    onToggleAlt: _toggleTouchAlt,
+                    onLockAlt: _lockTouchAlt,
+                    onSendSequence: _sendTouchSequence,
+                    onPaste: () => unawaited(_paste()),
+                    onOpenComposer: _showComposer,
+                    onOpenSearch: () => setState(() => _searching = !_searching),
+                    onOpenSnippets: widget.onOpenSnippets,
+                    onOpenAiry: widget.onAskAgent == null ? null : () => widget.onAskAgent!(''),
+                    onOpenInlineAi: _canOpenInlineAi ? _showInlineAi : null,
+                    onGenerateDraft: _canGenerateMobileDraft() ? _generateMobileDraft : null,
+                    prediction: prediction?.text,
+                    onAcceptPrediction: prediction == null ? null : () => unawaited(_acceptPrediction(prediction)),
+                    suggestions: [
+                      for (final c in visibleCandidates)
+                        (
+                          label: c.displayText ?? c.text,
+                          detail: c.detail,
+                          isAi: c.source == CommandCandidateSource.ai,
+                          isDir: c.directory != null,
+                        ),
+                    ],
+                    onAcceptSuggestion: visibleCandidates.isEmpty || candidateState.request == null
+                        ? null
+                        : (index) {
+                            final candidate = visibleCandidates[index];
+                            if (candidate.directory != null) {
+                              _session.browseCommand(candidateState.request!, candidate);
+                            } else {
+                              unawaited(_acceptCandidate(candidateState.request!, candidate));
+                            }
+                            _focus.requestFocus();
+                          },
+                    keyboardFocused: _focus.hasFocus,
+                    onToggleKeyboard: () {
+                      if (_focus.hasFocus) {
+                        _focus.unfocus();
+                      } else {
+                        _focus.requestFocus();
+                      }
+                      setState(() {});
+                    },
+                  );
                 },
               ),
           ],
         );
       },
     );
-  }
-
-  String _recentVisibleExcerpt() {
-    final buf = _session._terminal.buffer;
-    final total = buf.lines.length;
-    final start = max(0, total - 35);
-    final lines = <String>[];
-    for (var i = start; i < total; i++) {
-      final text = buf.lines[i].getText().trimRight();
-      if (text.isNotEmpty) lines.add(text);
-    }
-    return lines.join('\n');
   }
 
   bool _canGenerateMobileDraft() {

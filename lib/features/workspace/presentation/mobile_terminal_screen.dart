@@ -54,7 +54,7 @@ class _MobileApprovalBannerState extends ConsumerState<MobileApprovalBanner> {
         return Container(
           key: ValueKey('mobile-approval-banner-${item.approvalId}'),
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, Space.sm),
+          padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, Space.sm),
           decoration: BoxDecoration(
             color: scheme.errorContainer,
             border: Border(bottom: BorderSide(color: scheme.error.withValues(alpha: .35))),
@@ -175,7 +175,13 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (context) => FractionallySizedBox(heightFactor: heightFactor, child: child),
+    builder: (context) => FractionallySizedBox(
+      heightFactor: heightFactor,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+        child: child,
+      ),
+    ),
   );
 
   void _openAirySheet({String? seed}) {
@@ -480,7 +486,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     }
     return Container(
       height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+      padding: const EdgeInsets.symmetric(horizontal: Space.sm),
       decoration: BoxDecoration(
         color: palette.surface,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .35))),

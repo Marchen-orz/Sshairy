@@ -26,7 +26,18 @@ extension _TerminalAiPane on _TerminalPaneState {
       if (composing != null) return;
       if (element is StatefulElement && element.state is TextInputClient) {
         final value = (element.state as TextInputClient).currentTextEditingValue;
-        composing = value == null || !value.composing.isCollapsed;
+        if (value == null) {
+          composing = true;
+        } else if (value.composing.isCollapsed) {
+          composing = false;
+        } else if (widget.compact) {
+          // Mobile soft keyboards underline the active ASCII word as composing even after characters reach the shell;
+          // only treat non-ASCII IME pre-edit (e.g. CJK pinyin) as active composition.
+          final slice = value.composing.textInside(value.text);
+          composing = slice.codeUnits.any((c) => c > 0x7F);
+        } else {
+          composing = true;
+        }
       } else {
         element.visitChildren(visit);
       }
@@ -260,27 +271,32 @@ extension _TerminalAiPane on _TerminalPaneState {
       final prediction = _prediction;
       if (cursor == null || prediction == null) return const SizedBox.shrink();
       final settings = ref.read(settingsProvider);
+      final ghost = Text(
+        prediction.text,
+        key: const ValueKey('terminal-ai-prediction'),
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.clip,
+        style: TextStyle(
+          fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
+          fontFamilyFallback: AppFonts.monoFallback,
+          fontSize: _liveFontSize ?? settings.fontSize,
+          height: 1.2,
+          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: .6),
+        ),
+      );
       return Positioned(
         left: cursor.left,
         top: cursor.top,
         right: 0,
         height: cursor.height,
-        child: IgnorePointer(
-          child: Text(
-            prediction.text,
-            key: const ValueKey('terminal-ai-prediction'),
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.clip,
-            style: TextStyle(
-              fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
-              fontFamilyFallback: AppFonts.monoFallback,
-              fontSize: _liveFontSize ?? settings.fontSize,
-              height: 1.2,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: .6),
-            ),
-          ),
-        ),
+        child: widget.compact
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => unawaited(_acceptPrediction(prediction)),
+                child: ghost,
+              )
+            : IgnorePointer(child: ghost),
       );
     },
   );

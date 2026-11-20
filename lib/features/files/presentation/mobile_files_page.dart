@@ -446,7 +446,7 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
                   color: palette.surface,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
+                    padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs),
                     itemCount: crumbs.length,
                     separatorBuilder: (_, _) => Icon(Icons.chevron_right, size: 16, color: scheme.onSurfaceVariant),
                     itemBuilder: (context, index) {
@@ -521,7 +521,7 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
                         : RefreshIndicator(
                             onRefresh: () => _browser.refresh(),
                             child: ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.md, 88),
+                              padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, 88),
                               itemCount: items.length,
                               separatorBuilder: (_, _) => const SizedBox(height: Space.xs),
                               itemBuilder: (context, index) {
@@ -754,7 +754,7 @@ class _MobileFileEditorPageState extends State<_MobileFileEditorPage> {
               child: Padding(padding: const EdgeInsets.all(Space.xl), child: Text(_error!)),
             )
           : Padding(
-              padding: const EdgeInsets.all(Space.md),
+              padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
               child: TextField(
                 controller: _controller,
                 readOnly: !_editing,

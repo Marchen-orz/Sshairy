@@ -8,6 +8,8 @@ import '../../../l10n/app_localizations.dart';
 
 enum TouchModifierState { off, oneshot, locked }
 
+typedef MobileCompletionItem = ({String label, String? detail, bool isAi, bool isDir});
+
 /// Transforms a typed key string with active sticky Ctrl / Alt touch modifiers.
 String applyTouchModifiers(String input, {required bool ctrl, required bool alt}) {
   if (input.isEmpty || (!ctrl && !alt)) return input;
@@ -42,7 +44,12 @@ class MobileTerminalKeyBar extends StatefulWidget {
     required this.onOpenSearch,
     this.onOpenSnippets,
     this.onOpenAiry,
+    this.onOpenInlineAi,
     this.onGenerateDraft,
+    this.prediction,
+    this.onAcceptPrediction,
+    this.suggestions = const [],
+    this.onAcceptSuggestion,
     required this.onToggleKeyboard,
     required this.keyboardFocused,
     this.hapticsEnabled = true,
@@ -60,7 +67,12 @@ class MobileTerminalKeyBar extends StatefulWidget {
   final VoidCallback onOpenSearch;
   final VoidCallback? onOpenSnippets;
   final VoidCallback? onOpenAiry;
+  final VoidCallback? onOpenInlineAi;
   final Future<String?> Function(String instruction)? onGenerateDraft;
+  final String? prediction;
+  final VoidCallback? onAcceptPrediction;
+  final List<MobileCompletionItem> suggestions;
+  final ValueChanged<int>? onAcceptSuggestion;
   final VoidCallback onToggleKeyboard;
   final bool keyboardFocused;
   final bool hapticsEnabled;
@@ -125,15 +137,121 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
     final palette = BrandPalette.of(context);
     final l = AppLocalizations.of(context);
 
+    final hasCompletions =
+        (widget.prediction != null && widget.prediction!.isNotEmpty && widget.onAcceptPrediction != null) ||
+        (widget.suggestions.isNotEmpty && widget.onAcceptSuggestion != null);
+
     return Material(
       color: palette.surface,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (hasCompletions)
+            Container(
+              key: const ValueKey('mobile-completion-bar'),
+              height: 36,
+              decoration: BoxDecoration(
+                color: palette.raised,
+                border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .4))),
+              ),
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 4),
+                children: [
+                  if (widget.prediction != null && widget.prediction!.isNotEmpty && widget.onAcceptPrediction != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: Space.xs),
+                      child: Material(
+                        key: const ValueKey('mobile-prediction-chip'),
+                        color: palette.primary.withValues(alpha: .16),
+                        borderRadius: BorderRadius.circular(Radii.control),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(Radii.control),
+                          onTap: () {
+                            _haptic();
+                            widget.onAcceptPrediction!();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.auto_awesome_rounded, size: 13, color: palette.primary),
+                                const SizedBox(width: 4),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 220),
+                                  child: Text(
+                                    widget.prediction!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: mono(
+                                      context,
+                                      Theme.of(context).textTheme.labelSmall,
+                                    ).copyWith(color: palette.primary, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(Icons.keyboard_tab_rounded, size: 13, color: palette.primary),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  for (var i = 0; i < widget.suggestions.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: Space.xs),
+                      child: Material(
+                        key: ValueKey('mobile-completion-chip-$i'),
+                        color: widget.suggestions[i].isAi ? palette.primary.withValues(alpha: .14) : palette.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(Radii.control),
+                          side: BorderSide(
+                            color: widget.suggestions[i].isAi
+                                ? palette.primary.withValues(alpha: .45)
+                                : scheme.outlineVariant.withValues(alpha: .45),
+                          ),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(Radii.control),
+                          onTap: () {
+                            _haptic();
+                            widget.onAcceptSuggestion!(i);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (widget.suggestions[i].isAi) ...[
+                                  Icon(Icons.auto_awesome_outlined, size: 12, color: palette.primary),
+                                  const SizedBox(width: 4),
+                                ] else if (widget.suggestions[i].isDir) ...[
+                                  Icon(Icons.folder_outlined, size: 12, color: scheme.onSurfaceVariant),
+                                  const SizedBox(width: 4),
+                                ],
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 180),
+                                  child: Text(
+                                    widget.suggestions[i].label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: mono(context, Theme.of(context).textTheme.labelSmall),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           if (_draftOpen)
             Container(
               key: const ValueKey('mobile-terminal-draft-bar'),
-              padding: const EdgeInsets.fromLTRB(Space.sm, Space.xs, Space.xs, Space.xs),
+              padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.sm, Space.xs),
               decoration: BoxDecoration(
                 color: palette.raised,
                 border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .45))),
@@ -177,6 +295,7 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
           Container(
             key: const ValueKey('mobile-terminal-key-bar'),
             height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: Space.xs),
             decoration: BoxDecoration(
               border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .45))),
             ),
@@ -278,6 +397,17 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
                   },
                   icon: const Icon(Icons.content_paste_rounded, size: 18),
                 ),
+                if (widget.onOpenInlineAi != null)
+                  IconButton(
+                    key: const ValueKey('mobile-keybar-inline-ai'),
+                    tooltip: l.terminalAiGenerate,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      _haptic();
+                      widget.onOpenInlineAi!();
+                    },
+                    icon: Icon(Icons.auto_fix_high_rounded, size: 18, color: palette.primary),
+                  ),
                 if (widget.onOpenAiry != null)
                   IconButton(
                     key: const ValueKey('mobile-keybar-airy'),

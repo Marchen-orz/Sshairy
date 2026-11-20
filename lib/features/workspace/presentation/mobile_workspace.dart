@@ -161,108 +161,117 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
       _syncKeepAlive(context, totalActive, keepAliveEnabled);
     });
 
-    final shell = Scaffold(
-      key: const ValueKey('mobile-workspace'),
-      backgroundColor: palette.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            const MobileApprovalBanner(),
-            Expanded(
-              child: IndexedStack(
-                index: _tab.index,
-                children: [
-                  _MobileHostsTab(
-                    active: _tab == _MobileNavTab.hosts,
-                    onOpenHost: _openHost,
-                    onOpenedTerminal: _openTerminalScreen,
-                    onGoLink: () => setState(() => _tab = _MobileNavTab.link),
-                    onAskAiry: _askAiry,
-                  ),
-                  if (_airyBuilt)
-                    _MobileAiryTab(onGoLink: () => setState(() => _tab = _MobileNavTab.link))
-                  else
-                    const SizedBox.shrink(),
-                  Column(
+    final hasAppBg = ref.watch(settingsProvider.select((s) => s.get(imageSetting(BackgroundSlot.app)) != null));
+
+    final shell = Stack(
+      children: [
+        Positioned.fill(
+          child: BackgroundImageView(slot: BackgroundSlot.app, baseColor: palette.background),
+        ),
+        Scaffold(
+          key: const ValueKey('mobile-workspace'),
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                const MobileApprovalBanner(),
+                Expanded(
+                  child: IndexedStack(
+                    index: _tab.index,
                     children: [
-                      _MobileTabHeader(title: l.linkTitle),
-                      Expanded(child: MobileLinkPage(onOpenedTerminal: _openTerminalScreen)),
+                      _MobileHostsTab(
+                        active: _tab == _MobileNavTab.hosts,
+                        onOpenHost: _openHost,
+                        onOpenedTerminal: _openTerminalScreen,
+                        onGoLink: () => setState(() => _tab = _MobileNavTab.link),
+                        onAskAiry: _askAiry,
+                      ),
+                      if (_airyBuilt)
+                        _MobileAiryTab(onGoLink: () => setState(() => _tab = _MobileNavTab.link))
+                      else
+                        const SizedBox.shrink(),
+                      Column(
+                        children: [
+                          _MobileTabHeader(title: l.linkTitle),
+                          Expanded(child: MobileLinkPage(onOpenedTerminal: _openTerminalScreen)),
+                        ],
+                      ),
+                      const _MobileMeTab(),
                     ],
                   ),
-                  const _MobileMeTab(),
-                ],
-              ),
+                ),
+                if (activeTab != null && activeSession != null)
+                  _ActiveSessionCapsule(
+                    tab: activeTab,
+                    session: activeSession,
+                    totalCount: state.tabs.length,
+                    onTap: _openTerminalScreen,
+                    onCycle: _workspace.cycle,
+                    onClose: () => _workspace.closeTab(activeTab.id),
+                  ),
+              ],
             ),
-            if (activeTab != null && activeSession != null)
-              _ActiveSessionCapsule(
-                tab: activeTab,
-                session: activeSession,
-                totalCount: state.tabs.length,
-                onTap: _openTerminalScreen,
-                onCycle: _workspace.cycle,
-                onClose: () => _workspace.closeTab(activeTab.id),
-              ),
-          ],
+          ),
+          bottomNavigationBar: ListenableBuilder(
+            listenable: Listenable.merge([linkClient, ?agentRuntime]),
+            builder: (context, _) {
+              final approvals = linkClient.pendingApprovals.length;
+              final airyAlert =
+                  agentRuntime != null &&
+                  (agentRuntime.busy || agentRuntime.approval != null || agentRuntime.hostApproval != null);
+              return NavigationBar(
+                key: const ValueKey('mobile-bottom-nav'),
+                height: 64,
+                backgroundColor: hasAppBg ? palette.surface.withValues(alpha: .88) : palette.surface,
+                indicatorColor: palette.primary.withValues(alpha: .16),
+                selectedIndex: _tab.index,
+                onDestinationSelected: (index) => setState(() => _tab = _MobileNavTab.values[index]),
+                destinations: [
+                  NavigationDestination(
+                    icon: const Icon(Icons.dns_outlined),
+                    selectedIcon: Icon(Icons.dns, color: palette.primary),
+                    label: l.hosts,
+                  ),
+                  NavigationDestination(
+                    icon: Badge(
+                      isLabelVisible: airyAlert,
+                      backgroundColor: palette.primary,
+                      child: const Icon(Icons.auto_awesome_outlined),
+                    ),
+                    selectedIcon: Badge(
+                      isLabelVisible: airyAlert,
+                      backgroundColor: palette.primary,
+                      child: Icon(Icons.auto_awesome_rounded, color: palette.primary),
+                    ),
+                    label: l.mobileTabAiry,
+                  ),
+                  NavigationDestination(
+                    icon: Badge(
+                      isLabelVisible: approvals > 0 || linkClient.connected,
+                      backgroundColor: approvals > 0 ? scheme.error : palette.primary,
+                      label: approvals > 0 ? Text('$approvals') : null,
+                      child: const Icon(Icons.phonelink_outlined),
+                    ),
+                    selectedIcon: Badge(
+                      isLabelVisible: approvals > 0 || linkClient.connected,
+                      backgroundColor: approvals > 0 ? scheme.error : palette.primary,
+                      label: approvals > 0 ? Text('$approvals') : null,
+                      child: Icon(Icons.phonelink, color: palette.primary),
+                    ),
+                    label: l.linkTab,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.person_outline_rounded),
+                    selectedIcon: Icon(Icons.person_rounded, color: palette.primary),
+                    label: l.mobileTabMe,
+                  ),
+                ],
+              );
+            },
+          ),
         ),
-      ),
-      bottomNavigationBar: ListenableBuilder(
-        listenable: Listenable.merge([linkClient, ?agentRuntime]),
-        builder: (context, _) {
-          final approvals = linkClient.pendingApprovals.length;
-          final airyAlert =
-              agentRuntime != null &&
-              (agentRuntime.busy || agentRuntime.approval != null || agentRuntime.hostApproval != null);
-          return NavigationBar(
-            key: const ValueKey('mobile-bottom-nav'),
-            height: 64,
-            backgroundColor: palette.surface,
-            indicatorColor: palette.primary.withValues(alpha: .16),
-            selectedIndex: _tab.index,
-            onDestinationSelected: (index) => setState(() => _tab = _MobileNavTab.values[index]),
-            destinations: [
-              NavigationDestination(
-                icon: const Icon(Icons.dns_outlined),
-                selectedIcon: Icon(Icons.dns, color: palette.primary),
-                label: l.hosts,
-              ),
-              NavigationDestination(
-                icon: Badge(
-                  isLabelVisible: airyAlert,
-                  backgroundColor: palette.primary,
-                  child: const Icon(Icons.auto_awesome_outlined),
-                ),
-                selectedIcon: Badge(
-                  isLabelVisible: airyAlert,
-                  backgroundColor: palette.primary,
-                  child: Icon(Icons.auto_awesome_rounded, color: palette.primary),
-                ),
-                label: l.mobileTabAiry,
-              ),
-              NavigationDestination(
-                icon: Badge(
-                  isLabelVisible: approvals > 0 || linkClient.connected,
-                  backgroundColor: approvals > 0 ? scheme.error : palette.primary,
-                  label: approvals > 0 ? Text('$approvals') : null,
-                  child: const Icon(Icons.phonelink_outlined),
-                ),
-                selectedIcon: Badge(
-                  isLabelVisible: approvals > 0 || linkClient.connected,
-                  backgroundColor: approvals > 0 ? scheme.error : palette.primary,
-                  label: approvals > 0 ? Text('$approvals') : null,
-                  child: Icon(Icons.phonelink, color: palette.primary),
-                ),
-                label: l.linkTab,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.person_outline_rounded),
-                selectedIcon: Icon(Icons.person_rounded, color: palette.primary),
-                label: l.mobileTabMe,
-              ),
-            ],
-          );
-        },
-      ),
+      ],
     );
 
     if (!_locked) return shell;
@@ -316,7 +325,7 @@ class _MobileTabHeader extends StatelessWidget {
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: Space.lg),
       decoration: BoxDecoration(
-        color: palette.background,
+        color: palette.background.withValues(alpha: .82),
         border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .28))),
       ),
       child: Row(
@@ -367,7 +376,7 @@ class _ActiveSessionCapsule extends StatelessWidget {
         : l.linkProxyTag;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.md, Space.sm),
+      padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, Space.sm),
       child: GestureDetector(
         onHorizontalDragEnd: (details) {
           final vx = details.primaryVelocity ?? 0;
@@ -659,26 +668,29 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
             builder: (context, _) {
               final desktopSessions = linkClient.connected ? linkClient.desktopSessions : const <LinkSessionSummary>[];
               if (allHosts.isEmpty && desktopSessions.isEmpty) {
-                return BrandEmptyState(
-                  active: widget.active,
-                  child: Wrap(
-                    spacing: Space.sm,
-                    runSpacing: Space.sm,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      FilledButton.icon(
-                        style: FilledButton.styleFrom(minimumSize: const Size(0, 46)),
-                        onPressed: () => _openHostEditor(),
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: Text(l.newHost),
-                      ),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46)),
-                        onPressed: widget.onGoLink,
-                        icon: const Icon(Icons.phonelink_outlined, size: 18),
-                        label: Text(l.linkTitle),
-                      ),
-                    ],
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                  child: BrandEmptyState(
+                    active: widget.active,
+                    child: Wrap(
+                      spacing: Space.sm,
+                      runSpacing: Space.sm,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(minimumSize: const Size(0, 46)),
+                          onPressed: () => _openHostEditor(),
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: Text(l.newHost),
+                        ),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46)),
+                          onPressed: widget.onGoLink,
+                          icon: const Icon(Icons.phonelink_outlined, size: 18),
+                          label: Text(l.linkTitle),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }
@@ -837,7 +849,7 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: Space.sm),
                         child: Material(
-                          color: palette.surface,
+                          color: palette.surface.withValues(alpha: .9),
                           borderRadius: BorderRadius.circular(16),
                           child: InkWell(
                             key: ValueKey('mobile-host-${host.id.value}'),
@@ -960,7 +972,7 @@ class _MobileAiryTab extends ConsumerWidget {
           height: 46,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs),
             itemCount: quickOps.length,
             separatorBuilder: (_, _) => const SizedBox(width: Space.xs),
             itemBuilder: (context, index) {
@@ -973,7 +985,12 @@ class _MobileAiryTab extends ConsumerWidget {
             },
           ),
         ),
-        const Expanded(child: AgentPanel()),
+        const Expanded(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: Space.xs),
+            child: AgentPanel(),
+          ),
+        ),
       ],
     );
   }
@@ -983,14 +1000,19 @@ class _MobileAiryTab extends ConsumerWidget {
 class _MobileMeTab extends ConsumerWidget {
   const _MobileMeTab();
 
-  void _pushTool(BuildContext context, String title, Widget child, {EdgeInsets? padding}) {
+  void _pushTool(
+    BuildContext context,
+    String title,
+    Widget child, {
+    EdgeInsets padding = const EdgeInsets.symmetric(horizontal: Space.md),
+  }) {
     unawaited(
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
             appBar: AppBar(title: Text(title)),
             body: SafeArea(
-              child: padding == null ? child : Padding(padding: padding, child: child),
+              child: Padding(padding: padding, child: child),
             ),
           ),
         ),
@@ -1082,6 +1104,23 @@ class _MobileMeTab extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: Space.md),
+              // Custom background images (app + terminal)
+              _SettingsGroupCard(
+                key: const ValueKey('mobile-background-settings'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l.appBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: Space.sm),
+                    const BackgroundImageControls(slot: BackgroundSlot.app),
+                    const Divider(height: Space.lg),
+                    Text(l.terminalBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: Space.sm),
+                    const BackgroundImageControls(slot: BackgroundSlot.terminal),
+                  ],
+                ),
+              ),
+              const SizedBox(height: Space.md),
               // Workspace tools
               _SettingsGroupCard(
                 padding: EdgeInsets.zero,
@@ -1095,6 +1134,7 @@ class _MobileMeTab extends ConsumerWidget {
                         context,
                         l.aiConfigTitle,
                         const SingleChildScrollView(padding: EdgeInsets.all(Space.lg), child: AiSettings()),
+                        padding: EdgeInsets.zero,
                       ),
                     ),
                     const Divider(height: 1),
@@ -1124,6 +1164,7 @@ class _MobileMeTab extends ConsumerWidget {
                           padding: const EdgeInsets.all(Space.lg),
                           child: trustSettingsSection.build(context),
                         ),
+                        padding: EdgeInsets.zero,
                       ),
                     ),
                     const Divider(height: 1),
@@ -1197,6 +1238,12 @@ class _MobileMeTab extends ConsumerWidget {
                       value: keepAwake,
                       onChanged: (v) => unawaited(writer.set(SettingKeys.mobileKeepScreenOn, v)),
                     ),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(l.completionTranslation),
+                      value: settings.get(SettingKeys.completionTranslation),
+                      onChanged: (v) => unawaited(writer.set(SettingKeys.completionTranslation, v)),
+                    ),
                   ],
                 ),
               ),
@@ -1265,7 +1312,7 @@ class _MobileMeTab extends ConsumerWidget {
 }
 
 class _SettingsGroupCard extends StatelessWidget {
-  const _SettingsGroupCard({required this.child, this.padding = const EdgeInsets.all(Space.md)});
+  const _SettingsGroupCard({super.key, required this.child, this.padding = const EdgeInsets.all(Space.md)});
 
   final Widget child;
   final EdgeInsets padding;
@@ -1275,7 +1322,7 @@ class _SettingsGroupCard extends StatelessWidget {
     final palette = BrandPalette.of(context);
     final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: palette.surface,
+      color: palette.surface.withValues(alpha: .88),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),

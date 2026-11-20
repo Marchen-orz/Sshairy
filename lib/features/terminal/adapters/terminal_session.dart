@@ -296,16 +296,16 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       generation: _shellGeneration,
       revision: _draftRevision,
       historyRevision: _historyRevision,
-      prompt: !canInsert || isRemote
+      prompt: !canInsert
           ? TerminalAiPrompt.unavailable
           : draft == null
           ? TerminalAiPrompt.unknown
           : _semanticSeen
           ? TerminalAiPrompt.semantic
           : TerminalAiPrompt.recognized,
-      draft: isRemote ? null : draft,
-      directory: isRemote ? null : _directory.value,
-      server: isRemote ? null : _lease?.serverVersion,
+      draft: draft,
+      directory: _directory.value,
+      server: isRemote ? linkTarget?.targetLabel : _lease?.serverVersion,
     );
   }
 
@@ -645,7 +645,11 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       !_closed &&
       status == SessionStatus.connected &&
       !_shellEnded &&
-      (isLocal ? _localPty != null : _shell != null && !(_lease?.lost ?? true));
+      (isLocal
+          ? _localPty != null
+          : isRemote
+          ? _shell != null
+          : _shell != null && !(_lease?.lost ?? true));
 
   Future<InsertResult> insert(
     String text, {
