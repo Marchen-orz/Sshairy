@@ -11,6 +11,9 @@ abstract interface class Transport {
   Future<void> get done;
   bool get isClosed;
 
+  /// The server's identification line from the pre-auth exchange, e.g. `SSH-2.0-OpenSSH_9.6p1 Ubuntu-3`.
+  String? get serverVersion;
+
   /// [environment] goes with the pty request; a server that refuses it gets the shell without it.
   Future<ShellChannel> openShell({required int cols, required int rows, Map<String, String> environment});
 

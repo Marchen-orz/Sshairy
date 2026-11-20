@@ -291,6 +291,7 @@ class TransportLease {
 
   Host get host => _entry.host;
   ConnectionIdentity get identity => _entry.identity;
+  String? get serverVersion => _transport.serverVersion;
 
   /// Existing channels may keep their old transport; a new approved action must match today's route and policy.
   bool get isCurrent => !_released && !lost && _owner._isCurrent(_entry);

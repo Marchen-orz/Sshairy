@@ -64,6 +64,9 @@ class _SshTransport implements Transport, StreamingTransport {
   @override
   bool get isClosed => _client.isClosed;
 
+  @override
+  String? get serverVersion => _client.remoteVersion;
+
   /// Set once the server refused an environment variable (sshd's AcceptEnv), so later shells skip the attempt.
   var _environmentRefused = false;
 

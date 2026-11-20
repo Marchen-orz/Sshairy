@@ -305,6 +305,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
           : TerminalAiPrompt.recognized,
       draft: isRemote ? null : draft,
       directory: isRemote ? null : _directory.value,
+      server: isRemote ? null : _lease?.serverVersion,
     );
   }
 

@@ -120,13 +120,16 @@ class TerminalAiContext {
     this.historyRevision = 0,
     this.draft,
     this.directory,
+    this.server,
   });
 
   final SessionId sessionId;
   final TerminalAiTarget target;
   final int generation, revision, historyRevision;
   final TerminalAiPrompt prompt;
-  final String? draft, directory;
+
+  /// [server] is the raw SSH identification line; the AI lane sanitizes it before sending.
+  final String? draft, directory, server;
   bool get ready => draft != null && (prompt == TerminalAiPrompt.recognized || prompt == TerminalAiPrompt.semantic);
 }
 
