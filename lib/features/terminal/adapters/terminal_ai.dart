@@ -103,7 +103,7 @@ extension _TerminalAiPane on _TerminalPaneState {
     final expected = _aiCompletionContext;
     return _aiCompletionLoading &&
         expected != null &&
-        _session.commandAssistance.value.browse == null &&
+        (_session.commandAssistance.value.browse?.depth ?? 0) == 0 &&
         _completionEligible(expected) &&
         sameTerminalAiContext(expected, _session.readAiContext());
   }
@@ -203,7 +203,7 @@ extension _TerminalAiPane on _TerminalPaneState {
     final state = _session.commandAssistance.value;
     final candidate = _aiCandidate, expected = _aiCompletionContext;
     if (state.request == null ||
-        state.browse != null ||
+        (state.browse?.depth ?? 0) > 0 ||
         candidate == null ||
         expected == null ||
         expected.draft!.isEmpty ||
