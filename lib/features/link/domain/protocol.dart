@@ -336,6 +336,7 @@ class LinkSyncBundle {
     required this.snippets,
     required this.knownHosts,
     required this.exportedAt,
+    this.aiConfig,
   });
 
   final Map<String, dynamic> hostsLibrary;
@@ -343,15 +344,20 @@ class LinkSyncBundle {
   final Map<String, Map<String, String>> knownHosts;
   final DateTime exportedAt;
 
+  /// Non-secret Airy AI profile/endpoint configuration (never includes API keys).
+  final Map<String, dynamic>? aiConfig;
+
   Map<String, Object?> toJson() => {
     'hostsLibrary': hostsLibrary,
     'snippets': snippets,
     'knownHosts': knownHosts,
     'exportedAt': exportedAt.toUtc().toIso8601String(),
+    if (aiConfig != null) 'aiConfig': aiConfig,
   };
 
   factory LinkSyncBundle.fromJson(Map<String, dynamic> j) {
     final rawKnown = j['knownHosts'] as Map? ?? const {};
+    final rawAi = j['aiConfig'];
     return LinkSyncBundle(
       hostsLibrary: (j['hostsLibrary'] as Map? ?? const {}).cast<String, dynamic>(),
       snippets: [
@@ -363,6 +369,7 @@ class LinkSyncBundle {
           if (e.key is String && e.value is Map) e.key as String: (e.value as Map).cast<String, String>(),
       },
       exportedAt: DateTime.tryParse(j['exportedAt'] as String? ?? '') ?? DateTime.now().toUtc(),
+      aiConfig: rawAi is Map ? rawAi.cast<String, dynamic>() : null,
     );
   }
 }
@@ -374,6 +381,7 @@ class LinkSyncSummary {
     required this.knownHostsAdded,
     required this.knownHostsConflicts,
     this.credentialsImported = 0,
+    this.aiSynced = false,
   });
 
   final int hostsSynced;
@@ -381,11 +389,12 @@ class LinkSyncSummary {
   final int knownHostsAdded;
   final int knownHostsConflicts;
   final int credentialsImported;
+  final bool aiSynced;
 }
 
 /// Explicit opt-in credential payload pushed only when confirmed on the desktop UI; never written to JSON on disk.
 class LinkCredentialBundle {
-  const LinkCredentialBundle({this.hostPasswords = const {}, this.privateKeys = const []});
+  const LinkCredentialBundle({this.hostPasswords = const {}, this.privateKeys = const [], this.aiApiKey});
 
   /// hostId -> password
   final Map<String, String> hostPasswords;
@@ -393,7 +402,12 @@ class LinkCredentialBundle {
   /// Imported keys: label + PEM (+ optional passphrase)
   final List<({String label, String pem, String? passphrase})> privateKeys;
 
-  bool get isEmpty => hostPasswords.isEmpty && privateKeys.isEmpty;
+  /// Optional Airy AI model API key bound to exact destination identity.
+  final ({String identity, String secret})? aiApiKey;
+
+  bool get isEmpty => hostPasswords.isEmpty && privateKeys.isEmpty && aiApiKey == null;
+
+  int get totalCount => hostPasswords.length + privateKeys.length + (aiApiKey != null ? 1 : 0);
 
   Map<String, Object?> toJson() => {
     'hostPasswords': hostPasswords,
@@ -401,20 +415,31 @@ class LinkCredentialBundle {
       for (final k in privateKeys)
         {'label': k.label, 'pem': k.pem, if (k.passphrase != null) 'passphrase': k.passphrase},
     ],
+    if (aiApiKey != null) 'aiApiKey': {'identity': aiApiKey!.identity, 'secret': aiApiKey!.secret},
   };
 
-  factory LinkCredentialBundle.fromJson(Map<String, dynamic> j) => LinkCredentialBundle(
-    hostPasswords: (j['hostPasswords'] as Map? ?? const {}).cast<String, String>(),
-    privateKeys: [
-      for (final item in j['privateKeys'] as List<dynamic>? ?? const [])
-        if (item is Map)
-          (
-            label: item['label'] as String? ?? '',
-            pem: item['pem'] as String? ?? '',
-            passphrase: item['passphrase'] as String?,
-          ),
-    ],
-  );
+  factory LinkCredentialBundle.fromJson(Map<String, dynamic> j) {
+    final rawAi = j['aiApiKey'];
+    ({String identity, String secret})? aiKey;
+    if (rawAi is Map) {
+      final id = rawAi['identity'] as String? ?? '';
+      final sec = rawAi['secret'] as String? ?? '';
+      if (id.isNotEmpty && sec.isNotEmpty) aiKey = (identity: id, secret: sec);
+    }
+    return LinkCredentialBundle(
+      hostPasswords: (j['hostPasswords'] as Map? ?? const {}).cast<String, String>(),
+      privateKeys: [
+        for (final item in j['privateKeys'] as List<dynamic>? ?? const [])
+          if (item is Map)
+            (
+              label: item['label'] as String? ?? '',
+              pem: item['pem'] as String? ?? '',
+              passphrase: item['passphrase'] as String?,
+            ),
+      ],
+      aiApiKey: aiKey,
+    );
+  }
 }
 
 enum LinkConnectionStatus { disconnected, connecting, connected, error }

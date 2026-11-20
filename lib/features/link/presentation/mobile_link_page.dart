@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/brand.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/device_form_factor.dart';
+import '../adapters/qr_adapter.dart';
 import '../application/link_service.dart';
 import '../domain/protocol.dart';
 
@@ -85,6 +88,32 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     await ref.read(linkClientControllerProvider).pair(host: host, port: port, pairingCode: code);
   }
 
+  Future<void> _scanQr() async {
+    final l = AppLocalizations.of(context);
+    final raw = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => LinkQrScannerPage(title: l.mobileScanQr, hint: l.mobileScanQrHint),
+      ),
+    );
+    if (raw == null || raw.isEmpty || !mounted) return;
+    final parsed = LinkPairingInfo.parseUri(raw);
+    if (parsed != null) {
+      _hostController.text = parsed.host;
+      _portController.text = '${parsed.port}';
+      _codeController.text = parsed.code;
+    }
+    await ref.read(linkClientControllerProvider).pairFromUri(raw);
+  }
+
+  Future<void> _pushClipboard() async {
+    final clip = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = clip?.text ?? '';
+    if (text.isEmpty || !mounted) return;
+    final ok = await ref.read(linkClientControllerProvider).pushClipboardToDesktop(text);
+    if (!mounted) return;
+    if (ok) _showNotice(AppLocalizations.of(context).mobileClipboardSent);
+  }
+
   Future<void> _syncNow() async {
     if (_syncing) return;
     setState(() => _syncing = true);
@@ -92,7 +121,8 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
       final summary = await ref.read(linkClientControllerProvider).pullConfigSync();
       if (!mounted) return;
       final l = AppLocalizations.of(context);
-      _showNotice(l.linkSyncDone(summary.hostsSynced, summary.snippetsSynced, summary.knownHostsAdded));
+      final base = l.linkSyncDone(summary.hostsSynced, summary.snippetsSynced, summary.knownHostsAdded);
+      _showNotice(summary.aiSynced ? '$base ${l.mobileSyncAiIncluded}' : base);
     } on LinkException catch (e) {
       if (!mounted) return;
       _showNotice(_errorText(AppLocalizations.of(context), e.kind));
@@ -127,17 +157,29 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     );
   }
 
-  Widget _buildDisconnected(
-    BuildContext context,
-    AppLocalizations l,
-    ColorScheme scheme,
-    LinkClientController client,
-  ) {
+  Widget _buildDisconnected(BuildContext context, AppLocalizations l, ColorScheme scheme, LinkClientController client) {
     final connecting = client.status == LinkConnectionStatus.connecting;
     return ListView(
       key: const ValueKey('mobile-link-disconnected'),
-      padding: const EdgeInsets.all(Space.md),
+      padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.xl),
       children: [
+        if (client.savedDesktops.isEmpty && client.discoveredDesktops.isEmpty) ...[
+          const Center(child: BrandIllustration(pose: BrandPose.security, size: 112)),
+          const SizedBox(height: Space.md),
+        ],
+        if (isMobilePlatform) ...[
+          FilledButton.icon(
+            key: const ValueKey('link-scan-qr-button'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            onPressed: connecting ? null : _scanQr,
+            icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+            label: Text(l.mobileScanQr),
+          ),
+          const SizedBox(height: Space.sm),
+        ],
         Wrap(
           spacing: Space.sm,
           runSpacing: Space.sm,
@@ -162,10 +204,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
           const SizedBox(height: Space.md),
           Container(
             padding: const EdgeInsets.all(Space.sm),
-            decoration: BoxDecoration(
-              color: scheme.errorContainer,
-              borderRadius: BorderRadius.circular(Radii.card),
-            ),
+            decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(Radii.card)),
             child: Row(
               children: [
                 Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
@@ -292,12 +331,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     );
   }
 
-  Widget _buildConnected(
-    BuildContext context,
-    AppLocalizations l,
-    ColorScheme scheme,
-    LinkClientController client,
-  ) {
+  Widget _buildConnected(BuildContext context, AppLocalizations l, ColorScheme scheme, LinkClientController client) {
     final offer = client.pendingCredentialOffer;
     final query = _hostSearchController.text.trim().toLowerCase();
     final filteredHosts = query.isEmpty
@@ -352,6 +386,12 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                         : const Icon(Icons.sync_outlined, size: 16),
                     label: Text(l.linkSyncConfig),
                   ),
+                  OutlinedButton.icon(
+                    key: const ValueKey('link-clipboard-button'),
+                    onPressed: _pushClipboard,
+                    icon: const Icon(Icons.content_paste_go_rounded, size: 16),
+                    label: Text(l.mobilePushClipboard),
+                  ),
                   if (_notice != null)
                     Text(_notice!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.primary)),
                 ],
@@ -376,7 +416,9 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                 ),
                 const SizedBox(height: Space.xs),
                 Text(
-                  l.linkCredentialOfferDetail(offer.hostPasswords.length, offer.privateKeys.length),
+                  offer.aiApiKey != null
+                      ? '${l.linkCredentialOfferDetail(offer.hostPasswords.length, offer.privateKeys.length)} ${l.mobileSyncAiIncluded}'
+                      : l.linkCredentialOfferDetail(offer.hostPasswords.length, offer.privateKeys.length),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: Space.sm),
@@ -572,21 +614,18 @@ class _SurfaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final box = Container(
-      margin: const EdgeInsets.only(bottom: Space.sm),
-      padding: const EdgeInsets.all(Space.md),
-      decoration: BoxDecoration(
+    final body = Padding(padding: const EdgeInsets.all(Space.md), child: child);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.sm),
+      child: Material(
         color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(Radii.card),
-        border: Border.all(color: borderColor ?? scheme.outlineVariant.withValues(alpha: .45)),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: borderColor ?? scheme.outlineVariant.withValues(alpha: .45)),
+        ),
+        child: onTap == null ? body : InkWell(onTap: onTap, child: body),
       ),
-      child: child,
-    );
-    if (onTap == null) return box;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(Radii.card),
-      child: box,
     );
   }
 }
@@ -600,10 +639,7 @@ class _Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 2),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: .14),
-      borderRadius: BorderRadius.circular(Radii.pill),
-    ),
+    decoration: BoxDecoration(color: color.withValues(alpha: .14), borderRadius: BorderRadius.circular(Radii.pill)),
     child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color)),
   );
 }

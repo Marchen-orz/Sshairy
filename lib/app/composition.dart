@@ -127,13 +127,17 @@ List<Override> appOverrides() => [
   }),
   linkMobileBridgeProvider.overrideWith((ref) => AppLinkMobileBridge(ref)),
   linkCredentialCatalogProvider.overrideWith(
-    (ref) => () => (
-      hosts: [
-        for (final h in ref.read(hostsProvider))
-          if (!h.transient) (id: h.id.value, label: '${h.title} (${h.target})'),
-      ],
-      keys: [for (final k in ref.read(keysProvider)) (id: k.id, label: '${k.label} (${k.algorithm})')],
-    ),
+    (ref) => () {
+      final aiProfile = ref.read(aiConfigurationProvider).profile;
+      return (
+        hosts: [
+          for (final h in ref.read(hostsProvider))
+            if (!h.transient) (id: h.id.value, label: '${h.title} (${h.target})'),
+        ],
+        keys: [for (final k in ref.read(keysProvider)) (id: k.id, label: '${k.label} (${k.algorithm})')],
+        aiProfileLabel: aiProfile == null ? null : 'Airy AI · ${aiProfile.model}',
+      );
+    },
   ),
   terminalSnippetsProvider.overrideWith(
     (ref) => [for (final snippet in ref.watch(snippetsProvider)) CommandSnippet(snippet.text, snippet.label)],

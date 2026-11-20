@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -171,11 +171,24 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
     final library = _ref.read(hostsProvider.notifier).library;
     final snippets = _ref.read(snippetsProvider);
     final trust = _ref.read(hostTrustProvider);
+    final ai = _ref.read(aiConfigurationProvider);
+    final aiMap = ai.profile == null
+        ? null
+        : <String, dynamic>{
+            'enabled': ai.enabled,
+            'profile': ai.profile!.toJson(),
+            'inlineEnabled': ai.inlineEnabled,
+            'completionEnabled': ai.completionEnabled,
+            if (ai.inlineModel != null) 'inlineModel': ai.inlineModel,
+            if (ai.completionModel != null) 'completionModel': ai.completionModel,
+            if (ai.reviewModel != null) 'reviewModel': ai.reviewModel,
+          };
     return LinkSyncBundle(
       hostsLibrary: library.toJson(),
       snippets: [for (final s in snippets) s.toJson()],
       knownHosts: trust.entries,
       exportedAt: DateTime.now().toUtc(),
+      aiConfig: aiMap,
     );
   }
 
@@ -183,6 +196,7 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
   Future<LinkCredentialBundle> exportOptInCredentials({
     required Set<String> hostIds,
     required Set<String> keyIds,
+    bool includeAiKey = false,
   }) async {
     final passwords = <String, String>{};
     if (hostIds.isNotEmpty) {
@@ -206,7 +220,17 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
         keys.add((label: key.label, pem: pem.reveal(), passphrase: pass?.reveal()));
       }
     }
-    return LinkCredentialBundle(hostPasswords: passwords, privateKeys: keys);
+    ({String identity, String secret})? aiApiKey;
+    if (includeAiKey) {
+      final profile = _ref.read(aiConfigurationProvider).profile;
+      if (profile != null) {
+        final secret = await _ref.read(aiCredentialsProvider).read(profile.identity);
+        if (secret != null && secret.reveal().isNotEmpty) {
+          aiApiKey = (identity: profile.identity, secret: secret.reveal());
+        }
+      }
+    }
+    return LinkCredentialBundle(hostPasswords: passwords, privateKeys: keys, aiApiKey: aiApiKey);
   }
 
   @override
@@ -305,6 +329,17 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
     return false;
   }
 
+  @override
+  bool handoffHost(String hostId) {
+    final host = _ref.read(hostsProvider).where((h) => !h.transient && h.id.value == hostId).firstOrNull;
+    if (host == null) return false;
+    _ref.read(workspaceProvider.notifier).openHost(host);
+    return true;
+  }
+
+  @override
+  Future<void> receiveClipboard(String text) => Clipboard.setData(ClipboardData(text: text));
+
   void dispose() {
     _sessionsSub.close();
     _hostsSub.close();
@@ -342,11 +377,33 @@ class AppLinkMobileBridge implements LinkMobileBridge {
     final trustResult = bundle.knownHosts.isEmpty
         ? const TrustImportResult()
         : await _ref.read(hostTrustProvider).importKeys(bundle.knownHosts);
+    var aiSynced = false;
+    final rawAi = bundle.aiConfig;
+    if (rawAi != null && rawAi['profile'] is Map) {
+      try {
+        final profile = ModelProfile.fromJson((rawAi['profile'] as Map).cast<String, Object?>());
+        await _ref
+            .read(aiConfigurationProvider.notifier)
+            .save(
+              enabled: rawAi['enabled'] as bool? ?? true,
+              profile: profile,
+              inlineEnabled: rawAi['inlineEnabled'] as bool?,
+              completionEnabled: rawAi['completionEnabled'] as bool?,
+              inlineModel: rawAi['inlineModel'] as String?,
+              completionModel: rawAi['completionModel'] as String?,
+              reviewModel: rawAi['reviewModel'] as String?,
+            );
+        aiSynced = true;
+      } on Object {
+        // Ignore malformed AI config without breaking host/snippet sync.
+      }
+    }
     return LinkSyncSummary(
       hostsSynced: hostsSynced,
       snippetsSynced: snippetsSynced,
       knownHostsAdded: trustResult.added,
       knownHostsConflicts: trustResult.conflicts.length,
+      aiSynced: aiSynced,
     );
   }
 
@@ -374,6 +431,11 @@ class AppLinkMobileBridge implements LinkMobileBridge {
         );
         if (result is Ok) imported++;
       }
+    }
+    final aiKey = bundle.aiApiKey;
+    if (aiKey != null && aiKey.identity.isNotEmpty && aiKey.secret.isNotEmpty) {
+      await _ref.read(aiCredentialsProvider).save(aiKey.identity, Secret(aiKey.secret));
+      imported++;
     }
     return imported;
   }

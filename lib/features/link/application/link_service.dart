@@ -20,12 +20,7 @@ import '../domain/transport.dart';
 
 /// Handle to a mirrored desktop terminal session.
 class MirrorAttachment {
-  const MirrorAttachment({
-    required this.snapshot,
-    required this.write,
-    required this.resize,
-    required this.detach,
-  });
+  const MirrorAttachment({required this.snapshot, required this.write, required this.resize, required this.detach});
 
   final Uint8List snapshot;
   final void Function(Uint8List data) write;
@@ -50,11 +45,18 @@ abstract interface class LinkDesktopBridge {
   Future<LinkCredentialBundle> exportOptInCredentials({
     required Set<String> hostIds,
     required Set<String> keyIds,
+    bool includeAiKey = false,
   });
 
   List<LinkApprovalItem> listApprovals();
   Stream<void> get approvalsChanged;
   bool decideApproval(String approvalId, bool allowed);
+
+  /// Opens a saved host directly on the desktop workspace (Mobile -> Desktop Handoff).
+  bool handoffHost(String hostId);
+
+  /// Writes text pushed over E2EE Link from a paired mobile peer to the desktop clipboard.
+  Future<void> receiveClipboard(String text);
 }
 
 /// Composition-layer bridge wired on Mobile to apply synced data and open mirrored/proxied terminal tabs.
@@ -98,6 +100,7 @@ class _NullDesktopBridge implements LinkDesktopBridge {
   Future<LinkCredentialBundle> exportOptInCredentials({
     required Set<String> hostIds,
     required Set<String> keyIds,
+    bool includeAiKey = false,
   }) async => const LinkCredentialBundle();
   @override
   List<LinkApprovalItem> listApprovals() => const [];
@@ -105,6 +108,10 @@ class _NullDesktopBridge implements LinkDesktopBridge {
   Stream<void> get approvalsChanged => const Stream.empty();
   @override
   bool decideApproval(String approvalId, bool allowed) => false;
+  @override
+  bool handoffHost(String hostId) => false;
+  @override
+  Future<void> receiveClipboard(String text) async {}
 }
 
 class _NullMobileBridge implements LinkMobileBridge {
@@ -137,7 +144,8 @@ class _ConnectedPeer {
   final String name;
   final LinkCipherSession session;
   final mirrors = <String, MirrorAttachment>{};
-  final proxyChannels = <String, ({ShellChannel channel, StreamSubscription<Uint8List> outSub, StreamSubscription<Uint8List> errSub})>{};
+  final proxyChannels =
+      <String, ({ShellChannel channel, StreamSubscription<Uint8List> outSub, StreamSubscription<Uint8List> errSub})>{};
 
   void cleanup() {
     for (final m in mirrors.values) {
@@ -263,12 +271,7 @@ class LinkHostController extends ChangeNotifier {
     return fresh;
   }
 
-  Future<void> configure({
-    required bool enabled,
-    required int port,
-    required bool discovery,
-    String? deviceName,
-  }) {
+  Future<void> configure({required bool enabled, required int port, required bool discovery, String? deviceName}) {
     final name = deviceName?.trim() ?? '';
     final restart = enabled != _enabled || (enabled && port != _port);
     final discoveryChanged = discovery != _discoveryEnabled;
@@ -417,10 +420,11 @@ class LinkHostController extends ChangeNotifier {
     String deviceId, {
     required Set<String> hostIds,
     required Set<String> keyIds,
+    bool includeAiKey = false,
   }) async {
     final active = _connected[deviceId];
     if (active == null || active.session.isClosed) return false;
-    final bundle = await bridge.exportOptInCredentials(hostIds: hostIds, keyIds: keyIds);
+    final bundle = await bridge.exportOptInCredentials(hostIds: hostIds, keyIds: keyIds, includeAiKey: includeAiKey);
     if (bundle.isEmpty) return false;
     await active.session.sendMessage({'type': 'sync.credentials.offer', 'bundle': bundle.toJson()});
     return true;
@@ -439,60 +443,61 @@ class LinkHostController extends ChangeNotifier {
         transport: transport,
         identity: identity,
         deviceName: deviceName,
-        verifyPeer: ({
-          required mode,
-          required clientDeviceId,
-          required clientName,
-          required clientPublicKey,
-          required transcriptHash,
-          required pairProof,
-        }) async {
-          if (mode == 'pair') {
-            final p = _pairing;
-            if (p == null) return (accepted: false, error: LinkErrorKind.pairingExpired, newlyPaired: false);
-            if (p.expired) {
-              cancelPairing();
-              return (accepted: false, error: LinkErrorKind.pairingExpired, newlyPaired: false);
-            }
-            if (p.locked) return (accepted: false, error: LinkErrorKind.pairingLocked, newlyPaired: false);
-            final expected = computePairingProof(p.code, transcriptHash);
-            if (pairProof == null || !constantTimeEquals(expected, pairProof)) {
-              p.attempts++;
-              if (p.locked) cancelPairing();
-              return (
-                accepted: false,
-                error: p.locked ? LinkErrorKind.pairingLocked : LinkErrorKind.invalidPairingCode,
-                newlyPaired: false,
-              );
-            }
-            // Single-use pairing code consumed immediately
-            cancelPairing();
-            final now = DateTime.now().toUtc();
-            final existing = _findPeer(clientDeviceId);
-            final updated = existing == null
-                ? LinkPeer(
-                    deviceId: clientDeviceId,
-                    name: clientName,
-                    publicKey: clientPublicKey,
-                    pairedAt: now,
-                    lastSeen: now,
-                  )
-                : existing.copyWith(name: clientName, lastSeen: now);
-            _peers = [..._peers.where((x) => x.deviceId != clientDeviceId), updated];
-            await store.save(_peers);
-            return (accepted: true, error: null, newlyPaired: true);
-          } else {
-            final existing = _findPeer(clientDeviceId);
-            if (existing == null) return (accepted: false, error: LinkErrorKind.peerRevoked, newlyPaired: false);
-            if (existing.publicKey != clientPublicKey) {
-              return (accepted: false, error: LinkErrorKind.authFailed, newlyPaired: false);
-            }
-            final updated = existing.copyWith(name: clientName, lastSeen: DateTime.now().toUtc());
-            _peers = [..._peers.where((x) => x.deviceId != clientDeviceId), updated];
-            await store.save(_peers);
-            return (accepted: true, error: null, newlyPaired: false);
-          }
-        },
+        verifyPeer:
+            ({
+              required mode,
+              required clientDeviceId,
+              required clientName,
+              required clientPublicKey,
+              required transcriptHash,
+              required pairProof,
+            }) async {
+              if (mode == 'pair') {
+                final p = _pairing;
+                if (p == null) return (accepted: false, error: LinkErrorKind.pairingExpired, newlyPaired: false);
+                if (p.expired) {
+                  cancelPairing();
+                  return (accepted: false, error: LinkErrorKind.pairingExpired, newlyPaired: false);
+                }
+                if (p.locked) return (accepted: false, error: LinkErrorKind.pairingLocked, newlyPaired: false);
+                final expected = computePairingProof(p.code, transcriptHash);
+                if (pairProof == null || !constantTimeEquals(expected, pairProof)) {
+                  p.attempts++;
+                  if (p.locked) cancelPairing();
+                  return (
+                    accepted: false,
+                    error: p.locked ? LinkErrorKind.pairingLocked : LinkErrorKind.invalidPairingCode,
+                    newlyPaired: false,
+                  );
+                }
+                // Single-use pairing code consumed immediately
+                cancelPairing();
+                final now = DateTime.now().toUtc();
+                final existing = _findPeer(clientDeviceId);
+                final updated = existing == null
+                    ? LinkPeer(
+                        deviceId: clientDeviceId,
+                        name: clientName,
+                        publicKey: clientPublicKey,
+                        pairedAt: now,
+                        lastSeen: now,
+                      )
+                    : existing.copyWith(name: clientName, lastSeen: now);
+                _peers = [..._peers.where((x) => x.deviceId != clientDeviceId), updated];
+                await store.save(_peers);
+                return (accepted: true, error: null, newlyPaired: true);
+              } else {
+                final existing = _findPeer(clientDeviceId);
+                if (existing == null) return (accepted: false, error: LinkErrorKind.peerRevoked, newlyPaired: false);
+                if (existing.publicKey != clientPublicKey) {
+                  return (accepted: false, error: LinkErrorKind.authFailed, newlyPaired: false);
+                }
+                final updated = existing.copyWith(name: clientName, lastSeen: DateTime.now().toUtc());
+                _peers = [..._peers.where((x) => x.deviceId != clientDeviceId), updated];
+                await store.save(_peers);
+                return (accepted: true, error: null, newlyPaired: false);
+              }
+            },
       );
 
       final peerId = handshake.session.peerDeviceId;
@@ -706,6 +711,20 @@ class LinkHostController extends ChangeNotifier {
         final allowed = msg['allowed'] == true;
         bridge.decideApproval(approvalId, allowed);
         _broadcastApprovals();
+
+      case 'handoff.host':
+        if (!perms.allowMirror && !perms.allowProxy) return;
+        final hostId = msg['hostId'] as String? ?? '';
+        if (hostId.isNotEmpty) {
+          bridge.handoffHost(hostId);
+          _broadcastSessions();
+        }
+
+      case 'clipboard.push':
+        final text = msg['text'] as String? ?? '';
+        if (text.isNotEmpty && text.length <= 64 * 1024) {
+          await bridge.receiveClipboard(text);
+        }
     }
   }
 
@@ -761,11 +780,7 @@ class LinkHostController extends ChangeNotifier {
 
 /// Client-side [ShellChannel] backed by either a desktop mirror or a desktop-proxied SSH channel over E2EE Link.
 class _LinkShellChannel implements ShellChannel {
-  _LinkShellChannel({
-    required this.onWrite,
-    required this.onResize,
-    required this.onClose,
-  }) {
+  _LinkShellChannel({required this.onWrite, required this.onResize, required this.onClose}) {
     _stdout = StreamController<Uint8List>.broadcast(onListen: _flushPending);
   }
 
@@ -835,12 +850,7 @@ class _LinkShellChannel implements ShellChannel {
 
 /// Mobile-side Sshairy Link client controller (docs/MOBILE.md §4).
 class LinkClientController extends ChangeNotifier {
-  LinkClientController({
-    required this.credentials,
-    required this.store,
-    required this.bridge,
-    this.transportFactory,
-  }) {
+  LinkClientController({required this.credentials, required this.store, required this.bridge, this.transportFactory}) {
     _peers = store.load();
   }
 
@@ -1019,12 +1029,7 @@ class LinkClientController extends ChangeNotifier {
               lastAddress: host.trim(),
               lastPort: port,
             )
-          : existing.copyWith(
-              name: result.session.peerName,
-              lastSeen: now,
-              lastAddress: host.trim(),
-              lastPort: port,
-            );
+          : existing.copyWith(name: result.session.peerName, lastSeen: now, lastAddress: host.trim(), lastPort: port);
       _peers = [..._peers.where((p) => p.deviceId != savedPeer.deviceId), savedPeer];
       await store.save(_peers);
 
@@ -1234,6 +1239,22 @@ class LinkClientController extends ChangeNotifier {
     await session.sendMessage({'type': 'approval.decide', 'approvalId': approvalId, 'allowed': allowed});
     _approvals = _approvals.where((a) => a.approvalId != approvalId).toList();
     _notify();
+  }
+
+  /// Requests Desktop to open a saved host directly on the desktop workspace (Mobile -> Desktop Handoff).
+  Future<bool> handoffHostToDesktop(String hostId) async {
+    final session = _session;
+    if (!connected || session == null || hostId.isEmpty) return false;
+    await session.sendMessage({'type': 'handoff.host', 'hostId': hostId});
+    return true;
+  }
+
+  /// Pushes clipboard text to the connected Desktop over the E2EE channel.
+  Future<bool> pushClipboardToDesktop(String text) async {
+    final session = _session;
+    if (!connected || session == null || text.isEmpty || text.length > 64 * 1024) return false;
+    await session.sendMessage({'type': 'clipboard.push', 'text': text});
+    return true;
   }
 
   /// Opens a desktop mirror tab in the local workspace via [bridge].

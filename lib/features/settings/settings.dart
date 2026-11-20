@@ -391,6 +391,11 @@ abstract final class SettingKeys {
   static const linkDiscovery = BoolSetting('linkDiscovery', true, agentExposed: false);
   static const linkDeviceName = OptionalStringSetting('linkDeviceName', maxLength: 64, agentExposed: false);
 
+  static const mobileKeepScreenOn = BoolSetting('mobileKeepScreenOn', true, agentExposed: false);
+  static const mobileKeepAlive = BoolSetting('mobileKeepAlive', true, agentExposed: false);
+  static const mobileHaptics = BoolSetting('mobileHaptics', true, agentExposed: false);
+  static const mobileBiometricLock = BoolSetting('mobileBiometricLock', false, agentExposed: false);
+
   static const List<SettingDef<Object?>> all = [
     mcpEnabled,
     mcpPort,
@@ -400,6 +405,10 @@ abstract final class SettingKeys {
     linkPort,
     linkDiscovery,
     linkDeviceName,
+    mobileKeepScreenOn,
+    mobileKeepAlive,
+    mobileHaptics,
+    mobileBiometricLock,
     themeMode,
     accent,
     locale,

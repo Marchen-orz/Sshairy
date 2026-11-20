@@ -27,6 +27,8 @@ dependencies:
   pointycastle: ^4.0.0
   xterm2: ^5.4.0
   yaml: ^3.1.4
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.5.0
 
 dev_dependencies:
   flutter_test:

@@ -618,6 +618,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
               MobileTerminalKeyBar(
                 ctrl: _touchCtrl,
                 alt: _touchAlt,
+                hapticsEnabled: ref.watch(settingsProvider).get(SettingKeys.mobileHaptics),
                 onToggleCtrl: _toggleTouchCtrl,
                 onLockCtrl: _lockTouchCtrl,
                 onToggleAlt: _toggleTouchAlt,
@@ -627,6 +628,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                 onOpenComposer: _showComposer,
                 onOpenSearch: () => setState(() => _searching = !_searching),
                 onOpenSnippets: widget.onOpenSnippets,
+                onOpenAiry: widget.onAskAgent == null ? null : () => widget.onAskAgent!(_recentVisibleExcerpt()),
+                onGenerateDraft: _canGenerateMobileDraft() ? _generateMobileDraft : null,
                 keyboardFocused: _focus.hasFocus,
                 onToggleKeyboard: () {
                   if (_focus.hasFocus) {
@@ -641,6 +644,41 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
         );
       },
     );
+  }
+
+  String _recentVisibleExcerpt() {
+    final buf = _session._terminal.buffer;
+    final total = buf.lines.length;
+    final start = max(0, total - 35);
+    final lines = <String>[];
+    for (var i = start; i < total; i++) {
+      final text = buf.lines[i].getText().trimRight();
+      if (text.isNotEmpty) lines.add(text);
+    }
+    return lines.join('\n');
+  }
+
+  bool _canGenerateMobileDraft() {
+    final service = _aiService;
+    if (service == null) return false;
+    return service.canGenerate(_session.readAiContext());
+  }
+
+  Future<String?> _generateMobileDraft(String instruction) async {
+    final service = _aiService;
+    if (service == null) return null;
+    final context = _session.readAiContext();
+    if (!service.canGenerate(context)) return null;
+    final cancel = CancellationToken();
+    try {
+      final result = await service.generate(context, instruction, cancel, history: _session.readAiHistory(context));
+      if (result.kind == TerminalAiGenerationKind.command && result.command != null) {
+        return result.command;
+      }
+      return null;
+    } on Object {
+      return null;
+    }
   }
 
   /// Scrolls so buffer row [y] sits in the middle of the view.

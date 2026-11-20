@@ -3618,4 +3618,130 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mobileTools => 'Tools';
+
+  @override
+  String get mobileTabAiry => 'Airy';
+
+  @override
+  String get mobileTabMe => 'Me';
+
+  @override
+  String get mobileScanQr => 'Scan desktop QR';
+
+  @override
+  String get mobileScanQrHint =>
+      'Point at the pairing QR code on Sshairy desktop';
+
+  @override
+  String get mobileHandoffToDesktop => 'Open on desktop';
+
+  @override
+  String get mobileHandoffSent => 'Opened on desktop';
+
+  @override
+  String get mobilePushClipboard => 'Send clipboard';
+
+  @override
+  String get mobileClipboardSent => 'Sent clipboard to desktop';
+
+  @override
+  String get mobileDirectTag => 'Direct';
+
+  @override
+  String get mobileKeepScreenOn => 'Keep screen awake';
+
+  @override
+  String get mobileKeepAlive => 'Background keep-alive';
+
+  @override
+  String get mobileKeepAliveTitle => 'Sshairy active';
+
+  @override
+  String mobileKeepAliveSubtitle(int count) {
+    return '$count active sessions';
+  }
+
+  @override
+  String get mobileHaptics => 'Haptic feedback';
+
+  @override
+  String get mobileBiometricLock => 'Biometric lock';
+
+  @override
+  String get mobileUnlockPrompt => 'Unlock Sshairy';
+
+  @override
+  String get mobileUnlockAction => 'Unlock';
+
+  @override
+  String get mobileTrackpad => 'Trackpad';
+
+  @override
+  String get mobileDraftMode => 'Command bar';
+
+  @override
+  String get mobileDraftPlaceholder => 'Type command or ask Airy…';
+
+  @override
+  String get mobileAskAiry => 'Ask Airy';
+
+  @override
+  String get mobileSyncAiFromDesktop => 'Sync AI from desktop';
+
+  @override
+  String get mobileAiQuickSystem => 'CPU & Memory';
+
+  @override
+  String get mobileAiQuickDisk => 'Disk usage';
+
+  @override
+  String get mobileAiQuickLogs => 'Recent errors';
+
+  @override
+  String get mobileAiQuickPorts => 'Open ports';
+
+  @override
+  String get mobileFileEditor => 'Edit';
+
+  @override
+  String get mobileFileSaved => 'Saved';
+
+  @override
+  String get mobileFileTooLarge => 'File is too large for inline editor';
+
+  @override
+  String get mobileSendPathToTerminal => 'Send path to terminal';
+
+  @override
+  String get mobileNewFile => 'New file';
+
+  @override
+  String get mobileNewFolder => 'New folder';
+
+  @override
+  String get mobileUploadFile => 'Upload file';
+
+  @override
+  String get mobileGenerateKey => 'Generate Ed25519 key';
+
+  @override
+  String get mobilePublicKeyCopied => 'Public key copied';
+
+  @override
+  String get mobileSecuritySection => 'Security & background';
+
+  @override
+  String get mobileTerminalSection => 'Terminal & touch';
+
+  @override
+  String get mobileQuickConnect => 'Quick connect';
+
+  @override
+  String get mobileAllGroups => 'All';
+
+  @override
+  String get mobilePinned => 'Pinned';
+
+  @override
+  String get mobileSyncAiIncluded => '+ AI config';
 }

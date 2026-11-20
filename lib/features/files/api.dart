@@ -7,4 +7,5 @@ export 'domain/open_with.dart' show OpenWithApp, EditorLauncher, EditorLaunch, E
 export 'domain/transfer.dart' show FileEnd, Transfer, TransferState;
 export 'application/transfers.dart' show transfersProvider, TransferManager, TransferUi;
 export 'presentation/files_page.dart';
+export 'presentation/mobile_files_page.dart' show MobileFilesPage;
 export 'presentation/transfers_panel.dart' show DialogTransferUi, TransfersPanel;

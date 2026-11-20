@@ -3460,4 +3460,129 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get mobileTools => '工具';
+
+  @override
+  String get mobileTabAiry => 'Airy';
+
+  @override
+  String get mobileTabMe => '我的';
+
+  @override
+  String get mobileScanQr => '扫码配对电脑';
+
+  @override
+  String get mobileScanQrHint => '对准电脑端 Sshairy 手机互联二维码';
+
+  @override
+  String get mobileHandoffToDesktop => '在电脑上继续打开';
+
+  @override
+  String get mobileHandoffSent => '已在电脑端打开';
+
+  @override
+  String get mobilePushClipboard => '推送剪贴板';
+
+  @override
+  String get mobileClipboardSent => '已发送剪贴板到电脑';
+
+  @override
+  String get mobileDirectTag => '直连';
+
+  @override
+  String get mobileKeepScreenOn => '终端常亮';
+
+  @override
+  String get mobileKeepAlive => '后台连接保活';
+
+  @override
+  String get mobileKeepAliveTitle => 'Sshairy 连接运行中';
+
+  @override
+  String mobileKeepAliveSubtitle(int count) {
+    return '$count 个活跃会话';
+  }
+
+  @override
+  String get mobileHaptics => '触觉反馈';
+
+  @override
+  String get mobileBiometricLock => '生物识别锁定';
+
+  @override
+  String get mobileUnlockPrompt => '验证身份以解锁 Sshairy';
+
+  @override
+  String get mobileUnlockAction => '解锁';
+
+  @override
+  String get mobileTrackpad => '触控板';
+
+  @override
+  String get mobileDraftMode => '命令草稿栏';
+
+  @override
+  String get mobileDraftPlaceholder => '输入命令，或直接描述让 Airy 生成…';
+
+  @override
+  String get mobileAskAiry => '问 Airy';
+
+  @override
+  String get mobileSyncAiFromDesktop => '从电脑同步 AI 配置';
+
+  @override
+  String get mobileAiQuickSystem => '负载与内存';
+
+  @override
+  String get mobileAiQuickDisk => '磁盘占用';
+
+  @override
+  String get mobileAiQuickLogs => '最近报错日志';
+
+  @override
+  String get mobileAiQuickPorts => '监听端口';
+
+  @override
+  String get mobileFileEditor => '编辑';
+
+  @override
+  String get mobileFileSaved => '已保存';
+
+  @override
+  String get mobileFileTooLarge => '文件过大，不支持手机端直接编辑';
+
+  @override
+  String get mobileSendPathToTerminal => '发送路径到终端';
+
+  @override
+  String get mobileNewFile => '新建文件';
+
+  @override
+  String get mobileNewFolder => '新建文件夹';
+
+  @override
+  String get mobileUploadFile => '上传文件';
+
+  @override
+  String get mobileGenerateKey => '生成 Ed25519 密钥';
+
+  @override
+  String get mobilePublicKeyCopied => '公钥已复制';
+
+  @override
+  String get mobileSecuritySection => '安全与后台';
+
+  @override
+  String get mobileTerminalSection => '终端与触控';
+
+  @override
+  String get mobileQuickConnect => '快速连接';
+
+  @override
+  String get mobileAllGroups => '全部';
+
+  @override
+  String get mobilePinned => '置顶';
+
+  @override
+  String get mobileSyncAiIncluded => '+ AI 配置';
 }

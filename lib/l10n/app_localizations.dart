@@ -6625,6 +6625,252 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tools'**
   String get mobileTools;
+
+  /// No description provided for @mobileTabAiry.
+  ///
+  /// In en, this message translates to:
+  /// **'Airy'**
+  String get mobileTabAiry;
+
+  /// No description provided for @mobileTabMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Me'**
+  String get mobileTabMe;
+
+  /// No description provided for @mobileScanQr.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan desktop QR'**
+  String get mobileScanQr;
+
+  /// No description provided for @mobileScanQrHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Point at the pairing QR code on Sshairy desktop'**
+  String get mobileScanQrHint;
+
+  /// No description provided for @mobileHandoffToDesktop.
+  ///
+  /// In en, this message translates to:
+  /// **'Open on desktop'**
+  String get mobileHandoffToDesktop;
+
+  /// No description provided for @mobileHandoffSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Opened on desktop'**
+  String get mobileHandoffSent;
+
+  /// No description provided for @mobilePushClipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Send clipboard'**
+  String get mobilePushClipboard;
+
+  /// No description provided for @mobileClipboardSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent clipboard to desktop'**
+  String get mobileClipboardSent;
+
+  /// No description provided for @mobileDirectTag.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct'**
+  String get mobileDirectTag;
+
+  /// No description provided for @mobileKeepScreenOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep screen awake'**
+  String get mobileKeepScreenOn;
+
+  /// No description provided for @mobileKeepAlive.
+  ///
+  /// In en, this message translates to:
+  /// **'Background keep-alive'**
+  String get mobileKeepAlive;
+
+  /// No description provided for @mobileKeepAliveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sshairy active'**
+  String get mobileKeepAliveTitle;
+
+  /// No description provided for @mobileKeepAliveSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} active sessions'**
+  String mobileKeepAliveSubtitle(int count);
+
+  /// No description provided for @mobileHaptics.
+  ///
+  /// In en, this message translates to:
+  /// **'Haptic feedback'**
+  String get mobileHaptics;
+
+  /// No description provided for @mobileBiometricLock.
+  ///
+  /// In en, this message translates to:
+  /// **'Biometric lock'**
+  String get mobileBiometricLock;
+
+  /// No description provided for @mobileUnlockPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock Sshairy'**
+  String get mobileUnlockPrompt;
+
+  /// No description provided for @mobileUnlockAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get mobileUnlockAction;
+
+  /// No description provided for @mobileTrackpad.
+  ///
+  /// In en, this message translates to:
+  /// **'Trackpad'**
+  String get mobileTrackpad;
+
+  /// No description provided for @mobileDraftMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Command bar'**
+  String get mobileDraftMode;
+
+  /// No description provided for @mobileDraftPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Type command or ask Airy…'**
+  String get mobileDraftPlaceholder;
+
+  /// No description provided for @mobileAskAiry.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask Airy'**
+  String get mobileAskAiry;
+
+  /// No description provided for @mobileSyncAiFromDesktop.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync AI from desktop'**
+  String get mobileSyncAiFromDesktop;
+
+  /// No description provided for @mobileAiQuickSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'CPU & Memory'**
+  String get mobileAiQuickSystem;
+
+  /// No description provided for @mobileAiQuickDisk.
+  ///
+  /// In en, this message translates to:
+  /// **'Disk usage'**
+  String get mobileAiQuickDisk;
+
+  /// No description provided for @mobileAiQuickLogs.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent errors'**
+  String get mobileAiQuickLogs;
+
+  /// No description provided for @mobileAiQuickPorts.
+  ///
+  /// In en, this message translates to:
+  /// **'Open ports'**
+  String get mobileAiQuickPorts;
+
+  /// No description provided for @mobileFileEditor.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get mobileFileEditor;
+
+  /// No description provided for @mobileFileSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get mobileFileSaved;
+
+  /// No description provided for @mobileFileTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'File is too large for inline editor'**
+  String get mobileFileTooLarge;
+
+  /// No description provided for @mobileSendPathToTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Send path to terminal'**
+  String get mobileSendPathToTerminal;
+
+  /// No description provided for @mobileNewFile.
+  ///
+  /// In en, this message translates to:
+  /// **'New file'**
+  String get mobileNewFile;
+
+  /// No description provided for @mobileNewFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'New folder'**
+  String get mobileNewFolder;
+
+  /// No description provided for @mobileUploadFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload file'**
+  String get mobileUploadFile;
+
+  /// No description provided for @mobileGenerateKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate Ed25519 key'**
+  String get mobileGenerateKey;
+
+  /// No description provided for @mobilePublicKeyCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Public key copied'**
+  String get mobilePublicKeyCopied;
+
+  /// No description provided for @mobileSecuritySection.
+  ///
+  /// In en, this message translates to:
+  /// **'Security & background'**
+  String get mobileSecuritySection;
+
+  /// No description provided for @mobileTerminalSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal & touch'**
+  String get mobileTerminalSection;
+
+  /// No description provided for @mobileQuickConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick connect'**
+  String get mobileQuickConnect;
+
+  /// No description provided for @mobileAllGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get mobileAllGroups;
+
+  /// No description provided for @mobilePinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned'**
+  String get mobilePinned;
+
+  /// No description provided for @mobileSyncAiIncluded.
+  ///
+  /// In en, this message translates to:
+  /// **'+ AI config'**
+  String get mobileSyncAiIncluded;
 }
 
 class _AppLocalizationsDelegate

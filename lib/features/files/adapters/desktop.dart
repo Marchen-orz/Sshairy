@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart' as selector;
@@ -6,6 +7,12 @@ import 'package:flutter/widgets.dart';
 
 /// Files the user picks in the system dialog; empty when cancelled.
 Future<List<String>> pickFiles() async => [for (final f in await selector.openFiles()) f.path];
+
+/// Files picked via system SAF / file dialog with bytes loaded directly (safe for Android scoped storage).
+Future<List<({String name, Uint8List bytes})>> pickUploadFiles() async {
+  final picked = await selector.openFiles();
+  return [for (final f in picked) (name: f.name, bytes: await f.readAsBytes())];
+}
 
 /// A folder the user picks in the system dialog; null when cancelled.
 Future<String?> pickDirectory() => selector.getDirectoryPath();

@@ -9,6 +9,7 @@ import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../settings/api.dart';
+import '../adapters/qr_adapter.dart';
 import '../application/link_service.dart';
 import '../domain/protocol.dart';
 
@@ -16,11 +17,12 @@ import '../domain/protocol.dart';
 typedef LinkCredentialCatalog = ({
   List<({String id, String label})> hosts,
   List<({String id, String label})> keys,
+  String? aiProfileLabel,
 });
 
 final linkCredentialCatalogProvider = Provider<LinkCredentialCatalog Function()>(
   (_) =>
-      () => (hosts: const [], keys: const []),
+      () => (hosts: const [], keys: const [], aiProfileLabel: null),
 );
 
 /// Desktop settings section for Sshairy Link (docs/MOBILE.md §4-5).
@@ -74,6 +76,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
     final catalog = ref.read(linkCredentialCatalogProvider)();
     final selectedHosts = <String>{};
     final selectedKeys = <String>{};
+    var includeAiKey = false;
     final confirmed = await showAppDialog<bool>(
       context: context,
       builder: (context) {
@@ -86,6 +89,17 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (catalog.aiProfileLabel != null) ...[
+                    Text('AI', style: Theme.of(context).textTheme.labelMedium),
+                    const SizedBox(height: Space.xs),
+                    AppToggleRow(
+                      title: catalog.aiProfileLabel!,
+                      checkbox: true,
+                      value: includeAiKey,
+                      onChanged: (v) => setModal(() => includeAiKey = v),
+                    ),
+                    const SizedBox(height: Space.sm),
+                  ],
                   if (catalog.hosts.isNotEmpty) ...[
                     Text(l.hosts, style: Theme.of(context).textTheme.labelMedium),
                     const SizedBox(height: Space.xs),
@@ -109,7 +123,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                         onChanged: (v) => setModal(() => v ? selectedKeys.add(k.id) : selectedKeys.remove(k.id)),
                       ),
                   ],
-                  if (catalog.hosts.isEmpty && catalog.keys.isEmpty)
+                  if (catalog.hosts.isEmpty && catalog.keys.isEmpty && catalog.aiProfileLabel == null)
                     Text(l.linkPushCredentialsEmpty, style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
@@ -117,7 +131,9 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
             actions: [
               TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
               FilledButton(
-                onPressed: selectedHosts.isEmpty && selectedKeys.isEmpty ? null : () => Navigator.pop(context, true),
+                onPressed: selectedHosts.isEmpty && selectedKeys.isEmpty && !includeAiKey
+                    ? null
+                    : () => Navigator.pop(context, true),
                 child: Text(l.linkPushCredentials),
               ),
             ],
@@ -128,7 +144,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
     if (confirmed != true || !mounted) return;
     final sent = await ref
         .read(linkHostControllerProvider)
-        .pushOptInCredentials(peer.deviceId, hostIds: selectedHosts, keyIds: selectedKeys);
+        .pushOptInCredentials(peer.deviceId, hostIds: selectedHosts, keyIds: selectedKeys, includeAiKey: includeAiKey);
     if (!mounted) return;
     final l = AppLocalizations.of(context);
     _showNotice(sent ? l.linkPushCredentialsSent(peer.name) : l.linkPushCredentialsEmpty);
@@ -278,38 +294,46 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                   borderRadius: BorderRadius.circular(Radii.card),
                   border: Border.all(color: scheme.primary.withValues(alpha: .35)),
                 ),
-                child: Column(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(l.linkPairingCode, style: Theme.of(context).textTheme.labelMedium),
-                        const Spacer(),
-                        TextButton.icon(
-                          key: const ValueKey('link-copy-uri'),
-                          onPressed: () {
-                            unawaited(Clipboard.setData(ClipboardData(text: pairing.toUri())));
-                            _showNotice(l.linkCopied);
-                          },
-                          icon: const Icon(Icons.copy_outlined, size: 16),
-                          label: Text(l.linkCopyUri),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: Space.xs),
-                    SelectableText(
-                      '${pairing.code.substring(0, 3)} ${pairing.code.substring(3)}',
-                      key: const ValueKey('link-pairing-code'),
-                      style: mono(context, Theme.of(context).textTheme.headlineMedium).copyWith(
-                        letterSpacing: 4,
-                        fontWeight: FontWeight.w700,
-                        color: scheme.primary,
+                    LinkQrCodeView(key: const ValueKey('link-pairing-qr'), data: pairing.toUri(), size: 132),
+                    const SizedBox(width: Space.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(l.linkPairingCode, style: Theme.of(context).textTheme.labelMedium),
+                              const Spacer(),
+                              TextButton.icon(
+                                key: const ValueKey('link-copy-uri'),
+                                onPressed: () {
+                                  unawaited(Clipboard.setData(ClipboardData(text: pairing.toUri())));
+                                  _showNotice(l.linkCopied);
+                                },
+                                icon: const Icon(Icons.copy_outlined, size: 16),
+                                label: Text(l.linkCopyUri),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: Space.xs),
+                          SelectableText(
+                            '${pairing.code.substring(0, 3)} ${pairing.code.substring(3)}',
+                            key: const ValueKey('link-pairing-code'),
+                            style: mono(
+                              context,
+                              Theme.of(context).textTheme.headlineMedium,
+                            ).copyWith(letterSpacing: 4, fontWeight: FontWeight.w700, color: scheme.primary),
+                          ),
+                          const SizedBox(height: Space.xs),
+                          SelectableText(
+                            '${pairing.host}:${pairing.port}',
+                            style: mono(context, Theme.of(context).textTheme.bodySmall),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: Space.xs),
-                    SelectableText(
-                      '${pairing.host}:${pairing.port}',
-                      style: mono(context, Theme.of(context).textTheme.bodySmall),
                     ),
                   ],
                 ),
@@ -324,14 +348,15 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               )
             else
-              for (final peer in host.peers) _PeerCard(
-                peer: peer,
-                online: host.connectedDeviceIds.contains(peer.deviceId),
-                onUpdatePermissions: (perms) => unawaited(host.updatePermissions(peer.deviceId, perms)),
-                onPushCredentials: () => unawaited(_pushCredentials(peer)),
-                onDisconnect: () => host.disconnectPeer(peer.deviceId),
-                onRevoke: () => unawaited(host.revokePeer(peer.deviceId)),
-              ),
+              for (final peer in host.peers)
+                _PeerCard(
+                  peer: peer,
+                  online: host.connectedDeviceIds.contains(peer.deviceId),
+                  onUpdatePermissions: (perms) => unawaited(host.updatePermissions(peer.deviceId, perms)),
+                  onPushCredentials: () => unawaited(_pushCredentials(peer)),
+                  onDisconnect: () => host.disconnectPeer(peer.deviceId),
+                  onRevoke: () => unawaited(host.revokePeer(peer.deviceId)),
+                ),
           ],
         );
       },
@@ -374,18 +399,10 @@ class _PeerCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.smartphone_outlined,
-                size: 18,
-                color: online ? scheme.primary : scheme.onSurfaceVariant,
-              ),
+              Icon(Icons.smartphone_outlined, size: 18, color: online ? scheme.primary : scheme.onSurfaceVariant),
               const SizedBox(width: Space.sm),
               Expanded(
-                child: Text(
-                  peer.name,
-                  style: Theme.of(context).textTheme.titleSmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: Text(peer.name, style: Theme.of(context).textTheme.titleSmall, overflow: TextOverflow.ellipsis),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 2),
@@ -395,9 +412,8 @@ class _PeerCard extends StatelessWidget {
                 ),
                 child: Text(
                   online ? l.linkOnline : l.linkOffline,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: online ? scheme.primary : scheme.onSurfaceVariant,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: online ? scheme.primary : scheme.onSurfaceVariant),
                 ),
               ),
             ],
@@ -440,8 +456,7 @@ class _PeerCard extends StatelessWidget {
                   icon: const Icon(Icons.key_outlined, size: 16),
                   label: Text(l.linkPushCredentials),
                 ),
-              if (online)
-                TextButton(onPressed: onDisconnect, child: Text(l.linkDisconnect)),
+              if (online) TextButton(onPressed: onDisconnect, child: Text(l.linkDisconnect)),
               TextButton(
                 onPressed: onRevoke,
                 style: TextButton.styleFrom(foregroundColor: scheme.error),
