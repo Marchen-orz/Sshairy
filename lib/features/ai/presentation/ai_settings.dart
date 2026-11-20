@@ -33,7 +33,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   final _contextWindow = TextEditingController(), _maxOutput = TextEditingController();
   final _form = GlobalKey<FormState>();
   late AiConfiguration _initial;
-  late bool _enabled, _inlineEnabled, _completionEnabled;
+  late bool _enabled, _inlineEnabled, _completionEnabled, _predictionEnabled;
   String _inlineModel = '', _completionModel = '', _reviewModel = '';
   var _customContext = false, _inlineAdvanced = false, _completionAdvanced = false;
   String? _providerIdentity;
@@ -131,6 +131,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       _enabled != _initial.enabled ||
       _inlineEnabled != _initial.inlineEnabled ||
       _completionEnabled != _initial.completionEnabled ||
+      _predictionEnabled != _initial.predictionEnabled ||
       !setEquals(_inlineExcludedHosts, _initial.inlineExcludedHosts) ||
       !setEquals(_completionExcludedHosts, _initial.completionExcludedHosts) ||
       _inlineModel != (_initial.inlineModel ?? _initial.profile?.model ?? '') ||
@@ -155,6 +156,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _enabled = config.enabled;
     _inlineEnabled = config.inlineEnabled;
     _completionEnabled = config.completionEnabled;
+    _predictionEnabled = config.predictionEnabled;
     _inlineExcludedHosts
       ..clear()
       ..addAll(config.inlineExcludedHosts);
@@ -308,6 +310,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         expectedRevision: revision,
         inlineEnabled: _inlineEnabled,
         completionEnabled: _completionEnabled,
+        predictionEnabled: _predictionEnabled,
         inlineExcludedHosts: _inlineExcludedHosts,
         completionExcludedHosts: _completionExcludedHosts,
         inlineModel: _inlineModel.isEmpty ? profile?.model : _inlineModel,
@@ -673,6 +676,12 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
           ),
           if (_completionEnabled) ...[
             const SizedBox(height: Space.xs),
+            AppToggleRow(
+              key: const ValueKey('ai-config-prediction'),
+              title: l.aiConfigPrediction,
+              value: _predictionEnabled,
+              onChanged: locked ? null : (v) => setState(() => _predictionEnabled = v),
+            ),
             _hostFilter(
               feature: 'completion',
               expanded: _completionAdvanced,

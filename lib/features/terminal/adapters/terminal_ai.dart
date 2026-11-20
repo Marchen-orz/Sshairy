@@ -120,7 +120,7 @@ extension _TerminalAiPane on _TerminalPaneState {
       !_session._historyBrowsing &&
       context.ready &&
       _terminalCompositionReady &&
-      !identical(_dismissedCandidateRequest, _session.commandAssistance.value.request) &&
+      (context.draft!.isEmpty || !identical(_dismissedCandidateRequest, _session.commandAssistance.value.request)) &&
       (_aiService?.canComplete(context) ?? false);
 
   void _syncAi() {
@@ -206,6 +206,7 @@ extension _TerminalAiPane on _TerminalPaneState {
         state.browse != null ||
         candidate == null ||
         expected == null ||
+        expected.draft!.isEmpty ||
         !_completionEligible(expected) ||
         !sameTerminalAiContext(expected, _session.readAiContext())) {
       return state;
@@ -234,6 +235,67 @@ extension _TerminalAiPane on _TerminalPaneState {
     _cancelAiCompletion();
   }
 
+  /// A next-command prediction belongs to the empty prompt, so it is ghost text rather than a popup row.
+  CommandCandidate? get _prediction {
+    final candidate = _aiCandidate, expected = _aiCompletionContext;
+    if (candidate == null ||
+        expected == null ||
+        expected.draft!.isNotEmpty ||
+        !_completionEligible(expected) ||
+        !sameTerminalAiContext(expected, _session.readAiContext())) {
+      return null;
+    }
+    return candidate;
+  }
+
+  Future<void> _acceptPrediction(CommandCandidate candidate) async {
+    final expected = _aiCompletionContext!;
+    _update(_cancelAiCompletion);
+    await _session.acceptAiDraft(expected, candidate.text, suffix: true);
+  }
+
+  Widget _predictionGhost() => ValueListenableBuilder<Rect?>(
+    valueListenable: _completionCursor,
+    builder: (context, cursor, _) {
+      final prediction = _prediction;
+      if (cursor == null || prediction == null) return const SizedBox.shrink();
+      final settings = ref.read(settingsProvider);
+      return Positioned(
+        left: cursor.left,
+        top: cursor.top,
+        right: 0,
+        height: cursor.height,
+        child: IgnorePointer(
+          child: Text(
+            prediction.text,
+            key: const ValueKey('terminal-ai-prediction'),
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.clip,
+            style: TextStyle(
+              fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
+              fontFamilyFallback: AppFonts.monoFallback,
+              fontSize: _liveFontSize ?? settings.fontSize,
+              height: 1.2,
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: .6),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  /// The last command in this shell generation exited nonzero by a reliable OSC 133 D and can be sent.
+  bool get _fixAvailable {
+    final context = _session.readAiContext(), last = _session._aiHistory.lastOrNull;
+    return context.prompt == TerminalAiPrompt.semantic &&
+        context.draft?.isEmpty == true &&
+        last != null &&
+        last.generation == context.generation &&
+        (last.exitCode ?? 0) != 0 &&
+        boundedTerminalAiHistory([last]).isNotEmpty;
+  }
+
   bool get _canOpenInlineAi {
     final context = _session.readAiContext();
     return widget.active &&
@@ -256,6 +318,7 @@ extension _TerminalAiPane on _TerminalPaneState {
       if (cursor == null || !_canOpenInlineAi || _inlineAiOpen) return const SizedBox.shrink();
       final highlighted =
           terminalInputIntent(_session.readAiContext().draft ?? '') == TerminalInputIntent.naturalLanguage;
+      final fix = _fixAvailable, l = AppLocalizations.of(context);
       final scheme = Theme.of(context).colorScheme;
       const size = 20.0, gap = 2.0;
       final left = min(max(cursor.right + gap, gap), max(gap, box.maxWidth - size - gap));
@@ -267,7 +330,7 @@ extension _TerminalAiPane on _TerminalPaneState {
         width: size,
         height: size,
         child: Tooltip(
-          message: AppLocalizations.of(context).terminalAiGenerate,
+          message: fix ? l.terminalAiFix : l.terminalAiGenerate,
           child: IconButton(
             key: const ValueKey('terminal-ai-toggle'),
             onPressed: _showInlineAi,
@@ -278,10 +341,14 @@ extension _TerminalAiPane on _TerminalPaneState {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
               backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: .92),
-              foregroundColor: highlighted ? scheme.primary : scheme.onSurfaceVariant,
+              foregroundColor: fix
+                  ? scheme.error
+                  : highlighted
+                  ? scheme.primary
+                  : scheme.onSurfaceVariant,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
             ),
-            icon: const Icon(Icons.auto_awesome_outlined, size: 12),
+            icon: Icon(fix ? Icons.build_outlined : Icons.auto_awesome_outlined, size: 12),
           ),
         ),
       );
@@ -291,8 +358,11 @@ extension _TerminalAiPane on _TerminalPaneState {
   void _showInlineAi() {
     if (!_canOpenInlineAi) return;
     _cancelAiCompletion();
-    final inline = _session._inlineAi;
+    final inline = _session._inlineAi, fix = _fixAvailable;
     inline.open();
+    if (fix && inline.instruction.isEmpty && inline.result == null && !inline.busy) {
+      inline.editInstruction(AppLocalizations.of(context).terminalAiFix);
+    }
     if (!inline.busy && inline.result == null && inline.instruction.trim().isNotEmpty) unawaited(inline.generate());
     _update(() {
       _historyOpen = _composerOpen = false;

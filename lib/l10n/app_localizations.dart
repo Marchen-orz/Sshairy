@@ -5606,6 +5606,12 @@ abstract class AppLocalizations {
   /// **'Allow access'**
   String get aiAgentHostAccessAllow;
 
+  /// No description provided for @terminalAiFix.
+  ///
+  /// In en, this message translates to:
+  /// **'Fix the last failed command'**
+  String get terminalAiFix;
+
   /// No description provided for @terminalAiGenerate.
   ///
   /// In en, this message translates to:
@@ -5827,6 +5833,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Inline generation model'**
   String get aiConfigInlineModel;
+
+  /// No description provided for @aiConfigPrediction.
+  ///
+  /// In en, this message translates to:
+  /// **'Predict the next command (→ to accept)'**
+  String get aiConfigPrediction;
 
   /// No description provided for @aiConfigCompletionModel.
   ///

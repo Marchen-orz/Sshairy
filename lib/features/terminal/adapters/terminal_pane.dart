@@ -103,6 +103,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     _session.commandAssistance.addListener(_scheduleAi);
     _session._directory.changes.addListener(_scheduleAi);
     _focus.addListener(_scheduleAi);
+    // A new prompt moves the cursor without changing command assistance; prediction starts there.
+    _completionCursor.addListener(_scheduleAi);
     _session.addListener(_scheduleAi);
     _session.addListener(_focusWhenConnected);
     _terminal.addListener(_scheduleImeRect);
@@ -518,7 +520,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
             _completionOverlay(),
             if (widget.visible)
               Positioned.fill(
-                child: LayoutBuilder(builder: (context, box) => Stack(children: [_inlineAiBadge(box)])),
+                child: LayoutBuilder(
+                  builder: (context, box) => Stack(children: [_predictionGhost(), _inlineAiBadge(box)]),
+                ),
               ),
             if (_searching)
               Positioned(

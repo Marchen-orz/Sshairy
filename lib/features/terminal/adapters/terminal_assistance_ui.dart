@@ -41,6 +41,11 @@ extension _AssistancePane on _TerminalPaneState {
     }
     // xterm's text input owns composing events; modified arrows keep shell/application shortcuts.
     if (keys.isControlPressed || keys.isMetaPressed || keys.isAltPressed || keys.isShiftPressed) return null;
+    final prediction = event.logicalKey == LogicalKeyboardKey.arrowRight ? _prediction : null;
+    if (prediction != null) {
+      unawaited(_acceptPrediction(prediction));
+      return KeyEventResult.handled;
+    }
     _syncCandidateSelection(state);
     final enter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (enter) {

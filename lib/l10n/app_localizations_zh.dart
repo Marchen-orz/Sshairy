@@ -2910,6 +2910,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAgentHostAccessAllow => '允许访问';
 
   @override
+  String get terminalAiFix => '修复上一条失败的命令';
+
+  @override
   String get terminalAiGenerate => '生成命令';
 
   @override
@@ -3027,6 +3030,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiConfigInlineModel => '行内生成模型';
+
+  @override
+  String get aiConfigPrediction => '预测下一条命令（→ 接受）';
 
   @override
   String get aiConfigCompletionModel => '补全模型';

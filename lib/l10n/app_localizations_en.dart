@@ -3036,6 +3036,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAgentHostAccessAllow => 'Allow access';
 
   @override
+  String get terminalAiFix => 'Fix the last failed command';
+
+  @override
   String get terminalAiGenerate => 'Generate command';
 
   @override
@@ -3169,6 +3172,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigInlineModel => 'Inline generation model';
+
+  @override
+  String get aiConfigPrediction => 'Predict the next command (→ to accept)';
 
   @override
   String get aiConfigCompletionModel => 'Completion model';

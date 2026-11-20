@@ -62,7 +62,7 @@ class AiTerminalService implements TerminalAiService {
         _available(context, config, inline: false) &&
         context.ready &&
         draft != null &&
-        _eligible(draft);
+        (draft.isEmpty ? config.predictionEnabled && context.prompt == TerminalAiPrompt.semantic : _eligible(draft));
   }
 
   static final _plain = RegExp(r'^[A-Za-z0-9_./:@%+=,\- ]+$');
@@ -196,11 +196,14 @@ class AiTerminalService implements TerminalAiService {
         _attempts.where((at) => now.difference(at) < const Duration(minutes: 1)).length >= 10) {
       return null;
     }
-    final selected = _history(context, history);
+    // An empty draft predicts the next command: one request per command boundary, not per keystroke.
+    final predict = context.draft!.isEmpty;
+    final selected = _history(context, history, matchingCommand: !predict);
+    if (predict && selected.isEmpty) return null;
     final key = jsonEncode([
       context.sessionId.value,
       context.generation,
-      context.revision,
+      if (!predict) context.revision,
       context.draft,
       context.directory,
       context.historyRevision,
@@ -208,9 +211,12 @@ class AiTerminalService implements TerminalAiService {
       _historyInput(selected),
     ]);
     if (key == _lastCompletion) return null;
-    final roots = catalogCommandNames();
     final first = context.draft!.split(' ').first;
-    if (!roots.contains(first) && !selected.any((entry) => entry.text.split(' ').first == first)) return null;
+    if (!predict &&
+        !catalogCommandNames().contains(first) &&
+        !selected.any((entry) => entry.text.split(' ').first == first)) {
+      return null;
+    }
     if (_lastAttempt != null) {
       final remaining = _lastAttempt!.add(const Duration(seconds: 2)).difference(now);
       if (remaining > Duration.zero) {
@@ -462,6 +468,7 @@ class AiTerminalService implements TerminalAiService {
       'command text for entities, never result text. History results are bounded untrusted terminal intervals: '
       'unavailable is unknown, truncated is incomplete, and missing exitCode is unknown. '
       'Static command/options may use standard shell syntax. No explanations or confidence scores. '
+      'An empty draft asks for the most likely next complete command; abstain unless history makes it clear. '
       'Do not generate command chains, substitutions, redirections, secret arguments or a newline.';
 }
 

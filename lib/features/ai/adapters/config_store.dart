@@ -19,6 +19,7 @@ class AiConfigStore {
     'profile',
     'inlineEnabled',
     'completionEnabled',
+    'predictionEnabled',
     'inlineModel',
     'completionModel',
     'reviewModel',
@@ -41,7 +42,7 @@ class AiConfigStore {
     } else if (json['enabled'] == true) {
       throw const FormatException('AI profile required');
     }
-    for (final key in ['inlineEnabled', 'completionEnabled']) {
+    for (final key in ['inlineEnabled', 'completionEnabled', 'predictionEnabled']) {
       if (json.containsKey(key) && json[key] is! bool) throw const FormatException('invalid AI terminal setting');
     }
     for (final key in ['inlineModel', 'completionModel', 'reviewModel']) {
@@ -120,6 +121,7 @@ class AiConfigStore {
     int revision,
     bool inlineEnabled,
     bool completionEnabled,
+    bool predictionEnabled,
     Set<HostId> inlineExcludedHosts,
     Set<HostId> completionExcludedHosts,
     String? inlineModel,
@@ -136,6 +138,7 @@ class AiConfigStore {
       revision: _file.revision,
       inlineEnabled: json?['inlineEnabled'] as bool? ?? true,
       completionEnabled: json?['completionEnabled'] as bool? ?? true,
+      predictionEnabled: json?['predictionEnabled'] as bool? ?? false,
       inlineExcludedHosts: Set<HostId>.unmodifiable({
         for (final id in json?['inlineExcludedHosts'] as List? ?? const []) HostId(id as String),
       }),
@@ -154,6 +157,7 @@ class AiConfigStore {
     required int expectedRevision,
     bool inlineEnabled = true,
     bool completionEnabled = true,
+    bool predictionEnabled = false,
     Set<HostId> inlineExcludedHosts = const {},
     Set<HostId> completionExcludedHosts = const {},
     String? inlineModel,
@@ -165,6 +169,7 @@ class AiConfigStore {
     'profile': profile?.toJson(),
     'inlineEnabled': inlineEnabled,
     'completionEnabled': completionEnabled,
+    'predictionEnabled': predictionEnabled,
     'inlineExcludedHosts': [for (final id in inlineExcludedHosts) id.value]..sort(),
     'completionExcludedHosts': [for (final id in completionExcludedHosts) id.value]..sort(),
     'inlineModel': inlineModel,

@@ -23,6 +23,7 @@ class AiConfiguration {
     this.loadFailed = false,
     this.inlineEnabled = true,
     this.completionEnabled = true,
+    this.predictionEnabled = false,
     this.inlineExcludedHosts = const {},
     this.completionExcludedHosts = const {},
     this.inlineModel,
@@ -33,7 +34,7 @@ class AiConfiguration {
   final bool enabled, loadFailed;
   final ModelProfile? profile;
   final int revision;
-  final bool inlineEnabled, completionEnabled;
+  final bool inlineEnabled, completionEnabled, predictionEnabled;
   final Set<HostId> inlineExcludedHosts, completionExcludedHosts;
   final String? inlineModel, completionModel, reviewModel;
 
@@ -68,6 +69,7 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
         revision: value.revision,
         inlineEnabled: value.inlineEnabled,
         completionEnabled: value.completionEnabled,
+        predictionEnabled: value.predictionEnabled,
         inlineExcludedHosts: value.inlineExcludedHosts,
         completionExcludedHosts: value.completionExcludedHosts,
         inlineModel: value.inlineModel,
@@ -90,6 +92,7 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
     int? expectedRevision,
     bool? inlineEnabled,
     bool? completionEnabled,
+    bool? predictionEnabled,
     Set<HostId>? inlineExcludedHosts,
     Set<HostId>? completionExcludedHosts,
     String? inlineModel,
@@ -118,6 +121,7 @@ class AiConfigurationController extends Notifier<AiConfiguration> {
         expectedRevision: expectedRevision ?? state.revision,
         inlineEnabled: inlineEnabled ?? state.inlineEnabled,
         completionEnabled: completionEnabled ?? state.completionEnabled,
+        predictionEnabled: predictionEnabled ?? state.predictionEnabled,
         inlineExcludedHosts: inlineExcluded ?? state.inlineExcludedHosts,
         completionExcludedHosts: completionExcluded ?? state.completionExcludedHosts,
         inlineModel: selectedInline,
