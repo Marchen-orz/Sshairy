@@ -8,15 +8,18 @@ import '../features/credentials/api.dart';
 import '../features/hosts/api.dart';
 import '../features/files/api.dart';
 import '../features/forwarding/api.dart';
+import '../features/link/api.dart';
 import '../features/settings/api.dart';
 import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
 import '../foundation/ids.dart';
+import '../platform/device_form_factor.dart';
 import 'ai_backend.dart';
 import 'ai_resources.dart';
 import 'ai_terminal_history.dart';
 import 'ai_terminal_hosts.dart';
+import 'link_bridge.dart';
 import 'capabilities/ai.dart';
 import 'capabilities/hosts.dart';
 import 'capabilities/host_library.dart';
@@ -92,12 +95,20 @@ List<Override> appOverrides() => [
         id: SettingsSectionId.ai,
         icon: Icons.auto_awesome_outlined,
       ),
-      SettingsSection(
-        (l) => l.mcpTitle,
-        (_) => const McpSettings(),
-        id: SettingsSectionId.mcp,
-        icon: Icons.extension_outlined,
-      ),
+      if (isDesktopPlatform)
+        SettingsSection(
+          (l) => l.mcpTitle,
+          (_) => const McpSettings(),
+          id: SettingsSectionId.mcp,
+          icon: Icons.extension_outlined,
+        ),
+      if (isDesktopPlatform)
+        SettingsSection(
+          (l) => l.linkTitle,
+          (_) => const LinkSettings(),
+          id: SettingsSectionId.link,
+          icon: Icons.phonelink_outlined,
+        ),
       SettingsSection(
         (l) => l.translationService,
         (_) => TranslationSettings(
@@ -108,6 +119,21 @@ List<Override> appOverrides() => [
         icon: Icons.translate_outlined,
       ),
     ],
+  ),
+  linkDesktopBridgeProvider.overrideWith((ref) {
+    final bridge = AppLinkDesktopBridge(ref);
+    ref.onDispose(bridge.dispose);
+    return bridge;
+  }),
+  linkMobileBridgeProvider.overrideWith((ref) => AppLinkMobileBridge(ref)),
+  linkCredentialCatalogProvider.overrideWith(
+    (ref) => () => (
+      hosts: [
+        for (final h in ref.read(hostsProvider))
+          if (!h.transient) (id: h.id.value, label: '${h.title} (${h.target})'),
+      ],
+      keys: [for (final k in ref.read(keysProvider)) (id: k.id, label: '${k.label} (${k.algorithm})')],
+    ),
   ),
   terminalSnippetsProvider.overrideWith(
     (ref) => [for (final snippet in ref.watch(snippetsProvider)) CommandSnippet(snippet.text, snippet.label)],

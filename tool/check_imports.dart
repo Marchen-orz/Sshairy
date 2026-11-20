@@ -5,10 +5,11 @@ import 'dart:io';
 const adapters = {
   // Credentials parses and generates keys with it; connections dials.
   'dartssh2': ['lib/features/connections/adapters/', 'lib/features/credentials/adapters/'],
-  'pinenacl': ['lib/features/credentials/adapters/'],
+  'pinenacl': ['lib/features/credentials/adapters/', 'lib/features/link/adapters/'],
   'crypto': [
     'lib/features/credentials/adapters/',
     'lib/features/connections/adapters/',
+    'lib/features/link/adapters/',
     'lib/features/hosts/adapters/finalshell_login.dart',
     'lib/features/ai/adapters/conversation_route.dart',
     'lib/features/files/adapters/text_digest.dart',

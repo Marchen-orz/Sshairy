@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/widgets.dart';
 
@@ -17,14 +19,17 @@ class AgentAttachmentDropZone extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => DropTarget(
-    enable: enabled,
-    onDragEntered: (_) => onHover(true),
-    onDragExited: (_) => onHover(false),
-    onDragDone: (event) {
-      onHover(false);
-      if (enabled) onDrop([for (final file in event.files) file.path]);
-    },
-    child: child,
-  );
+  Widget build(BuildContext context) {
+    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) return child;
+    return DropTarget(
+      enable: enabled,
+      onDragEntered: (_) => onHover(true),
+      onDragExited: (_) => onHover(false),
+      onDragDone: (event) {
+        onHover(false);
+        if (enabled) onDrop([for (final file in event.files) file.path]);
+      },
+      child: child,
+    );
+  }
 }

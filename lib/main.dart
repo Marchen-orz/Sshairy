@@ -10,10 +10,12 @@ import 'package:path_provider/path_provider.dart';
 import 'app/composition.dart';
 import 'app/configuration.dart';
 import 'app/image_cache_budget.dart';
+import 'app/link_bridge.dart';
 import 'app/mcp/settings.dart';
 import 'features/capabilities/api.dart';
 import 'features/ai/api.dart' show AgentHostApprovalPrompts;
 import 'platform/desktop_window.dart';
+import 'platform/device_form_factor.dart';
 import 'platform/single_instance.dart';
 import 'app/shutdown.dart';
 import 'app/window_brand_icon.dart';
@@ -36,8 +38,8 @@ Future<void> main(List<String> args) async {
   await DesktopWindow.instance.initialize();
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);
-  // A second launch only brings the running window forward; tests start their own copy, like the update prompt.
-  if (Platform.environment['FLUTTER_TEST'] != 'true') {
+  // A second launch only brings the running desktop window forward; mobile OS manages task instances natively.
+  if (isDesktopPlatform && Platform.environment['FLUTTER_TEST'] != 'true') {
     final window = DesktopWindow.instance;
     _instance = await SingleInstance.acquire(
       dir.path,
@@ -131,8 +133,10 @@ class _SshairyAppState extends ConsumerState<SshairyApp> {
               child: StartupUpdatePrompt(
                 // Widget tests and probes keep their network and dialogs out of the start-up frames.
                 enabled: Platform.environment['FLUTTER_TEST'] != 'true',
-                child: McpHostPrompts(
-                  child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
+                child: LinkHostLifecycle(
+                  child: McpHostPrompts(
+                    child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
+                  ),
                 ),
               ),
             )

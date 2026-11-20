@@ -69,3 +69,25 @@ final class LocalTerminalTarget extends TerminalTarget {
   const LocalTerminalTarget(this.shell);
   final LocalShell shell;
 }
+
+enum LinkTerminalKind { mirror, proxy }
+
+/// A terminal routed through a paired desktop via Sshairy Link: either a live mirror of a desktop session or a
+/// desktop-proxied SSH connection whose private keys stay on the desktop.
+final class LinkTerminalTarget extends TerminalTarget {
+  const LinkTerminalTarget({
+    required this.peerId,
+    required this.peerName,
+    required this.remoteId,
+    required this.title,
+    required this.targetLabel,
+    required this.kind,
+  });
+
+  final String peerId;
+  final String peerName;
+  final String remoteId;
+  final String title;
+  final String targetLabel;
+  final LinkTerminalKind kind;
+}

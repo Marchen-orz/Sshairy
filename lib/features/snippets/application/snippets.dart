@@ -59,6 +59,21 @@ class Snippets extends Notifier<List<Snippet>> {
 
   Future<void> delete(String id) => _change(() => state.where((s) => s.id != id).toList());
 
+  /// Merges snippets synced from a paired desktop without deleting local-only snippets.
+  Future<int> mergeSynced(List<Snippet> incoming) async {
+    var count = 0;
+    await _change(() {
+      final byId = {for (final s in state) s.id: s};
+      for (final s in incoming) {
+        s.validate();
+        byId[s.id] = s;
+        count++;
+      }
+      return byId.values.toList();
+    });
+    return count;
+  }
+
   Future<InsertResult> insert(String id, {bool run = false, CancellationToken? cancel}) {
     final snippet = byId(id);
     if (snippet == null) return Future.value(InsertResult.unavailable);

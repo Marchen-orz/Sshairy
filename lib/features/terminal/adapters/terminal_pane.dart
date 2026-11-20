@@ -15,8 +15,10 @@ class TerminalPane extends ConsumerStatefulWidget {
     super.key,
     required this.active,
     this.visible = true,
+    this.compact = false,
     this.onKeyEvent,
     this.onAskAgent,
+    this.onOpenSnippets,
     this.focusNode,
     this.actions = const [],
   });
@@ -25,9 +27,13 @@ class TerminalPane extends ConsumerStatefulWidget {
   final bool active;
   final bool visible;
 
+  /// True in mobile / compact workspace mode: shows the touch key bar and enables pinch-to-zoom.
+  final bool compact;
+
   /// Sees keys before the terminal does, so application shortcuts are not sent to the shell.
   final FocusOnKeyEventCallback? onKeyEvent;
   final ValueChanged<String>? onAskAgent;
+  final VoidCallback? onOpenSnippets;
 
   /// Lets the owner move focus between panes; the pane makes its own when none is given.
   final FocusNode? focusNode;
@@ -79,6 +85,10 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
       _aiCompletionLoading = false,
       _applicationActive = true;
   late final VoidCallback _aiFrameCallback = _aiFrame;
+  var _touchCtrl = TouchModifierState.off;
+  var _touchAlt = TouchModifierState.off;
+  double? _pinchBaseFontSize;
+  double? _liveFontSize;
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;
@@ -268,7 +278,44 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
         !keys.isAltPressed) {
       _controller.clearSelection();
     }
+    if (widget.compact &&
+        event is KeyDownEvent &&
+        (_touchCtrl != TouchModifierState.off || _touchAlt != TouchModifierState.off) &&
+        event.character != null &&
+        event.character!.isNotEmpty) {
+      _sendTouchSequence(event.character!);
+      return KeyEventResult.handled;
+    }
     return widget.onKeyEvent?.call(node, event) ?? KeyEventResult.ignored;
+  }
+
+  void _toggleTouchCtrl() => setState(() {
+    _touchCtrl = _touchCtrl == TouchModifierState.off ? TouchModifierState.oneshot : TouchModifierState.off;
+  });
+
+  void _lockTouchCtrl() => setState(() {
+    _touchCtrl = _touchCtrl == TouchModifierState.locked ? TouchModifierState.off : TouchModifierState.locked;
+  });
+
+  void _toggleTouchAlt() => setState(() {
+    _touchAlt = _touchAlt == TouchModifierState.off ? TouchModifierState.oneshot : TouchModifierState.off;
+  });
+
+  void _lockTouchAlt() => setState(() {
+    _touchAlt = _touchAlt == TouchModifierState.locked ? TouchModifierState.off : TouchModifierState.locked;
+  });
+
+  void _sendTouchSequence(String raw) {
+    final ctrl = _touchCtrl != TouchModifierState.off;
+    final alt = _touchAlt != TouchModifierState.off;
+    final text = applyTouchModifiers(raw, ctrl: ctrl, alt: alt);
+    _terminal.textInput(text);
+    if (_touchCtrl == TouchModifierState.oneshot || _touchAlt == TouchModifierState.oneshot) {
+      setState(() {
+        if (_touchCtrl == TouchModifierState.oneshot) _touchCtrl = TouchModifierState.off;
+        if (_touchAlt == TouchModifierState.oneshot) _touchAlt = TouchModifierState.off;
+      });
+    }
   }
 
   String? get _selectedText {
@@ -392,7 +439,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
       listenable: Listenable.merge([_session, _terminalOwnsBackground]),
       builder: (context, _) {
         final hasImage = imageAvailable && _terminal.backgroundColorOverride == null && !_terminal.reverseDisplayMode;
-        return Stack(
+        final stack = Stack(
           fit: StackFit.expand,
           children: [
             // The image is composed at the chosen opacity here, rather than drawn opaque under a terminal surface
@@ -437,7 +484,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                       onTapUp: _onTapUp,
                       onSecondaryTapUp: _onSecondaryTapUp,
                       textStyle: TerminalStyle(
-                        fontSize: settings.fontSize,
+                        fontSize: _liveFontSize ?? settings.fontSize,
                         fontFamily: settings.terminalFontFamily ?? AppFonts.mono,
                         fontFamilyFallback: AppFonts.monoFallback,
                       ),
@@ -536,6 +583,60 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
               if (widget.active && _composerOpen) _composerOverlay(),
               if (widget.active && _inlineAiOpen) _inlineAiOverlay(),
             ],
+          ],
+        );
+        if (!widget.compact) return stack;
+        final zoomed = GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onScaleStart: (details) {
+            if (details.pointerCount >= 2) {
+              _pinchBaseFontSize = _liveFontSize ?? settings.fontSize;
+            }
+          },
+          onScaleUpdate: (details) {
+            if (details.pointerCount < 2 || _pinchBaseFontSize == null) return;
+            final next = (_pinchBaseFontSize! * details.scale).clamp(8.0, 32.0);
+            if ((_liveFontSize ?? settings.fontSize) != next) {
+              setState(() => _liveFontSize = next);
+            }
+          },
+          onScaleEnd: (_) {
+            final finalSize = _liveFontSize;
+            _pinchBaseFontSize = null;
+            if (finalSize != null) {
+              final rounded = finalSize.roundToDouble().clamp(8.0, 32.0);
+              setState(() => _liveFontSize = null);
+              ref.read(settingsProvider.notifier).set(SettingKeys.fontSize, rounded);
+            }
+          },
+          child: stack,
+        );
+        return Column(
+          children: [
+            Expanded(child: zoomed),
+            if (_session.status == SessionStatus.connected)
+              MobileTerminalKeyBar(
+                ctrl: _touchCtrl,
+                alt: _touchAlt,
+                onToggleCtrl: _toggleTouchCtrl,
+                onLockCtrl: _lockTouchCtrl,
+                onToggleAlt: _toggleTouchAlt,
+                onLockAlt: _lockTouchAlt,
+                onSendSequence: _sendTouchSequence,
+                onPaste: () => unawaited(_paste()),
+                onOpenComposer: _showComposer,
+                onOpenSearch: () => setState(() => _searching = !_searching),
+                onOpenSnippets: widget.onOpenSnippets,
+                keyboardFocused: _focus.hasFocus,
+                onToggleKeyboard: () {
+                  if (_focus.hasFocus) {
+                    _focus.unfocus();
+                  } else {
+                    _focus.requestFocus();
+                  }
+                  setState(() {});
+                },
+              ),
           ],
         );
       },

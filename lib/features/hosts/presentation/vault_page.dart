@@ -12,6 +12,7 @@ import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../foundation/ids.dart';
+import '../../../platform/device_form_factor.dart';
 import '../../settings/api.dart';
 import '../application/hosts.dart';
 import '../domain/host.dart';
@@ -67,8 +68,9 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     }
   }
 
-  /// Once, on an empty vault (docs/HOST_IMPORT.md).
+  /// Once, on an empty desktop vault (docs/HOST_IMPORT.md).
   void _offerImport() {
+    if (!isDesktopPlatform) return;
     if (_offered || !mounted || !widget.active || ref.read(settingsProvider).get(SettingKeys.importOffered)) return;
     if (ref.read(hostsProvider).isNotEmpty) return;
     _offered = true;

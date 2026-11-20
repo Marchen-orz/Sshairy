@@ -42,14 +42,17 @@ class OsDropZone extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => DropTarget(
-    enable: enabled,
-    onDragEntered: (_) => onHover(true),
-    onDragExited: (_) => onHover(false),
-    onDragDone: (d) {
-      onHover(false);
-      onDrop([for (final f in d.files) f.path]);
-    },
-    child: child,
-  );
+  Widget build(BuildContext context) {
+    if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) return child;
+    return DropTarget(
+      enable: enabled,
+      onDragEntered: (_) => onHover(true),
+      onDragExited: (_) => onHover(false),
+      onDragDone: (d) {
+        onHover(false);
+        onDrop([for (final f in d.files) f.path]);
+      },
+      child: child,
+    );
+  }
 }

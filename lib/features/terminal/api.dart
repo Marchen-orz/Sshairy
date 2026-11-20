@@ -22,3 +22,4 @@ export 'application/insertion.dart';
 export 'domain/terminal_target.dart';
 export 'domain/local_pty.dart';
 export 'application/local_terminal.dart';
+export 'presentation/mobile_key_bar.dart' show MobileTerminalKeyBar, TouchModifierState, applyTouchModifiers;

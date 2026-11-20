@@ -6247,6 +6247,390 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{host} (connection changed, select again)'**
   String mcpScopeChanged(String host);
+
+  /// No description provided for @mobilePreviewLayout.
+  ///
+  /// In en, this message translates to:
+  /// **'Mobile layout preview'**
+  String get mobilePreviewLayout;
+
+  /// No description provided for @linkTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device Link'**
+  String get linkTitle;
+
+  /// No description provided for @linkTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Link'**
+  String get linkTab;
+
+  /// No description provided for @linkEnabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable desktop link'**
+  String get linkEnabled;
+
+  /// No description provided for @linkPort.
+  ///
+  /// In en, this message translates to:
+  /// **'Link port'**
+  String get linkPort;
+
+  /// No description provided for @linkDiscovery.
+  ///
+  /// In en, this message translates to:
+  /// **'LAN discovery'**
+  String get linkDiscovery;
+
+  /// No description provided for @linkDeviceName.
+  ///
+  /// In en, this message translates to:
+  /// **'Device name'**
+  String get linkDeviceName;
+
+  /// No description provided for @linkAddresses.
+  ///
+  /// In en, this message translates to:
+  /// **'LAN addresses'**
+  String get linkAddresses;
+
+  /// No description provided for @linkRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening on port {port}'**
+  String linkRunning(int port);
+
+  /// No description provided for @linkStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get linkStopped;
+
+  /// No description provided for @linkStartFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not start link listener'**
+  String get linkStartFailed;
+
+  /// No description provided for @linkPairDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair device'**
+  String get linkPairDevice;
+
+  /// No description provided for @linkCancelPairing.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel pairing'**
+  String get linkCancelPairing;
+
+  /// No description provided for @linkPairingCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Pairing code'**
+  String get linkPairingCode;
+
+  /// No description provided for @linkCopyUri.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy pairing URI'**
+  String get linkCopyUri;
+
+  /// No description provided for @linkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get linkCopied;
+
+  /// No description provided for @linkPairedDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Paired devices'**
+  String get linkPairedDevices;
+
+  /// No description provided for @linkNoPeers.
+  ///
+  /// In en, this message translates to:
+  /// **'No paired devices yet.'**
+  String get linkNoPeers;
+
+  /// No description provided for @linkOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get linkOnline;
+
+  /// No description provided for @linkOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline'**
+  String get linkOffline;
+
+  /// No description provided for @linkPermMirror.
+  ///
+  /// In en, this message translates to:
+  /// **'Terminal mirror'**
+  String get linkPermMirror;
+
+  /// No description provided for @linkPermProxy.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy SSH'**
+  String get linkPermProxy;
+
+  /// No description provided for @linkPermSync.
+  ///
+  /// In en, this message translates to:
+  /// **'Config sync'**
+  String get linkPermSync;
+
+  /// No description provided for @linkPermApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote approval'**
+  String get linkPermApproval;
+
+  /// No description provided for @linkRevoke.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpair'**
+  String get linkRevoke;
+
+  /// No description provided for @linkDisconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect'**
+  String get linkDisconnect;
+
+  /// No description provided for @linkPushCredentials.
+  ///
+  /// In en, this message translates to:
+  /// **'Push credentials'**
+  String get linkPushCredentials;
+
+  /// No description provided for @linkPushCredentialsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Push credentials to {device}'**
+  String linkPushCredentialsTitle(String device);
+
+  /// No description provided for @linkPushCredentialsSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted credentials sent to {device}'**
+  String linkPushCredentialsSent(String device);
+
+  /// No description provided for @linkPushCredentialsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Select at least one host password or key.'**
+  String get linkPushCredentialsEmpty;
+
+  /// No description provided for @linkScanLan.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan LAN'**
+  String get linkScanLan;
+
+  /// No description provided for @linkScanning.
+  ///
+  /// In en, this message translates to:
+  /// **'Scanning...'**
+  String get linkScanning;
+
+  /// No description provided for @linkDiscoveredDesktops.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby desktops'**
+  String get linkDiscoveredDesktops;
+
+  /// No description provided for @linkSavedDesktops.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved desktops'**
+  String get linkSavedDesktops;
+
+  /// No description provided for @linkManualConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair with desktop'**
+  String get linkManualConnect;
+
+  /// No description provided for @linkHostOrIp.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop IP / Tailscale IP'**
+  String get linkHostOrIp;
+
+  /// No description provided for @linkPasteUri.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste pairing URI'**
+  String get linkPasteUri;
+
+  /// No description provided for @linkPairNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair'**
+  String get linkPairNow;
+
+  /// No description provided for @linkReconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get linkReconnect;
+
+  /// No description provided for @linkConnectedTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked with {desktop}'**
+  String linkConnectedTo(String desktop);
+
+  /// No description provided for @linkSyncConfig.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync config'**
+  String get linkSyncConfig;
+
+  /// No description provided for @linkSyncDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced {hosts} hosts, {snippets} snippets, +{keys} keys'**
+  String linkSyncDone(int hosts, int snippets, int keys);
+
+  /// No description provided for @linkPendingApprovals.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending approvals'**
+  String get linkPendingApprovals;
+
+  /// No description provided for @linkDesktopOnlyAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete on desktop'**
+  String get linkDesktopOnlyAction;
+
+  /// No description provided for @linkAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get linkAllow;
+
+  /// No description provided for @linkDeny.
+  ///
+  /// In en, this message translates to:
+  /// **'Deny'**
+  String get linkDeny;
+
+  /// No description provided for @linkDesktopTerminals.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop terminals'**
+  String get linkDesktopTerminals;
+
+  /// No description provided for @linkNoDesktopTerminals.
+  ///
+  /// In en, this message translates to:
+  /// **'No open terminals on desktop.'**
+  String get linkNoDesktopTerminals;
+
+  /// No description provided for @linkMirrorTag.
+  ///
+  /// In en, this message translates to:
+  /// **'Mirror'**
+  String get linkMirrorTag;
+
+  /// No description provided for @linkProxyTag.
+  ///
+  /// In en, this message translates to:
+  /// **'Via desktop'**
+  String get linkProxyTag;
+
+  /// No description provided for @linkDesktopHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect via desktop'**
+  String get linkDesktopHosts;
+
+  /// No description provided for @linkNoDesktopHosts.
+  ///
+  /// In en, this message translates to:
+  /// **'No saved hosts on desktop.'**
+  String get linkNoDesktopHosts;
+
+  /// No description provided for @linkCredentialOfferTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop sent encrypted credentials'**
+  String get linkCredentialOfferTitle;
+
+  /// No description provided for @linkCredentialOfferDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'{passwords} passwords, {keys} private keys'**
+  String linkCredentialOfferDetail(int passwords, int keys);
+
+  /// No description provided for @linkCredentialImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Save to keystore'**
+  String get linkCredentialImport;
+
+  /// No description provided for @linkCredentialImported.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved {count} credentials'**
+  String linkCredentialImported(int count);
+
+  /// No description provided for @linkErrorAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Authentication failed'**
+  String get linkErrorAuth;
+
+  /// No description provided for @linkErrorCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid pairing code'**
+  String get linkErrorCode;
+
+  /// No description provided for @linkErrorExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Pairing code expired'**
+  String get linkErrorExpired;
+
+  /// No description provided for @linkErrorRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Device unpaired on desktop'**
+  String get linkErrorRevoked;
+
+  /// No description provided for @linkErrorNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot reach desktop'**
+  String get linkErrorNetwork;
+
+  /// No description provided for @mobileNoActiveTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'No active terminal'**
+  String get mobileNoActiveTerminal;
+
+  /// No description provided for @mobileSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Sessions'**
+  String get mobileSessions;
+
+  /// No description provided for @mobileTools.
+  ///
+  /// In en, this message translates to:
+  /// **'Tools'**
+  String get mobileTools;
 }
 
 class _AppLocalizationsDelegate

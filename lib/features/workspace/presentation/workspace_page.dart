@@ -23,6 +23,7 @@ import '../../../design/window_chrome.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/shortcuts.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/device_form_factor.dart';
 import '../../ai/api.dart';
 import '../../connections/api.dart';
 import '../../files/api.dart';
@@ -35,6 +36,7 @@ import '../../snippets/api.dart';
 import '../../terminal/api.dart';
 import '../application/workspace.dart';
 import '../domain/layout.dart';
+import 'mobile_workspace.dart';
 import 'split_view.dart';
 
 part 'workspace_drag.dart';
@@ -369,10 +371,13 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    if (isCompactWorkspace(context, previewMobile: settings.get(SettingKeys.mobilePreview))) {
+      return const MobileWorkspace();
+    }
     final l = AppLocalizations.of(context);
     final state = ref.watch(workspaceProvider);
     final sessions = ref.watch(terminalSessionsProvider);
-    final settings = ref.watch(settingsProvider);
     final scheme = Theme.of(context).colorScheme;
     final live = {for (final t in state.tabs) ...t.layout.leaves.map((l) => l.pane)};
     _paneKeys.removeWhere((pane, _) => !live.contains(pane));

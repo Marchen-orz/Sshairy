@@ -68,6 +68,7 @@ final _credentialsProvider = Provider<_StoredCredentials>(
 );
 final connectionCredentialsProvider = Provider<ConnectionCredentials>((ref) => ref.read(_credentialsProvider));
 final mcpCredentialsProvider = Provider<McpCredentials>((ref) => McpCredentials._(ref.read(_credentialsProvider)));
+final linkCredentialsProvider = Provider<LinkCredentials>((ref) => LinkCredentials._(ref.read(_credentialsProvider)));
 
 /// One independent token per configured client. No SSH or model credential access.
 class McpCredentials {
@@ -78,6 +79,17 @@ class McpCredentials {
   Future<void> save(String client, Secret value) =>
       _credentials._serial(() => _credentials._store.write(SecretRef.mcp(client), value));
   Future<void> clear(String client) => _credentials._serial(() => _credentials._store.delete(SecretRef.mcp(client)));
+}
+
+/// Device identity seed for Sshairy Link E2EE pairing (docs/MOBILE.md §4.2). No SSH or model credential access.
+class LinkCredentials {
+  LinkCredentials._(this._credentials);
+  final _StoredCredentials _credentials;
+
+  Future<Secret?> readIdentity() => _credentials.read(SecretRef.linkIdentity());
+  Future<void> saveIdentity(Secret seed) =>
+      _credentials._serial(() => _credentials._store.write(SecretRef.linkIdentity(), seed));
+  Future<void> clearIdentity() => _credentials._serial(() => _credentials._store.delete(SecretRef.linkIdentity()));
 }
 
 final hostCredentialCleanupProvider = Provider<HostCredentialCleanup>((ref) => ref.read(_credentialsProvider));

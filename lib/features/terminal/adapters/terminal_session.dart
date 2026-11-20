@@ -39,6 +39,7 @@ import 'terminal_paths.dart';
 import 'completion_specs.dart';
 import 'completion_translations.dart';
 import '../presentation/confirm_insert.dart';
+import '../presentation/mobile_key_bar.dart';
 import 'ime_caret.dart';
 import 'command_descriptions.dart';
 import 'terminal_output.dart';
@@ -72,6 +73,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
        target = SshTerminalTarget(host.id),
        _connections = connections,
        _localPtyFactory = null,
+       _remoteOpener = null,
        _terminal = _HistoryTerminal(maxLines: scrollback),
        _autoReconnect = autoReconnect ?? (() => false),
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
@@ -94,6 +96,32 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
        target = LocalTerminalTarget(shell),
        _connections = null,
        _localPtyFactory = factory,
+       _remoteOpener = null,
+       _terminal = _HistoryTerminal(maxLines: scrollback),
+       _autoReconnect = (() => false),
+       _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
+       _translations = completionTranslations,
+       _snippets = snippets ?? (() => const []),
+       remotePaths = null {
+    _configureTerminal();
+  }
+
+  /// A terminal backed by an external [ShellChannel] (e.g. Sshairy Link desktop mirror or desktop-proxied SSH).
+  TerminalSession.remote(
+    this.id,
+    LinkTerminalTarget linkTarget,
+    Future<ShellChannel> Function(int cols, int rows) openChannel, {
+    this.autoConnect = true,
+    int scrollback = 2000,
+    this.completionProvider,
+    CompletionSpecs? completionSpecs,
+    CompletionTranslations? completionTranslations,
+    List<CommandSnippet> Function()? snippets,
+  }) : _sshHost = null,
+       target = linkTarget,
+       _connections = null,
+       _localPtyFactory = null,
+       _remoteOpener = openChannel,
        _terminal = _HistoryTerminal(maxLines: scrollback),
        _autoReconnect = (() => false),
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
@@ -128,9 +156,66 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     LocalTerminalTarget(:final shell) => shell,
     _ => null,
   };
+  LinkTerminalTarget? get linkTarget => switch (target) {
+    final LinkTerminalTarget t => t,
+    _ => null,
+  };
   bool get isLocal => target is LocalTerminalTarget;
-  String get title => _sshHost?.title ?? localShell!.name;
-  String get targetLabel => _sshHost?.target ?? localShell!.name;
+  bool get isRemote => target is LinkTerminalTarget;
+  String get title => _sshHost?.title ?? localShell?.name ?? linkTarget!.title;
+  String get targetLabel => _sshHost?.target ?? localShell?.name ?? linkTarget!.targetLabel;
+  int get cols => _terminal.viewWidth;
+  int get rows => _terminal.viewHeight;
+
+  final _mirrorOut = StreamController<Uint8List>.broadcast();
+
+  /// Broadcast stream of terminal output chunks for paired mobile mirroring; zero work when no mirror is attached.
+  Stream<Uint8List> get mirrorOutput => _mirrorOut.stream;
+
+  /// Captures a bounded UTF-8 text snapshot of the recent buffer for newly attached mobile mirrors.
+  Uint8List captureMirrorSnapshot({int maxBytes = 65536}) {
+    final buffer = _terminal.buffer;
+    final total = buffer.lines.length;
+    if (total == 0) return Uint8List(0);
+    final end = total - 1;
+    final start = max(0, end - 160);
+    final lines = <String>[];
+    for (var i = start; i <= end; i++) {
+      lines.add(buffer.lines[i].getText().replaceAll(RegExp(r'\s+$'), ''));
+    }
+    while (lines.isNotEmpty && lines.last.isEmpty) {
+      lines.removeLast();
+    }
+    final joined = lines.isEmpty ? '' : '${lines.join('\r\n')}\r\n';
+    final bytes = utf8.encode(joined);
+    if (bytes.length <= maxBytes) return Uint8List.fromList(bytes);
+    // Keep the tail within budget without splitting a UTF-8 sequence.
+    var offset = bytes.length - maxBytes;
+    while (offset < bytes.length && (bytes[offset] & 0xc0) == 0x80) {
+      offset++;
+    }
+    return Uint8List.fromList(bytes.sublist(offset));
+  }
+
+  /// Injects raw input bytes from a paired mobile mirror into this active desktop session.
+  void sendRemoteInput(Uint8List bytes) {
+    if (_closed || _shellEnded || bytes.isEmpty) return;
+    if (_shell != null) {
+      _shell!.write(bytes);
+    } else if (_localPty != null) {
+      _localPty!.write(bytes);
+    }
+  }
+
+  /// Forwards an optional resize request from a paired mobile mirror.
+  void resizeFromRemote(int cols, int rows) {
+    if (_closed || _shellEnded || cols < 10 || rows < 4) return;
+    if (_shell != null) {
+      _shell!.resize(cols, rows);
+    } else if (_localPty != null) {
+      _localPty!.resize(cols, rows);
+    }
+  }
 
   /// UI draft only; it never enters the layout, history or application notifications.
   String multilineDraft = '';
@@ -139,6 +224,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   final bool autoConnect;
   final ConnectionManager? _connections;
   final LocalPtyFactory? _localPtyFactory;
+  final Future<ShellChannel> Function(int cols, int rows)? _remoteOpener;
   LocalPty? _localPty;
   Future<void> _localStopped = Future.value();
   Future<void> get stopped => _localStopped;
@@ -205,19 +291,20 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       target: switch (target) {
         SshTerminalTarget(:final hostId) => SshTerminalAiTarget(hostId),
         LocalTerminalTarget(:final shell) => LocalTerminalAiTarget(shell.kind),
+        LinkTerminalTarget() => const LocalTerminalAiTarget(LocalShellKind.unix),
       },
       generation: _shellGeneration,
       revision: _draftRevision,
       historyRevision: _historyRevision,
-      prompt: !canInsert
+      prompt: !canInsert || isRemote
           ? TerminalAiPrompt.unavailable
           : draft == null
           ? TerminalAiPrompt.unknown
           : _semanticSeen
           ? TerminalAiPrompt.semantic
           : TerminalAiPrompt.recognized,
-      draft: draft,
-      directory: _directory.value,
+      draft: isRemote ? null : draft,
+      directory: isRemote ? null : _directory.value,
     );
   }
 
@@ -232,12 +319,13 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   }
 
   TerminalHistorySession? get historySession {
-    if (!canInsert || !isLocal && _lease?.isCurrent != true) return null;
+    if (!canInsert || isRemote || (!isLocal && _lease?.isCurrent != true)) return null;
     return TerminalHistorySession(
       sessionId: id,
       target: switch (target) {
         SshTerminalTarget(:final hostId) => SshTerminalAiTarget(hostId),
         LocalTerminalTarget(:final shell) => LocalTerminalAiTarget(shell.kind),
+        LinkTerminalTarget() => throw StateError('unreachable'),
       },
       label: _historyMetadata(_sshHost?.label ?? localShell!.name, 256) ?? '',
       generation: _shellGeneration,
@@ -558,6 +646,9 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       _localStopped = Future.wait([previous, pending]).then((_) {});
       return pending;
     }
+    if (isRemote) {
+      return _connectRemote();
+    }
     return _connect(prompts);
   }
 
@@ -759,7 +850,72 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     }
   }
 
+  Future<void> _connectRemote() async {
+    if (_closed || status == SessionStatus.connecting || status == SessionStatus.connected) return;
+    final opener = _remoteOpener;
+    if (opener == null) return;
+    ShellChannel? ownedShell;
+    TerminalOutput? output;
+    status = SessionStatus.connecting;
+    error = null;
+    notifyListeners();
+    try {
+      final shell = await opener(max(1, _terminal.viewWidth), max(1, _terminal.viewHeight));
+      ownedShell = shell;
+      if (_closed) return;
+      _shell = shell;
+      _shellEnded = false;
+      _resetCommandDraft();
+      void ended() {
+        if (!identical(_shell, shell)) return;
+        _shellEnded = true;
+        if (!_closed) _resetCommandDraft();
+        _dismissInsertions();
+      }
+
+      shell.done.then((_) => ended(), onError: (Object _) => ended());
+      _terminal.onOutput = (data) {
+        if (data.isEmpty || _shellEnded) return;
+        _inputSequence++;
+        _inputPending = true;
+        shell.write(utf8.encode(data));
+      };
+      _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
+      final consumer = TerminalOutput([shell.stdout, shell.stderr], (data) {
+        if (!_closed && identical(_shell, shell)) _output(data);
+      });
+      output = consumer;
+      _outputQueue = consumer;
+      _set(SessionStatus.connected);
+      await Future.any([shell.done, consumer.failed]).catchError((_) {});
+      ended();
+      await consumer.done;
+      if (consumer.error != null) throw ConnectError(ConnectFailure.network, '${consumer.error}');
+      _set(SessionStatus.disconnected);
+    } on ConnectError catch (e) {
+      error = e;
+      _set(SessionStatus.failed);
+    } on Object catch (e) {
+      error = ConnectError(ConnectFailure.network, '$e');
+      _set(SessionStatus.failed);
+    } finally {
+      output?.cancel();
+      if (identical(_outputQueue, output)) _outputQueue = null;
+      if (identical(_shell, ownedShell)) {
+        _terminal.onOutput = null;
+        _terminal.onResize = null;
+        _dismissInsertions();
+        _shell = null;
+        _shellEnded = true;
+      }
+      ownedShell?.close();
+    }
+  }
+
   void _output(String data) {
+    if (_mirrorOut.hasListener && data.isNotEmpty) {
+      _mirrorOut.add(Uint8List.fromList(utf8.encode(data)));
+    }
     _scanCommandResult(data);
     _terminal.write(data);
     _inputPending = false;
@@ -942,6 +1098,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _shell = null;
     _lease?.release();
     _lease = null;
+    if (!_mirrorOut.isClosed) unawaited(_mirrorOut.close());
     dispose();
   }
 }

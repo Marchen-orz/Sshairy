@@ -38,6 +38,8 @@ final class SecretRef {
 
   factory SecretRef.mcp(String client) => SecretRef._('mcp/${Uri.encodeComponent(client)}/token', canRemember: false);
 
+  factory SecretRef.linkIdentity() => const SecretRef._('link/identity/ed25519', canRemember: false);
+
   final String storageKey;
   final bool canRemember;
 

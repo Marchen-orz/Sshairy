@@ -15,6 +15,8 @@ export 'application/credential_access.dart'
         translationCredentialsProvider,
         aiCredentialsProvider,
         McpCredentials,
-        mcpCredentialsProvider;
+        mcpCredentialsProvider,
+        LinkCredentials,
+        linkCredentialsProvider;
 export 'application/keys.dart' show KeyInUse, KeysNotifier, keysProvider, keyReferencesProvider;
 export 'domain/ssh_key.dart';

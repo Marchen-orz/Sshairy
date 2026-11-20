@@ -385,4 +385,83 @@ class HostsNotifier extends Notifier<List<Host>> {
     after: (before) =>
         ref.read(hostCredentialCleanupProvider).clearHost(host.id, before.hostById(host.id)?.proxy?.key ?? ''),
   );
+
+  /// Merges a non-secret [HostLibrary] synced from a paired desktop (docs/MOBILE.md §4.3).
+  /// Existing local-only hosts/groups/identities are preserved; references to keys not present on this device
+  /// fall back to password/interactive authentication so secrets never have to leave the desktop by default.
+  Future<int> mergeSyncedLibrary(HostLibrary incoming) async {
+    final availableKeys = {for (final k in ref.read(keysProvider)) k.id};
+    var syncedHosts = 0;
+    await _apply(
+      (current) {
+        final groups = {for (final g in current.groups) g.id: g};
+        for (final g in incoming.groups) {
+          groups[g.id] = g.copyWith(defaults: _sanitizeOverrides(g.defaults, availableKeys));
+        }
+        final identities = {for (final i in current.identities) i.id: i};
+        for (final i in incoming.identities) {
+          identities[i.id] = i.copyWith(policy: _sanitizePolicy(i.policy, availableKeys));
+        }
+        final hosts = {for (final h in current.hosts) h.id: h};
+        for (final h in incoming.hosts) {
+          final sanitized = _sanitizeHost(h, availableKeys);
+          hosts[h.id] = sanitized;
+          syncedHosts++;
+        }
+        return HostLibrary(
+          hosts: hosts.values,
+          groups: groups.values,
+          identities: identities.values,
+          defaults: current.defaults.isEmpty ? _sanitizeOverrides(incoming.defaults, availableKeys) : current.defaults,
+        );
+      },
+      routes: false,
+    );
+    return syncedHosts;
+  }
+
+  static AuthPolicy _sanitizePolicy(AuthPolicy policy, Set<String> availableKeys) {
+    if (!policy.usesKey) return policy;
+    if (policy.keyId != null && availableKeys.contains(policy.keyId)) return policy;
+    return AuthPolicy(methods: const [AuthKind.password], allowInteractive: policy.allowInteractive);
+  }
+
+  static ConnectionOverrides _sanitizeOverrides(ConnectionOverrides o, Set<String> availableKeys) {
+    if (o.authentication.mode != OverrideMode.value) return o;
+    final auth = o.authentication.value!;
+    if (auth.identityId != null) return o;
+    final sanitized = _sanitizePolicy(auth.policy!, availableKeys);
+    return ConnectionOverrides(
+      port: o.port,
+      authentication: OverrideValue.value(Authentication.inline(auth.username!, sanitized)),
+      jump: o.jump,
+      proxy: o.proxy,
+      legacy: o.legacy,
+    );
+  }
+
+  static Host _sanitizeHost(Host h, Set<String> availableKeys) {
+    final sanitizedOverrides = h.overrides == null ? null : _sanitizeOverrides(h.overrides!, availableKeys);
+    final sanitizedPolicy = _sanitizePolicy(h.policy, availableKeys);
+    return Host(
+      id: h.id,
+      label: h.label,
+      address: h.address,
+      port: h.port,
+      username: h.username,
+      auth: sanitizedPolicy.methods.first,
+      keyId: sanitizedPolicy.keyId,
+      keyPath: sanitizedPolicy.keyPath,
+      group: h.group,
+      tags: h.tags,
+      pinned: h.pinned,
+      lastUsed: h.lastUsed,
+      jumpHostId: h.jumpHostId,
+      proxy: h.proxy,
+      legacy: h.legacy,
+      groupId: h.groupId,
+      overrides: sanitizedOverrides,
+      authPolicy: sanitizedPolicy,
+    );
+  }
 }

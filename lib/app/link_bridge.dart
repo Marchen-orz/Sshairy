@@ -1,0 +1,458 @@
+import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../features/ai/api.dart';
+import '../features/connections/api.dart';
+import '../features/credentials/api.dart';
+import '../features/hosts/api.dart';
+import '../features/link/api.dart';
+import '../features/snippets/api.dart';
+import '../features/terminal/api.dart';
+import '../features/workspace/api.dart';
+import '../foundation/ids.dart';
+import '../foundation/result.dart';
+import '../foundation/secret.dart';
+import '../platform/device_form_factor.dart';
+import 'mcp/controller.dart';
+
+/// Composition-layer bridge connecting desktop [LinkHostController] to local terminals, SSH, hosts,
+/// snippets, trust store, opt-in credentials, and Airy Agent / MCP approvals (docs/MOBILE.md §4, §6).
+class AppLinkDesktopBridge implements LinkDesktopBridge {
+  AppLinkDesktopBridge(this._ref) {
+    _sessionsSub = _ref.listen<Map<SessionId, TerminalSession>>(
+      terminalSessionsProvider,
+      (_, sessions) => _syncSessionListeners(sessions),
+      fireImmediately: true,
+    );
+    _hostsSub = _ref.listen<List<Host>>(hostsProvider, (_, _) {
+      if (!_hostsChanged.isClosed) _hostsChanged.add(null);
+    });
+    _agent = _ref.read(agentRuntimeProvider);
+    _agent.addListener(_onApprovalsChanged);
+    _mcp = _ref.read(mcpControllerProvider);
+    _mcp.addListener(_onApprovalsChanged);
+  }
+
+  final Ref _ref;
+  late final ProviderSubscription<Map<SessionId, TerminalSession>> _sessionsSub;
+  late final ProviderSubscription<List<Host>> _hostsSub;
+  late final AgentRuntime _agent;
+  late final McpController _mcp;
+
+  final _sessionsChanged = StreamController<void>.broadcast();
+  final _hostsChanged = StreamController<void>.broadcast();
+  final _approvalsChanged = StreamController<void>.broadcast();
+  final _watchedSessions = <SessionId, TerminalSession>{};
+
+  // Stable unique IDs bound to the exact pending approval object instances so stale mobile clicks cannot
+  // accidentally approve a newer request (first-responder wins between Desktop and Mobile).
+  final _approvalIds = Expando<String>();
+  final _approvalObjects = <String, Object>{};
+
+  String _idFor(Object obj) {
+    final existing = _approvalIds[obj];
+    if (existing != null) {
+      _approvalObjects[existing] = obj;
+      return existing;
+    }
+    final fresh = newId();
+    _approvalIds[obj] = fresh;
+    _approvalObjects[fresh] = obj;
+    return fresh;
+  }
+
+  void _syncSessionListeners(Map<SessionId, TerminalSession> sessions) {
+    for (final entry in _watchedSessions.entries.toList()) {
+      if (!identical(sessions[entry.key], entry.value)) {
+        entry.value.removeListener(_emitSessionsChanged);
+        _watchedSessions.remove(entry.key);
+      }
+    }
+    for (final entry in sessions.entries) {
+      if (entry.value.isRemote) continue;
+      if (!_watchedSessions.containsKey(entry.key)) {
+        _watchedSessions[entry.key] = entry.value;
+        entry.value.addListener(_emitSessionsChanged);
+      }
+    }
+    _emitSessionsChanged();
+  }
+
+  void _emitSessionsChanged() {
+    if (!_sessionsChanged.isClosed) _sessionsChanged.add(null);
+  }
+
+  void _onApprovalsChanged() {
+    if (!_approvalsChanged.isClosed) _approvalsChanged.add(null);
+  }
+
+  @override
+  Stream<void> get sessionsChanged => _sessionsChanged.stream;
+
+  @override
+  Stream<void> get hostsChanged => _hostsChanged.stream;
+
+  @override
+  Stream<void> get approvalsChanged => _approvalsChanged.stream;
+
+  @override
+  List<LinkSessionSummary> listSessions() {
+    final sessions = _ref.read(terminalSessionsProvider);
+    return [
+      for (final entry in sessions.entries)
+        if (!entry.value.isRemote)
+          LinkSessionSummary(
+            sessionId: entry.key.value,
+            title: entry.value.title,
+            targetLabel: entry.value.targetLabel,
+            isLocal: entry.value.isLocal,
+            status: entry.value.status.name,
+            cols: entry.value.cols,
+            rows: entry.value.rows,
+            hostId: entry.value.sshHost?.id.value,
+          ),
+    ];
+  }
+
+  @override
+  MirrorAttachment? attachMirror(String sessionId, void Function(Uint8List chunk) onOutput) {
+    final session = _ref.read(terminalSessionsProvider)[SessionId(sessionId)];
+    if (session == null || session.isRemote) return null;
+    final snapshot = session.captureMirrorSnapshot(maxBytes: linkSnapshotMaxBytes);
+    final sub = session.mirrorOutput.listen(onOutput, onError: (Object _) {});
+    return MirrorAttachment(
+      snapshot: snapshot,
+      write: session.sendRemoteInput,
+      resize: session.resizeFromRemote,
+      detach: () => unawaited(sub.cancel()),
+    );
+  }
+
+  @override
+  List<LinkHostSummary> listHosts() => [
+    for (final h in _ref.read(hostsProvider))
+      if (!h.transient)
+        LinkHostSummary(
+          hostId: h.id.value,
+          label: h.label,
+          targetLabel: h.target,
+          group: h.group,
+          tags: h.tags,
+          pinned: h.pinned,
+        ),
+  ];
+
+  @override
+  Future<ShellChannel> openProxyShell(String hostId, {required int cols, required int rows}) async {
+    final host = _ref.read(hostsProvider).where((h) => !h.transient && h.id.value == hostId).firstOrNull;
+    if (host == null) throw const LinkException(LinkErrorKind.hostUnavailable);
+    final connections = _ref.read(connectionManagerProvider);
+    final prompts = _NonInteractiveProxyPrompts();
+    try {
+      final (lease, channel) = await connections.open(
+        host,
+        prompts,
+        (lease) => lease.openShell(cols: cols, rows: rows),
+        purpose: LeasePurpose.terminal,
+      );
+      return _LeasedShellChannel(lease, channel);
+    } on ConnectError catch (e) {
+      throw LinkException(LinkErrorKind.hostUnavailable, e.kind.name);
+    } on Object {
+      throw const LinkException(LinkErrorKind.hostUnavailable);
+    }
+  }
+
+  @override
+  LinkSyncBundle exportSyncBundle() {
+    final library = _ref.read(hostsProvider.notifier).library;
+    final snippets = _ref.read(snippetsProvider);
+    final trust = _ref.read(hostTrustProvider);
+    return LinkSyncBundle(
+      hostsLibrary: library.toJson(),
+      snippets: [for (final s in snippets) s.toJson()],
+      knownHosts: trust.entries,
+      exportedAt: DateTime.now().toUtc(),
+    );
+  }
+
+  @override
+  Future<LinkCredentialBundle> exportOptInCredentials({
+    required Set<String> hostIds,
+    required Set<String> keyIds,
+  }) async {
+    final passwords = <String, String>{};
+    if (hostIds.isNotEmpty) {
+      final editor = _ref.read(hostPasswordEditorProvider);
+      for (final id in hostIds) {
+        final secret = await editor.readPassword(HostId(id));
+        if (secret != null && secret.reveal().isNotEmpty) {
+          passwords[id] = secret.reveal();
+        }
+      }
+    }
+    final keys = <({String label, String pem, String? passphrase})>[];
+    if (keyIds.isNotEmpty) {
+      final allKeys = _ref.read(keysProvider);
+      final creds = _ref.read(connectionCredentialsProvider);
+      for (final key in allKeys) {
+        if (!keyIds.contains(key.id)) continue;
+        final pem = await creds.read(key.privateRef);
+        if (pem == null || pem.reveal().isEmpty) continue;
+        final pass = key.encrypted ? await creds.read(key.passphraseRef) : null;
+        keys.add((label: key.label, pem: pem.reveal(), passphrase: pass?.reveal()));
+      }
+    }
+    return LinkCredentialBundle(hostPasswords: passwords, privateKeys: keys);
+  }
+
+  @override
+  List<LinkApprovalItem> listApprovals() {
+    final items = <LinkApprovalItem>[];
+    final activeIds = <String>{};
+    final now = DateTime.now().toUtc();
+
+    final action = _agent.approval;
+    if (action != null) {
+      final id = _idFor(action);
+      activeIds.add(id);
+      items.add(
+        LinkApprovalItem(
+          approvalId: id,
+          source: LinkApprovalSource.agentAction,
+          title: action.purpose.isNotEmpty ? action.purpose : action.capability,
+          target: action.target,
+          command: action.command,
+          cwd: action.cwd,
+          actionable: true,
+          createdAt: now,
+        ),
+      );
+    }
+
+    final hostApproval = _agent.hostApproval;
+    if (hostApproval != null) {
+      final id = _idFor(hostApproval);
+      activeIds.add(id);
+      items.add(
+        LinkApprovalItem(
+          approvalId: id,
+          source: LinkApprovalSource.agentHost,
+          title: 'Airy Agent',
+          target: hostApproval.target,
+          actionable: true,
+          createdAt: now,
+        ),
+      );
+    }
+
+    final localReq = _agent.localAccessRequest;
+    if (localReq != null) {
+      final id = _idFor(localReq);
+      activeIds.add(id);
+      items.add(
+        LinkApprovalItem(
+          approvalId: id,
+          source: LinkApprovalSource.agentLocalNotice,
+          title: 'Airy Agent',
+          target: '',
+          detail: localReq.purpose,
+          actionable: false,
+          createdAt: now,
+        ),
+      );
+    }
+
+    final mcpApproval = _mcp.approval;
+    if (mcpApproval != null) {
+      final id = _idFor(mcpApproval);
+      activeIds.add(id);
+      items.add(
+        LinkApprovalItem(
+          approvalId: id,
+          source: LinkApprovalSource.mcpHost,
+          title: 'MCP · ${mcpApproval.client.name}',
+          target: mcpApproval.host.label,
+          actionable: true,
+          createdAt: now,
+        ),
+      );
+    }
+
+    _approvalObjects.removeWhere((id, _) => !activeIds.contains(id));
+    return items;
+  }
+
+  @override
+  bool decideApproval(String approvalId, bool allowed) {
+    final obj = _approvalObjects.remove(approvalId);
+    if (obj == null) return false;
+    if (obj is AgentApproval && identical(_agent.approval, obj)) {
+      _agent.approve(allowed, expected: obj);
+      return true;
+    }
+    if (obj is AgentHostApproval && identical(_agent.hostApproval, obj)) {
+      _agent.decideHost(obj, allowed);
+      return true;
+    }
+    if (obj is McpHostApproval && identical(_mcp.approval, obj)) {
+      _mcp.decide(obj, allowed);
+      return true;
+    }
+    return false;
+  }
+
+  void dispose() {
+    _sessionsSub.close();
+    _hostsSub.close();
+    for (final s in _watchedSessions.values) {
+      s.removeListener(_emitSessionsChanged);
+    }
+    _watchedSessions.clear();
+    _agent.removeListener(_onApprovalsChanged);
+    _mcp.removeListener(_onApprovalsChanged);
+    unawaited(_sessionsChanged.close());
+    unawaited(_hostsChanged.close());
+    unawaited(_approvalsChanged.close());
+  }
+}
+
+/// Composition-layer bridge wired on Mobile (and Desktop mobile-preview) to apply synced config/credentials
+/// and open mirrored or desktop-proxied terminal tabs in the workspace.
+class AppLinkMobileBridge implements LinkMobileBridge {
+  AppLinkMobileBridge(this._ref);
+
+  final Ref _ref;
+
+  @override
+  Future<LinkSyncSummary> applySyncBundle(LinkSyncBundle bundle) async {
+    var hostsSynced = 0;
+    if (bundle.hostsLibrary.isNotEmpty) {
+      final incoming = HostLibrary.fromJson(bundle.hostsLibrary);
+      hostsSynced = await _ref.read(hostsProvider.notifier).mergeSyncedLibrary(incoming);
+    }
+    var snippetsSynced = 0;
+    if (bundle.snippets.isNotEmpty) {
+      final incomingSnippets = [for (final j in bundle.snippets) Snippet.fromJson(j)];
+      snippetsSynced = await _ref.read(snippetsProvider.notifier).mergeSynced(incomingSnippets);
+    }
+    final trustResult = bundle.knownHosts.isEmpty
+        ? const TrustImportResult()
+        : await _ref.read(hostTrustProvider).importKeys(bundle.knownHosts);
+    return LinkSyncSummary(
+      hostsSynced: hostsSynced,
+      snippetsSynced: snippetsSynced,
+      knownHostsAdded: trustResult.added,
+      knownHostsConflicts: trustResult.conflicts.length,
+    );
+  }
+
+  @override
+  Future<int> importOptInCredentials(LinkCredentialBundle bundle) async {
+    var imported = 0;
+    if (bundle.hostPasswords.isNotEmpty) {
+      final editor = _ref.read(hostPasswordEditorProvider);
+      for (final entry in bundle.hostPasswords.entries) {
+        if (entry.value.isEmpty) continue;
+        await editor.savePassword(HostId(entry.key), Secret(entry.value));
+        imported++;
+      }
+    }
+    if (bundle.privateKeys.isNotEmpty) {
+      final keys = _ref.read(keysProvider.notifier);
+      for (final item in bundle.privateKeys) {
+        if (item.pem.trim().isEmpty) continue;
+        final pass = item.passphrase;
+        final result = await keys.import(
+          item.label,
+          item.pem,
+          passphrase: pass == null || pass.isEmpty ? null : Secret(pass),
+          remember: pass != null && pass.isNotEmpty,
+        );
+        if (result is Ok) imported++;
+      }
+    }
+    return imported;
+  }
+
+  @override
+  void openRemoteTerminal({
+    required String peerId,
+    required String peerName,
+    required String remoteId,
+    required String title,
+    required String targetLabel,
+    required bool isMirror,
+    required Future<ShellChannel> Function(int cols, int rows) openChannel,
+  }) {
+    _ref
+        .read(workspaceProvider.notifier)
+        .openRemote(
+          LinkTerminalTarget(
+            peerId: peerId,
+            peerName: peerName,
+            remoteId: remoteId,
+            title: title,
+            targetLabel: targetLabel,
+            kind: isMirror ? LinkTerminalKind.mirror : LinkTerminalKind.proxy,
+          ),
+          openChannel,
+        );
+  }
+}
+
+class _NonInteractiveProxyPrompts implements ConnectPrompts {
+  @override
+  Future<TrustChoice> hostKey(HostKeyPrompt prompt) async => TrustChoice.reject;
+
+  @override
+  Future<SecretAnswer?> secret(SecretRequest request) async => null;
+}
+
+class _LeasedShellChannel implements ShellChannel {
+  _LeasedShellChannel(this._lease, this._inner) {
+    unawaited(_inner.done.whenComplete(_lease.release));
+  }
+
+  final TransportLease _lease;
+  final ShellChannel _inner;
+
+  @override
+  Stream<Uint8List> get stdout => _inner.stdout;
+
+  @override
+  Stream<Uint8List> get stderr => _inner.stderr;
+
+  @override
+  Future<void> get done => _inner.done;
+
+  @override
+  void write(Uint8List data) => _inner.write(data);
+
+  @override
+  void resize(int cols, int rows) => _inner.resize(cols, rows);
+
+  @override
+  void close() {
+    _inner.close();
+    _lease.release();
+  }
+}
+
+/// Ensures desktop [LinkHostController] starts/stops with the application lifecycle when enabled in settings.
+class LinkHostLifecycle extends ConsumerWidget {
+  const LinkHostLifecycle({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (isDesktopPlatform) {
+      ref.watch(linkHostControllerProvider);
+    }
+    return child;
+  }
+}

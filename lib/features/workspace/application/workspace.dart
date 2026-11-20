@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../foundation/data_dir.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/json_file.dart';
+import '../../connections/api.dart' show ShellChannel;
 import '../../hosts/api.dart';
 import '../../terminal/api.dart';
 import '../domain/layout.dart';
@@ -95,16 +96,24 @@ class Workspace extends Notifier<WorkspaceState> {
     return tab.id;
   }
 
-  TerminalSession _copySession(TerminalSession session) => switch (session.localShell) {
-    final shell? => _sessions.openLocal(shell),
-    null => _sessions.open(session.host),
+  TabId openRemote(LinkTerminalTarget target, Future<ShellChannel> Function(int cols, int rows) openChannel) {
+    final s = _sessions.openRemote(target, openChannel);
+    final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
+    _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));
+    return tab.id;
+  }
+
+  TerminalSession? _copySession(TerminalSession session) => switch (session.target) {
+    LocalTerminalTarget(:final shell) => _sessions.openLocal(shell),
+    SshTerminalTarget() => _sessions.open(session.host),
+    LinkTerminalTarget() => null,
   };
 
   /// A new tab with a fresh shell on the same target as [id]'s focused pane; the running process is not copied.
   TabId? duplicate(TabId id) {
     final tab = _tab(id);
     final s = tab == null ? null : session(tab.layout.focusedLeaf.session);
-    if (s == null) return null;
+    if (s == null || s.isRemote) return null;
     return switch (s.localShell) {
       final shell? => openLocal(shell),
       null => openHost(s.host),
@@ -205,6 +214,7 @@ class Workspace extends Notifier<WorkspaceState> {
     final current = session(tab.layout.leaves.firstWhere((leaf) => leaf.pane == pane).session)!;
     final added = PaneId(newId());
     final s = _copySession(current);
+    if (s == null) return null;
     final next = tab.layout.insert(pane, side, Layout.single(added, s.id));
     if (next == null) {
       _sessions.close(s.id);
@@ -365,7 +375,7 @@ class Workspace extends Notifier<WorkspaceState> {
       for (final t in state.tabs)
         if (t.layout.leaves.every((l) {
           final s = sessions[l.session];
-          return s != null && (s.isLocal || !s.host.transient);
+          return s != null && !s.isRemote && (s.isLocal || !s.host.transient);
         }))
           t,
     ];
@@ -381,6 +391,7 @@ class Workspace extends Notifier<WorkspaceState> {
                 l.session.value: switch (sessions[l.session]!.target) {
                   SshTerminalTarget(:final hostId) => {'type': 'ssh', 'host': hostId.value},
                   LocalTerminalTarget(:final shell) => {'type': 'local', 'shell': shell.toJson()},
+                  LinkTerminalTarget() => throw StateError('remote sessions are not persisted'),
                 },
             },
             if (t.title != null) 'title': t.title,

@@ -1144,5 +1144,127 @@
         "type": "String"
       }
     }
-  }
+  },
+  "mobilePreviewLayout": "Mobile layout preview",
+  "linkTitle": "Device Link",
+  "linkTab": "Link",
+  "linkEnabled": "Enable desktop link",
+  "linkPort": "Link port",
+  "linkDiscovery": "LAN discovery",
+  "linkDeviceName": "Device name",
+  "linkAddresses": "LAN addresses",
+  "linkRunning": "Listening on port {port}",
+  "@linkRunning": {
+    "placeholders": {
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "linkStopped": "Stopped",
+  "linkStartFailed": "Could not start link listener",
+  "linkPairDevice": "Pair device",
+  "linkCancelPairing": "Cancel pairing",
+  "linkPairingCode": "Pairing code",
+  "linkCopyUri": "Copy pairing URI",
+  "linkCopied": "Copied",
+  "linkPairedDevices": "Paired devices",
+  "linkNoPeers": "No paired devices yet.",
+  "linkOnline": "Connected",
+  "linkOffline": "Offline",
+  "linkPermMirror": "Terminal mirror",
+  "linkPermProxy": "Proxy SSH",
+  "linkPermSync": "Config sync",
+  "linkPermApproval": "Remote approval",
+  "linkRevoke": "Unpair",
+  "linkDisconnect": "Disconnect",
+  "linkPushCredentials": "Push credentials",
+  "linkPushCredentialsTitle": "Push credentials to {device}",
+  "@linkPushCredentialsTitle": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "linkPushCredentialsSent": "Encrypted credentials sent to {device}",
+  "@linkPushCredentialsSent": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "linkPushCredentialsEmpty": "Select at least one host password or key.",
+  "linkScanLan": "Scan LAN",
+  "linkScanning": "Scanning...",
+  "linkDiscoveredDesktops": "Nearby desktops",
+  "linkSavedDesktops": "Saved desktops",
+  "linkManualConnect": "Pair with desktop",
+  "linkHostOrIp": "Desktop IP / Tailscale IP",
+  "linkPasteUri": "Paste pairing URI",
+  "linkPairNow": "Pair",
+  "linkReconnect": "Connect",
+  "linkConnectedTo": "Linked with {desktop}",
+  "@linkConnectedTo": {
+    "placeholders": {
+      "desktop": {
+        "type": "String"
+      }
+    }
+  },
+  "linkSyncConfig": "Sync config",
+  "linkSyncDone": "Synced {hosts} hosts, {snippets} snippets, +{keys} keys",
+  "@linkSyncDone": {
+    "placeholders": {
+      "hosts": {
+        "type": "int"
+      },
+      "snippets": {
+        "type": "int"
+      },
+      "keys": {
+        "type": "int"
+      }
+    }
+  },
+  "linkPendingApprovals": "Pending approvals",
+  "linkDesktopOnlyAction": "Complete on desktop",
+  "linkAllow": "Allow",
+  "linkDeny": "Deny",
+  "linkDesktopTerminals": "Desktop terminals",
+  "linkNoDesktopTerminals": "No open terminals on desktop.",
+  "linkMirrorTag": "Mirror",
+  "linkProxyTag": "Via desktop",
+  "linkDesktopHosts": "Connect via desktop",
+  "linkNoDesktopHosts": "No saved hosts on desktop.",
+  "linkCredentialOfferTitle": "Desktop sent encrypted credentials",
+  "linkCredentialOfferDetail": "{passwords} passwords, {keys} private keys",
+  "@linkCredentialOfferDetail": {
+    "placeholders": {
+      "passwords": {
+        "type": "int"
+      },
+      "keys": {
+        "type": "int"
+      }
+    }
+  },
+  "linkCredentialImport": "Save to keystore",
+  "linkCredentialImported": "Saved {count} credentials",
+  "@linkCredentialImported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "linkErrorAuth": "Authentication failed",
+  "linkErrorCode": "Invalid pairing code",
+  "linkErrorExpired": "Pairing code expired",
+  "linkErrorRevoked": "Device unpaired on desktop",
+  "linkErrorNetwork": "Cannot reach desktop",
+  "mobileNoActiveTerminal": "No active terminal",
+  "mobileSessions": "Sessions",
+  "mobileTools": "Tools"
 }

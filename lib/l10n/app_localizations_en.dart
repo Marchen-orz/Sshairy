@@ -3414,4 +3414,211 @@ class AppLocalizationsEn extends AppLocalizations {
   String mcpScopeChanged(String host) {
     return '$host (connection changed, select again)';
   }
+
+  @override
+  String get mobilePreviewLayout => 'Mobile layout preview';
+
+  @override
+  String get linkTitle => 'Device Link';
+
+  @override
+  String get linkTab => 'Link';
+
+  @override
+  String get linkEnabled => 'Enable desktop link';
+
+  @override
+  String get linkPort => 'Link port';
+
+  @override
+  String get linkDiscovery => 'LAN discovery';
+
+  @override
+  String get linkDeviceName => 'Device name';
+
+  @override
+  String get linkAddresses => 'LAN addresses';
+
+  @override
+  String linkRunning(int port) {
+    return 'Listening on port $port';
+  }
+
+  @override
+  String get linkStopped => 'Stopped';
+
+  @override
+  String get linkStartFailed => 'Could not start link listener';
+
+  @override
+  String get linkPairDevice => 'Pair device';
+
+  @override
+  String get linkCancelPairing => 'Cancel pairing';
+
+  @override
+  String get linkPairingCode => 'Pairing code';
+
+  @override
+  String get linkCopyUri => 'Copy pairing URI';
+
+  @override
+  String get linkCopied => 'Copied';
+
+  @override
+  String get linkPairedDevices => 'Paired devices';
+
+  @override
+  String get linkNoPeers => 'No paired devices yet.';
+
+  @override
+  String get linkOnline => 'Connected';
+
+  @override
+  String get linkOffline => 'Offline';
+
+  @override
+  String get linkPermMirror => 'Terminal mirror';
+
+  @override
+  String get linkPermProxy => 'Proxy SSH';
+
+  @override
+  String get linkPermSync => 'Config sync';
+
+  @override
+  String get linkPermApproval => 'Remote approval';
+
+  @override
+  String get linkRevoke => 'Unpair';
+
+  @override
+  String get linkDisconnect => 'Disconnect';
+
+  @override
+  String get linkPushCredentials => 'Push credentials';
+
+  @override
+  String linkPushCredentialsTitle(String device) {
+    return 'Push credentials to $device';
+  }
+
+  @override
+  String linkPushCredentialsSent(String device) {
+    return 'Encrypted credentials sent to $device';
+  }
+
+  @override
+  String get linkPushCredentialsEmpty =>
+      'Select at least one host password or key.';
+
+  @override
+  String get linkScanLan => 'Scan LAN';
+
+  @override
+  String get linkScanning => 'Scanning...';
+
+  @override
+  String get linkDiscoveredDesktops => 'Nearby desktops';
+
+  @override
+  String get linkSavedDesktops => 'Saved desktops';
+
+  @override
+  String get linkManualConnect => 'Pair with desktop';
+
+  @override
+  String get linkHostOrIp => 'Desktop IP / Tailscale IP';
+
+  @override
+  String get linkPasteUri => 'Paste pairing URI';
+
+  @override
+  String get linkPairNow => 'Pair';
+
+  @override
+  String get linkReconnect => 'Connect';
+
+  @override
+  String linkConnectedTo(String desktop) {
+    return 'Linked with $desktop';
+  }
+
+  @override
+  String get linkSyncConfig => 'Sync config';
+
+  @override
+  String linkSyncDone(int hosts, int snippets, int keys) {
+    return 'Synced $hosts hosts, $snippets snippets, +$keys keys';
+  }
+
+  @override
+  String get linkPendingApprovals => 'Pending approvals';
+
+  @override
+  String get linkDesktopOnlyAction => 'Complete on desktop';
+
+  @override
+  String get linkAllow => 'Allow';
+
+  @override
+  String get linkDeny => 'Deny';
+
+  @override
+  String get linkDesktopTerminals => 'Desktop terminals';
+
+  @override
+  String get linkNoDesktopTerminals => 'No open terminals on desktop.';
+
+  @override
+  String get linkMirrorTag => 'Mirror';
+
+  @override
+  String get linkProxyTag => 'Via desktop';
+
+  @override
+  String get linkDesktopHosts => 'Connect via desktop';
+
+  @override
+  String get linkNoDesktopHosts => 'No saved hosts on desktop.';
+
+  @override
+  String get linkCredentialOfferTitle => 'Desktop sent encrypted credentials';
+
+  @override
+  String linkCredentialOfferDetail(int passwords, int keys) {
+    return '$passwords passwords, $keys private keys';
+  }
+
+  @override
+  String get linkCredentialImport => 'Save to keystore';
+
+  @override
+  String linkCredentialImported(int count) {
+    return 'Saved $count credentials';
+  }
+
+  @override
+  String get linkErrorAuth => 'Authentication failed';
+
+  @override
+  String get linkErrorCode => 'Invalid pairing code';
+
+  @override
+  String get linkErrorExpired => 'Pairing code expired';
+
+  @override
+  String get linkErrorRevoked => 'Device unpaired on desktop';
+
+  @override
+  String get linkErrorNetwork => 'Cannot reach desktop';
+
+  @override
+  String get mobileNoActiveTerminal => 'No active terminal';
+
+  @override
+  String get mobileSessions => 'Sessions';
+
+  @override
+  String get mobileTools => 'Tools';
 }

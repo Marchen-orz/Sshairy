@@ -3257,4 +3257,210 @@ class AppLocalizationsZh extends AppLocalizations {
   String mcpScopeChanged(String host) {
     return '$host（连接已变化，请重新选择）';
   }
+
+  @override
+  String get mobilePreviewLayout => '移动端布局预览';
+
+  @override
+  String get linkTitle => '手机互联';
+
+  @override
+  String get linkTab => '互联';
+
+  @override
+  String get linkEnabled => '启用电脑互联';
+
+  @override
+  String get linkPort => '互联端口';
+
+  @override
+  String get linkDiscovery => '局域网发现';
+
+  @override
+  String get linkDeviceName => '设备名称';
+
+  @override
+  String get linkAddresses => '本机地址';
+
+  @override
+  String linkRunning(int port) {
+    return '正在监听端口 $port';
+  }
+
+  @override
+  String get linkStopped => '未开启';
+
+  @override
+  String get linkStartFailed => '无法启动互联服务';
+
+  @override
+  String get linkPairDevice => '配对新设备';
+
+  @override
+  String get linkCancelPairing => '取消配对';
+
+  @override
+  String get linkPairingCode => '配对码';
+
+  @override
+  String get linkCopyUri => '复制配对链接';
+
+  @override
+  String get linkCopied => '已复制';
+
+  @override
+  String get linkPairedDevices => '已配对设备';
+
+  @override
+  String get linkNoPeers => '暂无已配对设备。';
+
+  @override
+  String get linkOnline => '已连接';
+
+  @override
+  String get linkOffline => '离线';
+
+  @override
+  String get linkPermMirror => '终端镜像';
+
+  @override
+  String get linkPermProxy => '电脑代理连接';
+
+  @override
+  String get linkPermSync => '配置同步';
+
+  @override
+  String get linkPermApproval => '远程审批';
+
+  @override
+  String get linkRevoke => '取消配对';
+
+  @override
+  String get linkDisconnect => '断开';
+
+  @override
+  String get linkPushCredentials => '推送凭据';
+
+  @override
+  String linkPushCredentialsTitle(String device) {
+    return '向「$device」推送加密凭据';
+  }
+
+  @override
+  String linkPushCredentialsSent(String device) {
+    return '已向「$device」发送加密凭据';
+  }
+
+  @override
+  String get linkPushCredentialsEmpty => '请至少选择一个主机密码或私钥。';
+
+  @override
+  String get linkScanLan => '扫描局域网';
+
+  @override
+  String get linkScanning => '扫描中...';
+
+  @override
+  String get linkDiscoveredDesktops => '附近电脑';
+
+  @override
+  String get linkSavedDesktops => '已保存电脑';
+
+  @override
+  String get linkManualConnect => '与电脑配对';
+
+  @override
+  String get linkHostOrIp => '电脑 IP / Tailscale 地址';
+
+  @override
+  String get linkPasteUri => '粘贴配对链接';
+
+  @override
+  String get linkPairNow => '配对';
+
+  @override
+  String get linkReconnect => '连接';
+
+  @override
+  String linkConnectedTo(String desktop) {
+    return '已互联：$desktop';
+  }
+
+  @override
+  String get linkSyncConfig => '同步配置';
+
+  @override
+  String linkSyncDone(int hosts, int snippets, int keys) {
+    return '已同步 $hosts 台主机、$snippets 条片段、+$keys 条信任密钥';
+  }
+
+  @override
+  String get linkPendingApprovals => '待审批请求';
+
+  @override
+  String get linkDesktopOnlyAction => '请在电脑端完成';
+
+  @override
+  String get linkAllow => '批准';
+
+  @override
+  String get linkDeny => '拒绝';
+
+  @override
+  String get linkDesktopTerminals => '电脑实时终端';
+
+  @override
+  String get linkNoDesktopTerminals => '电脑端暂无打开的终端。';
+
+  @override
+  String get linkMirrorTag => '镜像';
+
+  @override
+  String get linkProxyTag => '经电脑连接';
+
+  @override
+  String get linkDesktopHosts => '经电脑代理连接';
+
+  @override
+  String get linkNoDesktopHosts => '电脑端暂无已保存主机。';
+
+  @override
+  String get linkCredentialOfferTitle => '电脑端推送了加密凭据';
+
+  @override
+  String linkCredentialOfferDetail(int passwords, int keys) {
+    return '$passwords 个密码、$keys 把私钥';
+  }
+
+  @override
+  String get linkCredentialImport => '存入系统安全存储';
+
+  @override
+  String linkCredentialImported(int count) {
+    return '已安全导入 $count 项凭据';
+  }
+
+  @override
+  String get linkErrorAuth => '设备身份校验失败';
+
+  @override
+  String get linkErrorCode => '配对码错误';
+
+  @override
+  String get linkErrorExpired => '配对码已过期';
+
+  @override
+  String get linkErrorRevoked => '电脑端已取消此设备配对';
+
+  @override
+  String get linkErrorNetwork => '无法连接到电脑端';
+
+  @override
+  String get mobileNoActiveTerminal => '暂无打开的终端';
+
+  @override
+  String get mobileSessions => '会话';
+
+  @override
+  String get mobileTools => '工具';
 }

@@ -71,6 +71,25 @@ class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
     return session;
   }
 
+  TerminalSession openRemote(
+    LinkTerminalTarget target,
+    Future<ShellChannel> Function(int cols, int rows) openChannel, {
+    SessionId? id,
+    bool autoConnect = true,
+  }) {
+    final session = TerminalSession.remote(
+      id ?? SessionId(newId()),
+      target,
+      openChannel,
+      autoConnect: autoConnect,
+      scrollback: ref.read(settingsProvider).get(SettingKeys.scrollback),
+      snippets: () => ref.read(terminalSnippetsProvider),
+    );
+    _owned[session.id] = session;
+    state = {...state, session.id: session};
+    return session;
+  }
+
   void closeAll() {
     final sessions = _owned.values.toList();
     _owned.clear();
