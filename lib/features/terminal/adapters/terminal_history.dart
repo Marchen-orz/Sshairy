@@ -143,9 +143,13 @@ class _PendingCommandResult {
   bool sensitive = false;
   String secretTail = '';
 
-  void dispose() {
+  /// Completes with the finished record, or null when the boundary was lost or the record was dropped.
+  final done = Completer<TerminalAiHistoryEntry?>();
+
+  void dispose([TerminalAiHistoryEntry? result]) {
     submitted.dispose();
     start?.dispose();
+    if (!done.isCompleted) done.complete(result);
   }
 }
 
@@ -312,12 +316,13 @@ extension _TerminalHistoryResults on TerminalSession {
         bytes += size;
       }
     }
-    _aiHistory[index] = pending.entry.withResult(
+    final result = _aiHistory[index] = pending.entry.withResult(
       status: truncated ? TerminalAiHistoryResultStatus.truncated : TerminalAiHistoryResultStatus.available,
       output: text.toString(),
       exitCode: exitCode,
       boundary: pending.boundary,
     );
+    pending.done.complete(result);
     final bounded = boundedTerminalAiHistory(_aiHistory);
     _aiHistory
       ..clear()

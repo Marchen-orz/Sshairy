@@ -348,6 +348,54 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         _ => false,
       };
 
+  bool _running = false;
+
+  TerminalRunStatus? runRefusal(TerminalHistorySession expected) {
+    if (!historySessionCurrent(expected) || _sshHost == null) return TerminalRunStatus.scopeChanged;
+    if (!_semanticSeen) return TerminalRunStatus.shellIntegrationRequired;
+    if (_running || !_semanticInput || pendingOutputBytes != 0 || _echoedCommand() != '') {
+      return TerminalRunStatus.terminalBusy;
+    }
+    return null;
+  }
+
+  Future<TerminalRunResult> run(
+    TerminalHistorySession expected,
+    String command, {
+    required Duration timeout,
+    required CancellationToken cancel,
+  }) async {
+    if (runRefusal(expected) case final refusal?) return TerminalRunResult(refusal);
+    if (!validTerminalAiCommand(command) || cancel.isCancelled) {
+      return const TerminalRunResult(TerminalRunStatus.notSubmitted);
+    }
+    _running = true;
+    try {
+      // The same path as typing: one write of the whole line, then Enter only once the shell echoed it exactly.
+      _terminal.onOutput!(command);
+      final echo = DateTime.now().add(const Duration(seconds: 2));
+      while (pendingOutputBytes != 0 || _echoedCommand() != command) {
+        if (cancel.isCancelled || DateTime.now().isAfter(echo) || !historySessionCurrent(expected)) {
+          return const TerminalRunResult(TerminalRunStatus.notSubmitted);
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      _submitCommand();
+      final pending = _pendingCommandResult;
+      _terminal.onOutput!('\r');
+      if (pending == null) return const TerminalRunResult(TerminalRunStatus.outcomeUnknown);
+      final stop = Completer<TerminalAiHistoryEntry?>();
+      final timer = Timer(timeout, () => stop.isCompleted ? null : stop.complete(null));
+      unawaited(cancel.whenCancelled.then((_) => stop.isCompleted ? null : stop.complete(null)));
+      final entry = await Future.any([pending.done.future, stop.future]);
+      timer.cancel();
+      if (entry != null) return TerminalRunResult(TerminalRunStatus.finished, entry);
+      return TerminalRunResult(pending.sensitive ? TerminalRunStatus.filtered : TerminalRunStatus.outcomeUnknown);
+    } finally {
+      _running = false;
+    }
+  }
+
   TerminalHistorySnapshot? readHistory(TerminalHistorySession expected) {
     if (!historySessionCurrent(expected)) return null;
     return TerminalHistorySnapshot(

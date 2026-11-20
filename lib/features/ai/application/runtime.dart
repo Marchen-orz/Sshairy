@@ -983,7 +983,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'If a command fails, use its exit code and stderr to fix the specific cause; never retry the identical failing command. '
       'If the target, scope or required input is ambiguous, ask one focused question instead of guessing or trying several speculative hosts. '
       'Do not narrate tool calls or dump raw output back to the user; summarize the meaning, keep details in the execution cards. '
-      'The purpose field of command_execute and job_start must be a short, concrete phrase saying what that command checks or changes (for example "check free space on /var"), not a description of the tool. '
+      'The purpose field of command_execute, terminal_run and job_start must be a short, concrete phrase saying what that command checks or changes (for example "check free space on /var"), not a description of the tool. '
       'When several commands run in sequence, each purpose should read as one step in the same investigation. '
       // Authorization and scope.
       'permissionMode is frozen per turn: observe offers terminal context and fixed read-only diagnostics but no arbitrary shell; observe and confirm require local approval for diagnostics and commands. '
@@ -1022,7 +1022,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'Answer directly; cite returned executionIds in backticks only when useful, and never invent evidence. '
       'Do not append an evidence section or bare IDs to every answer. '
       'When responseMode is answerOnly, answer the supplied goal again using only readable history and shared projections, with no tools or replayed work. '
-      'Independent exec does not inherit the user terminal environment.';
+      'Independent exec does not inherit the user terminal environment. '
+      'Use terminal_run when the step belongs in the current user shell (its directory, environment or a session the user watches); use command_execute for isolated checks. '
+      'If terminal_run returns shellIntegrationRequired, terminalBusy or notSubmitted, do not retry it blindly: use command_execute or ask the user.';
 
   TerminalHistorySession? _terminal(Map<String, Object?> args) {
     final raw = args['sessionId'];
@@ -1104,6 +1106,95 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'lastLine': snapshot.lastLine,
       'truncated': snapshot.truncated,
     });
+  }
+
+  HostId? _sshHostOf(TerminalHistorySession session) => switch (session.target) {
+    SshTerminalAiTarget(:final hostId) when _availableHosts.any((entry) => entry.id == hostId) => hostId,
+    _ => null,
+  };
+
+  String _runBinding(Capability capability, Map<String, Object?> args, TerminalHistorySession session, HostId host) =>
+      jsonEncode([
+        _binding(capability, args, null, [host]),
+        session.sessionId.value,
+        session.generation,
+      ]);
+
+  /// Submits an approved line in the user's visible shell; the result is that command's bounded history record.
+  Future<Result<Object?>> terminalRun(Map<String, Object?> args, RequestContext context) async {
+    final token = _cancel, owner = _owner;
+    _checkTurn(token, owner);
+    if (_answerOnly || permissionMode == AgentPermissionMode.observe) return const Err(AppError('notExposed'));
+    final session = _terminal(args), host = session == null ? null : _sshHostOf(session);
+    final prepared = _prepared[context.operationId];
+    if (session == null || host == null || prepared == null || !_hostGranted(host)) {
+      return const Err(AppError('scopeChanged'));
+    }
+    final command = args['command'] as String;
+    final execution =
+        _executions.where((entry) => entry.id == context.operationId.value).firstOrNull ??
+        AgentExecution(context.operationId.value, 'agent.terminalRun', '', '', '');
+    execution
+      ..target = _bounded(session.label, 256)
+      ..command = command
+      ..cwd = terminalHistory?.read(session)?.directory ?? ''
+      ..purpose = _purpose(args['purpose']);
+    if (!_executions.contains(execution)) {
+      _executions.add(execution);
+      _timeline.add(execution);
+    }
+    final record = OperationRecord(
+      context.operationId,
+      host,
+      execution.capability,
+      DateTime.now(),
+      OperationState.intent,
+    );
+    try {
+      await journal.record(record);
+    } on Object {
+      return const Err(AppError('journalFailed'));
+    }
+    _checkTurn(token, owner);
+    execution.state = 'running';
+    _phase(AgentPhase.executing);
+    final result = await terminalHistory!.run(
+      session,
+      command,
+      timeout: Duration(seconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 60),
+      cancel: token!,
+    );
+    final entry = result.entry;
+    execution
+      ..exitCode = entry?.exitCode
+      ..sharedText = entry?.output
+      ..state = switch (result.status) {
+        TerminalRunStatus.finished when entry?.exitCode == 0 => 'completed',
+        TerminalRunStatus.finished when entry?.exitCode != null => 'failed',
+        TerminalRunStatus.finished ||
+        TerminalRunStatus.outcomeUnknown ||
+        TerminalRunStatus.filtered => 'outcomeUnknown',
+        _ => 'failed',
+      };
+    try {
+      await journal.record(
+        record.withState(switch (execution.state) {
+          'completed' => OperationState.completed,
+          'failed' => OperationState.failed,
+          _ => OperationState.outcomeUnknown,
+        }),
+      );
+    } on Object {
+      if (identical(token, _cancel) && owner == _owner) error = 'journalFailed';
+    }
+    if (identical(token, _cancel) && owner == _owner) {
+      _uncertain |= execution.state == 'outcomeUnknown';
+      _emit();
+    }
+    _checkTurn(token, owner);
+    if (entry == null) return Err(AppError(result.status.name));
+    _sharedTerminals[session.sessionId] = session;
+    return Ok({'executionId': execution.id, 'sessionId': session.sessionId.value, ...terminalAiHistoryData(entry)});
   }
 
   HostId? _host(Map<String, Object?> args) {
@@ -1280,6 +1371,40 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           }
         }
       }
+      if (capability.id == 'agent.terminalRun') {
+        final session = _terminal(args), host = session == null ? null : _sshHostOf(session);
+        if (session == null || host == null) return const Err(AppError('outsideScope'));
+        final execution = _executions.where((entry) => entry.id == context.operationId.value).firstOrNull;
+        if (execution != null) execution.target = _bounded(session.label, 256);
+        if (terminalHistory?.runRefusal(session) case final refusal?) return Err(AppError(refusal.name));
+        if (!_hostGranted(host)) {
+          final refusal = await _ensureHost(host, token, owner);
+          if (refusal != null) return refusal;
+        }
+        _usedHostRoutes[host] = hostRoutes()[host];
+        _resolvedHost = host;
+        final binding = _runBinding(capability, args, session, host);
+        if (_denied.contains(binding)) return const Err(AppError('denied'));
+        _prepared[context.operationId] = _Prepared(null, binding);
+        final accepted = await _approveAction(
+          _bounded(session.label, 256),
+          args['command'] as String,
+          terminalHistory?.read(session)?.directory ?? '',
+          capability,
+          host: host,
+          timeoutSeconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 60,
+          purpose: _purpose(args['purpose']),
+        );
+        currentTurn();
+        if (!accepted) {
+          _denied.add(binding);
+          return const Err(AppError('denied'));
+        }
+        return switch (terminalHistory?.runRefusal(session)) {
+          final refusal? => Err(AppError(refusal.name)),
+          null => const Ok(null),
+        };
+      }
       if (capability.id == 'agent.terminalScreen') {
         final session = _terminal(args);
         if (session == null) return const Err(AppError('outsideScope'));
@@ -1431,6 +1556,20 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
             : const Err(AppError('scopeChanged'));
       }
       final prepared = _prepared[context.operationId];
+      if (capability.id == 'agent.terminalRun') {
+        final session = _terminal(args), host = session == null ? null : _sshHostOf(session);
+        if (prepared == null ||
+            session == null ||
+            host == null ||
+            !_hostGranted(host) ||
+            prepared.binding != _runBinding(capability, args, session, host)) {
+          return const Err(AppError('scopeChanged'));
+        }
+        return switch (terminalHistory?.runRefusal(session)) {
+          final refusal? => Err(AppError(refusal.name)),
+          null => const Ok(null),
+        };
+      }
       if (capability.id == 'agent.terminalScreen') {
         final session = _terminal(args);
         return prepared != null &&

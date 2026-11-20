@@ -73,6 +73,11 @@ const agentTools = <AgentTool>[
     hostFields: ['hostId'],
   ),
   AgentTool(
+    'terminal_run',
+    'agent.terminalRun',
+    "Run one exact command line in a visible SSH terminal (omit sessionId for the current window), in the user's own shell: cd and export persist and the user sees it. Needs shell integration and an empty prompt. Include purpose. Approval matches command_execute; the result is that command's bounded terminal record.",
+  ),
+  AgentTool(
     'output_read',
     'agent.output',
     'Read only a previously shared bounded output projection by its evidence handle.',

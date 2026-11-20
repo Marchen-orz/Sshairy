@@ -2514,6 +2514,19 @@ class AppLocalizationsZh extends AppLocalizations {
       '允许 Airy 在本轮使用这个终端的已知目录、提示符状态和近期命令结果。窗口编号为发送时的标签位置与分屏位置；不会执行命令。';
 
   @override
+  String get aiAgentToolTerminalRun => '在终端中运行';
+
+  @override
+  String get aiAgentToolTerminalRunHint => '在可见终端中运行一条命令并读取其有界结果。';
+
+  @override
+  String get aiAgentTerminalRunApproveTitle => '在此终端中运行';
+
+  @override
+  String get aiAgentTerminalRunPermission =>
+      '在此终端的 shell 中以 SSH 账号权限运行，cd 和 export 会保留。停止只结束等待，命令仍在终端中继续运行。';
+
+  @override
   String get aiAgentToolTerminalScreen => '读取终端屏幕';
 
   @override

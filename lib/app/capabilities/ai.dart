@@ -96,6 +96,21 @@ List<Capability> aiCapabilities(Ref ref) {
       ),
     ),
     FunctionCapability(
+      'agent.terminalRun',
+      Effect.remoteWrite,
+      (a, c) => call(c, (r) => r.terminalRun(a.raw, c)),
+      agentExposed: true,
+      inputSchema: schema(
+        {
+          'sessionId': host,
+          'command': {'type': 'string', 'minLength': 1, 'maxLength': 2048},
+          'purpose': {'type': 'string', 'minLength': 1, 'maxLength': 160},
+          'timeoutSeconds': {'type': 'integer', 'minimum': 1, 'maximum': 300},
+        },
+        ['command'],
+      ),
+    ),
+    FunctionCapability(
       'agent.output',
       Effect.query,
       (a, c) => call(c, (r) async => r.readOutput(a.raw)),

@@ -4844,6 +4844,30 @@ abstract class AppLocalizations {
   /// **'Let Airy use this terminal\'s known directory, prompt status and recent command results for this turn. Window numbers are the tab and pane positions when you sent the message. No commands will run.'**
   String get aiAgentTerminalApproveHint;
 
+  /// No description provided for @aiAgentToolTerminalRun.
+  ///
+  /// In en, this message translates to:
+  /// **'Run in terminal'**
+  String get aiAgentToolTerminalRun;
+
+  /// No description provided for @aiAgentToolTerminalRunHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Run one command in a visible terminal and read its bounded result.'**
+  String get aiAgentToolTerminalRunHint;
+
+  /// No description provided for @aiAgentTerminalRunApproveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Run in this terminal'**
+  String get aiAgentTerminalRunApproveTitle;
+
+  /// No description provided for @aiAgentTerminalRunPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'Runs in this terminal\'s shell with the SSH account\'s permissions; cd and export persist. Stopping only stops waiting; the command keeps running in the terminal.'**
+  String get aiAgentTerminalRunPermission;
+
   /// No description provided for @aiAgentToolTerminalScreen.
   ///
   /// In en, this message translates to:
