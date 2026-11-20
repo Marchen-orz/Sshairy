@@ -42,7 +42,6 @@ import 'completion_translations.dart';
 import '../presentation/confirm_insert.dart';
 import '../presentation/mobile_key_bar.dart';
 import 'ime_caret.dart';
-import 'command_descriptions.dart';
 import 'terminal_output.dart';
 
 part 'terminal_pane.dart';

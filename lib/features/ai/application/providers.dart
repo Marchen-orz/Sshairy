@@ -38,6 +38,7 @@ final aiTerminalServiceProvider = Provider<AiTerminalService>((ref) {
     configuration: () => ref.read(aiConfigurationProvider),
     hosts: () => ref.read(aiTerminalHostsProvider),
     language: ref.read(aiResponseLanguageProvider),
+    specOffers: CompletionSpecs.shared.offers,
   );
   ref.listen(aiConfigurationProvider, (_, _) => service.invalidate());
   ref.listen(aiTerminalHostsProvider, (_, _) => service.invalidate());

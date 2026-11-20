@@ -1,4 +1,4 @@
-import 'command_catalog.dart';
+import 'completion_command_metadata.dart';
 import 'completion_context.dart';
 
 enum TerminalInputIntent { command, naturalLanguage, uncertain }
@@ -7,7 +7,7 @@ TerminalInputIntent terminalInputIntent(String text) {
   final line = text.trim();
   if (line.isEmpty || line.length > 2048) return TerminalInputIntent.uncertain;
   final first = line.split(RegExp(r'\s+')).first;
-  if (catalogCommandNames().contains(first) ||
+  if (completionCommandMetadata(first) != null ||
       first.contains('/') ||
       first.contains('\\') ||
       RegExp(r'^(?:\./|\.\./|~|[A-Za-z]:)').hasMatch(first)) {

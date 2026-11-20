@@ -252,8 +252,6 @@ extension _AssistancePane on _TerminalPaneState {
           final trusted = _session._translationSources[candidate];
           return (trusted == null ? null : translations.lookup(trusted, locale)) ?? original;
         }
-        final own = candidate.description?.text(l);
-        if (own != null) return own;
         if (locale != 'zh' || candidate.source != CommandCandidateSource.builtin) return null;
         return switch (candidate.kind) {
           CommandKind.command => l.completionCommand,

@@ -13,6 +13,7 @@ class AiTerminalService implements TerminalAiService {
     required this.configuration,
     required this.hosts,
     this.language,
+    this.specOffers,
     DateTime Function()? now,
     this.generationTimeout = const Duration(seconds: 20),
     this.completionTimeout = const Duration(seconds: 5),
@@ -24,6 +25,9 @@ class AiTerminalService implements TerminalAiService {
 
   /// Current UI language (`zh` or `en`) for user-visible messages.
   final String Function()? language;
+
+  /// Packaged static specs: whether [word] is a known next word after [prefix]. Absent means nothing is known.
+  final Future<bool> Function(String prefix, String word)? specOffers;
   final DateTime Function() _now;
   final Duration generationTimeout, completionTimeout;
   final _changes = StreamController<void>.broadcast(sync: true);
@@ -213,7 +217,7 @@ class AiTerminalService implements TerminalAiService {
     if (key == _lastCompletion) return null;
     final first = context.draft!.split(' ').first;
     if (!predict &&
-        !catalogCommandNames().contains(first) &&
+        completionCommandMetadata(first) == null &&
         !selected.any((entry) => entry.text.split(' ').first == first)) {
       return null;
     }
@@ -249,7 +253,9 @@ class AiTerminalService implements TerminalAiService {
           !command.startsWith(context.draft!) ||
           command.length <= context.draft!.length ||
           utf8.encode(command.substring(context.draft!.length)).length > 2048 ||
-          !_grounded(command, context.draft!, selected)) {
+          !await _grounded(command, context.draft!, selected) ||
+          !canComplete(context) ||
+          cancel.isCancelled) {
         return null;
       }
       return command;
@@ -300,9 +306,17 @@ class AiTerminalService implements TerminalAiService {
     if (context.directory != null && utf8.encode(context.directory!).length <= 2048) 'cwd': context.directory,
   };
 
+  Future<bool> _offers(String prefix, String word) async {
+    try {
+      return await specOffers?.call(prefix, word) ?? false;
+    } on Object {
+      return false;
+    }
+  }
+
   /// Concrete entity names must already be in the user's input or authorized history. New static words
-  /// are accepted only when the local catalog recognizes them at this exact command position.
-  static bool _grounded(String command, String draft, List<TerminalAiHistoryEntry> history) {
+  /// are accepted only when the packaged specs offer them at this exact command position.
+  Future<bool> _grounded(String command, String draft, List<TerminalAiHistoryEntry> history) async {
     if (!_plain.hasMatch(command) || _sensitive(command)) return false;
     if (history.any((entry) => entry.text == command)) return true;
     final known = {
@@ -316,11 +330,7 @@ class AiTerminalService implements TerminalAiService {
         continue;
       }
       final next = '$prefix$word';
-      if (next.length > draft.length &&
-          !known.contains(word) &&
-          !catalogSuggestions(prefix).any((suggestion) => suggestion.text == next)) {
-        return false;
-      }
+      if (next.length > draft.length && !known.contains(word) && !await _offers(prefix, word)) return false;
       prefix = '$next ';
     }
     return true;

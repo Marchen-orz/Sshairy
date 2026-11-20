@@ -118,9 +118,7 @@ extension _CommandAssistance on TerminalSession {
     final draft = _browseStack.isEmpty ? request.text : _browseStack.last.draft;
     final depth = _browseStack.length;
     bool current() => !cancel.isCancelled && _requestCurrent(request);
-    final local = <CommandCandidate>[
-      if (depth == 0) ...localCommandCandidates(request.text, _commands, catalog: false),
-    ];
+    final local = <CommandCandidate>[if (depth == 0) ...localCommandCandidates(request.text, _commands)];
     var supplied = <CommandCandidate>[];
     CommandBrowseState? browse = depth == 0 ? null : CommandBrowseState(label: draft, depth: depth);
     var loading = true;
@@ -186,18 +184,12 @@ extension _CommandAssistance on TerminalSession {
           if (metadata?.description case final original?) _translationSources[candidate] = original;
           local.add(candidate);
         }
-        if (names.isEmpty) {
-          local.addAll(localCommandCandidates(draft, CommandHistory()));
-        }
       } else {
         final completed = await _completionSpecs.complete(draft);
         if (!current()) return;
         final result = completed.result;
         for (final item in result.suggestions) {
           if (item.isAppendOnly) local.add(_specCandidate(draft, item));
-        }
-        if (!completed.available && result.suggestions.isEmpty) {
-          local.addAll(localCommandCandidates(draft, CommandHistory()));
         }
         final path = result.path;
         if (path != null) {
@@ -263,7 +255,7 @@ extension _CommandAssistance on TerminalSession {
         }
       }
     } on Object {
-      if (current()) local.addAll(localCommandCandidates(draft, CommandHistory()));
+      // Optional specs and path sources leave history and snippets available.
     } finally {
       loading = false;
       publish();

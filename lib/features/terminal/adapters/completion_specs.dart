@@ -119,6 +119,11 @@ class CompletionSpecs {
     return json;
   }
 
+  /// Whether the packaged specs offer [word] as the next whole word after [prefix] (empty or ending in a space).
+  Future<bool> offers(String prefix, String word) async => prefix.isEmpty
+      ? completionCommandMetadata(word) != null
+      : (await complete(prefix)).result.suggestions.any((suggestion) => suggestion.value == word);
+
   Future<({SpecCompletionResult result, bool available})> complete(String draft) async {
     final context = CompletionContext.parse(draft);
     final names = await commandNames();

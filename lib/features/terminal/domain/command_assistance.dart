@@ -1,7 +1,6 @@
 import '../../../foundation/cancellation.dart';
-import 'command_catalog.dart';
 
-export 'command_catalog.dart' show CommandDescription, CommandKind;
+enum CommandKind { line, command, subcommand, option, argument }
 
 enum CommandCandidateSource { history, ai, builtin, path, snippet, provider }
 
@@ -11,7 +10,6 @@ class CommandCandidate {
     this.source = CommandCandidateSource.provider,
     this.kind = CommandKind.line,
     this.displayText,
-    this.description,
     this.detail,
     this.directory,
     this.preview,
@@ -22,7 +20,6 @@ class CommandCandidate {
   final CommandCandidateSource source;
   final CommandKind kind;
   final String? displayText;
-  final CommandDescription? description;
 
   /// Third-party static specification text, or a user-owned snippet label.
   final String? detail;
@@ -178,22 +175,12 @@ bool commandCandidateValid(CommandCandidate candidate, String draft) {
   return true;
 }
 
-/// The small built-in catalog is a fallback if packaged specifications are unavailable.
-List<CommandCandidate> localCommandCandidates(String prefix, CommandHistory history, {bool catalog = true}) {
+List<CommandCandidate> localCommandCandidates(String prefix, CommandHistory history) {
   if (prefix.trim().isEmpty || !commandIsSingleLine(prefix)) return const [];
   return mergeCommandCandidates(prefix, [
     for (final command in history.commands)
       if (command.startsWith(prefix) && command != prefix)
         CommandCandidate(command, source: CommandCandidateSource.history),
-    if (catalog)
-      for (final s in catalogSuggestions(prefix))
-        CommandCandidate(
-          s.text,
-          source: CommandCandidateSource.builtin,
-          kind: s.kind,
-          displayText: s.display,
-          description: s.description,
-        ),
   ], const []);
 }
 
