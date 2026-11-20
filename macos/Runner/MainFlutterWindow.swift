@@ -109,6 +109,9 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       makeKeyAndOrderFront(nil)
       NSApp.activate(ignoringOtherApps: true)
       result(nil)
+    case "alwaysOnTop":
+      level = (call.arguments as? Bool) == true ? .floating : .normal
+      result(nil)
     case "systemMenu":
       // Reuse the application's native Window menu rather than inventing a second set of window actions.
       if let menu = NSApp.windowsMenu, let view = contentView,

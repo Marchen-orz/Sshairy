@@ -42,6 +42,9 @@ abstract interface class LinkDesktopBridge {
 
   LinkSyncBundle exportSyncBundle();
 
+  /// Lists saved non-transient hosts that currently have a stored password on desktop (no secrets returned).
+  Future<List<({String id, String label})>> listHostsWithSavedPasswords();
+
   Future<LinkCredentialBundle> exportOptInCredentials({
     required Set<String> hostIds,
     required Set<String> keyIds,
@@ -96,6 +99,9 @@ class _NullDesktopBridge implements LinkDesktopBridge {
     knownHosts: const {},
     exportedAt: DateTime.now().toUtc(),
   );
+  @override
+  Future<List<({String id, String label})>> listHostsWithSavedPasswords() async => const [];
+
   @override
   Future<LinkCredentialBundle> exportOptInCredentials({
     required Set<String> hostIds,
@@ -204,6 +210,7 @@ class LinkHostController extends ChangeNotifier {
 
   List<LinkPeer> _peers = const [];
   final _connected = <String, _ConnectedPeer>{};
+  final _passwordSyncQueue = <LinkPasswordSyncRequest>[];
   _ActivePairing? _pairing;
   List<String> _addresses = const [];
   bool _enabled = false;
@@ -223,6 +230,7 @@ class LinkHostController extends ChangeNotifier {
   List<LinkPeer> get peers => List.unmodifiable(_peers);
   Set<String> get connectedDeviceIds => Set.unmodifiable(_connected.keys);
   int get connectedCount => _connected.length;
+  LinkPasswordSyncRequest? get pendingPasswordSync => _passwordSyncQueue.firstOrNull;
 
   LinkPairingInfo? get activePairing {
     final p = _pairing;
@@ -334,6 +342,7 @@ class LinkHostController extends ChangeNotifier {
       unawaited(peer.session.close());
     }
     _connected.clear();
+    _passwordSyncQueue.clear();
     if (listener != null) await listener.close();
   }
 
@@ -391,6 +400,17 @@ class LinkHostController extends ChangeNotifier {
       } else {
         unawaited(active.session.sendMessage({'type': 'approvals.list', 'items': const <Object?>[]}));
       }
+      if (!permissions.allowSync) {
+        final removed = _passwordSyncQueue.where((r) => r.deviceId == deviceId).toList();
+        _passwordSyncQueue.removeWhere((r) => r.deviceId == deviceId);
+        for (final req in removed) {
+          unawaited(
+            active.session
+                .sendMessage({'type': 'sync.passwords.declined', 'reqId': req.reqId})
+                .catchError((Object _) {}),
+          );
+        }
+      }
     }
     _notify();
   }
@@ -398,6 +418,7 @@ class LinkHostController extends ChangeNotifier {
   Future<void> revokePeer(String deviceId) async {
     _peers = _peers.where((p) => p.deviceId != deviceId).toList();
     await store.save(_peers);
+    _passwordSyncQueue.removeWhere((r) => r.deviceId == deviceId);
     final active = _connected.remove(deviceId);
     if (active != null) {
       active.cleanup();
@@ -407,12 +428,49 @@ class LinkHostController extends ChangeNotifier {
   }
 
   void disconnectPeer(String deviceId) {
+    _passwordSyncQueue.removeWhere((r) => r.deviceId == deviceId);
     final active = _connected.remove(deviceId);
     if (active != null) {
       active.cleanup();
       unawaited(active.session.close());
       _notify();
     }
+  }
+
+  /// Resolves a desktop confirmation dialog for a mobile-requested server password sync.
+  Future<bool> decidePasswordSync(LinkPasswordSyncRequest request, bool allowed) async {
+    final index = _passwordSyncQueue.indexWhere((r) => identical(r, request));
+    if (index == -1) return false;
+    _passwordSyncQueue.removeAt(index);
+    _notify();
+    final active = _connected[request.deviceId];
+    final record = _findPeer(request.deviceId);
+    if (active == null || active.session.isClosed || record == null || !record.permissions.allowSync) {
+      return false;
+    }
+    if (!allowed) {
+      await active.session
+          .sendMessage({'type': 'sync.passwords.declined', 'reqId': request.reqId})
+          .catchError((Object _) {});
+      return false;
+    }
+    final bundle = await bridge.exportOptInCredentials(
+      hostIds: {for (final h in request.hosts) h.id},
+      keyIds: const {},
+      includeAiKey: false,
+    );
+    if (bundle.hostPasswords.isEmpty) {
+      await active.session
+          .sendMessage({'type': 'sync.passwords.declined', 'reqId': request.reqId})
+          .catchError((Object _) {});
+      return false;
+    }
+    await active.session.sendMessage({
+      'type': 'sync.credentials.offer',
+      'reqId': request.reqId,
+      'bundle': bundle.toJson(),
+    });
+    return true;
   }
 
   /// Explicitly pushes user-confirmed credentials to a single connected paired mobile device over E2EE.
@@ -526,6 +584,7 @@ class LinkHostController extends ChangeNotifier {
       for (final entry in _connected.entries.toList()) {
         if (entry.value.session.isClosed || entry.value.session.remoteLabel == transport.remoteLabel) {
           final removed = _connected.remove(entry.key);
+          _passwordSyncQueue.removeWhere((r) => r.deviceId == entry.key);
           removed?.cleanup();
           _notify();
         }
@@ -694,6 +753,7 @@ class LinkHostController extends ChangeNotifier {
 
       case 'sync.pull':
         final reqId = msg['reqId'] as String? ?? '';
+        final includePasswords = msg['includePasswords'] == true;
         if (!perms.allowSync) {
           await peer.session.sendMessage({
             'type': 'sync.error',
@@ -703,7 +763,23 @@ class LinkHostController extends ChangeNotifier {
           return;
         }
         final bundle = bridge.exportSyncBundle();
-        await peer.session.sendMessage({'type': 'sync.bundle', 'reqId': reqId, 'bundle': bundle.toJson()});
+        final passwordHosts = includePasswords
+            ? await bridge.listHostsWithSavedPasswords()
+            : const <({String id, String label})>[];
+        if (peer.session.isClosed) return;
+        await peer.session.sendMessage({
+          'type': 'sync.bundle',
+          'reqId': reqId,
+          'bundle': bundle.toJson(),
+          if (passwordHosts.isNotEmpty) 'awaitingPasswordApproval': true,
+        });
+        if (passwordHosts.isNotEmpty) {
+          _passwordSyncQueue.removeWhere((r) => r.deviceId == peer.deviceId);
+          _passwordSyncQueue.add(
+            LinkPasswordSyncRequest(reqId: reqId, deviceId: peer.deviceId, peerName: record.name, hosts: passwordHosts),
+          );
+          _notify();
+        }
 
       case 'approval.decide':
         if (!perms.allowApproval) return;
@@ -876,11 +952,14 @@ class LinkClientController extends ChangeNotifier {
   List<LinkApprovalItem> _approvals = const [];
   LinkSyncSummary? _lastSync;
   LinkCredentialBundle? _pendingCredentialOffer;
+  LinkPasswordSyncStatus _passwordSyncStatus = LinkPasswordSyncStatus.idle;
+  int _lastImportedPasswordCount = 0;
   bool _disposed = false;
 
   final _channels = <String, _LinkShellChannel>{};
   final _openWaiters = <String, Completer<void>>{};
-  final _syncWaiters = <String, Completer<LinkSyncBundle>>{};
+  final _syncWaiters = <String, Completer<({LinkSyncBundle bundle, bool awaitingPasswordApproval})>>{};
+  final _requestedPasswordSyncIds = <String>{};
   final _followDesktopChannels = <String>{};
 
   LinkConnectionStatus get status => _status;
@@ -896,6 +975,8 @@ class LinkClientController extends ChangeNotifier {
   List<LinkApprovalItem> get pendingApprovals => List.unmodifiable(_approvals);
   LinkSyncSummary? get lastSync => _lastSync;
   LinkCredentialBundle? get pendingCredentialOffer => _pendingCredentialOffer;
+  LinkPasswordSyncStatus get passwordSyncStatus => _passwordSyncStatus;
+  int get lastImportedPasswordCount => _lastImportedPasswordCount;
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -1072,12 +1153,15 @@ class LinkClientController extends ChangeNotifier {
       if (!w.isCompleted) w.completeError(const LinkException(LinkErrorKind.network));
     }
     _syncWaiters.clear();
+    _requestedPasswordSyncIds.clear();
     _connectedDesktopId = null;
     _connectedDesktopName = null;
     _desktopSessions = const [];
     _desktopHosts = const [];
     _approvals = const [];
     _pendingCredentialOffer = null;
+    _passwordSyncStatus = LinkPasswordSyncStatus.idle;
+    _lastImportedPasswordCount = 0;
     if (_status != LinkConnectionStatus.disconnected) {
       _status = LinkConnectionStatus.disconnected;
       _notify();
@@ -1189,22 +1273,69 @@ class LinkClientController extends ChangeNotifier {
   }
 
   /// Pulls non-secret hosts, snippets, and known_hosts from Desktop and merges them locally.
-  Future<LinkSyncSummary> pullConfigSync() async {
+  /// When [includePasswords] is true, Desktop will prompt the user in a topmost dialog before
+  /// sending any saved server passwords back over the E2EE channel.
+  Future<LinkSyncSummary> pullConfigSync({bool includePasswords = false}) async {
     final session = _session;
     if (!connected || session == null) throw const LinkException(LinkErrorKind.network);
     final reqId = newId();
-    final waiter = Completer<LinkSyncBundle>();
+    final waiter = Completer<({LinkSyncBundle bundle, bool awaitingPasswordApproval})>();
     _syncWaiters[reqId] = waiter;
-    await session.sendMessage({'type': 'sync.pull', 'reqId': reqId});
+    if (includePasswords) {
+      _requestedPasswordSyncIds
+        ..clear()
+        ..add(reqId);
+      _passwordSyncStatus = LinkPasswordSyncStatus.idle;
+      _lastImportedPasswordCount = 0;
+    }
+    await session.sendMessage({'type': 'sync.pull', 'reqId': reqId, if (includePasswords) 'includePasswords': true});
     try {
-      final bundle = await waiter.future.timeout(const Duration(seconds: 15));
-      final summary = await bridge.applySyncBundle(bundle);
+      final response = await waiter.future.timeout(const Duration(seconds: 15));
+      final applied = await bridge.applySyncBundle(response.bundle);
+      final awaiting = includePasswords && response.awaitingPasswordApproval;
+      if (!awaiting) {
+        _requestedPasswordSyncIds.remove(reqId);
+        if (includePasswords) _passwordSyncStatus = LinkPasswordSyncStatus.idle;
+      } else if (_requestedPasswordSyncIds.contains(reqId)) {
+        _passwordSyncStatus = LinkPasswordSyncStatus.awaitingDesktop;
+      }
+      final summary = LinkSyncSummary(
+        hostsSynced: applied.hostsSynced,
+        snippetsSynced: applied.snippetsSynced,
+        knownHostsAdded: applied.knownHostsAdded,
+        knownHostsConflicts: applied.knownHostsConflicts,
+        credentialsImported: applied.credentialsImported,
+        aiSynced: applied.aiSynced,
+        awaitingPasswordApproval: awaiting,
+      );
       _lastSync = summary;
       _notify();
       return summary;
+    } on Object {
+      _requestedPasswordSyncIds.remove(reqId);
+      rethrow;
     } finally {
       _syncWaiters.remove(reqId);
     }
+  }
+
+  Future<void> _importRequestedPasswords(LinkCredentialBundle bundle) async {
+    final count = await bridge.importOptInCredentials(bundle);
+    if (_disposed) return;
+    _lastImportedPasswordCount = count;
+    _passwordSyncStatus = LinkPasswordSyncStatus.imported;
+    if (_lastSync != null) {
+      _lastSync = LinkSyncSummary(
+        hostsSynced: _lastSync!.hostsSynced,
+        snippetsSynced: _lastSync!.snippetsSynced,
+        knownHostsAdded: _lastSync!.knownHostsAdded,
+        knownHostsConflicts: _lastSync!.knownHostsConflicts,
+        credentialsImported: count,
+        aiSynced: _lastSync!.aiSynced,
+        awaitingPasswordApproval: false,
+      );
+    }
+    _notify();
   }
 
   Future<int> acceptPendingCredentials() async {
@@ -1364,7 +1495,10 @@ class LinkClientController extends ChangeNotifier {
         final raw = msg['bundle'];
         final waiter = _syncWaiters.remove(reqId);
         if (waiter != null && !waiter.isCompleted && raw is Map) {
-          waiter.complete(LinkSyncBundle.fromJson(raw.cast<String, dynamic>()));
+          waiter.complete((
+            bundle: LinkSyncBundle.fromJson(raw.cast<String, dynamic>()),
+            awaitingPasswordApproval: msg['awaitingPasswordApproval'] == true,
+          ));
         }
 
       case 'sync.error':
@@ -1376,12 +1510,28 @@ class LinkClientController extends ChangeNotifier {
 
       case 'sync.credentials.offer':
         final raw = msg['bundle'];
+        final reqId = msg['reqId'] as String?;
         if (raw is Map) {
           final bundle = LinkCredentialBundle.fromJson(raw.cast<String, dynamic>());
-          if (!bundle.isEmpty) {
+          final requested = reqId != null && _requestedPasswordSyncIds.remove(reqId);
+          if (requested && bundle.privateKeys.isEmpty && bundle.aiApiKey == null) {
+            if (bundle.hostPasswords.isNotEmpty) {
+              unawaited(_importRequestedPasswords(bundle));
+            } else {
+              _passwordSyncStatus = LinkPasswordSyncStatus.idle;
+              _notify();
+            }
+          } else if (!bundle.isEmpty) {
             _pendingCredentialOffer = bundle;
             _notify();
           }
+        }
+
+      case 'sync.passwords.declined':
+        final reqId = msg['reqId'] as String?;
+        if (reqId != null && _requestedPasswordSyncIds.remove(reqId)) {
+          _passwordSyncStatus = LinkPasswordSyncStatus.declined;
+          _notify();
         }
     }
   }

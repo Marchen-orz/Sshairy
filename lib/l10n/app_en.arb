@@ -1155,6 +1155,30 @@
       }
     }
   },
+  "linkPasswordSyncConfirmTitle": "Confirm server password sync",
+  "linkPasswordSyncConfirmBody": "{device} requested {count} saved server passwords.",
+  "@linkPasswordSyncConfirmBody": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "linkPasswordSyncAllow": "Sync passwords",
+  "linkPasswordSyncSkip": "Skip passwords",
+  "linkPasswordSyncWaiting": "Confirm password sync on desktop…",
+  "linkPasswordSyncImported": "Synced {count} server passwords",
+  "@linkPasswordSyncImported": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "linkPasswordSyncDeclined": "Password sync skipped on desktop",
   "linkErrorAuth": "Authentication failed",
   "linkErrorCode": "Invalid pairing code",
   "linkErrorExpired": "Pairing code expired",

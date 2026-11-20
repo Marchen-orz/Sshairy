@@ -5960,6 +5960,48 @@ abstract class AppLocalizations {
   /// **'Saved {count} credentials'**
   String linkCredentialImported(int count);
 
+  /// No description provided for @linkPasswordSyncConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm server password sync'**
+  String get linkPasswordSyncConfirmTitle;
+
+  /// No description provided for @linkPasswordSyncConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{device} requested {count} saved server passwords.'**
+  String linkPasswordSyncConfirmBody(String device, int count);
+
+  /// No description provided for @linkPasswordSyncAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync passwords'**
+  String get linkPasswordSyncAllow;
+
+  /// No description provided for @linkPasswordSyncSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip passwords'**
+  String get linkPasswordSyncSkip;
+
+  /// No description provided for @linkPasswordSyncWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm password sync on desktop…'**
+  String get linkPasswordSyncWaiting;
+
+  /// No description provided for @linkPasswordSyncImported.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced {count} server passwords'**
+  String linkPasswordSyncImported(int count);
+
+  /// No description provided for @linkPasswordSyncDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'Password sync skipped on desktop'**
+  String get linkPasswordSyncDeclined;
+
   /// No description provided for @linkErrorAuth.
   ///
   /// In en, this message translates to:

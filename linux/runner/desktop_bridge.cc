@@ -180,6 +180,11 @@ void HandleMethod(FlMethodChannel*, FlMethodCall* call, gpointer user_data) {
   } else if (strcmp(method, "show") == 0) {
     gtk_window_present(bridge->window);
     Respond(call);
+  } else if (strcmp(method, "alwaysOnTop") == 0) {
+    FlValue* args = fl_method_call_get_args(call);
+    const gboolean on = args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_BOOL && fl_value_get_bool(args);
+    gtk_window_set_keep_above(bridge->window, on);
+    Respond(call);
   } else if (strcmp(method, "drag") == 0) {
     if (bridge->last_button && bridge->last_button->button.button == 1 &&
         g_get_monotonic_time() - bridge->last_button_at < G_USEC_PER_SEC) {

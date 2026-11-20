@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../design/dialog.dart';
+import '../design/theme.dart';
 import '../features/ai/api.dart';
 import '../features/connections/api.dart';
 import '../features/credentials/api.dart';
@@ -15,6 +17,8 @@ import '../features/workspace/api.dart';
 import '../foundation/ids.dart';
 import '../foundation/result.dart';
 import '../foundation/secret.dart';
+import '../l10n/app_localizations.dart';
+import '../platform/desktop_window.dart';
 import '../platform/device_form_factor.dart';
 import 'mcp/controller.dart';
 
@@ -190,6 +194,20 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
       exportedAt: DateTime.now().toUtc(),
       aiConfig: aiMap,
     );
+  }
+
+  @override
+  Future<List<({String id, String label})>> listHostsWithSavedPasswords() async {
+    final hosts = _ref.read(hostsProvider).where((h) => !h.transient).toList();
+    final editor = _ref.read(hostPasswordEditorProvider);
+    final result = <({String id, String label})>[];
+    for (final h in hosts) {
+      final secret = await editor.readPassword(h.id);
+      if (secret != null && secret.reveal().isNotEmpty) {
+        result.add((id: h.id.value, label: h.label.isEmpty ? h.target : h.label));
+      }
+    }
+    return result;
   }
 
   @override
@@ -504,17 +522,152 @@ class _LeasedShellChannel implements ShellChannel {
   }
 }
 
-/// Ensures desktop [LinkHostController] starts/stops with the application lifecycle when enabled in settings.
-class LinkHostLifecycle extends ConsumerWidget {
-  const LinkHostLifecycle({super.key, required this.child});
+/// Ensures desktop [LinkHostController] starts/stops with the application lifecycle when enabled in settings,
+/// and raises the desktop window to confirm mobile-requested server password syncs.
+class LinkHostLifecycle extends ConsumerStatefulWidget {
+  const LinkHostLifecycle({super.key, required this.child, this.window});
 
   final Widget child;
+  final DesktopWindow? window;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (isDesktopPlatform) {
-      ref.watch(linkHostControllerProvider);
+  ConsumerState<LinkHostLifecycle> createState() => _LinkHostLifecycleState();
+}
+
+class _LinkHostLifecycleState extends ConsumerState<LinkHostLifecycle> {
+  LinkHostController? _host;
+  LinkPasswordSyncRequest? _shown;
+  DialogRoute<bool>? _route;
+  NavigatorState? _navigator;
+
+  DesktopWindow get _window => widget.window ?? DesktopWindow.instance;
+
+  void _attach(LinkHostController host) {
+    if (identical(_host, host)) return;
+    _host?.removeListener(_onHostChanged);
+    _host = host;
+    host.addListener(_onHostChanged);
+    _onHostChanged();
+  }
+
+  void _onHostChanged() {
+    if (!mounted) return;
+    final host = _host;
+    final req = host?.pendingPasswordSync;
+    if (req == null || identical(_shown, req)) return;
+    _shown = req;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && host != null) unawaited(_confirmPasswordSync(host, req));
+    });
+    // Ensure a frame actually runs even when the desktop window is idle or minimized in the background.
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _dismiss() {
+    final route = _route, navigator = _navigator;
+    if (route != null && route.isActive && navigator != null && navigator.mounted) {
+      navigator.removeRoute(route, false);
     }
-    return child;
+  }
+
+  Future<void> _confirmPasswordSync(LinkHostController host, LinkPasswordSyncRequest request) async {
+    if (!mounted || !identical(_host, host) || !identical(host.pendingPasswordSync, request)) {
+      _shown = null;
+      return;
+    }
+    await _window.show();
+    await _window.setAlwaysOnTop(true);
+    if (!mounted || !identical(_host, host) || !identical(host.pendingPasswordSync, request)) {
+      await _window.setAlwaysOnTop(false);
+      _shown = null;
+      return;
+    }
+    final navigator = Navigator.of(context);
+    final route = DialogRoute<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? .5 : .28),
+      builder: (context) {
+        final l = AppLocalizations.of(context);
+        final scheme = Theme.of(context).colorScheme;
+        return AppDialog(
+          key: const ValueKey('link-password-sync-dialog'),
+          title: Text(l.linkPasswordSyncConfirmTitle),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(l.linkPasswordSyncConfirmBody(request.peerName, request.hosts.length)),
+                  const SizedBox(height: Space.sm),
+                  for (final h in request.hosts)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Icon(Icons.key_outlined, size: 14, color: scheme.onSurfaceVariant),
+                          const SizedBox(width: Space.xs),
+                          Expanded(child: Text(h.label, overflow: TextOverflow.ellipsis)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey('link-password-sync-deny'),
+              autofocus: true,
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(l.linkPasswordSyncSkip),
+            ),
+            FilledButton(
+              key: const ValueKey('link-password-sync-allow'),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(l.linkPasswordSyncAllow),
+            ),
+          ],
+        );
+      },
+    );
+    _navigator = navigator;
+    _route = route;
+    void changed() {
+      if (!identical(host.pendingPasswordSync, request) && route.isActive && navigator.mounted) {
+        navigator.removeRoute(route, false);
+      }
+    }
+
+    host.addListener(changed);
+    try {
+      final allowed = await navigator.push(route) ?? false;
+      if (identical(host.pendingPasswordSync, request)) {
+        await host.decidePasswordSync(request, allowed && identical(_host, host));
+      }
+    } finally {
+      host.removeListener(changed);
+      _shown = null;
+      _route = null;
+      _navigator = null;
+      await _window.setAlwaysOnTop(false);
+      if (mounted) _onHostChanged();
+    }
+  }
+
+  @override
+  void dispose() {
+    _host?.removeListener(_onHostChanged);
+    _dismiss();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isDesktopPlatform) {
+      _attach(ref.watch(linkHostControllerProvider));
+    }
+    return widget.child;
   }
 }

@@ -382,6 +382,7 @@ class LinkSyncSummary {
     required this.knownHostsConflicts,
     this.credentialsImported = 0,
     this.aiSynced = false,
+    this.awaitingPasswordApproval = false,
   });
 
   final int hostsSynced;
@@ -390,7 +391,25 @@ class LinkSyncSummary {
   final int knownHostsConflicts;
   final int credentialsImported;
   final bool aiSynced;
+  final bool awaitingPasswordApproval;
 }
+
+/// Pending desktop confirmation created when a paired mobile peer requests saved server passwords during config sync.
+class LinkPasswordSyncRequest {
+  const LinkPasswordSyncRequest({
+    required this.reqId,
+    required this.deviceId,
+    required this.peerName,
+    required this.hosts,
+  });
+
+  final String reqId;
+  final String deviceId;
+  final String peerName;
+  final List<({String id, String label})> hosts;
+}
+
+enum LinkPasswordSyncStatus { idle, awaitingDesktop, imported, declined }
 
 /// Explicit opt-in credential payload pushed only when confirmed on the desktop UI; never written to JSON on disk.
 class LinkCredentialBundle {

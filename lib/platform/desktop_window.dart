@@ -78,6 +78,15 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
   Future<void> hide() => _invoke('hide');
   Future<void> show() => _invoke('show');
 
+  /// Temporarily keeps the desktop window above other non-topmost windows while an urgent confirmation dialog is open.
+  Future<void> setAlwaysOnTop(bool on) async {
+    try {
+      await _invoke('alwaysOnTop', on);
+    } on MissingPluginException {
+      // Older runners or tests without alwaysOnTop fall back to show().
+    }
+  }
+
   /// Hands the foreground permission of a new Windows launch to the existing instance.
   Future<void> allowForeground(int ownerPid) => _invoke('allowForeground', ownerPid);
 

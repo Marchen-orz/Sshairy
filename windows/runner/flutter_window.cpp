@@ -285,6 +285,10 @@ void FlutterWindow::HandleWindowMethod(
       FLASHWINFO flash = {sizeof(flash), window, FLASHW_TRAY | FLASHW_TIMERNOFG, 0, 0};
       FlashWindowEx(&flash);
     }
+  } else if (method == "alwaysOnTop") {
+    const auto* on = call.arguments() ? std::get_if<bool>(call.arguments()) : nullptr;
+    SetWindowPos(window, (on != nullptr && *on) ? HWND_TOPMOST : HWND_NOTOPMOST,
+                 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   } else if (method == "systemMenu") {
     POINT point;
     GetCursorPos(&point);

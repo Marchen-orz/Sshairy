@@ -3130,6 +3130,31 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get linkPasswordSyncConfirmTitle => '确认同步服务器密码';
+
+  @override
+  String linkPasswordSyncConfirmBody(String device, int count) {
+    return '「$device」请求同步 $count 个已保存的服务器密码。';
+  }
+
+  @override
+  String get linkPasswordSyncAllow => '同步密码';
+
+  @override
+  String get linkPasswordSyncSkip => '不同步密码';
+
+  @override
+  String get linkPasswordSyncWaiting => '请在电脑端确认同步服务器密码…';
+
+  @override
+  String linkPasswordSyncImported(int count) {
+    return '已同步 $count 个服务器密码';
+  }
+
+  @override
+  String get linkPasswordSyncDeclined => '电脑端已取消服务器密码同步';
+
+  @override
   String get linkErrorAuth => '设备身份校验失败';
 
   @override

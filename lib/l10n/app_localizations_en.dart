@@ -3291,6 +3291,31 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get linkPasswordSyncConfirmTitle => 'Confirm server password sync';
+
+  @override
+  String linkPasswordSyncConfirmBody(String device, int count) {
+    return '$device requested $count saved server passwords.';
+  }
+
+  @override
+  String get linkPasswordSyncAllow => 'Sync passwords';
+
+  @override
+  String get linkPasswordSyncSkip => 'Skip passwords';
+
+  @override
+  String get linkPasswordSyncWaiting => 'Confirm password sync on desktop…';
+
+  @override
+  String linkPasswordSyncImported(int count) {
+    return 'Synced $count server passwords';
+  }
+
+  @override
+  String get linkPasswordSyncDeclined => 'Password sync skipped on desktop';
+
+  @override
   String get linkErrorAuth => 'Authentication failed';
 
   @override

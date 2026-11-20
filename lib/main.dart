@@ -134,6 +134,7 @@ class _SshairyAppState extends ConsumerState<SshairyApp> {
                 // Widget tests and probes keep their network and dialogs out of the start-up frames.
                 enabled: Platform.environment['FLUTTER_TEST'] != 'true',
                 child: LinkHostLifecycle(
+                  window: widget.window,
                   child: McpHostPrompts(
                     child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
                   ),

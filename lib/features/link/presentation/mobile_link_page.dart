@@ -118,7 +118,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     if (_syncing) return;
     setState(() => _syncing = true);
     try {
-      final summary = await ref.read(linkClientControllerProvider).pullConfigSync();
+      final summary = await ref.read(linkClientControllerProvider).pullConfigSync(includePasswords: true);
       if (!mounted) return;
       final l = AppLocalizations.of(context);
       final base = l.linkSyncDone(summary.hostsSynced, summary.snippetsSynced, summary.knownHostsAdded);
@@ -347,7 +347,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
 
     return ListView(
       key: const ValueKey('mobile-link-connected'),
-      padding: const EdgeInsets.all(Space.md),
+      padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.xl),
       children: [
         _SurfaceCard(
           borderColor: scheme.primary.withValues(alpha: .35),
@@ -396,6 +396,44 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                     Text(_notice!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.primary)),
                 ],
               ),
+              if (client.passwordSyncStatus != LinkPasswordSyncStatus.idle) ...[
+                const SizedBox(height: Space.xs),
+                Row(
+                  key: const ValueKey('link-password-sync-status'),
+                  children: [
+                    if (client.passwordSyncStatus == LinkPasswordSyncStatus.awaitingDesktop)
+                      const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                    else
+                      Icon(
+                        client.passwordSyncStatus == LinkPasswordSyncStatus.imported
+                            ? Icons.key_outlined
+                            : Icons.info_outline,
+                        size: 14,
+                        color: client.passwordSyncStatus == LinkPasswordSyncStatus.imported
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    const SizedBox(width: Space.xs),
+                    Expanded(
+                      child: Text(
+                        switch (client.passwordSyncStatus) {
+                          LinkPasswordSyncStatus.awaitingDesktop => l.linkPasswordSyncWaiting,
+                          LinkPasswordSyncStatus.imported => l.linkPasswordSyncImported(
+                            client.lastImportedPasswordCount,
+                          ),
+                          LinkPasswordSyncStatus.declined => l.linkPasswordSyncDeclined,
+                          LinkPasswordSyncStatus.idle => '',
+                        },
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: client.passwordSyncStatus == LinkPasswordSyncStatus.declined
+                              ? scheme.onSurfaceVariant
+                              : scheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
