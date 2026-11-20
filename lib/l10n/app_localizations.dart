@@ -1586,6 +1586,36 @@ abstract class AppLocalizations {
   /// **'Clear'**
   String get clearScreen;
 
+  /// No description provided for @shellIntegrationInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'Install shell integration'**
+  String get shellIntegrationInstall;
+
+  /// No description provided for @shellIntegrationRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove shell integration'**
+  String get shellIntegrationRemove;
+
+  /// No description provided for @shellIntegrationInstalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Installed. New terminals will use it.'**
+  String get shellIntegrationInstalled;
+
+  /// No description provided for @shellIntegrationRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed. New terminals will not load it.'**
+  String get shellIntegrationRemoved;
+
+  /// No description provided for @shellIntegrationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Shell integration change failed'**
+  String get shellIntegrationFailed;
+
   /// No description provided for @openLink.
   ///
   /// In en, this message translates to:

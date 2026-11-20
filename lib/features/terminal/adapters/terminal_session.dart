@@ -31,6 +31,7 @@ import '../domain/command_assistance.dart';
 import '../domain/completion_command_metadata.dart';
 import '../domain/directory.dart';
 import '../domain/insertion.dart';
+import '../domain/shell_integration.dart';
 import '../domain/local_pty.dart';
 import '../domain/terminal_target.dart';
 import '../domain/terminal_paths.dart';
@@ -981,6 +982,25 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _directoryCancel?.cancel();
     _directoryCancel = null;
     _directoryLookup = null;
+  }
+
+  /// The current shell reported semantic prompts, from Sshairy's integration or the user's own.
+  bool get shellIntegrated => _semanticSeen;
+
+  /// Installs or removes shell integration for this connection's login user; takes effect in new shells.
+  Future<bool> setShellIntegration(bool install) async {
+    final lease = _lease;
+    if (_closed || lease == null || lease.lost) return false;
+    try {
+      final result = await lease.exec(
+        install ? shellIntegrationInstall : shellIntegrationRemove,
+        limit: 4096,
+        timeout: const Duration(seconds: 10),
+      );
+      return result.exitCode == 0;
+    } on Object {
+      return false;
+    }
   }
 
   Future<String?> _look({bool force = false}) async {

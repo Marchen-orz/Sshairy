@@ -838,6 +838,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearScreen => 'Clear';
 
   @override
+  String get shellIntegrationInstall => 'Install shell integration';
+
+  @override
+  String get shellIntegrationRemove => 'Remove shell integration';
+
+  @override
+  String get shellIntegrationInstalled =>
+      'Installed. New terminals will use it.';
+
+  @override
+  String get shellIntegrationRemoved =>
+      'Removed. New terminals will not load it.';
+
+  @override
+  String get shellIntegrationFailed => 'Shell integration change failed';
+
+  @override
   String get openLink => 'Open link';
 
   @override

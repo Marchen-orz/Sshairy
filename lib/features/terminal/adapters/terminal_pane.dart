@@ -407,11 +407,33 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
         item(l.commandHistory, Icons.history, () => _showHistory(details.globalPosition)),
         item(l.terminalMultilineInput, Icons.edit_note_outlined, _showComposer, enabled: _session.canInsert),
         item(l.clearScreen, Icons.clear_all, _terminal.clear),
+        if (_session.sshHost != null)
+          item(
+            _session.shellIntegrated ? l.shellIntegrationRemove : l.shellIntegrationInstall,
+            Icons.integration_instructions_outlined,
+            () => _setShellIntegration(!_session.shellIntegrated),
+          ),
         if (widget.actions.isNotEmpty) const AppMenuDivider(),
         for (final a in widget.actions) item(a.label, a.icon, a.run),
       ],
     );
     run?.call();
+  }
+
+  Future<void> _setShellIntegration(bool install) async {
+    final messenger = ScaffoldMessenger.maybeOf(context), l = AppLocalizations.of(context);
+    final ok = await _session.setShellIntegration(install);
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(
+          !ok
+              ? l.shellIntegrationFailed
+              : install
+              ? l.shellIntegrationInstalled
+              : l.shellIntegrationRemoved,
+        ),
+      ),
+    );
   }
 
   void _closeSearch() {

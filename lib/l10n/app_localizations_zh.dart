@@ -795,6 +795,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clearScreen => '清屏';
 
   @override
+  String get shellIntegrationInstall => '安装 Shell 集成';
+
+  @override
+  String get shellIntegrationRemove => '移除 Shell 集成';
+
+  @override
+  String get shellIntegrationInstalled => '已安装，新开的终端生效';
+
+  @override
+  String get shellIntegrationRemoved => '已移除，新开的终端不再加载';
+
+  @override
+  String get shellIntegrationFailed => 'Shell 集成修改失败';
+
+  @override
   String get openLink => '打开链接';
 
   @override
