@@ -11,8 +11,10 @@ import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../application/browser.dart';
+import '../application/edits.dart';
 import '../application/file_systems.dart';
 import '../application/transfers.dart';
+import '../domain/transfer.dart';
 import 'directory_tree.dart';
 import 'file_pane.dart';
 import 'transfers_panel.dart';
@@ -273,29 +275,84 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
 
 /// The transfer queue and edits as a popover under [anchor]; closing it leaves transfers running. Without an
 /// anchor (the palette) it opens at the title bar's right edge, where the button is.
-Future<void> showTransfers(BuildContext context, {Rect? anchor}) {
+Future<void> showTransfers(BuildContext context, {Rect? anchor}) async {
   final viewport = Navigator.of(context).context.findRenderObject()! as RenderBox;
-  return showAnchoredPopup<void>(
+  final container = ProviderScope.containerOf(context, listen: false);
+  container.read(_noticeProvider.notifier).seen();
+  await showAnchoredPopup<void>(
     context: context,
     anchor: anchor ?? anchorAt(viewport.localToGlobal(Offset(viewport.size.width, WorkspaceSize.titleBar))),
     width: WorkspaceSize.flyoutWide,
     maxHeight: 520,
     builder: (_) => const PopupSurface(padding: EdgeInsets.all(Space.md), child: TransfersPanel()),
   );
+  // What ended while the list was open has been seen.
+  container.read(_noticeProvider.notifier).seen();
 }
 
-/// The title-bar button: shows how much is running.
+/// What ended since the transfer list was last opened; a failure outranks a success.
+enum _Notice { none, done, failed }
+
+final _noticeProvider = NotifierProvider<_TransferNotice, _Notice>(_TransferNotice.new);
+
+class _TransferNotice extends Notifier<_Notice> {
+  @override
+  _Notice build() {
+    ref.listen(transfersProvider, (before, now) {
+      final running = {
+        for (final t in before ?? const <Transfer>[])
+          if (t.state.active) t.id,
+      };
+      for (final t in now) {
+        if (!running.contains(t.id) || t.state.active || t.state == TransferState.cancelled) continue;
+        _raise(t.state == TransferState.completed ? _Notice.done : _Notice.failed);
+      }
+    });
+    ref.listen(editsProvider, (before, now) {
+      final was = {for (final e in before ?? const <ExternalEdit>[]) e.id: e.state};
+      for (final e in now) {
+        final prior = was[e.id];
+        if (prior == e.state && was.containsKey(e.id)) continue;
+        if (e.state == EditState.conflict || e.state == EditState.failed) {
+          _raise(_Notice.failed);
+        } else if (e.state == EditState.clean && (prior == null || prior == EditState.uploading)) {
+          _raise(_Notice.done);
+        }
+      }
+    });
+    return _Notice.none;
+  }
+
+  void _raise(_Notice notice) {
+    if (notice.index > state.index) state = notice;
+  }
+
+  void seen() => state = _Notice.none;
+}
+
+/// The title-bar button: how much is moving, else a dot for what ended unseen.
 class TransfersButton extends ConsumerWidget {
   const TransfersButton({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    final active = ref.watch(transfersProvider.select((ts) => ts.where((t) => t.state.active).length));
+    final scheme = Theme.of(context).colorScheme;
+    final active =
+        ref.watch(transfersProvider.select((ts) => ts.where((t) => t.state.active).length)) +
+        ref.watch(editProgressProvider.select((p) => p.length));
+    final notice = ref.watch(_noticeProvider);
+    const icon = Icon(Icons.swap_vert, size: 16);
     return IconButton(
       tooltip: l.transfers,
       onPressed: () => showTransfers(context, anchor: anchorOf(context)),
-      icon: Badge(isLabelVisible: active > 0, label: Text('$active'), child: const Icon(Icons.swap_vert, size: 16)),
+      icon: active > 0
+          ? Badge(label: Text('$active'), child: icon)
+          : Badge(
+              isLabelVisible: notice != _Notice.none,
+              backgroundColor: notice == _Notice.failed ? scheme.error : scheme.primary,
+              child: icon,
+            ),
     );
   }
 }

@@ -99,6 +99,38 @@ const maxEditSize = 64 * 1024 * 1024;
 
 final editsProvider = NotifierProvider<ExternalEdits, List<ExternalEdit>>(ExternalEdits.new);
 
+/// An edit's download or upload in flight; kept for this session only.
+class EditProgress {
+  const EditProgress({
+    required this.host,
+    required this.hostLabel,
+    required this.remotePath,
+    required this.upload,
+    this.bytes = 0,
+    this.total,
+  });
+
+  final HostId host;
+  final String hostLabel, remotePath;
+  final bool upload;
+  final int bytes;
+  final int? total;
+
+  String get name => PathStyle.posix.name(remotePath);
+  double? get fraction => total == null || total == 0 ? null : (bytes / total!).clamp(0.0, 1.0);
+}
+
+final editProgressProvider = NotifierProvider<EditProgressBoard, Map<Object, EditProgress>>(EditProgressBoard.new);
+
+class EditProgressBoard extends Notifier<Map<Object, EditProgress>> {
+  @override
+  Map<Object, EditProgress> build() => const {};
+
+  void _put(Object key, EditProgress progress) => state = {...state, key: progress};
+
+  void _remove(Object key) => state = {...state}..remove(key);
+}
+
 /// The local deletion port is separate so locked-editor failures can be verified without changing OS permissions.
 final editCleanupProvider = Provider<Future<void> Function(String)>(
   (_) => (path) async {
@@ -196,6 +228,50 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
   void resumeAfterShutdown() => _closing = false;
 
   FileSystems get _pool => ref.read(fileSystemsProvider);
+
+  /// Shows [remotePath]'s bytes moving while [run] works, at most about five updates a second.
+  Future<T> _tracked<T>(
+    HostId host,
+    String hostLabel,
+    String remotePath, {
+    required bool upload,
+    required Future<T> Function(void Function(int? total) sized, void Function(int bytes) progressed) run,
+  }) async {
+    final board = ref.read(editProgressProvider.notifier);
+    final key = Object();
+    var progress = EditProgress(host: host, hostLabel: hostLabel, remotePath: remotePath, upload: upload);
+    var shown = DateTime(0);
+    void show(EditProgress next) {
+      progress = next;
+      board._put(key, next);
+    }
+
+    show(progress);
+    try {
+      return await run(
+        (total) =>
+            show(EditProgress(host: host, hostLabel: hostLabel, remotePath: remotePath, upload: upload, total: total)),
+        (bytes) {
+          final now = DateTime.now();
+          if (now.difference(shown) < const Duration(milliseconds: 200)) return;
+          shown = now;
+          show(
+            EditProgress(
+              host: host,
+              hostLabel: hostLabel,
+              remotePath: remotePath,
+              upload: upload,
+              bytes: bytes,
+              total: progress.total,
+            ),
+          );
+        },
+      );
+    } finally {
+      board._remove(key);
+    }
+  }
+
   ExternalEdit? _byId(String id) => state.where((e) => e.id == id).firstOrNull;
 
   /// Downloads [remotePath] and opens it in [app], or in the program chosen for its type, or in the system's. An
@@ -208,13 +284,32 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       _checkCopy(existing);
       return await _launch(existing, app) ? const Ok(null) : const Err(AppError('launchFailed'));
     }
-    _pool.remember(host);
-    final FsHandle handle;
-    try {
-      handle = await _pool.acquire(host.id, _prompts);
-    } on Object catch (e) {
-      return Err(AppError('connect', detail: '$e'));
-    }
+    return _tracked(
+      host.id,
+      host.title,
+      remotePath,
+      upload: false,
+      run: (sized, progressed) async {
+        _pool.remember(host);
+        final FsHandle handle;
+        try {
+          handle = await _pool.acquire(host.id, _prompts);
+        } on Object catch (e) {
+          return Err(AppError('connect', detail: '$e'));
+        }
+        return _download(host, remotePath, handle, sized, progressed, app);
+      },
+    );
+  }
+
+  Future<Result<void>> _download(
+    Host host,
+    String remotePath,
+    FsHandle handle,
+    void Function(int? total) sized,
+    void Function(int bytes) progressed,
+    OpenWithApp? app,
+  ) async {
     final id = newId();
     final dir = Directory('$_root${Platform.pathSeparator}$id');
     var registered = false;
@@ -222,9 +317,10 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       final remote = await handle.fs.stat(remotePath);
       if (remote == null || remote.kind != FileKind.file) return const Err(AppError('notAFile'));
       if ((remote.size ?? 0) > maxEditSize) return const Err(AppError('tooLarge'));
+      sized(remote.size);
       await dir.create(recursive: true);
       final local = '${dir.path}${Platform.pathSeparator}${_safeName(remote.name)}';
-      final written = await localFiles.create(local, handle.fs.read(remotePath));
+      final written = await localFiles.create(local, handle.fs.read(remotePath), onProgress: progressed);
       if (remote.size != null && written != remote.size) throw const OpFailure('sizeMismatch');
       final edit = ExternalEdit(
         id: id,
@@ -377,7 +473,23 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
         _change(id, (e) => e.copyWith(state: EditState.conflict));
         return;
       }
-      await writeVerified(fs, target, localFiles.read(edit.localPath), expectedSize: stamp?.$1, replacing: replacing);
+      await _tracked(
+        edit.host,
+        edit.hostLabel,
+        edit.remotePath,
+        upload: true,
+        run: (sized, progressed) {
+          sized(stamp?.$1);
+          return writeVerified(
+            fs,
+            target,
+            localFiles.read(edit.localPath),
+            expectedSize: stamp?.$1,
+            replacing: replacing,
+            onProgress: progressed,
+          );
+        },
+      );
       final now = await fs.stat(target);
       // Saved again during the upload: still modified, and uploaded again below when automatic.
       final later = await _stamp(edit.localPath);
@@ -420,7 +532,16 @@ class ExternalEdits extends Notifier<List<ExternalEdit>> {
       if (remote == null) throw const FsError(FsFailure.notFound);
       final tmp = '${edit.localPath}.download';
       await File(tmp).delete().then((_) {}, onError: (Object _) {});
-      await localFiles.create(tmp, handle.fs.read(edit.remotePath));
+      await _tracked(
+        edit.host,
+        edit.hostLabel,
+        edit.remotePath,
+        upload: false,
+        run: (sized, progressed) {
+          sized(remote.size);
+          return localFiles.create(tmp, handle!.fs.read(edit.remotePath), onProgress: progressed);
+        },
+      );
       await localFiles.replace(tmp, edit.localPath);
       _localStamp[id] = (await _stamp(edit.localPath))!;
       _change(id, (e) => e.copyWith(baseline: remote, state: EditState.clean, error: () => null));

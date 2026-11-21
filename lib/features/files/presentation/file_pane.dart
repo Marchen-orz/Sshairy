@@ -71,6 +71,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
   final _filter = TextEditingController();
   final _pathField = TextEditingController();
   var _editingPath = false, _dropping = false;
+  var _editedPath = '';
   var _typed = '';
   Timer? _typedReset;
 
@@ -82,16 +83,28 @@ class _FilePaneState extends ConsumerState<FilePane> {
   void initState() {
     super.initState();
     b.setShowHidden(ref.read(settingsProvider).get(SettingKeys.showHidden));
+    b.addListener(_browserChanged);
   }
 
   @override
   void didUpdateWidget(FilePane old) {
     super.didUpdateWidget(old);
-    if (old.browser != b) b.setShowHidden(ref.read(settingsProvider).get(SettingKeys.showHidden));
+    if (old.browser != b) {
+      old.browser.removeListener(_browserChanged);
+      b.addListener(_browserChanged);
+      b.setShowHidden(ref.read(settingsProvider).get(SettingKeys.showHidden));
+    }
+  }
+
+  /// Any move, from this pane, the tree or the terminal, closes the path field and the filter the browser dropped.
+  void _browserChanged() {
+    if (_editingPath && b.path != _editedPath) setState(() => _editingPath = false);
+    if (_filter.text != b.filter) _filter.text = b.filter;
   }
 
   @override
   void dispose() {
+    b.removeListener(_browserChanged);
     _typedReset?.cancel();
     _list.dispose();
     _scroll.dispose();
@@ -274,7 +287,8 @@ class _FilePaneState extends ConsumerState<FilePane> {
   }
 
   void _editPath() => setState(() {
-    _pathField.text = b.path;
+    _pathField.text = _editedPath = b.path;
+    _pathField.selection = TextSelection(baseOffset: 0, extentOffset: b.path.length);
     _editingPath = true;
   });
 
@@ -469,8 +483,8 @@ class _FilePaneState extends ConsumerState<FilePane> {
     );
   }
 
-  /// Breadcrumbs; clicking the empty space after them or the last one turns them into a path field. The click target
-  /// lies under them rather than beside, so a long path keeps the whole width.
+  /// Breadcrumbs; clicking the empty space after them or double clicking the current folder turns them into a path
+  /// field. The click target lies under them rather than beside, so a long path keeps the whole width.
   Widget _path(ThemeData theme) {
     if (_editingPath) {
       return SizedBox(
@@ -515,8 +529,9 @@ class _FilePaneState extends ConsumerState<FilePane> {
                     Icon(Icons.chevron_right, size: 14, color: theme.colorScheme.onSurfaceVariant),
                   InkWell(
                     borderRadius: BorderRadius.circular(Radii.control),
-                    // The current folder has nowhere to go, so it edits the path; a long path may leave no empty space.
-                    onTap: i == crumbs.length - 1 ? _editPath : () => b.go(path),
+                    // The current folder has nowhere to go; double clicking it edits the path when no space is left.
+                    onTap: i == crumbs.length - 1 ? null : () => b.go(path),
+                    onDoubleTap: i == crumbs.length - 1 ? _editPath : null,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.xs),
                       child: label.isEmpty
@@ -563,6 +578,11 @@ class _FilePaneState extends ConsumerState<FilePane> {
         break;
     }
     final items = b.visible;
+    final host = b.host?.id;
+    final opening = {
+      for (final p in ref.watch(editProgressProvider).values)
+        if (p.host == host && !p.upload) p.remotePath: p,
+    };
     return ScrollGutterLayout(
       builder: (context, box) {
         final width = box.maxWidth - ScrollGutterScope.gapOf(context);
@@ -610,6 +630,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
                               entry: e,
                               columns: columns,
                               selected: b.selected.contains(e.name),
+                              opening: opening[b.pathOf(e)],
                               onTap: () => _tap(e),
                               onDoubleTap: () => _open(e),
                               onSecondaryTap: (p) => _menu(p, e),
@@ -718,6 +739,7 @@ class _Row extends StatelessWidget {
     required this.entry,
     required this.columns,
     required this.selected,
+    this.opening,
     required this.onTap,
     required this.onDoubleTap,
     required this.onSecondaryTap,
@@ -726,6 +748,9 @@ class _Row extends StatelessWidget {
   final FileEntry entry;
   final _Columns columns;
   final bool selected;
+
+  /// The download that will open this file in an editor.
+  final EditProgress? opening;
   final VoidCallback onTap, onDoubleTap;
   final void Function(Offset) onSecondaryTap;
 
@@ -748,40 +773,51 @@ class _Row extends StatelessWidget {
         onTap: onTap,
         onDoubleTap: onDoubleTap,
         onSecondaryTapUp: (d) => onSecondaryTap(d.globalPosition),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.md),
-          child: Row(
-            children: [
-              Icon(icon, size: 16, color: e.browsable ? scheme.primary : scheme.onSurfaceVariant),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(
-                  e.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: e.hidden ? theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant) : null,
-                ),
-              ),
-              if (columns.modified) SizedBox(width: 128, child: Text(formatTime(e.modified), style: muted)),
-              if (columns.size)
-                SizedBox(
-                  width: 72,
-                  child: Text(e.isDir ? '' : formatSize(e.size), style: muted, textAlign: TextAlign.end),
-                ),
-              if (columns.mode) ...[
-                const SizedBox(width: Space.md),
-                SizedBox(
-                  width: 150,
-                  child: Text(
-                    [formatMode(e.mode), ?e.owner].join(' '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: mono(context, muted),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Space.md),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: e.browsable ? scheme.primary : scheme.onSurfaceVariant),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: Text(
+                      e.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: e.hidden ? theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant) : null,
+                    ),
                   ),
-                ),
-              ],
-            ],
-          ),
+                  if (columns.modified) SizedBox(width: 128, child: Text(formatTime(e.modified), style: muted)),
+                  if (columns.size)
+                    SizedBox(
+                      width: 72,
+                      child: Text(e.isDir ? '' : formatSize(e.size), style: muted, textAlign: TextAlign.end),
+                    ),
+                  if (columns.mode) ...[
+                    const SizedBox(width: Space.md),
+                    SizedBox(
+                      width: 150,
+                      child: Text(
+                        [formatMode(e.mode), ?e.owner].join(' '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: mono(context, muted),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (opening != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: LinearProgressIndicator(value: opening!.fraction, minHeight: 2),
+              ),
+          ],
         ),
       ),
     );

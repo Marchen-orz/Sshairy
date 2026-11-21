@@ -127,7 +127,8 @@ class _ConflictDialogState extends State<_ConflictDialog> {
   }
 }
 
-/// Edits first (they hold the user's unsaved work), then transfers, newest first.
+/// Edits first (they hold the user's unsaved work), then transfers, newest first. An edit with nothing left to
+/// upload reads as finished, though its copy is still watched until cleared.
 class TransfersPanel extends ConsumerWidget {
   const TransfersPanel({super.key});
 
@@ -136,7 +137,25 @@ class TransfersPanel extends ConsumerWidget {
     final l = AppLocalizations.of(context);
     final transfers = ref.watch(transfersProvider).reversed.toList();
     final edits = ref.watch(editsProvider);
+    final moving = ref.watch(editProgressProvider).values.toList();
     final manager = ref.read(transfersProvider.notifier);
+    EditProgress? progressOf(ExternalEdit e) =>
+        moving.where((p) => p.host == e.host && p.remotePath == e.remotePath).firstOrNull;
+    final opening = [
+      for (final p in moving)
+        if (!edits.any((e) => e.host == p.host && e.remotePath == p.remotePath)) p,
+    ];
+    final settled = [
+      for (final e in edits)
+        if (e.state == EditState.clean && progressOf(e) == null) e.id,
+    ];
+    void clear() {
+      manager.clearFinished();
+      for (final id in settled) {
+        ref.read(editsProvider.notifier).finish(id);
+      }
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -145,20 +164,22 @@ class TransfersPanel extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             TextButton.icon(
-              onPressed: transfers.any((t) => !t.state.active) ? manager.clearFinished : null,
+              onPressed: transfers.any((t) => !t.state.active) || settled.isNotEmpty ? clear : null,
               icon: const Icon(Icons.clear_all, size: 16),
               label: Text(l.clearFinished),
             ),
           ],
         ),
         const SizedBox(height: Space.sm),
-        if (transfers.isEmpty && edits.isEmpty) BrandHint(pose: BrandPose.sftpTransfer, label: l.none, size: 88),
+        if (transfers.isEmpty && edits.isEmpty && opening.isEmpty)
+          BrandHint(pose: BrandPose.sftpTransfer, label: l.none, size: 88),
         Flexible(
           child: ListView(
             shrinkWrap: true,
             children: [
-              for (final e in edits) _EditRow(e),
-              if (edits.isNotEmpty && transfers.isNotEmpty) const Divider(height: Space.xl),
+              for (final p in opening) _EditProgressRow(p),
+              for (final e in edits) _EditRow(e, progressOf(e)),
+              if ((edits.isNotEmpty || opening.isNotEmpty) && transfers.isNotEmpty) const Divider(height: Space.xl),
               for (final t in transfers) _TransferRow(t),
             ],
           ),
@@ -289,9 +310,57 @@ class _TransferRow extends ConsumerWidget {
   }
 }
 
+/// A file being downloaded to open in an editor, before its edit exists.
+class _EditProgressRow extends StatelessWidget {
+  const _EditProgressRow(this.p);
+  final EditProgress p;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Space.md),
+      child: Row(
+        children: [
+          Icon(Icons.download, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Tooltip(
+                  message: p.remotePath,
+                  child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                _EditBar(p),
+                Text('${p.hostLabel} · ${_bytes(p)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _bytes(EditProgress p) => [formatSize(p.bytes), if (p.total != null) formatSize(p.total)].join(' / ');
+
+class _EditBar extends StatelessWidget {
+  const _EditBar(this.p);
+  final EditProgress p;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: Space.xs),
+    child: LinearProgressIndicator(value: p.fraction, minHeight: 3),
+  );
+}
+
 class _EditRow extends ConsumerWidget {
-  const _EditRow(this.e);
+  const _EditRow(this.e, this.progress);
   final ExternalEdit e;
+  final EditProgress? progress;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -355,6 +424,9 @@ class _EditRow extends ConsumerWidget {
             : fileErrorCode(l, e.error ?? ''),
     };
     final warn = e.state == EditState.conflict || e.state == EditState.failed;
+    final progress = this.progress;
+    // Nothing left to upload: the edit reads as a finished transfer; a later save brings the full row back.
+    final settled = e.state == EditState.clean && progress == null;
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.md),
       child: Column(
@@ -362,7 +434,11 @@ class _EditRow extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.edit_note, size: 18, color: warn ? scheme.error : scheme.primary),
+              Icon(
+                settled ? Icons.download_done : Icons.edit_note,
+                size: settled ? 16 : 18,
+                color: warn ? scheme.error : scheme.primary,
+              ),
               const SizedBox(width: Space.md),
               Expanded(
                 child: Column(
@@ -372,8 +448,9 @@ class _EditRow extends ConsumerWidget {
                       message: e.remotePath,
                       child: Text(e.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                     ),
+                    if (progress != null) _EditBar(progress),
                     Text(
-                      '${e.hostLabel} · $status',
+                      '${e.hostLabel} · ${progress == null ? status : _bytes(progress)}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: warn ? muted?.copyWith(color: scheme.error) : muted,
@@ -395,20 +472,27 @@ class _EditRow extends ConsumerWidget {
                 items: () => [
                   if (canChoose) AppMenuItem(value: openWith, label: l.openWith),
                   AppMenuItem(value: () => edits.redownload(e.id), label: l.redownload),
-                  AppMenuItem(value: finish, label: l.finishEdit),
+                  if (!settled) AppMenuItem(value: finish, label: l.finishEdit),
                 ],
               ),
+              if (settled)
+                IconButton(
+                  tooltip: l.remove,
+                  onPressed: () => edits.finish(e.id),
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 32),
-            child: AppToggleRow(
-              checkbox: true,
-              title: l.autoUpload,
-              value: e.autoUpload,
-              onChanged: (on) => edits.setAutoUpload(e.id, on),
+          if (!settled)
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: AppToggleRow(
+                checkbox: true,
+                title: l.autoUpload,
+                value: e.autoUpload,
+                onChanged: (on) => edits.setAutoUpload(e.id, on),
+              ),
             ),
-          ),
           if (e.state == EditState.conflict)
             Padding(
               padding: const EdgeInsets.only(left: 32),
