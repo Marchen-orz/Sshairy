@@ -4916,6 +4916,12 @@ abstract class AppLocalizations {
   /// **'Describe what you want to do'**
   String get terminalAiInstruction;
 
+  /// No description provided for @terminalAiAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Run automatically'**
+  String get terminalAiAuto;
+
   /// No description provided for @terminalAiFailed.
   ///
   /// In en, this message translates to:
@@ -4945,36 +4951,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The model returned an invalid command. Try rephrasing.'**
   String get terminalAiFailedInvalid;
-
-  /// No description provided for @terminalAiChanged.
-  ///
-  /// In en, this message translates to:
-  /// **'The terminal context changed. Reopen to start a new request.'**
-  String get terminalAiChanged;
-
-  /// No description provided for @terminalAiClarify.
-  ///
-  /// In en, this message translates to:
-  /// **'Add more detail, or use Airy for a task with several steps.'**
-  String get terminalAiClarify;
-
-  /// No description provided for @terminalAiInsertFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not replace the terminal input. Reopen the editor to try again.'**
-  String get terminalAiInsertFailed;
-
-  /// No description provided for @terminalAiInsert.
-  ///
-  /// In en, this message translates to:
-  /// **'Insert command'**
-  String get terminalAiInsert;
-
-  /// No description provided for @terminalAiOpenAgent.
-  ///
-  /// In en, this message translates to:
-  /// **'Open Airy'**
-  String get terminalAiOpenAgent;
 
   /// No description provided for @aiAgentHistory.
   ///

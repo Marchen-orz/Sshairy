@@ -2564,6 +2564,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get terminalAiInstruction => '描述你想完成的操作';
 
   @override
+  String get terminalAiAuto => '自动执行';
+
+  @override
   String get terminalAiFailed => '未能生成命令，请重试。';
 
   @override
@@ -2579,21 +2582,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get terminalAiFailedInvalid => '模型返回的命令无效，请换个说法重试。';
-
-  @override
-  String get terminalAiChanged => '终端上下文已变化，重新打开后可发起新请求。';
-
-  @override
-  String get terminalAiClarify => '请补充需求；多步骤任务可交给 Airy。';
-
-  @override
-  String get terminalAiInsertFailed => '未能替换终端输入，请重新打开编辑器后重试。';
-
-  @override
-  String get terminalAiInsert => '填入命令';
-
-  @override
-  String get terminalAiOpenAgent => '打开 Airy';
 
   @override
   String get aiAgentHistory => '历史会话';

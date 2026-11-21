@@ -2689,6 +2689,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get terminalAiInstruction => 'Describe what you want to do';
 
   @override
+  String get terminalAiAuto => 'Run automatically';
+
+  @override
   String get terminalAiFailed => 'Could not generate a command. Try again.';
 
   @override
@@ -2706,24 +2709,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get terminalAiFailedInvalid =>
       'The model returned an invalid command. Try rephrasing.';
-
-  @override
-  String get terminalAiChanged =>
-      'The terminal context changed. Reopen to start a new request.';
-
-  @override
-  String get terminalAiClarify =>
-      'Add more detail, or use Airy for a task with several steps.';
-
-  @override
-  String get terminalAiInsertFailed =>
-      'Could not replace the terminal input. Reopen the editor to try again.';
-
-  @override
-  String get terminalAiInsert => 'Insert command';
-
-  @override
-  String get terminalAiOpenAgent => 'Open Airy';
 
   @override
   String get aiAgentHistory => 'Conversation history';

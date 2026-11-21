@@ -79,24 +79,6 @@ abstract interface class TerminalHistoryReader {
   TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768});
 }
 
-enum TerminalRunStatus {
-  finished,
-  filtered,
-  notSubmitted,
-  outcomeUnknown,
-  shellIntegrationRequired,
-  terminalBusy,
-  scopeChanged,
-}
-
-class TerminalRunResult {
-  const TerminalRunResult(this.status, [this.entry]);
-  final TerminalRunStatus status;
-
-  /// The command's history record with its bounded result; only when [status] is finished.
-  final TerminalAiHistoryEntry? entry;
-}
-
 /// Only currently echoed input and already known directory metadata. No output or history is read implicitly.
 /// A recognized prompt is a compatibility heuristic, not proof of the remote account or nested shell identity.
 class TerminalAiContext {
@@ -144,7 +126,7 @@ abstract interface class TerminalContextReader {
   TerminalAiSnapshot? readAiSnapshot(TerminalAiContext expected, {int maxLines = 200, int maxBytes = 32768});
 }
 
-enum TerminalAiGenerationKind { command, clarify, useAgent }
+enum TerminalAiGenerationKind { command, done }
 
 class TerminalAiGeneration {
   const TerminalAiGeneration(this.kind, {this.command, this.message});
@@ -292,6 +274,8 @@ abstract interface class TerminalAiService {
     String instruction,
     CancellationToken cancel, {
     List<TerminalAiHistoryEntry> history = const [],
+    List<String> steps = const [],
+    int stepsLeft = 8,
   });
   Future<String?> complete(
     TerminalAiContext context,

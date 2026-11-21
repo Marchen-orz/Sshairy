@@ -52,7 +52,6 @@ extension _TerminalAiPane on _TerminalPaneState {
     _aiChanges?.cancel();
     _cancelAiCompletion();
     _aiService = service;
-    _session._inlineAi.bind(service);
     _aiChanges = service.changes.listen((_) {
       _cancelAiCompletion();
       if (mounted) _update(() => _inlineAiOpen = false);
@@ -109,6 +108,7 @@ extension _TerminalAiPane on _TerminalPaneState {
       _applicationActive &&
       _focus.hasFocus &&
       !_inlineAiOpen &&
+      _session._aiTask == null &&
       !_searching &&
       !_composerOpen &&
       !_historyOpen &&
@@ -121,9 +121,11 @@ extension _TerminalAiPane on _TerminalPaneState {
   void _syncAi() {
     final context = _session.readAiContext();
     final inline = _canOpenInlineAi;
+    final task = _session._aiTask;
     final presentation = (
       inline,
       inline && terminalInputIntent(context.draft ?? '') == TerminalInputIntent.naturalLanguage,
+      task == null ? null : (task.auto, task.thinking),
     );
     if (_aiPresentation != presentation) _update(() => _aiPresentation = presentation);
     final eligible = _completionEligible(context);
@@ -254,7 +256,8 @@ extension _TerminalAiPane on _TerminalPaneState {
 
   bool get _canOpenInlineAi {
     final context = _session.readAiContext();
-    return widget.active &&
+    return _session._aiTask == null &&
+        widget.active &&
         widget.visible &&
         _applicationActive &&
         (_focus.hasFocus || _inlineAiOpen) &&
@@ -268,62 +271,99 @@ extension _TerminalAiPane on _TerminalPaneState {
   }
 
   /// A small AI badge rides above the cursor so it belongs to the line being typed, not the pane corner.
+  /// While a task runs it becomes the task's auto toggle and stop button.
   Widget _inlineAiBadge(BoxConstraints box) => ValueListenableBuilder<Rect?>(
     valueListenable: _completionCursor,
     builder: (context, cursor, _) {
-      if (cursor == null || !_canOpenInlineAi || _inlineAiOpen) return const SizedBox.shrink();
-      final highlighted =
-          terminalInputIntent(_session.readAiContext().draft ?? '') == TerminalInputIntent.naturalLanguage;
-      final fix = _fixAvailable, l = AppLocalizations.of(context);
-      final scheme = Theme.of(context).colorScheme;
+      final task = _session._aiTask;
+      if (cursor == null || task == null && (!_canOpenInlineAi || _inlineAiOpen)) return const SizedBox.shrink();
+      final l = AppLocalizations.of(context), scheme = Theme.of(context).colorScheme;
       const size = 20.0, gap = 2.0;
-      final left = min(max(cursor.right + gap, gap), max(gap, box.maxWidth - size - gap));
+      final width = task == null ? size : size * 2;
+      final left = min(max(cursor.right + gap, gap), max(gap, box.maxWidth - width - gap));
       final above = cursor.top - size - gap;
       final top = min(above >= gap ? above : cursor.bottom + gap, max(gap, box.maxHeight - size - gap));
-      return Positioned(
-        left: left,
-        top: top,
-        width: size,
-        height: size,
-        child: Tooltip(
-          message: fix ? l.terminalAiFix : l.terminalAiGenerate,
-          child: IconButton(
-            key: const ValueKey('terminal-ai-toggle'),
-            onPressed: _showInlineAi,
-            padding: EdgeInsets.zero,
-            style: IconButton.styleFrom(
-              minimumSize: const Size.square(size),
-              fixedSize: const Size.square(size),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-              backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: .92),
-              foregroundColor: fix
-                  ? scheme.error
-                  : highlighted
-                  ? scheme.primary
-                  : scheme.onSurfaceVariant,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
-            ),
-            icon: Icon(fix ? Icons.build_outlined : Icons.auto_awesome_outlined, size: 12),
+      Widget button(Key key, String tooltip, Color color, VoidCallback onPressed, Widget icon) => Tooltip(
+        message: tooltip,
+        child: IconButton(
+          key: key,
+          onPressed: onPressed,
+          padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(
+            minimumSize: const Size.square(size),
+            fixedSize: const Size.square(size),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: .92),
+            foregroundColor: color,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.control)),
           ),
+          icon: icon,
         ),
       );
+      final Widget child;
+      if (task == null) {
+        final fix = _fixAvailable;
+        final highlighted =
+            terminalInputIntent(_session.readAiContext().draft ?? '') == TerminalInputIntent.naturalLanguage;
+        child = button(
+          const ValueKey('terminal-ai-toggle'),
+          fix ? l.terminalAiFix : l.terminalAiGenerate,
+          fix
+              ? scheme.error
+              : highlighted
+              ? scheme.primary
+              : scheme.onSurfaceVariant,
+          _showInlineAi,
+          Icon(fix ? Icons.build_outlined : Icons.auto_awesome_outlined, size: 12),
+        );
+      } else {
+        child = Row(
+          children: [
+            button(
+              const ValueKey('terminal-ai-auto'),
+              l.terminalAiAuto,
+              task.auto ? scheme.primary : scheme.onSurfaceVariant,
+              () => _session._setAiTaskAuto(!task.auto),
+              Icon(task.auto ? Icons.fast_forward : Icons.fast_forward_outlined, size: 12),
+            ),
+            button(
+              const ValueKey('terminal-ai-stop'),
+              l.stop,
+              scheme.primary,
+              () => _session._stopAiTask(restore: true),
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (task.thinking)
+                    const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                  const Icon(Icons.stop, size: 10),
+                ],
+              ),
+            ),
+          ],
+        );
+      }
+      return Positioned(left: left, top: top, width: width, height: size, child: child);
     },
   );
 
+  /// A failed command gets fixed and a typed draft becomes the request; an empty prompt asks for one.
   void _showInlineAi() {
     if (!_canOpenInlineAi) return;
     _cancelAiCompletion();
-    final inline = _session._inlineAi, fix = _fixAvailable;
-    inline.open();
-    if (fix && inline.instruction.isEmpty && inline.result == null && !inline.busy) {
-      inline.editInstruction(AppLocalizations.of(context).terminalAiFix);
-    }
-    if (!inline.busy && inline.result == null && inline.instruction.trim().isNotEmpty) unawaited(inline.generate());
+    final draft = _session.readAiContext().draft!;
+    if (_fixAvailable) return _startInlineAi(AppLocalizations.of(context).terminalAiFix);
+    if (draft.trim().isNotEmpty) return _startInlineAi(draft);
     _update(() {
       _historyOpen = _composerOpen = false;
       _inlineAiOpen = true;
     });
+  }
+
+  void _startInlineAi(String instruction) {
+    final l = AppLocalizations.of(context);
+    unawaited(_session._startAiTask(_aiService!, instruction, (failure) => _failureText(l, failure)));
   }
 
   void _closeInlineAi() {
@@ -337,33 +377,23 @@ extension _TerminalAiPane on _TerminalPaneState {
     child: LayoutBuilder(
       builder: (context, box) {
         final width = min(InlineAiPopupSize.width, max(0.0, box.maxWidth - Space.sm * 2));
-        final height = min(InlineAiPopupSize.maxHeight, max(0.0, box.maxHeight - Space.sm * 2));
-        Offset constrain(Offset offset) => Offset(
-          offset.dx.clamp(Space.sm, max(Space.sm, box.maxWidth - width - Space.sm)),
-          offset.dy.clamp(Space.sm, max(Space.sm, box.maxHeight - height - Space.sm)),
-        );
-        final offset = constrain(
-          _inlineAiOffset ?? _completionCursor.value?.bottomLeft ?? const Offset(Space.sm, Space.sm),
-        );
+        final cursor = _completionCursor.value;
+        final below = cursor == null || cursor.bottom < box.maxHeight / 2;
         return Stack(
           children: [
             Positioned(
-              left: offset.dx,
-              top: offset.dy,
+              left: (cursor?.left ?? Space.sm).clamp(Space.sm, max(Space.sm, box.maxWidth - width - Space.sm)),
+              top: below ? cursor?.bottom ?? Space.sm : null,
+              bottom: below ? null : box.maxHeight - cursor.top,
               width: width,
               child: Entrance(
                 offset: Offset.zero,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: height),
-                  child: _InlineAiComposer(
-                    key: ObjectKey(_session._inlineAi.context),
-                    session: _session,
-                    service: _aiService!,
-                    isActive: () => mounted && widget.active && widget.visible && _applicationActive && _inlineAiOpen,
-                    onClose: _closeInlineAi,
-                    onDrag: (delta) => _update(() => _inlineAiOffset = constrain((_inlineAiOffset ?? offset) + delta)),
-                    onAskAgent: widget.onAskAgent,
-                  ),
+                child: _InlineAiComposer(
+                  onSubmit: (instruction) {
+                    if (_canOpenInlineAi) _startInlineAi(instruction);
+                    _closeInlineAi();
+                  },
+                  onClose: _closeInlineAi,
                 ),
               ),
             ),
@@ -374,26 +404,6 @@ extension _TerminalAiPane on _TerminalPaneState {
   );
 }
 
-class _InlineAiComposer extends StatefulWidget {
-  const _InlineAiComposer({
-    super.key,
-    required this.session,
-    required this.service,
-    required this.isActive,
-    required this.onClose,
-    required this.onDrag,
-    this.onAskAgent,
-  });
-  final TerminalSession session;
-  final TerminalAiService service;
-  final bool Function() isActive;
-  final VoidCallback onClose;
-  final ValueChanged<Offset> onDrag;
-  final ValueChanged<String>? onAskAgent;
-  @override
-  State<_InlineAiComposer> createState() => _InlineAiComposerState();
-}
-
 String _failureText(AppLocalizations l, TerminalAiFailure failure) => switch (failure.reason) {
   TerminalAiFailureReason.timeout => l.terminalAiFailedTimeout,
   TerminalAiFailureReason.network => l.terminalAiFailedNetwork,
@@ -402,116 +412,35 @@ String _failureText(AppLocalizations l, TerminalAiFailure failure) => switch (fa
   _ => l.terminalAiFailed,
 };
 
+class _InlineAiComposer extends StatefulWidget {
+  const _InlineAiComposer({required this.onSubmit, required this.onClose});
+  final ValueChanged<String> onSubmit;
+  final VoidCallback onClose;
+  @override
+  State<_InlineAiComposer> createState() => _InlineAiComposerState();
+}
+
 class _InlineAiComposerState extends State<_InlineAiComposer> {
-  late final _inline = widget.session._inlineAi;
-  late final _captured = _inline.context!;
-  late final _instruction = TextEditingController(text: _inline.instruction);
-  late final _command = TextEditingController(text: _inline.command);
-  final _editorFocus = FocusNode();
+  final _instruction = TextEditingController();
   final _focus = FocusNode();
-  CancellationToken? _acceptCancel;
-  bool _insertFailed = false;
-  TerminalAiGeneration? _acceptedPreview;
-  TerminalAiGeneration? get _result => _acceptedPreview ?? _inline.result;
-  TerminalAiFailure? get _failure => _inline.failure;
-  bool get _stale => _inline.stale;
 
   @override
   void initState() {
     super.initState();
-    _inline.addListener(_changed);
-    widget.session.commandAssistance.addListener(_changed);
-    widget.session._directory.changes.addListener(_changed);
-    widget.session.addListener(_changed);
-    _instruction.addListener(_edited);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
     });
   }
 
-  void _edited() {
-    _acceptCancel?.cancel();
-    _insertFailed = false;
-    _acceptedPreview = null;
-    _inline.editInstruction(_instruction.text);
-    if (!_instruction.value.composing.isCollapsed) _inline.stop();
-    if (mounted) setState(() {});
-  }
-
-  void _changed() {
-    if (_acceptedPreview == null && _command.text != _inline.command) _command.text = _inline.command;
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _generate() async {
-    if (_stale || !_editorFocus.hasFocus || !_instruction.value.composing.isCollapsed) return;
-    await _inline.generate();
-  }
-
-  bool get _canAccept {
-    final current = widget.session.readAiContext();
-    return !_stale &&
-        widget.isActive() &&
-        _editorFocus.hasFocus &&
-        _result?.kind == TerminalAiGenerationKind.command &&
-        !_inline.busy &&
-        _acceptCancel == null &&
-        _command.value.composing.isCollapsed &&
-        current.ready &&
-        (sameTerminalAiContext(_captured, current) ||
-            current.draft!.isEmpty && sameTerminalAiContext(_captured, current, draft: false)) &&
-        validTerminalAiCommand(_command.text) &&
-        widget.service.canGenerate(current);
-  }
-
-  Future<void> _accept() async {
-    if (!_canAccept) return;
-    final current = widget.session.readAiContext();
-    _acceptedPreview = _result;
-    final cancel = _acceptCancel = CancellationToken();
-    setState(() => _insertFailed = false);
-    try {
-      final sent = await widget.session.acceptAiDraft(
-        current,
-        _command.text,
-        cancel: cancel,
-        isCurrent: () =>
-            mounted &&
-            widget.isActive() &&
-            _editorFocus.hasFocus &&
-            _instruction.value.composing.isCollapsed &&
-            _command.value.composing.isCollapsed &&
-            widget.service.canGenerate(_captured),
-      );
-      if (!mounted) return;
-      if (sent == InsertResult.sent) {
-        _inline.clear();
-        widget.onClose();
-      } else if (sent != InsertResult.cancelled) {
-        setState(() => _insertFailed = true);
-      }
-    } finally {
-      cancel.cancel();
-      _acceptCancel = null;
-      if (mounted) setState(() {});
-    }
-  }
-
   KeyEventResult _onKey(FocusNode _, KeyEvent event) {
-    if (event is! KeyDownEvent || !_instruction.value.composing.isCollapsed || !_command.value.composing.isCollapsed) {
-      return KeyEventResult.ignored;
-    }
+    if (event is! KeyDownEvent || !_instruction.value.composing.isCollapsed) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       widget.onClose();
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
       if (HardwareKeyboard.instance.isShiftPressed) return KeyEventResult.ignored;
-      unawaited(_result?.kind == TerminalAiGenerationKind.command ? _accept() : _generate());
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.tab && _canAccept) {
-      unawaited(_accept());
+      if (_instruction.text.trim().isNotEmpty) widget.onSubmit(_instruction.text);
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -519,169 +448,34 @@ class _InlineAiComposerState extends State<_InlineAiComposer> {
 
   @override
   void dispose() {
-    _acceptCancel?.cancel();
-    _inline.removeListener(_changed);
-    widget.session.commandAssistance.removeListener(_changed);
-    widget.session._directory.changes.removeListener(_changed);
-    widget.session.removeListener(_changed);
-    _instruction.removeListener(_edited);
     _instruction.dispose();
-    _command.dispose();
     _focus.dispose();
-    _editorFocus.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context), theme = Theme.of(context);
-    return TapRegion(
-      onTapOutside: (_) => widget.onClose(),
-      child: Focus(
-        focusNode: _editorFocus,
-        onFocusChange: (focused) {
-          if (!focused) _acceptCancel?.cancel();
-          if (mounted) setState(() {});
-        },
-        onKeyEvent: _onKey,
-        child: PopupSurface(
-          key: const ValueKey('terminal-ai-composer'),
-          radius: Radii.panel,
-          padding: const EdgeInsets.all(Space.sm),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.move,
-                        child: GestureDetector(
-                          key: const ValueKey('terminal-ai-drag'),
-                          behavior: HitTestBehavior.opaque,
-                          onPanUpdate: (details) => widget.onDrag(details.delta),
-                          child: SizedBox(
-                            height: WorkspaceSize.control,
-                            child: Row(
-                              children: [
-                                const Icon(Icons.auto_awesome_outlined, size: 14),
-                                const SizedBox(width: Space.sm),
-                                Flexible(child: Text(l.terminalAiGenerate, style: theme.textTheme.labelLarge)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    IconButton(onPressed: widget.onClose, tooltip: l.close, icon: const Icon(Icons.close, size: 16)),
-                  ],
-                ),
-                const SizedBox(height: Space.sm),
-                TextField(
-                  key: const ValueKey('terminal-ai-instruction'),
-                  controller: _instruction,
-                  focusNode: _focus,
-                  // On desktop a tap outside a focused field unfocuses it before the button runs, and both
-                  // Generate and Insert refuse to act once the composer has lost focus.
-                  onTapOutside: (_) {},
-                  minLines: 1,
-                  maxLines: 3,
-                  maxLength: 2048,
-                  decoration: InputDecoration(isDense: true, hintText: l.terminalAiInstruction, counterText: ''),
-                ),
-                if (_inline.busy || _acceptCancel != null)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: Space.sm),
-                    child: LinearProgressIndicator(minHeight: 2),
-                  ),
-                if (_failure case final failure?)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Space.sm),
-                    child: Text(_failureText(l, failure), style: TextStyle(color: theme.colorScheme.error)),
-                  ),
-                if (_insertFailed)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Space.sm),
-                    child: Text(l.terminalAiInsertFailed, style: TextStyle(color: theme.colorScheme.error)),
-                  )
-                else if (_stale && _acceptCancel == null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: Space.sm),
-                    child: Text(l.terminalAiChanged, style: theme.textTheme.bodySmall),
-                  ),
-                if (_result case final result?) ...[
-                  const SizedBox(height: Space.sm),
-                  if (result.kind == TerminalAiGenerationKind.command)
-                    TextField(
-                      key: const ValueKey('terminal-ai-command'),
-                      controller: _command,
-                      onTapOutside: (_) {},
-                      minLines: 1,
-                      maxLines: 3,
-                      style: mono(context),
-                      onChanged: (value) {
-                        _acceptCancel?.cancel();
-                        _inline.command = value;
-                        setState(() {});
-                      },
-                      decoration: const InputDecoration(isDense: true),
-                    )
-                  else
-                    Text(result.message ?? l.terminalAiClarify, style: theme.textTheme.bodySmall),
-                  if (result.kind == TerminalAiGenerationKind.command && result.message?.trim().isNotEmpty == true)
-                    Padding(
-                      padding: const EdgeInsets.only(top: Space.sm),
-                      child: Text(result.message!, style: theme.textTheme.bodySmall),
-                    ),
-                ],
-                const SizedBox(height: Space.sm),
-                Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: Space.sm,
-                  runSpacing: Space.sm,
-                  children: [
-                    if (_result?.kind == TerminalAiGenerationKind.command)
-                      TextButton.icon(
-                        onPressed: () => Clipboard.setData(ClipboardData(text: _command.text)),
-                        icon: const Icon(Icons.copy_outlined, size: 16),
-                        label: Text(l.copy),
-                      ),
-                    if (_result?.kind == TerminalAiGenerationKind.useAgent && widget.onAskAgent != null)
-                      TextButton.icon(
-                        key: const ValueKey('terminal-ai-agent'),
-                        onPressed: () {
-                          final instruction = _instruction.text;
-                          widget.onClose();
-                          widget.onAskAgent!(instruction);
-                        },
-                        icon: const Icon(Icons.auto_awesome_outlined, size: 16),
-                        label: Text(l.terminalAiOpenAgent),
-                      ),
-                    if (_inline.busy)
-                      TextButton(key: const ValueKey('terminal-ai-stop'), onPressed: _inline.stop, child: Text(l.stop))
-                    else if (_result?.kind == TerminalAiGenerationKind.command)
-                      FilledButton.icon(
-                        key: const ValueKey('terminal-ai-accept'),
-                        onPressed: _canAccept ? _accept : null,
-                        icon: const Icon(Icons.subdirectory_arrow_left, size: 16),
-                        label: Text(l.terminalAiInsert),
-                      )
-                    else
-                      FilledButton.icon(
-                        key: const ValueKey('terminal-ai-generate'),
-                        onPressed: _stale || _instruction.text.trim().isEmpty ? null : _generate,
-                        icon: const Icon(Icons.auto_awesome, size: 16),
-                        label: Text(l.terminalAiGenerate),
-                      ),
-                  ],
-                ),
-              ],
-            ),
+  Widget build(BuildContext context) => TapRegion(
+    onTapOutside: (_) => widget.onClose(),
+    child: Focus(
+      onKeyEvent: _onKey,
+      child: PopupSurface(
+        key: const ValueKey('terminal-ai-composer'),
+        radius: Radii.panel,
+        padding: const EdgeInsets.all(Space.sm),
+        child: TextField(
+          key: const ValueKey('terminal-ai-instruction'),
+          controller: _instruction,
+          focusNode: _focus,
+          minLines: 1,
+          maxLines: 3,
+          maxLength: 2048,
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: AppLocalizations.of(context).terminalAiInstruction,
+            counterText: '',
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

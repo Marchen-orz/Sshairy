@@ -24,7 +24,6 @@ import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../application/completion_translations.dart';
 import '../application/ai.dart';
-import '../application/inline_ai.dart';
 import '../domain/ai_intent.dart';
 import '../domain/ai_terminal.dart';
 import '../domain/command_assistance.dart';
@@ -51,6 +50,7 @@ part 'terminal_assistance_ui.dart';
 part 'terminal_input_overlays.dart';
 part 'terminal_ai.dart';
 part 'terminal_history.dart';
+part 'terminal_ai_task.dart';
 
 /// [idle] has never connected; a restored tab waits there until the user connects.
 enum SessionStatus { idle, connecting, connected, failed, disconnected }
@@ -132,8 +132,6 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   }
 
   void _configureTerminal() {
-    _assistance.addListener(_inlineAi.synchronize);
-    _directory.changes.addListener(_inlineAi.synchronize);
     _terminal.onSemanticPrompt = _semanticPrompt;
     _terminal.onPrivateOSC = _historyOsc;
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
@@ -253,7 +251,10 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   final _historyBinding = Object();
   _PendingCommandResult? _pendingCommandResult;
   var _historyRevision = 0;
-  late final _inlineAi = InlineAiController(readContext: readAiContext, readHistory: readAiHistory);
+  _AiTask? _aiTask;
+
+  // Part extensions may not call the protected notifyListeners.
+  void _aiTaskChanged() => notifyListeners();
   final _history = ValueNotifier<List<String>>(const []);
   final _assistance = ValueNotifier<CommandAssistanceState>(const CommandAssistanceState());
   Timer? _completionTimer;
@@ -347,54 +348,6 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         (LocalTerminalAiTarget(kind: final expected), LocalTerminalTarget(:final shell)) => expected == shell.kind,
         _ => false,
       };
-
-  bool _running = false;
-
-  TerminalRunStatus? runRefusal(TerminalHistorySession expected) {
-    if (!historySessionCurrent(expected) || _sshHost == null) return TerminalRunStatus.scopeChanged;
-    if (!_semanticSeen) return TerminalRunStatus.shellIntegrationRequired;
-    if (_running || !_semanticInput || pendingOutputBytes != 0 || _echoedCommand() != '') {
-      return TerminalRunStatus.terminalBusy;
-    }
-    return null;
-  }
-
-  Future<TerminalRunResult> run(
-    TerminalHistorySession expected,
-    String command, {
-    required Duration timeout,
-    required CancellationToken cancel,
-  }) async {
-    if (runRefusal(expected) case final refusal?) return TerminalRunResult(refusal);
-    if (!validTerminalAiCommand(command) || cancel.isCancelled) {
-      return const TerminalRunResult(TerminalRunStatus.notSubmitted);
-    }
-    _running = true;
-    try {
-      // The same path as typing: one write of the whole line, then Enter only once the shell echoed it exactly.
-      _terminal.onOutput!(command);
-      final echo = DateTime.now().add(const Duration(seconds: 2));
-      while (pendingOutputBytes != 0 || _echoedCommand() != command) {
-        if (cancel.isCancelled || DateTime.now().isAfter(echo) || !historySessionCurrent(expected)) {
-          return const TerminalRunResult(TerminalRunStatus.notSubmitted);
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      _submitCommand();
-      final pending = _pendingCommandResult;
-      _terminal.onOutput!('\r');
-      if (pending == null) return const TerminalRunResult(TerminalRunStatus.outcomeUnknown);
-      final stop = Completer<TerminalAiHistoryEntry?>();
-      final timer = Timer(timeout, () => stop.isCompleted ? null : stop.complete(null));
-      unawaited(cancel.whenCancelled.then((_) => stop.isCompleted ? null : stop.complete(null)));
-      final entry = await Future.any([pending.done.future, stop.future]);
-      timer.cancel();
-      if (entry != null) return TerminalRunResult(TerminalRunStatus.finished, entry);
-      return TerminalRunResult(pending.sensitive ? TerminalRunStatus.filtered : TerminalRunStatus.outcomeUnknown);
-    } finally {
-      _running = false;
-    }
-  }
 
   TerminalHistorySnapshot? readHistory(TerminalHistorySession expected) {
     if (!historySessionCurrent(expected)) return null;
@@ -757,6 +710,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
         if (data.isEmpty) return;
+        // A soft-keyboard Enter skips the view's submit hook; an inline task still needs its command recorded.
+        if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
         if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
           _historyBrowsing = true;
         } else if (!data.startsWith('\x1b') &&
@@ -855,6 +810,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
+        if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
         if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
           _historyBrowsing = true;
         } else if (!data.startsWith('\x1b') &&
@@ -929,6 +885,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
+        if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
         _inputSequence++;
         _inputPending = true;
         shell.write(utf8.encode(data));
@@ -1143,9 +1100,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _ownedPaths = null;
     _commands.clear();
     _clearAiHistory();
-    _assistance.removeListener(_inlineAi.synchronize);
-    _directory.changes.removeListener(_inlineAi.synchronize);
-    _inlineAi.dispose();
+    _stopAiTask();
     multilineDraft = '';
     _history.value = const [];
     _assistance.value = const CommandAssistanceState();

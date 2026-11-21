@@ -68,7 +68,6 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   String? _candidateTranslationLocale;
   var _historyOpen = false, _historyPinned = false, _composerOpen = false;
   Offset? _historyOffset;
-  Offset? _inlineAiOffset;
   Size? _historySize;
   int? _composerGeneration;
   TerminalAiService? _aiService;
@@ -76,7 +75,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   Timer? _aiTimer;
   CancellationToken? _aiCompletionCancel;
   TerminalAiContext? _aiCompletionContext;
-  (bool, bool)? _aiPresentation;
+  (bool, bool, (bool, bool)?)? _aiPresentation;
   String? _aiCandidate;
   bool? _aiLastCompositionReady;
   bool _inlineAiOpen = false, _aiScheduled = false, _aiFrameListening = false, _applicationActive = true;
@@ -242,6 +241,14 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     final keys = HardwareKeyboard.instance;
     final shortcuts = ref.read(settingsProvider).shortcuts;
+    // Esc stops an inline task; Ctrl+C stops it and still reaches the shell. Typing simply takes over.
+    if (event is KeyDownEvent && _session._aiTask != null) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        _session._stopAiTask(restore: true);
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.keyC && keys.isControlPressed) _session._stopAiTask();
+    }
     if (event is KeyDownEvent &&
         _canOpenInlineAi &&
         AppShortcuts.matches(shortcuts, AppShortcutAction.inlineGenerate, event)) {
@@ -306,6 +313,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   void _sendTouchSequence(String raw) {
     final ctrl = _touchCtrl != TouchModifierState.off;
     final alt = _touchAlt != TouchModifierState.off;
+    if (raw == '\x1b' && !ctrl && !alt && _session._aiTask != null) return _session._stopAiTask(restore: true);
     if (!ctrl && !alt) {
       final ghost = raw == '\x1b[C' ? _ghost : null;
       if (ghost != null) {

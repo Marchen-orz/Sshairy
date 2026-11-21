@@ -329,7 +329,6 @@ extension _CommandAssistance on TerminalSession {
     _cancelCompletion();
     _draftRevision++;
     _assistance.value = const CommandAssistanceState();
-    _inlineAi.synchronize();
   }
 
   void _markCommandSubmitted() {
@@ -347,9 +346,11 @@ extension _CommandAssistance on TerminalSession {
     _markCommandSubmitted();
     _semanticInput = false;
     _invalidateCommandDraft();
+    _aiTask?.submit(_pendingCommandResult);
   }
 
   void _resetCommandDraft() {
+    _stopAiTask();
     _shellGeneration++;
     _clearAiHistory();
     _semanticSeen = _semanticInput = false;
