@@ -494,6 +494,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           ..retracted = entry.retracted
           ..state = AgentExecution.restoredState(entry.capability, entry.state)
           ..exitCode = entry.exitCode
+          ..purpose = entry.purpose ?? ''
           ..sharedText = entry.text.isEmpty ? null : entry.text
           ..historyTruncated = entry.truncated;
         _executions.add(execution);

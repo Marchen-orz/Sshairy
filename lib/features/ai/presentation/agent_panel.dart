@@ -1800,10 +1800,12 @@ class _ExecutionCardState extends State<_ExecutionCard> {
       _ => (l.aiAgentExecutionRecord, l.aiAgentExecutionRecord),
     };
     final purpose = execution.purpose.trim();
-    final label = execution.capability != 'agent.execute' || execution.archived || execution.command.isEmpty
+    final label = execution.capability != 'agent.execute'
         ? title
         : purpose.isNotEmpty
         ? purpose
+        : execution.archived || execution.command.isEmpty
+        ? title
         : '$title · ${execution.command}';
     final status = failed
         ? compact || execution.command.isEmpty

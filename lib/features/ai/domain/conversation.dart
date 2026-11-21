@@ -14,12 +14,16 @@ class ConversationEntry {
     this.truncated = false,
     this.retracted = false,
     this.executionId,
+    this.purpose,
     this.attachments = const [],
   });
 
   final ConversationEntryKind kind;
   final String text;
   final String? capability, state, executionId;
+
+  /// The model's short display-only description of an execution; never sent back to the model.
+  final String? purpose;
   final int? exitCode;
   final bool truncated, retracted;
   final List<AgentAttachment> attachments;

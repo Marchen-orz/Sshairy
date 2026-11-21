@@ -168,6 +168,7 @@ class AgentConversations extends ChangeNotifier {
           truncated: entry.historyTruncated || (entry.output?.truncated ?? false),
           retracted: entry.retracted,
           executionId: entry.id,
+          purpose: entry.purpose.isEmpty ? null : sanitizeConversationText(entry.purpose),
         ),
   ];
 
@@ -183,6 +184,7 @@ class AgentConversations extends ChangeNotifier {
           left.truncated != right.truncated ||
           left.retracted != right.retracted ||
           left.executionId != right.executionId ||
+          left.purpose != right.purpose ||
           !listEquals(left.attachments, right.attachments)) {
         return false;
       }
@@ -403,6 +405,7 @@ class AgentConversations extends ChangeNotifier {
     truncated: entry.truncated,
     retracted: true,
     executionId: entry.executionId,
+    purpose: entry.purpose,
     attachments: entry.attachments,
   );
 

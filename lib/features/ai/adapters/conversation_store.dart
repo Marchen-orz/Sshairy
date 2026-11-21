@@ -32,6 +32,7 @@ int _textBytes(AgentConversationRecord record) =>
       (size, entry) =>
           size +
           utf8.encode(entry.text).length +
+          utf8.encode(entry.purpose ?? '').length +
           entry.attachments.fold(0, (sum, attachment) => sum + attachment.storedBytes),
     );
 
@@ -73,6 +74,7 @@ List<AgentConversationRecord> boundedConversationRecords(Iterable<AgentConversat
           truncated: entry.truncated,
           retracted: entry.retracted,
           executionId: entry.executionId,
+          purpose: entry.purpose == null ? null : sanitizeConversationText(entry.purpose!),
           attachments: entry.attachments,
         ),
     ];
@@ -278,6 +280,7 @@ void _validateEntry(Map<String, dynamic> entry) {
     'truncated',
     'retracted',
     'executionId',
+    'purpose',
     'attachments',
   };
   if (!entry.keys.toSet().containsAll(const {'kind', 'text'}) || entry.keys.any((key) => !allowed.contains(key))) {
@@ -300,7 +303,11 @@ void _validateEntry(Map<String, dynamic> entry) {
     checkedAgentAttachments(values.map((value) => AgentAttachment.fromJson((value as Map).cast<String, Object?>())));
   }
   final capability = entry['capability'], state = entry['state'], exitCode = entry['exitCode'];
-  final executionId = entry['executionId'];
+  final executionId = entry['executionId'], purpose = entry['purpose'];
+  if (purpose != null &&
+      (purpose is! String || purpose.length > 160 || purpose.contains(RegExp(r'[\x00-\x1f\x7f-\x9f]')))) {
+    throw const FormatException('conversation execution purpose');
+  }
   if (capability != null && (capability is! String || !_capability.hasMatch(capability)) ||
       state != null && (state is! String || !_executionStates.contains(state)) ||
       exitCode != null && exitCode is! int ||
@@ -308,7 +315,7 @@ void _validateEntry(Map<String, dynamic> entry) {
     throw const FormatException('conversation execution metadata');
   }
   if (entry['kind'] != ConversationEntryKind.execution.name &&
-      (capability != null || state != null || exitCode != null || executionId != null)) {
+      (capability != null || state != null || exitCode != null || executionId != null || purpose != null)) {
     throw const FormatException('conversation text metadata');
   }
 }
@@ -333,6 +340,7 @@ Map<String, dynamic> _encode(AgentConversationRecord record) => {
         if (entry.state != null) 'state': entry.state,
         if (entry.exitCode != null) 'exitCode': entry.exitCode,
         if (entry.executionId != null) 'executionId': entry.executionId,
+        if (entry.purpose != null) 'purpose': entry.purpose,
         if (entry.retracted) 'retracted': true,
         'truncated': entry.truncated,
       },
@@ -359,6 +367,7 @@ AgentConversationRecord _decode(Map<String, dynamic> record) => AgentConversatio
         truncated: entry['truncated'] as bool? ?? false,
         retracted: entry['retracted'] as bool? ?? false,
         executionId: entry['executionId'] as String?,
+        purpose: entry['purpose'] as String?,
         attachments: checkedAgentAttachments([
           for (final attachment in entry['attachments'] as List? ?? const [])
             AgentAttachment.fromJson((attachment as Map).cast<String, Object?>()),
