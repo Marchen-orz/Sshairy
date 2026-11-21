@@ -1751,7 +1751,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get shortcutToggleAgent => '开合 Agent 侧栏';
 
   @override
-  String get shortcutInlineGenerate => '行内生成命令';
+  String get shortcutInlineGenerate => '行内 AI 任务';
 
   @override
   String get shortcutTerminalCopy => '终端复制';
@@ -2517,11 +2517,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigAdvanced => '模型能力与额度';
 
   @override
-  String get aiConfigInline => '行内命令生成';
+  String get aiConfigInline => '行内 AI 任务';
 
   @override
   String get aiConfigInlineHint =>
-      '点击终端 AI 按钮或按 Ctrl/Cmd+Shift+G，使用需求、已知环境、近期命令及其有界结果生成；检查后再填入。';
+      '在输入行写下需求，点 AI 图标或按 Alt+Enter，AI 在当前终端逐步填入命令，你回车后它看结果继续下一步。';
 
   @override
   String get aiConfigCompletion => 'AI 提示补全';
@@ -2530,7 +2530,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigTerminalScope => '允许这些 SSH 主机向模型发送当前输入与已知目录';
 
   @override
-  String get aiConfigTerminalNoHosts => '添加主机后可授权 SSH 提示。本地终端可使用手动触发的行内生成。';
+  String get aiConfigTerminalNoHosts => '添加主机后可授权 SSH 提示。本地终端可手动发起行内 AI 任务。';
 
   @override
   String get aiConfigPosix => '已选 SSH 终端使用 Linux / POSIX shell';
@@ -2544,7 +2544,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiConfigCompletionHint =>
-      '输入 git st 等明确命令后停顿 800 毫秒触发，使用本会话最多 8 条相关命令及其有界结果。';
+      '输入 git st 稍停，光标后灰字补全为 git status，按 → 接受。参考本会话最多 8 条相关命令及其结果。';
 
   @override
   String get aiAgentErrorHostTrust => '请先正常连接这台主机并核对主机密钥，再使用远程工具。';
@@ -2680,10 +2680,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiConfigReviewModel => '审批模型';
 
   @override
-  String get aiConfigInlineModel => '行内生成模型';
+  String get aiConfigInlineModel => '行内任务模型';
 
   @override
-  String get aiConfigPrediction => '预测下一条命令（→ 接受）';
+  String get aiConfigPrediction => '预测下一条命令';
+
+  @override
+  String get aiConfigPredictionHint =>
+      '命令结束回到空提示符时，灰字给出下一条，如 git add . 之后的 git commit，按 → 接受。需要 shell 集成。';
 
   @override
   String get aiConfigCompletionModel => '补全模型';

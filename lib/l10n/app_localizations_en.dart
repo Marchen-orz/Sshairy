@@ -1828,7 +1828,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get shortcutToggleAgent => 'Toggle Agent panel';
 
   @override
-  String get shortcutInlineGenerate => 'Generate command inline';
+  String get shortcutInlineGenerate => 'Inline AI task';
 
   @override
   String get shortcutTerminalCopy => 'Terminal copy';
@@ -2634,11 +2634,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigAdvanced => 'Model capabilities and limits';
 
   @override
-  String get aiConfigInline => 'Inline command generation';
+  String get aiConfigInline => 'Inline AI tasks';
 
   @override
   String get aiConfigInlineHint =>
-      'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment, recent session commands and their bounded results. Review before filling in.';
+      'Type a request at the prompt, then click the AI icon or press Alt+Enter. AI fills in commands step by step in this terminal and continues from each result after you press Enter.';
 
   @override
   String get aiConfigCompletion => 'AI suggestions';
@@ -2649,7 +2649,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigTerminalNoHosts =>
-      'Add a host to allow SSH suggestions. Local shells can use explicit inline generation.';
+      'Add a host to allow SSH suggestions. Local shells can start inline AI tasks manually.';
 
   @override
   String get aiConfigPosix => 'These SSH terminals use Linux / POSIX shells';
@@ -2664,7 +2664,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiConfigCompletionHint =>
-      'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands and their bounded results from this session.';
+      'Pause after typing git st and gray text completes it to git status; press → to accept. Uses up to 8 relevant commands and their results from this session.';
 
   @override
   String get aiAgentErrorHostTrust =>
@@ -2818,10 +2818,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiConfigReviewModel => 'Approval model';
 
   @override
-  String get aiConfigInlineModel => 'Inline generation model';
+  String get aiConfigInlineModel => 'Inline task model';
 
   @override
-  String get aiConfigPrediction => 'Predict the next command (→ to accept)';
+  String get aiConfigPrediction => 'Predict the next command';
+
+  @override
+  String get aiConfigPredictionHint =>
+      'Back at an empty prompt, gray text suggests the next command, such as git commit after git add .; press → to accept. Needs shell integration.';
 
   @override
   String get aiConfigCompletionModel => 'Completion model';

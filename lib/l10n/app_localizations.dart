@@ -3359,7 +3359,7 @@ abstract class AppLocalizations {
   /// No description provided for @shortcutInlineGenerate.
   ///
   /// In en, this message translates to:
-  /// **'Generate command inline'**
+  /// **'Inline AI task'**
   String get shortcutInlineGenerate;
 
   /// No description provided for @shortcutTerminalCopy.
@@ -4835,13 +4835,13 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigInline.
   ///
   /// In en, this message translates to:
-  /// **'Inline command generation'**
+  /// **'Inline AI tasks'**
   String get aiConfigInline;
 
   /// No description provided for @aiConfigInlineHint.
   ///
   /// In en, this message translates to:
-  /// **'Click the terminal AI button or press Ctrl/Cmd+Shift+G. Uses the request, known environment, recent session commands and their bounded results. Review before filling in.'**
+  /// **'Type a request at the prompt, then click the AI icon or press Alt+Enter. AI fills in commands step by step in this terminal and continues from each result after you press Enter.'**
   String get aiConfigInlineHint;
 
   /// No description provided for @aiConfigCompletion.
@@ -4859,7 +4859,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigTerminalNoHosts.
   ///
   /// In en, this message translates to:
-  /// **'Add a host to allow SSH suggestions. Local shells can use explicit inline generation.'**
+  /// **'Add a host to allow SSH suggestions. Local shells can start inline AI tasks manually.'**
   String get aiConfigTerminalNoHosts;
 
   /// No description provided for @aiConfigPosix.
@@ -4883,7 +4883,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigCompletionHint.
   ///
   /// In en, this message translates to:
-  /// **'Suggests after an 800 ms pause on a clear command such as git st. Includes up to 8 relevant commands and their bounded results from this session.'**
+  /// **'Pause after typing git st and gray text completes it to git status; press → to accept. Uses up to 8 relevant commands and their results from this session.'**
   String get aiConfigCompletionHint;
 
   /// No description provided for @aiAgentErrorHostTrust.
@@ -5135,14 +5135,20 @@ abstract class AppLocalizations {
   /// No description provided for @aiConfigInlineModel.
   ///
   /// In en, this message translates to:
-  /// **'Inline generation model'**
+  /// **'Inline task model'**
   String get aiConfigInlineModel;
 
   /// No description provided for @aiConfigPrediction.
   ///
   /// In en, this message translates to:
-  /// **'Predict the next command (→ to accept)'**
+  /// **'Predict the next command'**
   String get aiConfigPrediction;
+
+  /// No description provided for @aiConfigPredictionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Back at an empty prompt, gray text suggests the next command, such as git commit after git add .; press → to accept. Needs shell integration.'**
+  String get aiConfigPredictionHint;
 
   /// No description provided for @aiConfigCompletionModel.
   ///

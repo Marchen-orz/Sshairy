@@ -682,6 +682,12 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               value: _predictionEnabled,
               onChanged: locked ? null : (v) => setState(() => _predictionEnabled = v),
             ),
+            const SizedBox(height: Space.xs),
+            Text(
+              l.aiConfigPredictionHint,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: Space.xs),
             _hostFilter(
               feature: 'completion',
               expanded: _completionAdvanced,
