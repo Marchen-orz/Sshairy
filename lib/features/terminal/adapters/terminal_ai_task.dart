@@ -83,10 +83,10 @@ extension _TerminalAiTask on TerminalSession {
     if (_mirrorOut.hasListener) _mirrorOut.add(Uint8List.fromList(utf8.encode(data)));
   }
 
-  Future<bool> _aiUntil(_AiTask task, bool Function() done, Duration timeout) async {
-    final end = DateTime.now().add(timeout);
+  Future<bool> _aiUntil(_AiTask task, bool Function() done, Duration? timeout) async {
+    final end = timeout == null ? null : DateTime.now().add(timeout);
     while (!done()) {
-      if (!identical(_aiTask, task) || DateTime.now().isAfter(end)) return false;
+      if (!identical(_aiTask, task) || end != null && DateTime.now().isAfter(end)) return false;
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     return identical(_aiTask, task);
@@ -103,20 +103,18 @@ extension _TerminalAiTask on TerminalSession {
     return true;
   }
 
-  /// Waits for the shell's fresh empty prompt.
-  Future<TerminalAiContext?> _aiPrompt(_AiTask task) async {
+  /// Waits for the shell's fresh empty prompt; null once the user types there first or [timeout] passes.
+  /// With no timeout it waits out a running command, which may ask the user questions of its own.
+  Future<TerminalAiContext?> _aiPrompt(_AiTask task, {Duration? timeout = const Duration(seconds: 10)}) async {
     if (!_aiReturnLine(task)) return null;
-    TerminalAiContext? prompt;
-    await _aiUntil(task, () {
-      final current = readAiContext();
-      if (current.ready && current.draft!.isEmpty) prompt = current;
-      return prompt != null;
-    }, const Duration(seconds: 5));
-    return identical(_aiTask, task) ? prompt : null;
+    var current = readAiContext();
+    await _aiUntil(task, () => (current = readAiContext()).ready, timeout);
+    return identical(_aiTask, task) && current.ready && current.draft!.isEmpty ? current : null;
   }
 
-  /// Fills [command] and returns its finished record once the user, or auto mode on an exact echo, submits it.
-  Future<TerminalAiHistoryEntry?> _aiRun(_AiTask task, TerminalAiContext prompt, String command) async {
+  /// Fills [command] and returns the line the user, or auto mode on an exact echo, submitted; null when none was.
+  /// Waits for its result record, which may be lost or withheld; the command still ran.
+  Future<String?> _aiRun(_AiTask task, TerminalAiContext prompt, String command) async {
     final filled = await acceptAiDraft(prompt, command, cancel: task.cancel, isCurrent: () => identical(_aiTask, task));
     if (filled != InsertResult.sent || !identical(_aiTask, task)) return null;
     task
@@ -140,8 +138,9 @@ extension _TerminalAiTask on TerminalSession {
     }
     task.awaiting = false;
     final pending = task.pending;
-    if (!identical(_aiTask, task) || pending == null) return null;
-    return Future.any([pending.done.future, task.cancel.whenCancelled.then<TerminalAiHistoryEntry?>((_) => null)]);
+    if (!identical(_aiTask, task) || !task.submitted) return null;
+    if (pending != null) await Future.any<Object?>([pending.done.future, task.cancel.whenCancelled]);
+    return identical(_aiTask, task) ? pending?.entry.text ?? command : null;
   }
 
   Future<void> _startAiTask(
@@ -193,10 +192,10 @@ extension _TerminalAiTask on TerminalSession {
             : null;
         final prompt = await _aiPrompt(task);
         if (command == null || prompt == null || !validTerminalAiCommand(command)) return;
-        final entry = await _aiRun(task, prompt, command);
-        if (entry == null) return;
-        task.executed.add(entry.text);
-        final next = await _aiPrompt(task);
+        final ran = await _aiRun(task, prompt, command);
+        if (ran == null) return;
+        task.executed.add(ran);
+        final next = await _aiPrompt(task, timeout: null);
         if (next == null) return;
         context = next;
         heading = '';

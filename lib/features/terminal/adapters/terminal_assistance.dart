@@ -341,7 +341,8 @@ extension _CommandAssistance on TerminalSession {
   void _submitCommand() {
     _historyBrowsing = false;
     final text = _echoedCommand();
-    _discardPendingCommandResult();
+    // Enter inside a running integrated command is input to it; its D boundary still closes the result.
+    if (text != null || _pendingCommandResult?.start == null) _discardPendingCommandResult();
     if (text != null) _rememberCommand(text);
     _markCommandSubmitted();
     _semanticInput = false;
