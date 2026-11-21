@@ -1796,7 +1796,6 @@ class _ExecutionCardState extends State<_ExecutionCard> {
       'agent.jobs.stop' => (l.aiAgentToolJobStop, l.aiAgentToolJobHint),
       'agent.diagnose' => (l.aiAgentToolDiagnostics, l.aiAgentToolDiagnosticsHint),
       'agent.execute' => (l.aiAgentToolExecute, l.aiAgentToolExecuteHint),
-      'agent.terminalRun' => (l.aiAgentToolTerminalRun, l.aiAgentToolTerminalRunHint),
       'agent.output' => (l.aiAgentToolOutput, l.aiAgentToolOutputHint),
       _ => (l.aiAgentExecutionRecord, l.aiAgentExecutionRecord),
     };
@@ -1943,7 +1942,6 @@ class _ApprovalCard extends StatelessWidget {
       'agent.jobs.read',
       'agent.jobs.status',
     }.contains(approval.capability);
-    final terminalRun = approval.capability == 'agent.terminalRun';
     final shell = const {'agent.execute', 'agent.jobs.start', 'agent.diagnose'}.contains(approval.capability);
     final reading = terminalHistory || terminalScreen || contentRead || approval.template != null;
     return Padding(
@@ -1957,8 +1955,6 @@ class _ApprovalCard extends StatelessWidget {
               icon: reading ? Icons.visibility_outlined : Icons.terminal_rounded,
               label: reading
                   ? l.aiAgentReadApproveTitle
-                  : terminalRun
-                  ? l.aiAgentTerminalRunApproveTitle
                   : shell
                   ? l.aiAgentApproveTitle
                   : l.aiAgentActionApproveTitle,
@@ -1993,8 +1989,6 @@ class _ApprovalCard extends StatelessWidget {
                   ? l.aiAgentContentApproveHint
                   : approval.template != null
                   ? l.aiAgentReadApproveHint
-                  : terminalRun
-                  ? l.aiAgentTerminalRunPermission
                   : shell
                   ? l.aiAgentShellPermission
                   : l.aiAgentActionApproveHint,

@@ -1,6 +1,5 @@
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
-import '../foundation/cancellation.dart';
 import '../foundation/ids.dart';
 
 class WorkspaceTerminalHistoryReader implements TerminalHistoryReader {
@@ -50,18 +49,4 @@ class WorkspaceTerminalHistoryReader implements TerminalHistoryReader {
   @override
   TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768}) =>
       _resolve(expected)?.readScreen(expected, maxLines: maxLines, maxBytes: maxBytes);
-
-  @override
-  TerminalRunStatus? runRefusal(TerminalHistorySession expected) =>
-      _resolve(expected)?.runRefusal(expected) ?? TerminalRunStatus.scopeChanged;
-
-  @override
-  Future<TerminalRunResult> run(
-    TerminalHistorySession expected,
-    String command, {
-    required Duration timeout,
-    required CancellationToken cancel,
-  }) async =>
-      await _resolve(expected)?.run(expected, command, timeout: timeout, cancel: cancel) ??
-      const TerminalRunResult(TerminalRunStatus.scopeChanged);
 }

@@ -2263,20 +2263,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Let Airy use this terminal\'s known directory, prompt status and recent command results for this turn. Window numbers are the tab and pane positions when you sent the message. No commands will run.';
 
   @override
-  String get aiAgentToolTerminalRun => 'Run in terminal';
-
-  @override
-  String get aiAgentToolTerminalRunHint =>
-      'Run one command in a visible terminal and read its bounded result.';
-
-  @override
-  String get aiAgentTerminalRunApproveTitle => 'Run in this terminal';
-
-  @override
-  String get aiAgentTerminalRunPermission =>
-      'Runs in this terminal\'s shell with the SSH account\'s permissions; cd and export persist. Stopping only stops waiting; the command keeps running in the terminal.';
-
-  @override
   String get aiAgentToolTerminalScreen => 'Read terminal screen';
 
   @override

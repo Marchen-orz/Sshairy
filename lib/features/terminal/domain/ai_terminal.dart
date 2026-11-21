@@ -77,17 +77,6 @@ abstract interface class TerminalHistoryReader {
   bool isCurrent(TerminalHistorySession expected);
   TerminalHistorySnapshot? read(TerminalHistorySession expected);
   TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768});
-
-  /// Null when [run] could submit to [expected] now.
-  TerminalRunStatus? runRefusal(TerminalHistorySession expected);
-
-  /// Submits one approved line at an empty integrated SSH prompt and waits for its bounded result (docs/AI.md §8).
-  Future<TerminalRunResult> run(
-    TerminalHistorySession expected,
-    String command, {
-    required Duration timeout,
-    required CancellationToken cancel,
-  });
 }
 
 enum TerminalRunStatus {
