@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/widgets.dart';
 
+import '../design/interface_scale.dart';
+
 /// Shortest-side breakpoint separating phones (portrait & landscape) from tablets/iPads (docs/MOBILE.md §2).
 const double phoneShortestSideBreakpoint = 600.0;
 
@@ -14,7 +16,7 @@ bool get isMobilePlatform =>
 /// True on Android/iOS phones (shortestSide < 600dp regardless of orientation); tablets keep the desktop layout.
 bool isPhoneWorkspace(BuildContext context) {
   if (!isMobilePlatform) return false;
-  return MediaQuery.sizeOf(context).shortestSide < phoneShortestSideBreakpoint;
+  return InterfaceScale.viewportSizeOf(context).shortestSide < phoneShortestSideBreakpoint;
 }
 
 /// Alias kept for existing workspace switch callers.

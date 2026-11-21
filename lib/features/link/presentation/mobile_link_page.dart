@@ -159,6 +159,10 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
 
   Widget _buildDisconnected(BuildContext context, AppLocalizations l, ColorScheme scheme, LinkClientController client) {
     final connecting = client.status == LinkConnectionStatus.connecting;
+    const pairingActionStyle = ButtonStyle(
+      minimumSize: WidgetStatePropertyAll(Size.fromHeight(MobileSize.touchTarget)),
+      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs)),
+    );
     return ListView(
       key: const ValueKey('mobile-link-disconnected'),
       padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.xl),
@@ -171,8 +175,8 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
           FilledButton.icon(
             key: const ValueKey('link-scan-qr-button'),
             style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              minimumSize: const Size.fromHeight(MobileSize.touchTarget),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.panel)),
             ),
             onPressed: connecting ? null : _scanQr,
             icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
@@ -180,25 +184,33 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
           ),
           const SizedBox(height: Space.sm),
         ],
-        Wrap(
-          spacing: Space.sm,
-          runSpacing: Space.sm,
-          children: [
-            FilledButton.tonalIcon(
-              key: const ValueKey('link-scan-button'),
-              onPressed: client.discovering ? null : () => unawaited(client.discoverLan()),
-              icon: client.discovering
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.radar_outlined, size: 18),
-              label: Text(client.discovering ? l.linkScanning : l.linkScanLan),
-            ),
-            OutlinedButton.icon(
-              key: const ValueKey('link-paste-uri-button'),
-              onPressed: connecting ? null : _pasteUri,
-              icon: const Icon(Icons.content_paste_outlined, size: 18),
-              label: Text(l.linkPasteUri),
-            ),
-          ],
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  key: const ValueKey('link-scan-button'),
+                  style: pairingActionStyle,
+                  onPressed: client.discovering ? null : () => unawaited(client.discoverLan()),
+                  icon: client.discovering
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.radar_outlined, size: 18),
+                  label: Text(client.discovering ? l.linkScanning : l.linkScanLan, textAlign: TextAlign.center),
+                ),
+              ),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const ValueKey('link-paste-uri-button'),
+                  style: pairingActionStyle,
+                  onPressed: connecting ? null : _pasteUri,
+                  icon: const Icon(Icons.content_paste_outlined, size: 18),
+                  label: Text(l.linkPasteUri, textAlign: TextAlign.center),
+                ),
+              ),
+            ],
+          ),
         ),
         if (client.lastError != null) ...[
           const SizedBox(height: Space.md),

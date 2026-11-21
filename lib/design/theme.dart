@@ -31,6 +31,10 @@ abstract final class WorkspaceSize {
   static const paneMin = 120.0, paneHeader = 24.0;
 }
 
+abstract final class MobileSize {
+  static const touchTarget = 48.0;
+}
+
 abstract final class ScrollSize {
   static const thumb = 6.0, gutter = thumb + Space.xs;
 }

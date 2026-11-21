@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
 import '../../../design/dialog.dart';
+import '../../../design/select.dart';
 import '../../../design/theme.dart';
+import '../../../design/theme_names.dart';
 import '../../../foundation/app_info.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../platform/device_form_factor.dart';
@@ -1035,6 +1037,45 @@ class _MobileMeTab extends ConsumerWidget {
     final keepAlive = settings.get(SettingKeys.mobileKeepAlive);
     final biometricLock = settings.get(SettingKeys.mobileBiometricLock);
 
+    Widget choice<T>(String label, T value, List<AppOption<T>> options, ValueChanged<T> onChanged) => Row(
+      children: [
+        Expanded(child: Text(label)),
+        const SizedBox(width: Space.sm),
+        Expanded(
+          child: Semantics(
+            label: label,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: MobileSize.touchTarget),
+              child: AppSelect(value: value, options: options, onChanged: onChanged),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    Widget group(List<Widget> rows) => _SettingsGroupCard(
+      padding: EdgeInsets.zero,
+      child: ListTileTheme.merge(
+        minTileHeight: MobileSize.touchTarget,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (i, row) in rows.indexed) ...[
+              if (i > 0) const Divider(indent: Space.md, endIndent: Space.md),
+              row,
+            ],
+          ],
+        ),
+      ),
+    );
+
+    Widget section(String title) => Padding(
+      padding: const EdgeInsets.only(left: Space.xs, bottom: Space.xs),
+      child: Text(title, style: Theme.of(context).textTheme.labelLarge),
+    );
+
+    final scales = {.8, .9, 1.0, 1.1, 1.25, 1.5, settings.uiScale}.toList()..sort();
+
     return Column(
       key: const ValueKey('mobile-me-tab'),
       children: [
@@ -1063,43 +1104,77 @@ class _MobileMeTab extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: Space.md),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        for (final accent in Accent.values)
-                          GestureDetector(
-                            key: ValueKey('mobile-accent-${accent.name}'),
-                            onTap: () => unawaited(writer.set(SettingKeys.accent, accent)),
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: accent.of(brightness),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: settings.accent == accent ? scheme.onSurface : Colors.transparent,
-                                  width: 2.5,
-                                ),
+                    const SizedBox(height: Space.sm),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        const accents = Accent.values;
+                        final columns = constraints.maxWidth >= accents.length * MobileSize.touchTarget
+                            ? accents.length
+                            : 3;
+                        return Column(
+                          children: [
+                            for (var start = 0; start < accents.length; start += columns)
+                              Row(
+                                children: [
+                                  for (final accent in accents.skip(start).take(columns))
+                                    Expanded(
+                                      child: Tooltip(
+                                        message: accent.label(l),
+                                        child: Semantics(
+                                          selected: settings.accent == accent,
+                                          child: InkWell(
+                                            key: ValueKey('mobile-accent-${accent.name}'),
+                                            borderRadius: BorderRadius.circular(Radii.pill),
+                                            onTap: () => unawaited(writer.set(SettingKeys.accent, accent)),
+                                            child: SizedBox(
+                                              height: MobileSize.touchTarget,
+                                              child: Center(
+                                                child: Container(
+                                                  width: Space.xxl,
+                                                  height: Space.xxl,
+                                                  decoration: BoxDecoration(
+                                                    color: accent.of(brightness),
+                                                    shape: BoxShape.circle,
+                                                    border: settings.accent == accent
+                                                        ? Border.all(color: scheme.onSurface, width: 2)
+                                                        : null,
+                                                  ),
+                                                  child: settings.accent == accent
+                                                      ? Icon(
+                                                          Icons.check_rounded,
+                                                          size: 16,
+                                                          color: onColor(accent.of(brightness)),
+                                                        )
+                                                      : null,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                              child: settings.accent == accent
-                                  ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
-                                  : null,
-                            ),
-                          ),
-                      ],
+                          ],
+                        );
+                      },
                     ),
-                    const SizedBox(height: Space.md),
-                    SegmentedButton<ThemeMode>(
-                      showSelectedIcon: false,
-                      segments: [
-                        ButtonSegment(value: ThemeMode.system, label: Text(l.themeSystem)),
-                        ButtonSegment(value: ThemeMode.light, label: Text(l.themeLight)),
-                        ButtonSegment(value: ThemeMode.dark, label: Text(l.themeDark)),
-                      ],
-                      selected: {settings.themeMode},
-                      onSelectionChanged: (v) => unawaited(writer.set(SettingKeys.themeMode, v.first)),
-                    ),
+                    const SizedBox(height: Space.sm),
+                    choice(l.theme, settings.themeMode, [
+                      AppOption(ThemeMode.system, l.themeSystem),
+                      AppOption(ThemeMode.light, l.themeLight),
+                      AppOption(ThemeMode.dark, l.themeDark),
+                    ], (v) => unawaited(writer.set(SettingKeys.themeMode, v))),
+                    const SizedBox(height: Space.xs),
+                    choice(l.uiScale, settings.uiScale, [
+                      for (final scale in scales) AppOption(scale, '${(scale * 100).round()}%'),
+                    ], (v) => unawaited(writer.set(SettingKeys.uiScale, v))),
+                    const SizedBox(height: Space.xs),
+                    choice<String?>(l.language, settings.locale, [
+                      AppOption(null, l.themeSystem),
+                      AppOption('zh', l.langZh),
+                      AppOption('en', l.langEn),
+                    ], (v) => unawaited(writer.set(SettingKeys.locale, v))),
                   ],
                 ),
               ),
@@ -1121,188 +1196,135 @@ class _MobileMeTab extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: Space.md),
-              // Workspace tools
-              _SettingsGroupCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: Icon(Icons.auto_awesome_outlined, color: palette.primary),
-                      title: Text(l.aiConfigTitle),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(
-                        context,
-                        l.aiConfigTitle,
-                        const SingleChildScrollView(padding: EdgeInsets.all(Space.lg), child: AiSettings()),
-                        padding: EdgeInsets.zero,
+              section(l.mobileTerminalSection),
+              group([
+                Padding(
+                  padding: const EdgeInsets.all(Space.md),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: Text(l.fontSize)),
+                          Text('${fontSize.round()} pt', style: mono(context, Theme.of(context).textTheme.labelMedium)),
+                        ],
                       ),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.code_rounded),
-                      title: Text(l.snippets),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.snippets, const SnippetsPanel()),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.key_outlined),
-                      title: Text(l.keys),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () =>
-                          _pushTool(context, l.keys, const KeysPanel(), padding: const EdgeInsets.all(Space.md)),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.verified_user_outlined),
-                      title: Text(l.trustedKeys),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(
-                        context,
-                        l.trustedKeys,
-                        SingleChildScrollView(
-                          padding: const EdgeInsets.all(Space.lg),
-                          child: trustSettingsSection.build(context),
-                        ),
-                        padding: EdgeInsets.zero,
+                      Slider(
+                        min: 8,
+                        max: 32,
+                        divisions: 24,
+                        value: fontSize.clamp(8.0, 32.0),
+                        onChanged: (v) => unawaited(writer.set(SettingKeys.fontSize, v.roundToDouble())),
                       ),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.swap_horiz_rounded),
-                      title: Text(l.portForwarding),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.portForwarding, const ForwardingPanel()),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.alt_route_rounded),
-                      title: Text(l.proxies),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.proxies, const ProxyPanel()),
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.receipt_long_outlined),
-                      title: Text(l.logs),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.logs, const LogsPanel()),
-                    ),
-                  ],
+                      choice(l.cursorShape, settings.get(SettingKeys.cursorShape), [
+                        AppOption(CursorShape.block, l.cursorBlock),
+                        AppOption(CursorShape.underline, l.cursorUnderline),
+                        AppOption(CursorShape.bar, l.cursorBar),
+                      ], (v) => unawaited(writer.set(SettingKeys.cursorShape, v))),
+                    ],
+                  ),
                 ),
-              ),
+                SwitchListTile.adaptive(
+                  title: Text(l.mobileHaptics),
+                  value: haptics,
+                  onChanged: (v) => unawaited(writer.set(SettingKeys.mobileHaptics, v)),
+                ),
+                SwitchListTile.adaptive(
+                  title: Text(l.mobileKeepScreenOn),
+                  value: keepAwake,
+                  onChanged: (v) => unawaited(writer.set(SettingKeys.mobileKeepScreenOn, v)),
+                ),
+                SwitchListTile.adaptive(
+                  title: Text(l.completionTranslation),
+                  value: settings.get(SettingKeys.completionTranslation),
+                  onChanged: (v) => unawaited(writer.set(SettingKeys.completionTranslation, v)),
+                ),
+              ]),
               const SizedBox(height: Space.md),
-              // Terminal & touch
-              Padding(
-                padding: const EdgeInsets.only(left: Space.xs, bottom: Space.xs),
-                child: Text(l.mobileTerminalSection, style: Theme.of(context).textTheme.labelLarge),
-              ),
-              _SettingsGroupCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Text(l.fontSize, style: Theme.of(context).textTheme.bodyMedium),
-                        const Spacer(),
-                        Text('${fontSize.round()} pt', style: mono(context, Theme.of(context).textTheme.labelMedium)),
-                      ],
-                    ),
-                    Slider(
-                      min: 8,
-                      max: 32,
-                      divisions: 24,
-                      value: fontSize.clamp(8.0, 32.0),
-                      onChanged: (v) => unawaited(writer.set(SettingKeys.fontSize, v.roundToDouble())),
-                    ),
-                    const SizedBox(height: Space.xs),
-                    SegmentedButton<CursorShape>(
-                      showSelectedIcon: false,
-                      segments: [
-                        ButtonSegment(value: CursorShape.block, label: Text(l.cursorBlock)),
-                        ButtonSegment(value: CursorShape.underline, label: Text(l.cursorUnderline)),
-                        ButtonSegment(value: CursorShape.bar, label: Text(l.cursorBar)),
-                      ],
-                      selected: {settings.get(SettingKeys.cursorShape)},
-                      onSelectionChanged: (v) => unawaited(writer.set(SettingKeys.cursorShape, v.first)),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.mobileHaptics),
-                      value: haptics,
-                      onChanged: (v) => unawaited(writer.set(SettingKeys.mobileHaptics, v)),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.mobileKeepScreenOn),
-                      value: keepAwake,
-                      onChanged: (v) => unawaited(writer.set(SettingKeys.mobileKeepScreenOn, v)),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.completionTranslation),
-                      value: settings.get(SettingKeys.completionTranslation),
-                      onChanged: (v) => unawaited(writer.set(SettingKeys.completionTranslation, v)),
-                    ),
-                  ],
+              section(l.mobileSecuritySection),
+              group([
+                SwitchListTile.adaptive(
+                  title: Text(l.mobileKeepAlive),
+                  value: keepAlive,
+                  onChanged: (v) async {
+                    if (v) await MobilePlatform.requestNotificationPermission();
+                    await writer.set(SettingKeys.mobileKeepAlive, v);
+                  },
                 ),
-              ),
+                SwitchListTile.adaptive(
+                  title: Text(l.mobileBiometricLock),
+                  value: biometricLock,
+                  onChanged: (v) async {
+                    if (v && isMobilePlatform) {
+                      final can = await MobilePlatform.canAuthenticateBiometric();
+                      if (!can) return;
+                      final ok = await MobilePlatform.authenticateBiometric(title: l.mobileUnlockPrompt);
+                      if (!ok) return;
+                    }
+                    await writer.set(SettingKeys.mobileBiometricLock, v);
+                  },
+                ),
+              ]),
               const SizedBox(height: Space.md),
-              // Security & background
-              Padding(
-                padding: const EdgeInsets.only(left: Space.xs, bottom: Space.xs),
-                child: Text(l.mobileSecuritySection, style: Theme.of(context).textTheme.labelLarge),
-              ),
-              _SettingsGroupCard(
-                child: Column(
-                  children: [
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.mobileKeepAlive),
-                      value: keepAlive,
-                      onChanged: (v) async {
-                        if (v) await MobilePlatform.requestNotificationPermission();
-                        await writer.set(SettingKeys.mobileKeepAlive, v);
-                      },
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.mobileBiometricLock),
-                      value: biometricLock,
-                      onChanged: (v) async {
-                        if (v && isMobilePlatform) {
-                          final can = await MobilePlatform.canAuthenticateBiometric();
-                          if (!can) return;
-                          final ok = await MobilePlatform.authenticateBiometric(title: l.mobileUnlockPrompt);
-                          if (!ok) return;
-                        }
-                        await writer.set(SettingKeys.mobileBiometricLock, v);
-                      },
-                    ),
-                  ],
+              group([
+                ListTile(
+                  leading: const Icon(Icons.key_outlined),
+                  title: Text(l.keys),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _pushTool(context, l.keys, const KeysPanel(), padding: const EdgeInsets.all(Space.md)),
                 ),
-              ),
+                ListTile(
+                  leading: const Icon(Icons.verified_user_outlined),
+                  title: Text(l.trustedKeys),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _pushTool(
+                    context,
+                    l.trustedKeys,
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.all(Space.lg),
+                      child: trustSettingsSection.build(context),
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.alt_route_rounded),
+                  title: Text(l.proxies),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _pushTool(context, l.proxies, const ProxyPanel()),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.swap_horiz_rounded),
+                  title: Text(l.portForwarding),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _pushTool(context, l.portForwarding, const ForwardingPanel()),
+                ),
+              ]),
               const SizedBox(height: Space.md),
-              // Language
-              _SettingsGroupCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(l.language, style: Theme.of(context).textTheme.bodyMedium),
-                    const SizedBox(height: Space.sm),
-                    SegmentedButton<String?>(
-                      showSelectedIcon: false,
-                      segments: [
-                        ButtonSegment(value: null, label: Text(l.themeSystem)),
-                        ButtonSegment(value: 'zh', label: Text(l.langZh)),
-                        ButtonSegment(value: 'en', label: Text(l.langEn)),
-                      ],
-                      selected: {settings.locale},
-                      onSelectionChanged: (v) => unawaited(writer.set(SettingKeys.locale, v.first)),
-                    ),
-                  ],
+              group([
+                ListTile(
+                  leading: Icon(Icons.auto_awesome_outlined, color: palette.primary),
+                  title: Text(l.aiConfigTitle),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _pushTool(
+                    context,
+                    l.aiConfigTitle,
+                    const SingleChildScrollView(padding: EdgeInsets.all(Space.lg), child: AiSettings()),
+                    padding: EdgeInsets.zero,
+                  ),
                 ),
-              ),
+                ListTile(
+                  leading: const Icon(Icons.code_rounded),
+                  title: Text(l.snippets),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _pushTool(context, l.snippets, const SnippetsPanel()),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: Text(l.logs),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _pushTool(context, l.logs, const LogsPanel()),
+                ),
+              ]),
             ],
           ),
         ),

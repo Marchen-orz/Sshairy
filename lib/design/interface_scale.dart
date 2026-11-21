@@ -7,6 +7,9 @@ class InterfaceScale extends StatelessWidget {
   final double scale;
   final Widget child;
 
+  static Size viewportSizeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_ViewportSize>()?.size ?? MediaQuery.sizeOf(context);
+
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
@@ -28,7 +31,7 @@ class InterfaceScale extends StatelessWidget {
                   viewInsets: media.viewInsets / scale,
                   systemGestureInsets: media.systemGestureInsets / scale,
                 ),
-                child: child,
+                child: _ViewportSize(size: constraints.biggest, child: child),
               ),
             ),
           ),
@@ -36,4 +39,13 @@ class InterfaceScale extends StatelessWidget {
       );
     },
   );
+}
+
+class _ViewportSize extends InheritedWidget {
+  const _ViewportSize({required this.size, required super.child});
+
+  final Size size;
+
+  @override
+  bool updateShouldNotify(_ViewportSize oldWidget) => size != oldWidget.size;
 }
