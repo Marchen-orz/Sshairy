@@ -12,7 +12,7 @@ extension _AssistancePane on _TerminalPaneState {
       _completionCursor.value != null &&
       state.request != null &&
       !identical(_dismissedCandidateRequest, state.request) &&
-      (state.candidates.isNotEmpty || state.browse != null || _aiCompletionBusy);
+      (state.candidates.isNotEmpty || state.browse != null);
 
   KeyEventResult? _assistanceKey(KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return null;
@@ -23,7 +23,7 @@ extension _AssistancePane on _TerminalPaneState {
       _showHistory();
       return KeyEventResult.handled;
     }
-    final state = _candidateState;
+    final state = _session.commandAssistance.value;
     if (modifier &&
         !keys.isShiftPressed &&
         !keys.isAltPressed &&
@@ -41,11 +41,7 @@ extension _AssistancePane on _TerminalPaneState {
     }
     // xterm's text input owns composing events; modified arrows keep shell/application shortcuts.
     if (keys.isControlPressed || keys.isMetaPressed || keys.isAltPressed || keys.isShiftPressed) return null;
-    final prediction = event.logicalKey == LogicalKeyboardKey.arrowRight ? _prediction : null;
-    if (prediction != null) {
-      unawaited(_acceptPrediction(prediction));
-      return KeyEventResult.handled;
-    }
+    final ghost = _ghost;
     _syncCandidateSelection(state);
     final enter = event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter;
     if (enter) {
@@ -66,12 +62,10 @@ extension _AssistancePane on _TerminalPaneState {
       return KeyEventResult.handled;
     }
     if (!_popupAvailable(state)) {
-      if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
-        _session.browseShellHistory();
+      if (key == LogicalKeyboardKey.arrowRight && ghost != null) {
+        unawaited(_acceptGhost(ghost));
+        return KeyEventResult.handled;
       }
-      return null;
-    }
-    if (state.candidates.isEmpty && state.browse == null) {
       if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
         _session.browseShellHistory();
       }
@@ -99,12 +93,16 @@ extension _AssistancePane on _TerminalPaneState {
       if (_candidateMode && state.request != null && state.candidates.isNotEmpty) {
         final candidate = state.candidates[_candidateIndex.clamp(0, state.candidates.length - 1)];
         if (key == LogicalKeyboardKey.tab) {
-          unawaited(_acceptCandidate(state.request!, candidate));
+          unawaited(_session.acceptCommand(state.request!, candidate.text));
           return KeyEventResult.handled;
         }
         if (_session.browseCommand(state.request!, candidate)) return KeyEventResult.handled;
       }
       if (key == LogicalKeyboardKey.arrowRight) {
+        if (ghost != null) {
+          unawaited(_acceptGhost(ghost));
+          return KeyEventResult.handled;
+        }
         _update(() => _dismissedCandidateRequest = state.request);
         return null;
       }
@@ -171,7 +169,7 @@ extension _AssistancePane on _TerminalPaneState {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _candidateTranslationsScheduled = false;
       if (!mounted) return;
-      final state = _candidateState;
+      final state = _session.commandAssistance.value;
       final locale = AppLocalizations.of(context).localeName.toLowerCase().replaceAll('_', '-').split('-').first;
       if (!_popupAvailable(state) ||
           locale != 'zh' ||
@@ -229,7 +227,7 @@ extension _AssistancePane on _TerminalPaneState {
   Widget _completionList(CompletionTranslations translations, bool enabled) => ListenableBuilder(
     listenable: Listenable.merge([_session.commandAssistance, _completionCursor, translations]),
     builder: (context, _) {
-      final state = _candidateState;
+      final state = _session.commandAssistance.value;
       _syncCandidateSelection(state);
       _scheduleCandidateTranslations();
       if (!_popupAvailable(state)) return const SizedBox.shrink();
@@ -237,7 +235,6 @@ extension _AssistancePane on _TerminalPaneState {
       final l = AppLocalizations.of(context);
       final rowHeight = max(CompletionSize.row, MediaQuery.textScalerOf(context).scale(13) + Space.lg);
       final browse = state.browse;
-      final aiLoading = _aiCompletionBusy;
       final locale = l.localeName.toLowerCase().replaceAll('_', '-').split('-').first;
       final gutter = ScrollGutterScope.gapOf(context);
       final rowEndPadding = gutter == 0 ? Space.sm : 0.0;
@@ -325,19 +322,12 @@ extension _AssistancePane on _TerminalPaneState {
               CompletionLoad.unavailable => l.completionUnavailable,
               CompletionLoad.ready => state.candidates.isEmpty ? l.completionEmpty : null,
             };
-      const progressHeight = 2.0;
       final rows = state.candidates.isNotEmpty ? state.candidates.length : (status == null ? 0 : 1);
       return Positioned.fill(
         child: CustomSingleChildLayout(
           delegate: CursorPopupLayout(
             cursor: _completionCursor.value!,
-            preferredSize: Size(
-              width,
-              min(
-                CompletionSize.maxHeight,
-                headerHeight + rowHeight * rows + Space.sm + (aiLoading ? progressHeight : 0),
-              ),
-            ),
+            preferredSize: Size(width, min(CompletionSize.maxHeight, headerHeight + rowHeight * rows + Space.sm)),
           ),
           // A quick fade, as it opens while typing.
           child: Entrance(
@@ -351,14 +341,6 @@ extension _AssistancePane on _TerminalPaneState {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (aiLoading)
-                      LinearProgressIndicator(
-                        key: const ValueKey('terminal-ai-completion-loading'),
-                        minHeight: progressHeight,
-                        color: scheme.onSurfaceVariant.withValues(alpha: .5),
-                        backgroundColor: Colors.transparent,
-                        semanticsLabel: l.completionLoading,
-                      ),
                     if (browse != null)
                       SizedBox(
                         height: rowHeight,
@@ -454,7 +436,7 @@ extension _AssistancePane on _TerminalPaneState {
                                       if (candidate.directory != null) {
                                         _session.browseCommand(state.request!, candidate);
                                       } else {
-                                        unawaited(_acceptCandidate(state.request!, candidate));
+                                        unawaited(_session.acceptCommand(state.request!, candidate.text));
                                       }
                                       _focus.requestFocus();
                                     },
@@ -465,7 +447,6 @@ extension _AssistancePane on _TerminalPaneState {
                                           Icon(
                                             switch (candidate.source) {
                                               CommandCandidateSource.history => Icons.history,
-                                              CommandCandidateSource.ai => Icons.auto_awesome_outlined,
                                               CommandCandidateSource.path =>
                                                 candidate.directory != null
                                                     ? Icons.folder_outlined

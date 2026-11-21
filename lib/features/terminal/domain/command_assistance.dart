@@ -2,7 +2,7 @@ import '../../../foundation/cancellation.dart';
 
 enum CommandKind { line, command, subcommand, option, argument }
 
-enum CommandCandidateSource { history, ai, builtin, path, snippet, provider }
+enum CommandCandidateSource { history, builtin, path, snippet, provider }
 
 class CommandCandidate {
   const CommandCandidate(
@@ -169,7 +169,7 @@ bool commandCandidateValid(CommandCandidate candidate, String draft) {
   final shown = candidate.displayText;
   if (shown == null) return true;
   if (shown.isEmpty || !commandIsSingleLine(shown)) return false;
-  if (candidate.source == CommandCandidateSource.ai || candidate.source == CommandCandidateSource.provider) {
+  if (candidate.source == CommandCandidateSource.provider) {
     return shown.length >= candidate.text.length - draft.length && candidate.text.endsWith(shown);
   }
   return true;
@@ -184,7 +184,7 @@ List<CommandCandidate> localCommandCandidates(String prefix, CommandHistory hist
   ], const []);
 }
 
-/// A validated AI line is first; asynchronous selection remains owned by candidate identity.
+/// Asynchronous selection remains owned by candidate identity.
 List<CommandCandidate> mergeCommandCandidates(
   String draft,
   List<CommandCandidate> local,
@@ -195,17 +195,13 @@ List<CommandCandidate> mergeCommandCandidates(
   final seen = <String>{draft};
   final merged = <CommandCandidate>[];
   var history = 0;
-  for (final source in [
-    CommandCandidateSource.ai,
-    ...CommandCandidateSource.values.where((s) => s != CommandCandidateSource.ai),
-  ]) {
+  for (final source in CommandCandidateSource.values) {
     for (final candidate in all.where((c) => c.source == source)) {
       if (source == CommandCandidateSource.history && history >= commandHistoryCandidateLimit) break;
       if (commandCandidateValid(candidate, draft) && seen.add(candidate.text)) {
         merged.add(candidate);
         if (source == CommandCandidateSource.history) history++;
         if (merged.length == commandCandidateLimit) return List.unmodifiable(merged);
-        if (source == CommandCandidateSource.ai) break;
       }
     }
   }

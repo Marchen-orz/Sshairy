@@ -79,13 +79,7 @@ extension _TerminalAiPane on _TerminalPaneState {
     }
     final expected = _aiCompletionContext;
     if (expected != null && (!ready || !sameTerminalAiContext(expected, _session.readAiContext()))) {
-      final hadLoading = _aiCompletionLoading;
       _cancelAiCompletion();
-      if (hadLoading) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _update(() {});
-        });
-      }
       _scheduleAi();
     }
   }
@@ -106,17 +100,7 @@ extension _TerminalAiPane on _TerminalPaneState {
     _aiCompletionCancel?.cancel();
     _aiCompletionCancel = null;
     _aiCompletionContext = null;
-    _aiCompletionLoading = false;
     _aiCandidate = null;
-  }
-
-  bool get _aiCompletionBusy {
-    final expected = _aiCompletionContext;
-    return _aiCompletionLoading &&
-        expected != null &&
-        (_session.commandAssistance.value.browse?.depth ?? 0) == 0 &&
-        _completionEligible(expected) &&
-        sameTerminalAiContext(expected, _session.readAiContext());
   }
 
   bool _completionEligible(TerminalAiContext context) =>
@@ -155,13 +139,13 @@ extension _TerminalAiPane on _TerminalPaneState {
       _stopAiFrames();
     }
     if (!eligible) {
-      final had = _aiCandidate != null || _aiCompletionLoading;
+      final had = _aiCandidate != null;
       _cancelAiCompletion();
       if (had && mounted) _update(() {});
       return;
     }
     if (_aiCompletionContext != null && sameTerminalAiContext(_aiCompletionContext!, context)) return;
-    final had = _aiCandidate != null || _aiCompletionLoading;
+    final had = _aiCandidate != null;
     _cancelAiCompletion();
     if (had) _update(() {});
     _aiCompletionContext = context;
@@ -184,10 +168,7 @@ extension _TerminalAiPane on _TerminalPaneState {
         expected,
         _session.readAiHistory(expected),
         cancel,
-        onStarted: () {
-          started = true;
-          if (current()) _update(() => _aiCompletionLoading = true);
-        },
+        onStarted: () => started = true,
         onDeferred: (delay) => deferred = delay,
       );
       if (current() && result == null && !started && deferred != null && deferred! > Duration.zero) {
@@ -200,80 +181,39 @@ extension _TerminalAiPane on _TerminalPaneState {
       }
       final suffix = result.substring(expected.draft!.length);
       if (suffix.isEmpty || utf8.encode(suffix).length > 2048) return;
-      _update(() => _aiCandidate = CommandCandidate(result, source: CommandCandidateSource.ai));
+      _update(() => _aiCandidate = result);
     } on Object {
       // Optional AI completion quietly leaves the local candidates available.
-    } finally {
-      if (mounted && identical(_aiCompletionCancel, cancel) && _aiCompletionLoading) {
-        _update(() => _aiCompletionLoading = false);
-      }
     }
   }
 
-  CommandAssistanceState get _candidateState {
-    final state = _session.commandAssistance.value;
-    final candidate = _aiCandidate, expected = _aiCompletionContext;
-    if (state.request == null ||
-        (state.browse?.depth ?? 0) > 0 ||
-        candidate == null ||
-        expected == null ||
-        expected.draft!.isEmpty ||
-        !_completionEligible(expected) ||
-        !sameTerminalAiContext(expected, _session.readAiContext())) {
-      return state;
-    }
-    return CommandAssistanceState(
-      request: state.request,
-      candidates: mergeCommandCandidates(state.request!.text, state.candidates, [candidate]),
-      browse: state.browse,
-      loading: state.loading,
-    );
-  }
-
-  Future<void> _acceptCandidate(CommandCompletionRequest request, CommandCandidate candidate) async {
-    if (candidate.source != CommandCandidateSource.ai) {
-      await _session.acceptCommand(request, candidate.text);
-      return;
-    }
-    final expected = _aiCompletionContext;
-    if (!_terminalCompositionReady || !identical(request, _session.commandAssistance.value.request)) return;
-    if (expected != null &&
-        identical(candidate, _aiCandidate) &&
-        _completionEligible(expected) &&
-        sameTerminalAiContext(expected, _session.readAiContext())) {
-      await _session.acceptAiDraft(expected, candidate.text.substring(expected.draft!.length), suffix: true);
-    }
-    _cancelAiCompletion();
-  }
-
-  /// A next-command prediction belongs to the empty prompt, so it is ghost text rather than a popup row.
-  CommandCandidate? get _prediction {
+  /// The validated AI suffix, or a whole next command on an empty prompt, drawn after the cursor as ghost text.
+  String? get _ghost {
     final candidate = _aiCandidate, expected = _aiCompletionContext;
     if (candidate == null ||
         expected == null ||
-        expected.draft!.isNotEmpty ||
         !_completionEligible(expected) ||
         !sameTerminalAiContext(expected, _session.readAiContext())) {
       return null;
     }
-    return candidate;
+    return candidate.substring(expected.draft!.length);
   }
 
-  Future<void> _acceptPrediction(CommandCandidate candidate) async {
+  Future<void> _acceptGhost(String suffix) async {
     final expected = _aiCompletionContext!;
     _update(_cancelAiCompletion);
-    await _session.acceptAiDraft(expected, candidate.text, suffix: true);
+    await _session.acceptAiDraft(expected, suffix, suffix: true);
   }
 
-  Widget _predictionGhost() => ValueListenableBuilder<Rect?>(
+  Widget _ghostText() => ValueListenableBuilder<Rect?>(
     valueListenable: _completionCursor,
     builder: (context, cursor, _) {
-      final prediction = _prediction;
-      if (cursor == null || prediction == null) return const SizedBox.shrink();
+      final suffix = _ghost;
+      if (cursor == null || suffix == null) return const SizedBox.shrink();
       final settings = ref.read(settingsProvider);
       final ghost = Text(
-        prediction.text,
-        key: const ValueKey('terminal-ai-prediction'),
+        suffix,
+        key: const ValueKey('terminal-ai-ghost'),
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.clip,
@@ -293,7 +233,7 @@ extension _TerminalAiPane on _TerminalPaneState {
         child: widget.compact
             ? GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => unawaited(_acceptPrediction(prediction)),
+                onTap: () => unawaited(_acceptGhost(suffix)),
                 child: ghost,
               )
             : IgnorePointer(child: ghost),

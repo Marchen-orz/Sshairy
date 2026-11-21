@@ -77,13 +77,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   CancellationToken? _aiCompletionCancel;
   TerminalAiContext? _aiCompletionContext;
   (bool, bool)? _aiPresentation;
-  CommandCandidate? _aiCandidate;
+  String? _aiCandidate;
   bool? _aiLastCompositionReady;
-  bool _inlineAiOpen = false,
-      _aiScheduled = false,
-      _aiFrameListening = false,
-      _aiCompletionLoading = false,
-      _applicationActive = true;
+  bool _inlineAiOpen = false, _aiScheduled = false, _aiFrameListening = false, _applicationActive = true;
   late final VoidCallback _aiFrameCallback = _aiFrame;
   var _touchCtrl = TouchModifierState.off;
   var _touchAlt = TouchModifierState.off;
@@ -311,12 +307,12 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     final ctrl = _touchCtrl != TouchModifierState.off;
     final alt = _touchAlt != TouchModifierState.off;
     if (!ctrl && !alt) {
-      final prediction = raw == '\x1b[C' ? _prediction : null;
-      if (prediction != null) {
-        unawaited(_acceptPrediction(prediction));
+      final ghost = raw == '\x1b[C' ? _ghost : null;
+      if (ghost != null) {
+        unawaited(_acceptGhost(ghost));
         return;
       }
-      final state = _candidateState;
+      final state = _session.commandAssistance.value;
       if (_popupAvailable(state)) {
         _syncCandidateSelection(state);
         if (raw == '\x1b') {
@@ -329,7 +325,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
         }
         if (raw == '\t' && _candidateMode && state.request != null && state.candidates.isNotEmpty) {
           final candidate = state.candidates[_candidateIndex.clamp(0, state.candidates.length - 1)];
-          unawaited(_acceptCandidate(state.request!, candidate));
+          unawaited(_session.acceptCommand(state.request!, candidate.text));
           return;
         }
         if ((raw == '\x1b[A' || raw == '\x1b[B') && state.candidates.isNotEmpty) {
@@ -555,9 +551,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
             _completionOverlay(),
             if (widget.visible)
               Positioned.fill(
-                child: LayoutBuilder(
-                  builder: (context, box) => Stack(children: [_predictionGhost(), _inlineAiBadge(box)]),
-                ),
+                child: LayoutBuilder(builder: (context, box) => Stack(children: [_ghostText(), _inlineAiBadge(box)])),
               ),
             if (_searching)
               Positioned(
@@ -679,8 +673,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
               ListenableBuilder(
                 listenable: _session.commandAssistance,
                 builder: (context, _) {
-                  final candidateState = _candidateState;
-                  final prediction = _prediction;
+                  final candidateState = _session.commandAssistance.value;
+                  final ghost = _ghost;
                   final dismissed = identical(_dismissedCandidateRequest, candidateState.request);
                   final visibleCandidates = dismissed || candidateState.request == null
                       ? const <CommandCandidate>[]
@@ -701,16 +695,11 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                     onOpenAiry: widget.onAskAgent == null ? null : () => widget.onAskAgent!(''),
                     onOpenInlineAi: _canOpenInlineAi ? _showInlineAi : null,
                     onGenerateDraft: _canGenerateMobileDraft() ? _generateMobileDraft : null,
-                    prediction: prediction?.text,
-                    onAcceptPrediction: prediction == null ? null : () => unawaited(_acceptPrediction(prediction)),
+                    prediction: ghost == null ? null : _aiCandidate,
+                    onAcceptPrediction: ghost == null ? null : () => unawaited(_acceptGhost(ghost)),
                     suggestions: [
                       for (final c in visibleCandidates)
-                        (
-                          label: c.displayText ?? c.text,
-                          detail: c.detail,
-                          isAi: c.source == CommandCandidateSource.ai,
-                          isDir: c.directory != null,
-                        ),
+                        (label: c.displayText ?? c.text, detail: c.detail, isDir: c.directory != null),
                     ],
                     onAcceptSuggestion: visibleCandidates.isEmpty || candidateState.request == null
                         ? null
@@ -719,7 +708,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                             if (candidate.directory != null) {
                               _session.browseCommand(candidateState.request!, candidate);
                             } else {
-                              unawaited(_acceptCandidate(candidateState.request!, candidate));
+                              unawaited(_session.acceptCommand(candidateState.request!, candidate.text));
                             }
                             _focus.requestFocus();
                           },

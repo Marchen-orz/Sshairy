@@ -8,7 +8,7 @@ import '../../../l10n/app_localizations.dart';
 
 enum TouchModifierState { off, oneshot, locked }
 
-typedef MobileCompletionItem = ({String label, String? detail, bool isAi, bool isDir});
+typedef MobileCompletionItem = ({String label, String? detail, bool isDir});
 
 /// Transforms a typed key string with active sticky Ctrl / Alt touch modifiers.
 String applyTouchModifiers(String input, {required bool ctrl, required bool alt}) {
@@ -203,14 +203,10 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
                       padding: const EdgeInsets.only(right: Space.xs),
                       child: Material(
                         key: ValueKey('mobile-completion-chip-$i'),
-                        color: widget.suggestions[i].isAi ? palette.primary.withValues(alpha: .14) : palette.surface,
+                        color: palette.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(Radii.control),
-                          side: BorderSide(
-                            color: widget.suggestions[i].isAi
-                                ? palette.primary.withValues(alpha: .45)
-                                : scheme.outlineVariant.withValues(alpha: .45),
-                          ),
+                          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .45)),
                         ),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(Radii.control),
@@ -223,10 +219,7 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (widget.suggestions[i].isAi) ...[
-                                  Icon(Icons.auto_awesome_outlined, size: 12, color: palette.primary),
-                                  const SizedBox(width: 4),
-                                ] else if (widget.suggestions[i].isDir) ...[
+                                if (widget.suggestions[i].isDir) ...[
                                   Icon(Icons.folder_outlined, size: 12, color: scheme.onSurfaceVariant),
                                   const SizedBox(width: 4),
                                 ],
