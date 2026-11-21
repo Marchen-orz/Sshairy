@@ -363,7 +363,16 @@ extension _TerminalAiPane on _TerminalPaneState {
 
   void _startInlineAi(String instruction) {
     final l = AppLocalizations.of(context);
-    unawaited(_session._startAiTask(_aiService!, instruction, (failure) => _failureText(l, failure)));
+    final settings = ref.read(settingsProvider);
+    unawaited(
+      _session._startAiTask(
+        _aiService!,
+        instruction,
+        (failure) => _failureText(l, failure),
+        maxSteps: settings.get(SettingKeys.aiTaskSteps),
+        style: settings.get(SettingKeys.aiTextStyle),
+      ),
+    );
   }
 
   void _closeInlineAi() {

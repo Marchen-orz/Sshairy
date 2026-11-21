@@ -447,6 +447,24 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ),
         _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
         _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
+        _Field(
+          l.aiTextStyle,
+          segmented(SettingKeys.aiTextStyle, {
+            AiTextStyle.italicFaint: l.aiTextItalicFaint,
+            AiTextStyle.italic: l.aiTextItalic,
+            AiTextStyle.faint: l.aiTextFaint,
+            AiTextStyle.plain: l.aiTextPlain,
+          }),
+        ),
+        _Field(
+          l.aiTaskSteps,
+          _Choice<int>(
+            value: settings.get(SettingKeys.aiTaskSteps),
+            choices: {5, 12, 20, 30, 50, 100, settings.get(SettingKeys.aiTaskSteps)}.toList()..sort(),
+            label: (n) => '$n',
+            onChanged: (v) => notifier.set(SettingKeys.aiTaskSteps, v),
+          ),
+        ),
       ]),
       _Section(SettingsSectionId.workspace, l.workspaceSection, Icons.space_dashboard_outlined, [
         _Field(l.monitor, toggle(SettingKeys.showMonitor)),

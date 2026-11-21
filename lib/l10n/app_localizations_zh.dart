@@ -564,6 +564,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String get confirmPaste => '多行粘贴前确认';
 
   @override
+  String get aiTextStyle => 'AI 文字';
+
+  @override
+  String get aiTextItalicFaint => '斜体淡色';
+
+  @override
+  String get aiTextItalic => '斜体';
+
+  @override
+  String get aiTextFaint => '淡色';
+
+  @override
+  String get aiTextPlain => '普通';
+
+  @override
+  String get aiTaskSteps => 'AI 任务步数上限';
+
+  @override
   String get completionTranslation => '自动翻译补全说明';
 
   @override

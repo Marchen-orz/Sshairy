@@ -594,6 +594,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get confirmPaste => 'Confirm multi-line paste';
 
   @override
+  String get aiTextStyle => 'AI text';
+
+  @override
+  String get aiTextItalicFaint => 'Italic dim';
+
+  @override
+  String get aiTextItalic => 'Italic';
+
+  @override
+  String get aiTextFaint => 'Dim';
+
+  @override
+  String get aiTextPlain => 'Normal';
+
+  @override
+  String get aiTaskSteps => 'AI task step limit';
+
+  @override
   String get completionTranslation =>
       'Translate completion descriptions automatically';
 

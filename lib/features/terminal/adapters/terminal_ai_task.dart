@@ -1,11 +1,19 @@
 part of 'terminal_session.dart';
 
-const _aiTaskSteps = 8;
-
 /// One inline AI task in this terminal. Its only action is a command line at this terminal's prompt.
 class _AiTask {
-  _AiTask(this.instruction);
+  _AiTask(this.instruction, this.maxSteps, AiTextStyle style)
+    : sgr = switch (style) {
+        AiTextStyle.italicFaint => '\x1b[2;3m',
+        AiTextStyle.italic => '\x1b[3m',
+        AiTextStyle.faint => '\x1b[2m',
+        AiTextStyle.plain => '',
+      };
   final String instruction;
+  final int maxSteps;
+
+  /// Set before our text so it reads apart from shell output; SGR survives the line breaks until the reset.
+  final String sgr;
   final cancel = CancellationToken();
   final executed = <String>[];
   StreamSubscription<void>? changes;
@@ -68,7 +76,7 @@ extension _TerminalAiTask on TerminalSession {
     final clean = text.replaceAll(_aiTaskUnsafe, '').trim();
     if (clean.isEmpty) return;
     final bounded = String.fromCharCodes(clean.runes.take(1024)).replaceAll('\n', '\r\n  ');
-    final data = '${task.lineOpen ? '\r\n' : '\r\x1b[K'}\x1b[35m✦\x1b[0m $bounded';
+    final data = '${task.lineOpen ? '\r\n' : '\r\x1b[K'}\x1b[35m✦\x1b[0m ${task.sgr}$bounded\x1b[0m';
     if (!task.lineOpen) task.printedAt = _inputSequence;
     task.lineOpen = true;
     _terminal.write(data);
@@ -139,11 +147,13 @@ extension _TerminalAiTask on TerminalSession {
   Future<void> _startAiTask(
     TerminalAiService service,
     String instruction,
-    String Function(TerminalAiFailure) describe,
-  ) async {
+    String Function(TerminalAiFailure) describe, {
+    int maxSteps = 12,
+    AiTextStyle style = AiTextStyle.italicFaint,
+  }) async {
     var context = readAiContext();
     if (_aiTask != null || instruction.trim().isEmpty || !service.canGenerate(context)) return;
-    final task = _aiTask = _AiTask(instruction.trim());
+    final task = _aiTask = _AiTask(instruction.trim(), maxSteps, style);
     task.changes = service.changes.listen((_) {
       if (identical(_aiTask, task)) _stopAiTask();
     });
@@ -167,7 +177,7 @@ extension _TerminalAiTask on TerminalSession {
             task.cancel,
             history: history,
             steps: List.unmodifiable(task.executed),
-            stepsLeft: _aiTaskSteps - task.executed.length,
+            stepsLeft: task.maxSteps - task.executed.length,
           );
         } on TerminalAiFailure catch (failure) {
           if (failure.reason == TerminalAiFailureReason.cancelled) return;
@@ -178,7 +188,7 @@ extension _TerminalAiTask on TerminalSession {
         // A `cd` result may still be resolving the directory; reconnects stop the task in _resetCommandDraft.
         if (!identical(_aiTask, task) || _inputSequence != sequence) return;
         _aiPrint(task, step.message ?? '');
-        final command = step.kind == TerminalAiGenerationKind.command && task.executed.length < _aiTaskSteps
+        final command = step.kind == TerminalAiGenerationKind.command && task.executed.length < task.maxSteps
             ? step.command
             : null;
         final prompt = await _aiPrompt(task);

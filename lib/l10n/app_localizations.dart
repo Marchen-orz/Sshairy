@@ -1142,6 +1142,42 @@ abstract class AppLocalizations {
   /// **'Confirm multi-line paste'**
   String get confirmPaste;
 
+  /// No description provided for @aiTextStyle.
+  ///
+  /// In en, this message translates to:
+  /// **'AI text'**
+  String get aiTextStyle;
+
+  /// No description provided for @aiTextItalicFaint.
+  ///
+  /// In en, this message translates to:
+  /// **'Italic dim'**
+  String get aiTextItalicFaint;
+
+  /// No description provided for @aiTextItalic.
+  ///
+  /// In en, this message translates to:
+  /// **'Italic'**
+  String get aiTextItalic;
+
+  /// No description provided for @aiTextFaint.
+  ///
+  /// In en, this message translates to:
+  /// **'Dim'**
+  String get aiTextFaint;
+
+  /// No description provided for @aiTextPlain.
+  ///
+  /// In en, this message translates to:
+  /// **'Normal'**
+  String get aiTextPlain;
+
+  /// No description provided for @aiTaskSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'AI task step limit'**
+  String get aiTaskSteps;
+
   /// No description provided for @completionTranslation.
   ///
   /// In en, this message translates to:

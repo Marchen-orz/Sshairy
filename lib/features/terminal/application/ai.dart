@@ -20,7 +20,7 @@ class _DisabledTerminalAi implements TerminalAiService {
     CancellationToken cancel, {
     List<TerminalAiHistoryEntry> history = const [],
     List<String> steps = const [],
-    int stepsLeft = 8,
+    int stepsLeft = 12,
   }) async => const TerminalAiGeneration(TerminalAiGenerationKind.done);
   @override
   Future<String?> complete(

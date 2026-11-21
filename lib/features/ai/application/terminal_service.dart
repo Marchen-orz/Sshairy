@@ -118,7 +118,7 @@ class AiTerminalService implements TerminalAiService {
     CancellationToken cancel, {
     List<TerminalAiHistoryEntry> history = const [],
     List<String> steps = const [],
-    int stepsLeft = 8,
+    int stepsLeft = 12,
   }) async {
     if (!canGenerate(context) ||
         cancel.isCancelled ||

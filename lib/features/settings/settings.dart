@@ -16,6 +16,8 @@ enum CursorShape { block, underline, bar }
 
 enum RightClick { menu, paste }
 
+enum AiTextStyle { italicFaint, italic, faint, plain }
+
 enum HostView { grid, list }
 
 enum HostOrder { name, recent }
@@ -323,6 +325,10 @@ abstract final class SettingKeys {
 
   /// Guards against pasting commands that run at once; not the agent's to turn off.
   static const confirmPaste = BoolSetting('confirmPaste', true, agentExposed: false);
+  static const aiTextStyle = EnumSetting('aiTextStyle', AiTextStyle.italicFaint, AiTextStyle.values);
+
+  /// How many commands one inline AI task may run; the AI must not raise its own limit.
+  static const aiTaskSteps = IntSetting('aiTaskSteps', 12, 1, 100, agentExposed: false);
   static const completionTranslation = BoolSetting('completionTranslation', true, agentExposed: false);
   static const completionTranslationConcurrency = IntSetting(
     'completionTranslationConcurrency',
@@ -429,6 +435,8 @@ abstract final class SettingKeys {
     copyOnSelect,
     rightClick,
     confirmPaste,
+    aiTextStyle,
+    aiTaskSteps,
     completionTranslation,
     completionTranslationConcurrency,
     completionTranslationConfig,

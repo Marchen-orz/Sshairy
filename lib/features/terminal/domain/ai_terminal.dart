@@ -275,7 +275,7 @@ abstract interface class TerminalAiService {
     CancellationToken cancel, {
     List<TerminalAiHistoryEntry> history = const [],
     List<String> steps = const [],
-    int stepsLeft = 8,
+    int stepsLeft = 12,
   });
   Future<String?> complete(
     TerminalAiContext context,
