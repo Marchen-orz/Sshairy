@@ -102,13 +102,6 @@ List<Override> appOverrides() => [
           id: SettingsSectionId.mcp,
           icon: Icons.extension_outlined,
         ),
-      if (isDesktopPlatform)
-        SettingsSection(
-          (l) => l.linkTitle,
-          (_) => const LinkSettings(),
-          id: SettingsSectionId.link,
-          icon: Icons.phonelink_outlined,
-        ),
       SettingsSection(
         (l) => l.translationService,
         (_) => TranslationSettings(

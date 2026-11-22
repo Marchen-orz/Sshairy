@@ -29,6 +29,7 @@ import '../../connections/api.dart';
 import '../../files/api.dart';
 import '../../forwarding/api.dart';
 import '../../hosts/api.dart';
+import '../../link/api.dart';
 import '../../logs/api.dart';
 import '../../monitor/api.dart';
 import '../../settings/api.dart';
@@ -121,6 +122,8 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   void _openLogs() => _flyout((_) => const LogsPanel());
   void _openPalette() => _overlay(() => widget.openPalette(_surfaceContext));
   void _openKeys() => _flyout((_) => const KeysPanel());
+  void _openLink() =>
+      _flyout((_) => const SingleChildScrollView(child: LinkSettings()), width: WorkspaceSize.flyoutWide);
   void _openTrust() => _flyout((context) => SingleChildScrollView(child: trustSettingsSection.build(context)));
 
   /// Status of every session on [host], for the quick-connect list.
@@ -710,6 +713,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                   RailItem(icon: Icons.code, label: l.snippets, onTap: _openSnippets),
                   RailItem(icon: Icons.verified_user_outlined, label: l.hostKeys, onTap: _openTrust),
                   RailItem(icon: Icons.receipt_long_outlined, label: l.logs, onTap: _openLogs),
+                  if (isDesktopPlatform) RailItem(icon: Icons.phonelink_outlined, label: l.linkTitle, onTap: _openLink),
                 ],
               ],
               bottom: [
