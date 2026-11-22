@@ -135,7 +135,7 @@ class _SshairyAppState extends ConsumerState<SshairyApp> {
                 enabled: Platform.environment['FLUTTER_TEST'] != 'true',
                 child: LinkHostLifecycle(
                   window: widget.window,
-                  child: McpHostPrompts(
+                  child: McpPrompts(
                     child: AgentHostApprovalPrompts(child: WorkspacePage(openPalette: showCommandPalette)),
                   ),
                 ),

@@ -12,6 +12,7 @@ import 'package:sshairy/features/ai/api.dart';
 import 'package:sshairy/features/capabilities/api.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/settings/api.dart';
+import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/foundation/cancellation.dart';
 import 'package:sshairy/foundation/data_dir.dart';
 import 'package:sshairy/foundation/ids.dart';
@@ -39,7 +40,13 @@ void main() {
     expect((await h.post('tools/list', session: session, bearer: other)).status, 404);
     final catalog = (await h.post('tools/list', session: session)).body!['result'] as Map;
     final tools = (catalog['tools'] as List).cast<Map>();
-    expect(tools.map((tool) => tool['name']), ['host_list', 'diagnostics_collect']);
+    expect(tools.map((tool) => tool['name']), [
+      'host_list',
+      'terminal_list',
+      'terminal_history_read',
+      'terminal_screen_read',
+      'diagnostics_collect',
+    ]);
     final schema = tools.last['inputSchema'] as Map;
     final internal = h.controller.dispatcher['agent.diagnose']!.inputSchema;
     expect(schema['properties']['template']['enum'], (internal['properties'] as Map)['template']['enum']);
@@ -51,11 +58,82 @@ void main() {
     expect(h.controller.approval, isNull);
   });
 
+  test('terminal history is bounded by window identity and MCP session', () async {
+    await h.start();
+    final session = await h.open();
+    const name = 'terminal_history_read';
+    const first = {'sessionId': 'ssh-first'};
+    expect(await h.error(session, name: name, arguments: {}), 'invalidArgument');
+    final pending = h.tool(session, name: name, arguments: first);
+    final approval = await h.approval<McpTerminalApproval>();
+    expect(approval.terminal.sessionId, const SessionId('ssh-first'));
+    expect(h.terminals.reads, 0);
+    h.controller.decide(approval, true);
+    expect((await pending)['structuredContent']['directory'], '/work');
+    expect((await h.tool(session, name: name, arguments: first))['isError'], false);
+    expect(h.controller.approval, isNull);
+
+    final other = h.error(session, name: name, arguments: {'sessionId': 'ssh-second'});
+    final otherApproval = await h.approval<McpTerminalApproval>();
+    expect(otherApproval.terminal.sessionId, const SessionId('ssh-second'));
+    h.controller.decide(otherApproval, false);
+    expect(await other, 'denied');
+
+    final fresh = h.error(await h.open(requireApproved: true), name: name, arguments: first);
+    final stale = await h.approval<McpTerminalApproval>();
+    h.terminals.generation++;
+    h.terminals.binding = Object();
+    h.controller.decide(stale, true);
+    expect(await fresh, 'scopeChanged');
+    final reconnected = h.error(session, name: name, arguments: first);
+    h.controller.decide(await h.approval<McpTerminalApproval>(), false);
+    expect(await reconnected, 'denied');
+    expect(h.terminals.reads, 2);
+    expect(h.backend.prepared, 0);
+  });
+
+  test('automatic scope still requires approval for each visible screen read', () async {
+    await h.start(mode: McpApprovalMode.automatic, scope: {'first': h.digests[_first]!});
+    final session = await h.open();
+    final list = await h.tool(session, name: 'terminal_list', arguments: {});
+    expect(list['structuredContent']['sessions'].map((item) => item['sessionId']), ['ssh-first']);
+    const name = 'terminal_screen_read';
+    const first = {'sessionId': 'ssh-first', 'maxLines': 10};
+    expect(await h.error(session, name: name, arguments: {'sessionId': 'ssh-second'}), 'outsideScope');
+    final read = h.tool(session, name: name, arguments: first);
+    final prompt = await h.approval<McpTerminalApproval>();
+    expect(prompt.maxLines, 10);
+    h.controller.decide(prompt, true);
+    expect((await read)['structuredContent']['text'], 'visible output');
+    h.terminals.screen = 'password=private';
+    final sensitive = h.error(session, name: name, arguments: first);
+    h.controller.decide(await h.approval<McpTerminalApproval>(), true);
+    expect(await sensitive, 'sensitive');
+    expect(h.reviewed, 0);
+    expect(h.backend.prepared, 0);
+  });
+
+  test('model mode reviews every eligible terminal call even after a window was approved', () async {
+    await h.start(mode: McpApprovalMode.model);
+    final session = await h.open();
+    const name = 'terminal_history_read';
+    const first = {'sessionId': 'ssh-first'};
+    final denied = h.error(session, name: name, arguments: first);
+    h.controller.decide(await h.approval<McpTerminalApproval>(), true);
+    expect(await denied, 'reviewDenied');
+    expect(h.terminals.reads, 0);
+    h.decision = AgentReviewDecision.allow;
+    expect((await h.tool(session, name: name, arguments: first))['isError'], false);
+    expect((await h.tool(session, name: 'terminal_list', arguments: {}))['isError'], false);
+    expect(h.reviewed, 3);
+    expect(h.controller.approval, isNull);
+  });
+
   test('host confirmation happens before prepare, is reused in-session, and is reset in another session', () async {
     await h.start();
     final session = await h.open();
     final pending = h.tool(session);
-    final approval = await h.approval();
+    final approval = await h.approval<McpHostApproval>();
     expect(h.backend.prepared, 0);
     h.controller.decide(approval, true);
     final first = await pending;
@@ -66,7 +144,7 @@ void main() {
     expect(h.backend.prepared, 2);
     expect(h.reviewed, 0);
     final next = h.error(await h.open());
-    h.controller.decide(await h.approval(), false);
+    h.controller.decide(await h.approval<McpHostApproval>(), false);
     expect(await next, 'hostDenied');
     expect(h.backend.prepared, 2);
     final records = await h.records();
@@ -80,7 +158,7 @@ void main() {
     await h.start(mode: McpApprovalMode.model);
     final session = await h.open();
     final denied = h.error(session);
-    final approval = await h.approval();
+    final approval = await h.approval<McpHostApproval>();
     expect(h.reviewed, 0);
     h.controller.decide(approval, true);
     expect(await denied, 'reviewDenied');
@@ -299,6 +377,19 @@ void main() {
     }
   });
 
+  test('legacy notification needs consent and revoking a pending client rejects stale approval', () async {
+    h.token = mcpRandomToken();
+    await h.credentials.save(McpClient.claude.name, Secret('${h.token}:seen'));
+    await h.start(connect: false);
+    final connecting = h.initialize();
+    final prompt = await h.approval<McpConnectionApproval>();
+    await h.controller.disconnect(McpClient.claude);
+    h.controller.decide(prompt, true);
+    expect((await connecting).session, isNull);
+    expect(await h.credentials.read(McpClient.claude.name), isNull);
+    expect((await h.initialize()).status, 401);
+  });
+
   test('connecting a client writes its live token, follows a new address, and disconnecting revokes it', () async {
     await h.start(connect: false);
     final config = File('${h.dir.path}/.claude.json');
@@ -307,11 +398,14 @@ void main() {
     expect(entry['url'], h.controller.url);
     expect(entry['headers']['Authorization'], 'Bearer ${h.token}');
     expect((await h.post('initialize', bearer: 'bad')).status, 401);
-    expect(h.controller.takeConnectedClients(), isEmpty);
+    final rejected = h.initialize();
+    h.controller.decide(await h.approval<McpConnectionApproval>(), false);
+    final refusal = await rejected;
+    expect(refusal.session, isNull);
+    expect(refusal.body!['error']['message'], 'Connection not approved');
     final session = await h.open();
-    expect(h.controller.takeConnectedClients(), [McpClient.claude]);
-    await h.open();
-    expect(h.controller.takeConnectedClients(), isEmpty);
+    await h.open(requireApproved: true);
+    expect(h.controller.approval, isNull);
     expect(
       (await h.post('tools/list', session: session, bearer: entry['headers']['Authorization'].substring(7))).status,
       200,
@@ -320,8 +414,8 @@ void main() {
     h.controller.configure((enabled: true, port: 0, mode: McpApprovalMode.automatic, hosts: const {}));
     await h._until(() => h.controller.running);
     expect(((jsonDecode(config.readAsStringSync())['mcpServers']['sshairy']) as Map)['url'], h.controller.url);
-    await h.open();
-    expect(h.controller.takeConnectedClients(), isEmpty);
+    await h.open(requireApproved: true);
+    expect(h.controller.approval, isNull);
 
     await h.controller.disconnect(McpClient.claude);
     expect(jsonDecode(config.readAsStringSync())['mcpServers'], isEmpty);
@@ -342,6 +436,7 @@ class _Harness {
       backend: () => backend,
       routes: () => routes,
       routeDigests: () => digests,
+      terminalHistory: terminals,
       review: (_, _) async {
         reviewed++;
         return decision;
@@ -355,6 +450,7 @@ class _Harness {
   final dir = Directory.systemTemp.createTempSync('sshairy-mcp-');
   final http = HttpClient()..findProxy = (_) => 'DIRECT';
   final backend = _Backend();
+  final terminals = _Terminals();
   final credentials = _MemoryCredentials();
   final routes = {_first: 'first-route', _second: 'second-route'};
   final digests = {_first: 'a' * 64, _second: 'b' * 64};
@@ -381,9 +477,10 @@ class _Harness {
     token = (config['mcpServers']['sshairy']['headers']['Authorization'] as String).substring(7);
   }
 
-  Future<McpHostApproval> approval() async {
+  Future<T> approval<T extends McpApproval>() async {
     await _until(() => controller.approval != null);
-    return controller.approval!;
+    expect(controller.approval, isA<T>());
+    return controller.approval as T;
   }
 
   Future<void> _until(bool Function() ready) async {
@@ -423,9 +520,19 @@ class _Harness {
     );
   }
 
-  Future<String> open() async {
-    final init = await post('initialize', params: {'protocolVersion': '2025-11-25'});
+  Future<({int status, Map<String, dynamic>? body, String? session})> initialize() =>
+      post('initialize', params: {'protocolVersion': '2025-11-25'});
+
+  Future<String> open({bool requireApproved = false}) async {
+    var responded = false;
+    final pending = initialize().whenComplete(() => responded = true);
+    await _until(() => responded || controller.approval is McpConnectionApproval);
+    if (controller.approval case final McpConnectionApproval item) {
+      controller.decide(item, !requireApproved);
+    }
+    final init = await pending;
     expect(init.status, 200);
+    expect(init.body!['error'], isNull);
     expect(init.body!['result']['protocolVersion'], '2025-11-25');
     final session = init.session!;
     expect((await post('notifications/initialized', session: session, notification: true)).status, 202);
@@ -461,6 +568,48 @@ class _Harness {
     container.dispose();
     dir.deleteSync(recursive: true);
   }
+}
+
+class _Terminals implements TerminalHistoryReader {
+  var generation = 1;
+  var binding = Object();
+  var screen = 'visible output';
+  int reads = 0;
+
+  @override
+  List<TerminalHistorySession> get sessions => [
+    for (final (id, host) in [('ssh-first', _first), ('ssh-second', _second)])
+      TerminalHistorySession(
+        sessionId: SessionId(id),
+        target: SshTerminalAiTarget(host),
+        label: id,
+        generation: generation,
+        historyRevision: 0,
+        binding: binding,
+      ),
+  ];
+
+  @override
+  SessionId? get focusedSession => const SessionId('ssh-first');
+
+  @override
+  bool isCurrent(TerminalHistorySession expected) =>
+      expected.generation == generation && identical(expected.binding, binding);
+
+  @override
+  TerminalHistorySnapshot? read(TerminalHistorySession expected) {
+    reads++;
+    return TerminalHistorySnapshot(
+      session: expected,
+      prompt: TerminalAiPrompt.semantic,
+      history: [],
+      directory: '/work',
+    );
+  }
+
+  @override
+  TerminalScreenSnapshot? readScreen(TerminalHistorySession expected, {int maxLines = 200, int maxBytes = 32768}) =>
+      TerminalScreenSnapshot(session: expected, text: screen, firstLine: 0, lastLine: 0, truncated: false);
 }
 
 class _MemoryCredentials implements McpCredentials {

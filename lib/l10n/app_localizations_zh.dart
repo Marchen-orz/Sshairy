@@ -2947,8 +2947,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mcpClientUnavailable => '客户端配置不可用';
 
   @override
-  String mcpClientConnected(String client) {
-    return '$client 已连接';
+  String get mcpConnectionTitle => '允许 MCP 连接';
+
+  @override
+  String mcpConnectionPrompt(String client) {
+    return '允许 $client 连接到 Sshairy？';
+  }
+
+  @override
+  String mcpTerminalHistoryPrompt(String client, String terminal) {
+    return '允许 $client 在本次 MCP 会话中读取「$terminal」的近期命令和结果？';
+  }
+
+  @override
+  String mcpTerminalScreenPrompt(String client, String terminal, int maxLines) {
+    return '允许 $client 读取「$terminal」当前可见的最多 $maxLines 行内容？';
   }
 
   @override

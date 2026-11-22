@@ -224,6 +224,34 @@ String _bounded(String value, int bytes) {
   return utf8.decode(encoded.sublist(0, bytes), allowMalformed: true).replaceAll('�', '');
 }
 
+Map<String, Object?> agentTerminalMetadata(TerminalHistorySession session) => {
+  'sessionId': session.sessionId.value,
+  'label': _bounded(session.label, 256),
+  'generation': session.generation,
+  'historyRevision': session.historyRevision,
+  'tabId': ?session.tabId,
+  'paneId': ?session.paneId,
+  ...switch (session.target) {
+    SshTerminalAiTarget(:final hostId) => {'targetKind': 'ssh', 'hostId': hostId.value},
+    LocalTerminalAiTarget(:final kind) => {'targetKind': 'local', 'shellKind': kind.name},
+  },
+};
+
+Map<String, Object?> agentTerminalHistoryData(TerminalHistorySnapshot snapshot) => {
+  ...agentTerminalMetadata(snapshot.session),
+  'directory': ?snapshot.directory,
+  'prompt': snapshot.prompt.name,
+  'history': [for (final entry in boundedTerminalAiHistory(snapshot.history)) terminalAiHistoryData(entry)],
+};
+
+Map<String, Object?> agentTerminalScreenData(TerminalScreenSnapshot snapshot) => {
+  ...agentTerminalMetadata(snapshot.session),
+  'text': snapshot.text,
+  'firstLine': snapshot.firstLine,
+  'lastLine': snapshot.lastLine,
+  'truncated': snapshot.truncated,
+};
+
 /// Model-supplied display text: single line, no terminal/bidi control characters.
 String _purpose(Object? value) => value is String
     ? _bounded(value.replaceAll(RegExp(r'[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]'), ' ').trim(), 160)
@@ -1031,19 +1059,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     return _terminalSessions.where((session) => session.sessionId == id).firstOrNull;
   }
 
-  Map<String, Object?> _terminalMetadata(TerminalHistorySession session) => {
-    'sessionId': session.sessionId.value,
-    'label': _bounded(session.label, 256),
-    'generation': session.generation,
-    'historyRevision': session.historyRevision,
-    'tabId': ?session.tabId,
-    'paneId': ?session.paneId,
-    ...switch (session.target) {
-      SshTerminalAiTarget(:final hostId) => {'targetKind': 'ssh', 'hostId': hostId.value},
-      LocalTerminalAiTarget(:final kind) => {'targetKind': 'local', 'shellKind': kind.name},
-    },
-  };
-
   Map<String, Object?> _terminalData(TerminalHistorySession session) {
     if (terminalHistory?.isCurrent(session) != true) throw const AgentFailure('scopeChanged');
     final snapshot = terminalHistory!.read(session);
@@ -1051,12 +1066,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       throw const AgentFailure('scopeChanged');
     }
     _sharedTerminals[session.sessionId] = session;
-    return {
-      ..._terminalMetadata(session),
-      'directory': ?snapshot.directory,
-      'prompt': snapshot.prompt.name,
-      'history': [for (final entry in boundedTerminalAiHistory(snapshot.history)) terminalAiHistoryData(entry)],
-    };
+    return agentTerminalHistoryData(snapshot);
   }
 
   Result<Object?> listTerminals(Map<String, Object?> args) {
@@ -1068,7 +1078,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'sessions': [
         for (final session in page)
           {
-            ..._terminalMetadata(session),
+            ...agentTerminalMetadata(session),
             'current': session.sessionId == _defaultTerminal,
             'requiresApproval': !_readableTerminals.contains(session.sessionId),
           },
@@ -1098,13 +1108,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       return const Err(AppError('scopeChanged'));
     }
     _sharedTerminals[session.sessionId] = session;
-    return Ok({
-      ..._terminalMetadata(session),
-      'text': snapshot.text,
-      'firstLine': snapshot.firstLine,
-      'lastLine': snapshot.lastLine,
-      'truncated': snapshot.truncated,
-    });
+    return Ok(agentTerminalScreenData(snapshot));
   }
 
   HostId? _host(Map<String, Object?> args) {

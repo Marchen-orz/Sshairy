@@ -1021,12 +1021,13 @@
   },
   "mcpClientConflict": "Existing configuration kept",
   "mcpClientUnavailable": "Client configuration unavailable",
-  "mcpClientConnected": "{client} connected",
-  "@mcpClientConnected": {
-    "placeholders": {
-      "client": {"type": "String"}
-    }
-  },
+  "mcpConnectionTitle": "Allow MCP connection",
+  "mcpConnectionPrompt": "Allow {client} to connect to Sshairy?",
+  "@mcpConnectionPrompt": {"placeholders": {"client": {"type": "String"}}},
+  "mcpTerminalHistoryPrompt": "Allow {client} to read recent commands and results from {terminal} in this MCP session?",
+  "@mcpTerminalHistoryPrompt": {"placeholders": {"client": {"type": "String"}, "terminal": {"type": "String"}}},
+  "mcpTerminalScreenPrompt": "Allow {client} to read up to {maxLines} visible lines from {terminal} now?",
+  "@mcpTerminalScreenPrompt": {"placeholders": {"client": {"type": "String"}, "terminal": {"type": "String"}, "maxLines": {"type": "int"}}},
   "mcpHostPrompt": "Allow {client} to run fixed diagnostics on {host} for this MCP session?",
   "mcpPortSave": "Save port",
   "mcpScopeChanged": "{host} (connection changed, select again)",

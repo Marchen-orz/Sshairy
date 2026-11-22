@@ -29,6 +29,10 @@ List<Capability> aiCapabilities(Ref ref) {
     },
     ['hostId', 'template'],
   );
+  const screenFields = {
+    'sessionId': host,
+    'maxLines': {'type': 'integer', 'minimum': 1, 'maximum': 200},
+  };
   return [
     FunctionCapability(
       'agent.hosts',
@@ -45,8 +49,11 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.terminals',
       Effect.query,
-      (a, c) => call(c, (r) async => r.listTerminals(a.raw)),
+      (a, c) async => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).listTerminals(a.raw)
+          : call(c, (r) async => r.listTerminals(a.raw)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema({
         'offset': {'type': 'integer', 'minimum': 0, 'maximum': 1000},
       }, []),
@@ -54,19 +61,24 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.terminalHistory',
       Effect.query,
-      (a, c) => call(c, (r) async => r.readTerminalHistory(a.raw)),
+      (a, c) async => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).readTerminal()
+          : call(c, (r) async => r.readTerminalHistory(a.raw)),
       agentExposed: true,
+      externalAgentExposed: true,
+      externalInputSchema: schema({'sessionId': host}, ['sessionId']),
       inputSchema: schema({'sessionId': host}, []),
     ),
     FunctionCapability(
       'agent.terminalScreen',
       Effect.query,
-      (a, c) => call(c, (r) async => r.readTerminalScreen(a.raw)),
+      (a, c) async => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).readTerminal(maxLines: (a.raw['maxLines'] as num?)?.toInt() ?? 200)
+          : call(c, (r) async => r.readTerminalScreen(a.raw)),
       agentExposed: true,
-      inputSchema: schema({
-        'sessionId': host,
-        'maxLines': {'type': 'integer', 'minimum': 1, 'maximum': 200},
-      }, []),
+      externalAgentExposed: true,
+      externalInputSchema: schema(screenFields, ['sessionId']),
+      inputSchema: schema(screenFields, []),
     ),
     FunctionCapability(
       'agent.diagnose',

@@ -5630,11 +5630,29 @@ abstract class AppLocalizations {
   /// **'Client configuration unavailable'**
   String get mcpClientUnavailable;
 
-  /// No description provided for @mcpClientConnected.
+  /// No description provided for @mcpConnectionTitle.
   ///
   /// In en, this message translates to:
-  /// **'{client} connected'**
-  String mcpClientConnected(String client);
+  /// **'Allow MCP connection'**
+  String get mcpConnectionTitle;
+
+  /// No description provided for @mcpConnectionPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {client} to connect to Sshairy?'**
+  String mcpConnectionPrompt(String client);
+
+  /// No description provided for @mcpTerminalHistoryPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {client} to read recent commands and results from {terminal} in this MCP session?'**
+  String mcpTerminalHistoryPrompt(String client, String terminal);
+
+  /// No description provided for @mcpTerminalScreenPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {client} to read up to {maxLines} visible lines from {terminal} now?'**
+  String mcpTerminalScreenPrompt(String client, String terminal, int maxLines);
 
   /// No description provided for @mcpHostPrompt.
   ///

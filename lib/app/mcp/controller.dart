@@ -8,6 +8,7 @@ import '../../features/capabilities/api.dart';
 import '../../features/credentials/api.dart';
 import '../../features/hosts/api.dart';
 import '../../features/settings/api.dart';
+import '../../features/terminal/api.dart';
 import '../../foundation/cancellation.dart';
 import '../../foundation/data_dir.dart';
 import '../../foundation/ids.dart';
@@ -46,6 +47,7 @@ final mcpControllerProvider = Provider<McpController>((ref) {
     dispatcher: ref.read(capabilityDispatcherProvider),
     backend: () => ref.read(agentBackendProvider),
     routes: ref.read(agentConversationRoutesProvider),
+    terminalHistory: ref.read(agentTerminalHistoryProvider),
     routeDigests: () => ref.read(mcpRouteDigestsProvider),
     review: (operation, cancel) async {
       final config = ref.read(aiConfigurationProvider);
@@ -53,7 +55,7 @@ final mcpControllerProvider = Provider<McpController>((ref) {
       if (profile == null) return AgentReviewDecision.ask;
       return AgentReviewer(ref.read(aiModelProvider)).review(
         profile: profile,
-        goal: 'Review this fixed read-only diagnostic or alias directory request from a paired local client.',
+        goal: 'Review this read-only request from a paired local client. Host and terminal access are authorized separately.',
         operation: operation,
         cancel: cancel,
       );
@@ -70,14 +72,37 @@ final mcpControllerProvider = Provider<McpController>((ref) {
   return controller;
 });
 
-class McpHostApproval {
-  McpHostApproval(this.client, this.host, this.session, this.key, this.binding);
+sealed class McpApproval {
+  McpApproval(this.client, this._key, this._isCurrent);
+
   final McpClient client;
+  final Object _key;
+  final bool Function() _isCurrent;
+  final _waiters = <CancellationToken>{};
+  final _answer = Completer<bool>();
+}
+
+final class McpConnectionApproval extends McpApproval {
+  McpConnectionApproval(McpClient client, this._token, bool Function() isCurrent) : super(client, _token, isCurrent);
+  final Secret _token;
+}
+
+final class McpHostApproval extends McpApproval {
+  McpHostApproval(this.session, this.host, this.grantKey, bool Function() isCurrent)
+    : super(session.client, (session, grantKey), isCurrent);
+
   final AgentHost host;
   final McpSession session;
-  final String key, binding;
-  final waiters = <CancellationToken>{};
-  final answer = Completer<bool>();
+  final String grantKey;
+}
+
+final class McpTerminalApproval extends McpApproval {
+  McpTerminalApproval(this.session, this.terminal, this.maxLines, Object key, bool Function() isCurrent)
+    : super(session.client, key, isCurrent);
+
+  final McpSession session;
+  final TerminalHistorySession terminal;
+  final int? maxLines;
 }
 
 class McpController extends ChangeNotifier {
@@ -89,6 +114,7 @@ class McpController extends ChangeNotifier {
     required this.review,
     required this.audit,
     required this.credentials,
+    this.terminalHistory,
     McpClients? clients,
   }) : clients = clients ?? McpClients();
 
@@ -99,13 +125,13 @@ class McpController extends ChangeNotifier {
   final McpAudit audit;
   final McpCredentials credentials;
   final McpClients clients;
+  final TerminalHistoryReader? terminalHistory;
   final _tokens = <McpClient, Secret>{};
   final _revoked = <McpClient>{};
   final _changing = <McpClient>{};
-  final _announced = <McpClient>{};
-  final _connected = <McpClient>[];
+  final _approvedClients = <McpClient>{};
   final _clientUpdateFailed = <McpClient>{};
-  final _approvals = <McpHostApproval>[];
+  final _approvals = <McpApproval>[];
   final _active = <Future<Map<String, Object?>>>{};
   final _autoRoutes = <HostId, String>{};
   late McpConfig _settings;
@@ -117,23 +143,19 @@ class McpController extends ChangeNotifier {
 
   bool get running => _http != null;
   String get url => 'http://127.0.0.1:${_http?.port ?? _settings.port}/mcp';
-  McpHostApproval? get approval => _approvals.firstOrNull;
+  McpApproval? get approval => _approvals.firstOrNull;
   bool paired(McpClient client) => _tokens.containsKey(client) || _revoked.contains(client);
   bool clientUpdateFailed(McpClient client) => _clientUpdateFailed.contains(client);
 
-  List<McpClient> takeConnectedClients() {
-    final connected = _connected.toList();
-    _connected.clear();
-    return connected;
-  }
-
-  void _clientOpened(McpClient client) {
-    if (!_announced.add(client)) return;
-    _connected.add(client);
-    final token = _tokens[client]!;
-    // Enqueue before notifying listeners so a subsequent revoke clears this record.
-    unawaited(credentials.save(client.name, Secret('${token.reveal()}:seen')).catchError((Object _) {}));
-    _notify();
+  Future<bool> _confirmClient(McpClient client, CancellationToken cancel) async {
+    final token = _tokens[client];
+    if (token == null) return false;
+    if (_approvedClients.contains(client)) return true;
+    final generation = _generation;
+    return _ask(
+      McpConnectionApproval(client, token, () => generation == _generation && identical(_tokens[client], token)),
+      cancel,
+    );
   }
 
   bool inAutomaticScope(HostId id, Map<HostId, String> current) =>
@@ -192,13 +214,20 @@ class McpController extends ChangeNotifier {
           if (!current()) return;
           if (_changing.contains(client)) continue;
           final stored = value?.reveal();
-          final seen = stored?.endsWith(':seen') ?? false;
-          final raw = seen ? stored!.substring(0, stored.length - 5) : stored;
+          final approved = stored?.endsWith(':approved') ?? false;
+          // The old suffix recorded a notification, not permission to connect.
+          final raw = approved
+              ? stored!.substring(0, stored.length - ':approved'.length)
+              : stored?.endsWith(':seen') == true
+              ? stored!.substring(0, stored.length - ':seen'.length)
+              : stored;
           if (!_revoked.contains(client) && raw != null && mcpTokenPattern.hasMatch(raw)) {
-            _tokens[client] = seen ? Secret(raw) : value!;
-            if (seen) _announced.add(client);
+            if (_tokens[client]?.reveal() != raw) _approvedClients.remove(client);
+            _tokens[client] = Secret(raw);
+            if (approved) _approvedClients.add(client);
           } else {
             _tokens.remove(client);
+            _approvedClients.remove(client);
           }
         }
         if (!live()) {
@@ -210,7 +239,7 @@ class McpController extends ChangeNotifier {
           await listener.close(force: true);
           return;
         }
-        _http = McpHttp(listener, _authenticate, _tools, _call, _closeSession, _clientOpened);
+        _http = McpHttp(listener, _authenticate, _tools, _call, _closeSession, _confirmClient);
         for (final entry in _tokens.entries) {
           try {
             clients.refresh(entry.key, url, entry.value.reveal());
@@ -280,8 +309,7 @@ class McpController extends ChangeNotifier {
     if (!_changing.add(client)) throw StateError('MCP credential change pending');
     _revoked.add(client);
     _tokens.remove(client);
-    _announced.remove(client);
-    _connected.remove(client);
+    _approvedClients.remove(client);
     _http?.revoke(client);
     _notify();
     try {
@@ -324,12 +352,14 @@ class McpController extends ChangeNotifier {
     for (final tool in _exposed)
       {
         'name': tool.name,
-        'description': tool.capability == 'agent.hosts'
-            ? 'List available saved host IDs and aliases in pages.'
-            : 'Collect a fixed read-only Linux report for a saved host: system summary, disk capacity, processes, '
-                  'listening ports or service states.',
+        'description': switch (tool.capability) {
+          'agent.hosts' => 'List available saved host IDs and aliases in pages.',
+          'agent.terminalHistory' => 'Read bounded history for the specified sessionId after local approval.',
+          'agent.terminalScreen' => 'Read visible text for the specified sessionId after approving this read locally.',
+          _ => tool.description,
+        },
         'inputSchema': dispatcher[tool.capability]!.inputSchemaFor(Origin.externalAgent),
-        'annotations': {'readOnlyHint': true},
+        'annotations': {'readOnlyHint': tool.readOnly},
       },
   ];
 
@@ -345,7 +375,7 @@ class McpController extends ChangeNotifier {
     CancellationToken cancel,
   ) async {
     final tool = _exposed.where((tool) => tool.name == params['name']).firstOrNull;
-    final authority = McpCall(this, session, _settings.mode, cancel);
+    final authority = McpCall(this, session, _settings.mode, cancel, tool?.name);
     final context = RequestContext(
       Origin.externalAgent,
       authority: authority,
@@ -404,62 +434,88 @@ class McpController extends ChangeNotifier {
   Future<bool> _confirm(McpSession session, AgentHost host, String binding, CancellationToken cancel) async {
     final key = '${host.id.value}:$binding';
     if (session.grants[key] case final value?) return value;
-    var item = _approvals.where((item) => identical(item.session, session) && item.key == key).firstOrNull;
-    if (item == null) {
-      if (_approvals.length >= 8) return false;
-      item = McpHostApproval(session.client, host, session, key, binding);
-      _approvals.add(item);
-    }
-    final pending = item;
-    pending.waiters.add(cancel);
-    if (pending.waiters.length == 1) _notify();
+    return _ask(McpHostApproval(session, host, key, () => session.current && routes()[host.id] == binding), cancel);
+  }
+
+  Future<bool> _ask(McpApproval request, CancellationToken cancel) async {
+    if (cancel.isCancelled || !request._isCurrent()) return false;
+    final existing = _approvals
+        .where((item) => item.runtimeType == request.runtimeType && item._key == request._key)
+        .firstOrNull;
+    if (existing == null && _approvals.length >= 8) return false;
+    final pending = existing ?? request;
+    if (existing == null) _approvals.add(pending);
+    pending._waiters.add(cancel);
+    if (pending._waiters.length == 1) _notify();
     try {
-      return await Future.any([pending.answer.future, cancel.whenCancelled.then((_) => false)]);
+      return await Future.any([pending._answer.future, cancel.whenCancelled.then((_) => false)]);
     } finally {
-      pending.waiters.remove(cancel);
-      if (pending.waiters.isEmpty && _approvals.remove(pending)) {
-        pending.answer.complete(false);
+      pending._waiters.remove(cancel);
+      if (pending._waiters.isEmpty && _approvals.remove(pending)) {
+        pending._answer.complete(false);
         _notify();
       }
     }
   }
 
-  void decide(McpHostApproval item, bool allowed) {
+  void decide(McpApproval item, bool allowed) {
     if (!_approvals.remove(item)) return;
-    final current =
-        item.session.current &&
-        item.waiters.any((token) => !token.isCancelled) &&
-        routes()[item.host.id] == item.binding;
-    if (current) item.session.grants[item.key] = allowed;
-    item.answer.complete(allowed && current);
+    final current = item._isCurrent() && item._waiters.any((token) => !token.isCancelled);
+    if (current) {
+      switch (item) {
+        case McpHostApproval(:final session, :final grantKey):
+          session.grants[grantKey] = allowed;
+        case McpTerminalApproval(:final session, :final terminal, maxLines: null):
+          session.terminalGrants[terminal.sessionId] = (terminal: terminal, allowed: allowed);
+        case McpConnectionApproval(:final client, :final _token) when allowed:
+          _approvedClients.add(client);
+          unawaited(credentials.save(client.name, Secret('${_token.reveal()}:approved')).catchError((Object _) {}));
+        default:
+          break;
+      }
+    }
+    item._answer.complete(allowed && current);
     _notify();
   }
 
   void _closeSession(McpSession session) {
-    for (final item in _approvals.where((item) => identical(item.session, session)).toList()) {
-      decide(item, false);
+    for (final item in _approvals.toList()) {
+      if (switch (item) {
+        McpHostApproval(session: final expected) ||
+        McpTerminalApproval(session: final expected) => identical(expected, session),
+        _ => false,
+      }) {
+        decide(item, false);
+      }
     }
   }
 }
 
 /// An authority for one operation. It shares no Airy chat state or output handles.
 class McpCall implements AgentAuthority {
-  McpCall(this._owner, this._session, this._mode, this._cancel);
+  McpCall(this._owner, this._session, this._mode, this._cancel, this._tool);
   final McpController _owner;
   final McpSession _session;
   final McpApprovalMode _mode;
   final CancellationToken _cancel;
+  final String? _tool;
   late final OperationId operation;
   AgentHost? _host;
   String? _route;
   DiagnosticTemplate? _template;
   AgentTarget? _target;
   Map<HostId, String>? _listedRoutes;
+  TerminalHistorySession? _terminal;
+  List<TerminalHistorySession> _listedTerminals = const [];
   int? _exitCode;
   String _hostDecision = 'notRequired', _modelDecision = 'notRequired';
 
   bool get bound {
     if (!_session.current || _cancel.isCancelled || !(_target?.current ?? true)) return false;
+    if (_terminal case final terminal?) {
+      if (!_terminalCurrent(terminal)) return false;
+    }
+    if (!_listedTerminals.every(_terminalCurrent)) return false;
     if (_host == null && _listedRoutes == null) return true;
     final current = _owner.routes();
     if (_host case final host?) return current[host.id] == _route;
@@ -473,12 +529,51 @@ class McpCall implements AgentAuthority {
         host,
   ];
 
+  bool _terminalCurrent(TerminalHistorySession terminal) {
+    if (_owner.terminalHistory?.isCurrent(terminal) != true) return false;
+    if (terminal.target case SshTerminalAiTarget(:final hostId)) {
+      final routes = _owner.routes();
+      return routes.containsKey(hostId) &&
+          (_mode != McpApprovalMode.automatic || _owner.inAutomaticScope(hostId, routes));
+    }
+    return _mode != McpApprovalMode.automatic;
+  }
+
+  bool? _terminalGrant(TerminalHistorySession terminal) {
+    final grant = _session.terminalGrants[terminal.sessionId];
+    if (grant == null) return null;
+    if (!_terminalCurrent(grant.terminal)) {
+      _session.terminalGrants.remove(terminal.sessionId);
+      return null;
+    }
+    return grant.allowed;
+  }
+
+  Future<Result<void>> _authorizeTerminal(Map<String, Object?> args, {required bool screen}) async {
+    final terminal = _owner.terminalHistory?.sessions
+        .where((session) => session.sessionId.value == args['sessionId'] && _terminalCurrent(session))
+        .firstOrNull;
+    if (terminal == null) return const Err(AppError('outsideScope'));
+    _terminal = terminal;
+    final maxLines = screen ? (args['maxLines'] as num?)?.toInt() ?? 200 : null;
+    final key = screen ? operation.value : (_session, terminal.sessionId, terminal.generation, terminal.binding);
+    final accepted =
+        (!screen ? _terminalGrant(terminal) : null) ??
+        await _owner._ask(
+          McpTerminalApproval(_session, terminal, maxLines, key, () => _session.current && _terminalCurrent(terminal)),
+          _cancel,
+        );
+    if (!bound) return const Err(AppError('scopeChanged'));
+    return accepted ? const Ok(null) : const Err(AppError('denied'));
+  }
+
   Future<void> record(String stage, String? tool, String outcome) => _owner.audit.append({
     'session': _session.auditId,
     'client': _session.client.name,
     'operation': operation.value,
     'tool': tool ?? 'unavailable',
     'host': _host?.id.value,
+    'terminal': _terminal?.sessionId.value,
     'template': _template?.name,
     'mode': _mode.name,
     'hostDecision': _hostDecision,
@@ -510,7 +605,10 @@ class McpCall implements AgentAuthority {
         if (!bound) return const Err(AppError('scopeChanged'));
         if (!accepted) return const Err(AppError('hostDenied'));
       }
-    } else if (capability.id != 'agent.hosts') {
+    } else if (capability.id == 'agent.terminalHistory' || capability.id == 'agent.terminalScreen') {
+      final allowed = await _authorizeTerminal(args, screen: capability.id == 'agent.terminalScreen');
+      if (allowed is Err<void>) return allowed;
+    } else if (capability.id != 'agent.hosts' && capability.id != 'agent.terminals') {
       return const Err(AppError('notExposed'));
     }
     if (_mode == McpApprovalMode.model) {
@@ -521,6 +619,8 @@ class McpCall implements AgentAuthority {
         if (_template != null) 'template': _template!.name,
         if (_host != null) 'hostId': _host!.id.value,
         if (args['offset'] case final num offset) 'offset': offset,
+        if (_terminal case final terminal?) 'sessionId': terminal.sessionId.value,
+        if (args['maxLines'] case final num maxLines) 'maxLines': maxLines,
       }, _cancel);
       _modelDecision = verdict.name;
       if (!bound) return const Err(AppError('scopeChanged'));
@@ -529,7 +629,7 @@ class McpCall implements AgentAuthority {
       }
     }
     try {
-      await record('starting', _template == null ? 'host_list' : 'diagnostics_collect', 'allowed');
+      await record('starting', _tool, 'allowed');
     } on Object {
       return const Err(AppError('auditUnavailable'));
     }
@@ -545,6 +645,35 @@ class McpCall implements AgentAuthority {
     final hosts = _hosts(routes);
     _listedRoutes = {for (final host in hosts) host.id: routes[host.id]!};
     return agentHostPage(hosts, (args['offset'] as num?)?.toInt() ?? 0);
+  }
+
+  Result<Object?> listTerminals(Map<String, Object?> args) {
+    final sessions = _owner.terminalHistory?.sessions.where(_terminalCurrent).toList() ?? const [];
+    final offset = (args['offset'] as num?)?.toInt() ?? 0;
+    final page = _listedTerminals = sessions.skip(offset).take(32).toList();
+    return Ok({
+      'sessions': [
+        for (final terminal in page)
+          {...agentTerminalMetadata(terminal), 'current': false, 'requiresApproval': _terminalGrant(terminal) != true},
+      ],
+      'total': sessions.length,
+      'nextOffset': offset + page.length < sessions.length ? offset + page.length : null,
+    });
+  }
+
+  Result<Object?> readTerminal({int? maxLines}) {
+    final terminal = _terminal;
+    if (terminal == null || !bound) return const Err(AppError('scopeChanged'));
+    final reader = _owner.terminalHistory!;
+    if (maxLines == null) {
+      final snapshot = reader.read(terminal);
+      if (snapshot == null) return const Err(AppError('scopeChanged'));
+      return Ok(agentTerminalHistoryData(snapshot));
+    }
+    final snapshot = reader.readScreen(terminal, maxLines: maxLines);
+    if (snapshot == null) return const Err(AppError('scopeChanged'));
+    if (terminalAiSensitiveText(snapshot.text)) return const Err(AppError('sensitive'));
+    return Ok(agentTerminalScreenData(snapshot));
   }
 
   Future<Result<Object?>> diagnose(RequestContext context) async {

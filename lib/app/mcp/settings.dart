@@ -152,6 +152,9 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     };
     final tool = switch (record['tool']) {
       'host_list' => l.aiAgentToolHosts,
+      'terminal_list' => l.aiAgentToolTerminals,
+      'terminal_history_read' => l.aiAgentToolTerminalHistory,
+      'terminal_screen_read' => l.aiAgentToolTerminalScreen,
       'diagnostics_collect' => switch (record['template']) {
         'systemSummary' => l.aiAgentDiagnosticSystem,
         'storageCapacity' => l.aiAgentDiagnosticStorage,
@@ -378,18 +381,18 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
   }
 }
 
-class McpHostPrompts extends ConsumerStatefulWidget {
-  const McpHostPrompts({super.key, required this.child});
+class McpPrompts extends ConsumerStatefulWidget {
+  const McpPrompts({super.key, required this.child});
   final Widget child;
 
   @override
-  ConsumerState<McpHostPrompts> createState() => _McpHostPromptsState();
+  ConsumerState<McpPrompts> createState() => _McpPromptsState();
 }
 
-class _McpHostPromptsState extends ConsumerState<McpHostPrompts> {
-  McpHostApproval? _shown;
+class _McpPromptsState extends ConsumerState<McpPrompts> {
+  McpApproval? _shown;
 
-  Future<void> _show(McpController controller, McpHostApproval approval) async {
+  Future<void> _show(McpController controller, McpApproval approval) async {
     if (!mounted || !identical(controller.approval, approval)) {
       _shown = null;
       if (mounted) setState(() {});
@@ -408,15 +411,19 @@ class _McpHostPromptsState extends ConsumerState<McpHostPrompts> {
           return const SizedBox.shrink();
         }
         final l = AppLocalizations.of(context);
-        final saved = ref.read(hostsProvider).where((host) => host.id == approval.host.id).firstOrNull;
-        final target = saved == null
-            ? approval.host.id.value
-            : saved.label.isEmpty
-            ? saved.target
-            : '${saved.label} (${saved.target})';
+        final (title, message) = switch (approval) {
+          McpConnectionApproval() => (l.mcpConnectionTitle, l.mcpConnectionPrompt(approval.client.label)),
+          McpHostApproval() => (l.aiAgentHostAccessTitle, _hostPrompt(l, approval)),
+          McpTerminalApproval(:final terminal, :final maxLines) => (
+            maxLines == null ? l.aiAgentToolTerminalHistory : l.aiAgentToolTerminalScreen,
+            maxLines == null
+                ? l.mcpTerminalHistoryPrompt(approval.client.label, terminal.label)
+                : l.mcpTerminalScreenPrompt(approval.client.label, terminal.label, maxLines),
+          ),
+        };
         return AppDialog(
-          title: Text(l.aiAgentHostAccessTitle),
-          content: SingleChildScrollView(child: Text(l.mcpHostPrompt(approval.client.label, target))),
+          title: Text(title),
+          content: SingleChildScrollView(child: Text(message)),
           actions: [
             TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(l.aiAgentHostAccessAllow)),
@@ -441,6 +448,16 @@ class _McpHostPromptsState extends ConsumerState<McpHostPrompts> {
     }
   }
 
+  String _hostPrompt(AppLocalizations l, McpHostApproval approval) {
+    final saved = ref.read(hostsProvider).where((host) => host.id == approval.host.id).firstOrNull;
+    final target = saved == null
+        ? approval.host.id.value
+        : saved.label.isEmpty
+        ? saved.target
+        : '${saved.label} (${saved.target})';
+    return l.mcpHostPrompt(approval.client.label, target);
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(mcpControllerProvider);
@@ -448,14 +465,6 @@ class _McpHostPromptsState extends ConsumerState<McpHostPrompts> {
       listenable: controller,
       child: widget.child,
       builder: (context, child) {
-        for (final client in controller.takeConnectedClients()) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted || !controller.paired(client)) return;
-            final l = AppLocalizations.of(context);
-            ScaffoldMessenger.maybeOf(context)
-                ?.showSnackBar(SnackBar(content: Text(l.mcpClientConnected(client.label))));
-          });
-        }
         final approval = controller.approval;
         if (_shown == null && approval != null) {
           _shown = approval;

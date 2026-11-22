@@ -3103,8 +3103,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mcpClientUnavailable => 'Client configuration unavailable';
 
   @override
-  String mcpClientConnected(String client) {
-    return '$client connected';
+  String get mcpConnectionTitle => 'Allow MCP connection';
+
+  @override
+  String mcpConnectionPrompt(String client) {
+    return 'Allow $client to connect to Sshairy?';
+  }
+
+  @override
+  String mcpTerminalHistoryPrompt(String client, String terminal) {
+    return 'Allow $client to read recent commands and results from $terminal in this MCP session?';
+  }
+
+  @override
+  String mcpTerminalScreenPrompt(String client, String terminal, int maxLines) {
+    return 'Allow $client to read up to $maxLines visible lines from $terminal now?';
   }
 
   @override

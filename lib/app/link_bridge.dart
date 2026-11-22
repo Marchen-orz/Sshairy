@@ -336,7 +336,7 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
     }
 
     final mcpApproval = _mcp.approval;
-    if (mcpApproval != null) {
+    if (mcpApproval is McpHostApproval) {
       final id = _idFor(mcpApproval);
       activeIds.add(id);
       items.add(

@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../../features/terminal/api.dart';
 import '../../foundation/cancellation.dart';
+import '../../foundation/ids.dart';
 import 'storage.dart';
 
 const _versions = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -14,6 +16,7 @@ class McpSession {
   final String version, id = mcpRandomToken();
   final auditId = mcpRandomToken().substring(0, 16);
   final grants = <String, bool>{};
+  final terminalGrants = <SessionId, ({TerminalHistorySession terminal, bool allowed})>{};
   final requests = <Object, CancellationToken>{};
   final expires = DateTime.now().add(const Duration(hours: 4));
   bool initialized = false, closed = false;
@@ -26,11 +29,12 @@ class McpSession {
       token.cancel();
     }
     grants.clear();
+    terminalGrants.clear();
   }
 }
 
 class McpHttp {
-  McpHttp(this._server, this.authenticate, this.tools, this.call, this.onClose, this.onOpen) {
+  McpHttp(this._server, this.authenticate, this.tools, this.call, this.onClose, this.confirmConnection) {
     _server.listen((request) => unawaited(_serve(request)), onError: (Object _) {});
     _sweep = Timer.periodic(const Duration(seconds: 30), (_) {
       for (final session in _sessions.values.toList()) {
@@ -44,7 +48,7 @@ class McpHttp {
   final List<Map<String, Object?>> Function() tools;
   final Future<Map<String, Object?>> Function(McpSession, Map<String, Object?>, CancellationToken) call;
   final void Function(McpSession) onClose;
-  final void Function(McpClient) onOpen;
+  final Future<bool> Function(McpClient, CancellationToken) confirmConnection;
   final _sessions = <String, McpSession>{};
   late final Timer _sweep;
   var _active = 0, _closed = false;
@@ -64,7 +68,7 @@ class McpHttp {
   }
 
   void _drop(McpSession session) {
-    _sessions.remove(session.id);
+    if (_sessions.remove(session.id) == null) return;
     session.close();
     onClose(session);
   }
@@ -160,8 +164,24 @@ class McpHttp {
           final negotiated = _versions.contains(requested) ? requested : _versions.first;
           final opened = McpSession(client, negotiated);
           _sessions[opened.id] = opened;
+          final cancel = active = CancellationToken();
+          final timer = Timer(const Duration(seconds: 55), cancel.cancel);
+          opened.requests[id] = cancel;
+          var accepted = false;
+          try {
+            accepted =
+                await confirmConnection(client, cancel) &&
+                !cancel.isCancelled &&
+                opened.current &&
+                !_closed &&
+                authenticate(authorization) == client;
+          } finally {
+            timer.cancel();
+            opened.requests.remove(id);
+            if (!accepted) _drop(opened);
+          }
+          if (!accepted) return write(id, code: -32000, message: 'Connection not approved');
           response.headers.set('Mcp-Session-Id', opened.id);
-          onOpen(client);
           write(
             id,
             result: {
