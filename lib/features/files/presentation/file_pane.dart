@@ -786,6 +786,7 @@ class _Row extends StatelessWidget {
         onDoubleTap: onDoubleTap,
         onSecondaryTapUp: (d) => onSecondaryTap(d.globalPosition),
         child: Stack(
+          alignment: Alignment.center,
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.md),
