@@ -57,7 +57,9 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
     final edits = ref.read(editsProvider.notifier);
     final forwards = ref.read(forwardsProvider.notifier);
     try {
+      // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
       final agent = ref.exists(agentRuntimeProvider) ? ref.read(agentRuntimeProvider) : null;
+      // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
       final mcp = ref.exists(mcpControllerProvider) ? ref.read(mcpControllerProvider) : null;
       final running = transfers.activeCount;
       final unsaved = edits.unsavedCount;
@@ -88,6 +90,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             forwards.shutdown(),
             if (agent != null) agent.shutdown(),
             if (mcp != null) mcp.shutdown(),
+            // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
             if (ref.exists(aiTerminalServiceProvider)) ref.read(aiTerminalServiceProvider).shutdown(),
           ]).timeout(const Duration(seconds: 8));
           await Future.wait([
@@ -97,8 +100,11 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             ref.read(settingsProvider.notifier).saved,
             ref.read(snippetsProvider.notifier).saved,
             ref.read(workspaceProvider.notifier).saved,
+            // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
             if (ref.exists(aiConfigurationProvider)) ref.read(aiConfigurationProvider.notifier).saved,
+            // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
             if (ref.exists(aiJournalProvider)) ref.read(aiJournalProvider).saved,
+            // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
             if (ref.exists(agentConversationsProvider)) ref.read(agentConversationsProvider).flush(),
           ]).timeout(const Duration(seconds: 5));
           await ref.read(terminalSessionsProvider.notifier).shutdown().timeout(const Duration(seconds: 5));

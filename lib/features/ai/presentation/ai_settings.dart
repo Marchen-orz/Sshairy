@@ -393,6 +393,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     _saveController?.changed();
     final blocked = _working || config.loadFailed || (_saveController?.busy ?? false);
     final locked = blocked || !_enabled;
+    // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
     final activeRuntime = ref.exists(agentRuntimeProvider) ? ref.watch(agentRuntimeProvider) : null;
     const gap = SizedBox(height: Space.md);
     return Form(
