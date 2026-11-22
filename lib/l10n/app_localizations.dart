@@ -5972,11 +5972,29 @@ abstract class AppLocalizations {
   /// **'Mirror'**
   String get linkMirrorTag;
 
+  /// No description provided for @linkSessionPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get linkSessionPending;
+
   /// No description provided for @linkProxyTag.
   ///
   /// In en, this message translates to:
   /// **'Via desktop'**
   String get linkProxyTag;
+
+  /// No description provided for @linkOpenOnDesktopMirrored.
+  ///
+  /// In en, this message translates to:
+  /// **'Open on desktop with mirror'**
+  String get linkOpenOnDesktopMirrored;
+
+  /// No description provided for @linkDesktopOpenFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the terminal on the desktop.'**
+  String get linkDesktopOpenFailed;
 
   /// No description provided for @linkDesktopHosts.
   ///

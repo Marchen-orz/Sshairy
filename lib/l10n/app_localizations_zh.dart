@@ -3142,7 +3142,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linkMirrorTag => '镜像';
 
   @override
+  String get linkSessionPending => '待连接';
+
+  @override
   String get linkProxyTag => '经电脑连接';
+
+  @override
+  String get linkOpenOnDesktopMirrored => '在电脑上打开并镜像';
+
+  @override
+  String get linkDesktopOpenFailed => '无法在电脑上打开该终端。';
 
   @override
   String get linkDesktopHosts => '经电脑代理连接';

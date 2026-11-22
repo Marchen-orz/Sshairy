@@ -55,6 +55,9 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
   final _approvalsChanged = StreamController<void>.broadcast();
   final _watchedSessions = <SessionId, TerminalSession>{};
 
+  /// Prompts supplied by the top-level lifecycle so mobile-requested connects can ask for host keys/passwords.
+  ConnectPrompts? prompts;
+
   // Stable unique IDs bound to the exact pending approval object instances so stale mobile clicks cannot
   // accidentally approve a newer request (first-responder wins between Desktop and Mobile).
   final _approvalIds = Expando<String>();
@@ -412,6 +415,76 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
     return true;
   }
 
+  TerminalSession? _sessionById(String sessionId) {
+    final session = _ref.read(terminalSessionsProvider)[SessionId(sessionId)];
+    return session == null || session.isRemote ? null : session;
+  }
+
+  void _showSessionTab(SessionId id) {
+    for (final tab in _ref.read(workspaceProvider).tabs) {
+      if (tab.layout.leaves.any((leaf) => leaf.session == id)) {
+        _ref.read(workspaceProvider.notifier).activate(tab.id);
+        return;
+      }
+    }
+  }
+
+  /// Starts an attempt and resolves once the shell is live or the attempt failed.
+  Future<bool> _awaitConnected(TerminalSession session) async {
+    if (session.canInsert) return true;
+    final done = Completer<bool>();
+    void check() {
+      if (done.isCompleted) return;
+      if (session.canInsert) {
+        done.complete(true);
+      } else if (session.status == SessionStatus.failed) {
+        done.complete(false);
+      }
+    }
+
+    session.addListener(check);
+    try {
+      if (session.status == SessionStatus.idle ||
+          session.status == SessionStatus.failed ||
+          session.status == SessionStatus.disconnected) {
+        unawaited(session.connect(prompts ?? _NonInteractiveProxyPrompts()).catchError((Object _) {}));
+      }
+      check();
+      return await done.future.timeout(const Duration(seconds: 45), onTimeout: () => session.canInsert);
+    } finally {
+      session.removeListener(check);
+    }
+  }
+
+  @override
+  Future<bool> connectSession(String sessionId) async {
+    final session = _sessionById(sessionId);
+    if (session == null) return false;
+    _showSessionTab(session.id);
+    return _awaitConnected(session);
+  }
+
+  @override
+  Future<LinkSessionSummary?> handoffHostForMirror(String hostId) async {
+    final host = _ref.read(hostsProvider).where((h) => !h.transient && h.id.value == hostId).firstOrNull;
+    if (host == null) return null;
+    final tabId = _ref.read(workspaceProvider.notifier).openHost(host);
+    final tab = _ref.read(workspaceProvider).tabs.where((t) => t.id == tabId).firstOrNull;
+    final session = tab == null ? null : _sessionById(tab.layout.focusedLeaf.session.value);
+    if (session == null) return null;
+    if (!await _awaitConnected(session)) return null;
+    return LinkSessionSummary(
+      sessionId: session.id.value,
+      title: session.title,
+      targetLabel: session.targetLabel,
+      isLocal: session.isLocal,
+      status: session.status.name,
+      cols: session.cols,
+      rows: session.rows,
+      hostId: host.id.value,
+    );
+  }
+
   @override
   Future<void> receiveClipboard(String text) => Clipboard.setData(ClipboardData(text: text));
 
@@ -638,11 +711,23 @@ class LinkHostLifecycle extends ConsumerStatefulWidget {
 
 class _LinkHostLifecycleState extends ConsumerState<LinkHostLifecycle> {
   LinkHostController? _host;
+  AppLinkDesktopBridge? _bridge;
   LinkPasswordSyncRequest? _shown;
   DialogRoute<bool>? _route;
   NavigatorState? _navigator;
 
   DesktopWindow get _window => widget.window ?? DesktopWindow.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    // Mobile-initiated connects may need host key or password answers on this window.
+    final bridge = ref.read(linkDesktopBridgeProvider);
+    if (bridge is AppLinkDesktopBridge) {
+      _bridge = bridge;
+      bridge.prompts = DialogPrompts(context);
+    }
+  }
 
   void _attach(LinkHostController host) {
     if (identical(_host, host)) return;
@@ -761,6 +846,7 @@ class _LinkHostLifecycleState extends ConsumerState<LinkHostLifecycle> {
   @override
   void dispose() {
     _host?.removeListener(_onHostChanged);
+    _bridge?.prompts = null;
     _dismiss();
     super.dispose();
   }

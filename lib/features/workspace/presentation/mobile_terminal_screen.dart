@@ -300,8 +300,21 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     if (ref.read(workspaceProvider).tabs.isEmpty && mounted) Navigator.of(context).pop();
   }
 
+  Future<void> _mirrorProxySessionOnDesktop(String hostId) async {
+    final l = AppLocalizations.of(context);
+    final link = ref.read(linkClientControllerProvider);
+    final summary = await link.openHostOnDesktopForMirror(hostId);
+    if (!mounted) return;
+    if (summary == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.linkDesktopOpenFailed)));
+      return;
+    }
+    link.openMirroredSessionInWorkspace(summary);
+  }
+
   void _openSessionActions(BuildContext sheet, WorkspaceState state, WorkspaceTab tab) {
     final l = AppLocalizations.of(context);
+    final target = ref.read(terminalSessionsProvider)[tab.layout.focusedLeaf.session]?.linkTarget;
     Widget closing(TabCloseScope scope, String label, IconData icon) => ListTile(
       leading: Icon(icon),
       title: Text(label),
@@ -320,6 +333,17 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (target != null && target.kind == LinkTerminalKind.proxy)
+                ListTile(
+                  key: const ValueKey('mobile-session-desktop-mirror'),
+                  leading: const Icon(Icons.desktop_windows_outlined),
+                  title: Text(l.linkOpenOnDesktopMirrored),
+                  onTap: () {
+                    Navigator.of(actions).pop();
+                    Navigator.of(sheet).pop();
+                    unawaited(_mirrorProxySessionOnDesktop(target.remoteId));
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.close),
                 title: Text(l.close),

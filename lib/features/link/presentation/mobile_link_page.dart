@@ -35,6 +35,8 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   final _hostSearchController = TextEditingController();
   var _syncing = false;
   String? _notice;
+  String? _connectingSessionId;
+  String? _connectingHostId;
 
   @override
   void dispose() {
@@ -51,6 +53,72 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     Future<void>.delayed(const Duration(seconds: 4), () {
       if (mounted && _notice == text) setState(() => _notice = null);
     });
+  }
+
+  Future<void> _openDesktopTerminal(LinkClientController client, LinkSessionSummary session) async {
+    final l = AppLocalizations.of(context);
+    if (session.status == 'connected') {
+      client.openMirroredSessionInWorkspace(session);
+      widget.onOpenedTerminal?.call();
+      return;
+    }
+    setState(() => _connectingSessionId = session.sessionId);
+    try {
+      final ok = await client.connectDesktopSession(session.sessionId);
+      if (!mounted) return;
+      if (!ok) {
+        _showNotice(l.linkDesktopOpenFailed);
+        return;
+      }
+      client.openMirroredSessionInWorkspace(session);
+      widget.onOpenedTerminal?.call();
+    } finally {
+      if (mounted) setState(() => _connectingSessionId = null);
+    }
+  }
+
+  Future<void> _mirrorHostFromDesktop(LinkClientController client, LinkHostSummary host) async {
+    final l = AppLocalizations.of(context);
+    setState(() => _connectingHostId = host.hostId);
+    try {
+      final summary = await client.openHostOnDesktopForMirror(host.hostId);
+      if (!mounted) return;
+      if (summary == null) {
+        _showNotice(l.linkDesktopOpenFailed);
+        return;
+      }
+      client.openMirroredSessionInWorkspace(summary);
+      widget.onOpenedTerminal?.call();
+    } finally {
+      if (mounted) setState(() => _connectingHostId = null);
+    }
+  }
+
+  void _showHostActions(LinkClientController client, LinkHostSummary host) {
+    final l = AppLocalizations.of(context);
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (sheet) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                key: ValueKey('link-mirror-host-${host.hostId}'),
+                leading: const Icon(Icons.desktop_windows_outlined),
+                title: Text(l.linkOpenOnDesktopMirrored),
+                onTap: () {
+                  Navigator.of(sheet).pop();
+                  unawaited(_mirrorHostFromDesktop(client, host));
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _errorText(AppLocalizations l, LinkErrorKind kind) => switch (kind) {
@@ -595,10 +663,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
           for (final s in client.desktopSessions)
             _SurfaceCard(
               key: ValueKey('link-mirror-${s.sessionId}'),
-              onTap: () {
-                client.openMirroredSessionInWorkspace(s);
-                widget.onOpenedTerminal?.call();
-              },
+              onTap: () => unawaited(_openDesktopTerminal(client, s)),
               child: Row(
                 children: [
                   Icon(s.isLocal ? Icons.terminal : Icons.dns_outlined, size: 18, color: scheme.primary),
@@ -616,7 +681,13 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                       ],
                     ),
                   ),
-                  _Tag(label: l.linkMirrorTag, color: scheme.primary),
+                  if (_connectingSessionId == s.sessionId)
+                    const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    _Tag(
+                      label: s.status == 'connected' ? l.linkMirrorTag : l.linkSessionPending,
+                      color: s.status == 'connected' ? scheme.primary : scheme.onSurfaceVariant,
+                    ),
                 ],
               ),
             ),
@@ -648,6 +719,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                 client.openProxiedHostInWorkspace(h);
                 widget.onOpenedTerminal?.call();
               },
+              onLongPress: () => _showHostActions(client, h),
               child: Row(
                 children: [
                   Icon(Icons.hub_outlined, size: 18, color: scheme.secondary),
@@ -669,7 +741,10 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                       ],
                     ),
                   ),
-                  _Tag(label: l.linkProxyTag, color: scheme.secondary),
+                  if (_connectingHostId == h.hostId)
+                    const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    _Tag(label: l.linkProxyTag, color: scheme.secondary),
                 ],
               ),
             ),
@@ -679,10 +754,11 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
 }
 
 class _SurfaceCard extends StatelessWidget {
-  const _SurfaceCard({super.key, required this.child, this.onTap, this.borderColor});
+  const _SurfaceCard({super.key, required this.child, this.onTap, this.onLongPress, this.borderColor});
 
   final Widget child;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final Color? borderColor;
 
   @override
@@ -698,7 +774,9 @@ class _SurfaceCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: borderColor ?? scheme.outlineVariant.withValues(alpha: .45)),
         ),
-        child: onTap == null ? body : InkWell(onTap: onTap, child: body),
+        child: onTap == null && onLongPress == null
+            ? body
+            : InkWell(onTap: onTap, onLongPress: onLongPress, child: body),
       ),
     );
   }

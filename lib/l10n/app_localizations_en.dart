@@ -3299,7 +3299,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linkMirrorTag => 'Mirror';
 
   @override
+  String get linkSessionPending => 'Pending';
+
+  @override
   String get linkProxyTag => 'Via desktop';
+
+  @override
+  String get linkOpenOnDesktopMirrored => 'Open on desktop with mirror';
+
+  @override
+  String get linkDesktopOpenFailed =>
+      'Could not open the terminal on the desktop.';
 
   @override
   String get linkDesktopHosts => 'Connect via desktop';

@@ -82,6 +82,12 @@ abstract interface class LinkDesktopBridge {
   /// Opens a saved host directly on the desktop workspace (Mobile -> Desktop Handoff).
   bool handoffHost(String hostId);
 
+  /// Connects an existing desktop terminal tab (idle, failed or disconnected) and waits for a live shell.
+  Future<bool> connectSession(String sessionId);
+
+  /// Opens a saved host on the desktop, waits for its shell, and returns its session summary for mirroring.
+  Future<LinkSessionSummary?> handoffHostForMirror(String hostId);
+
   /// Writes text pushed over E2EE Link from a paired mobile peer to the desktop clipboard.
   Future<void> receiveClipboard(String text);
 
@@ -144,6 +150,10 @@ class _NullDesktopBridge implements LinkDesktopBridge {
   bool decideApproval(String approvalId, bool allowed) => false;
   @override
   bool handoffHost(String hostId) => false;
+  @override
+  Future<bool> connectSession(String sessionId) async => false;
+  @override
+  Future<LinkSessionSummary?> handoffHostForMirror(String hostId) async => null;
   @override
   Future<void> receiveClipboard(String text) async {}
   @override
@@ -926,6 +936,31 @@ class LinkHostController extends ChangeNotifier {
           _broadcastSessions();
         }
 
+      case 'handoff.mirror':
+        if (!perms.allowMirror) return;
+        final reqId = msg['reqId'] as String? ?? '';
+        final hostId = msg['hostId'] as String? ?? '';
+        final summary = hostId.isEmpty ? null : await bridge.handoffHostForMirror(hostId);
+        if (!peer.session.isClosed) {
+          await peer.session
+              .sendMessage({
+                'type': 'handoff.mirror.result',
+                'reqId': reqId,
+                if (summary != null) 'session': summary.toJson(),
+              })
+              .catchError((Object _) {});
+        }
+
+      case 'session.connect':
+        if (!perms.allowMirror) return;
+        final sessionId = msg['sessionId'] as String? ?? '';
+        final ok = sessionId.isNotEmpty && await bridge.connectSession(sessionId);
+        if (!peer.session.isClosed) {
+          await peer.session
+              .sendMessage({'type': 'session.connect.result', 'sessionId': sessionId, 'ok': ok})
+              .catchError((Object _) {});
+        }
+
       case 'clipboard.push':
         final text = msg['text'] as String? ?? '';
         if (text.isNotEmpty && text.length <= 64 * 1024) {
@@ -1156,6 +1191,8 @@ class LinkClientController extends ChangeNotifier {
   final _channels = <String, _LinkShellChannel>{};
   final _openWaiters = <String, Completer<void>>{};
   final _monitorWaiters = <String, Completer<Map<String, dynamic>>>{};
+  final _connectWaiters = <String, Completer<bool>>{};
+  final _handoffMirrorWaiters = <String, Completer<LinkSessionSummary?>>{};
   final _syncWaiters = <String, Completer<({LinkSyncBundle bundle, bool awaitingPasswordApproval})>>{};
   final _requestedPasswordSyncIds = <String>{};
   final _followDesktopChannels = <String>{};
@@ -1464,6 +1501,14 @@ class LinkClientController extends ChangeNotifier {
       if (!waiter.isCompleted) waiter.completeError(const LinkException(LinkErrorKind.network));
     }
     _monitorWaiters.clear();
+    for (final waiter in _connectWaiters.values) {
+      if (!waiter.isCompleted) waiter.complete(false);
+    }
+    _connectWaiters.clear();
+    for (final waiter in _handoffMirrorWaiters.values) {
+      if (!waiter.isCompleted) waiter.complete(null);
+    }
+    _handoffMirrorWaiters.clear();
     for (final w in _syncWaiters.values) {
       if (!w.isCompleted) w.completeError(const LinkException(LinkErrorKind.network));
     }
@@ -1721,6 +1766,39 @@ class LinkClientController extends ChangeNotifier {
     );
   }
 
+  /// Asks the desktop to connect an existing tab; returns whether its shell is live now.
+  Future<bool> connectDesktopSession(String sessionId) async {
+    final session = _session;
+    if (!connected || session == null || sessionId.isEmpty) return false;
+    final waiter = Completer<bool>();
+    _connectWaiters[sessionId] = waiter;
+    try {
+      await session.sendMessage({'type': 'session.connect', 'sessionId': sessionId});
+      return await waiter.future.timeout(const Duration(seconds: 45), onTimeout: () => false);
+    } on Object {
+      return false;
+    } finally {
+      _connectWaiters.remove(sessionId);
+    }
+  }
+
+  /// Asks the desktop to open [hostId] and returns the new session once its shell is live.
+  Future<LinkSessionSummary?> openHostOnDesktopForMirror(String hostId) async {
+    final session = _session;
+    if (!connected || session == null || hostId.isEmpty) return null;
+    final reqId = newId();
+    final waiter = Completer<LinkSessionSummary?>();
+    _handoffMirrorWaiters[reqId] = waiter;
+    try {
+      await session.sendMessage({'type': 'handoff.mirror', 'reqId': reqId, 'hostId': hostId});
+      return await waiter.future.timeout(const Duration(seconds: 60), onTimeout: () => null);
+    } on Object {
+      return null;
+    } finally {
+      _handoffMirrorWaiters.remove(reqId);
+    }
+  }
+
   /// Opens a desktop-proxied SSH tab in the local workspace via [bridge].
   void openProxiedHostInWorkspace(LinkHostSummary host) {
     if (!connected || _connectedDesktopId == null) return;
@@ -1793,6 +1871,16 @@ class LinkClientController extends ChangeNotifier {
 
       case 'terminal.monitor.result':
         _monitorWaiters.remove(msg['reqId'])?.complete(msg);
+
+      case 'session.connect.result':
+        final waiter = _connectWaiters[msg['sessionId'] as String? ?? ''];
+        if (waiter != null && !waiter.isCompleted) waiter.complete(msg['ok'] == true);
+
+      case 'handoff.mirror.result':
+        final raw = msg['session'];
+        _handoffMirrorWaiters
+            .remove(msg['reqId'] as String? ?? '')
+            ?.complete(raw is Map ? LinkSessionSummary.fromJson(raw.cast<String, dynamic>()) : null);
 
       case 'proxy.opened':
         final channelId = msg['channelId'] as String? ?? '';
