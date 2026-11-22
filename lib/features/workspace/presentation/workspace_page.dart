@@ -736,7 +736,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     required bool files,
   }) {
     Widget rail({required bool linkConnected}) {
-      final palette = BrandPalette.of(context);
+      final scheme = Theme.of(context).colorScheme;
       return IconRail(
         header: const DesktopDragRegion(child: Center(child: BrandMark())),
         expandedHeader: DesktopDragRegion(
@@ -769,7 +769,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                 icon: Icons.phonelink_outlined,
                 label: l.linkTitle,
                 tooltip: linkConnected ? '${l.linkTitle} · ${l.linkOnline}' : null,
-                statusColor: linkConnected ? palette.success : null,
+                statusColor: linkConnected ? scheme.primary : null,
                 statusKey: const ValueKey('rail-link-connected'),
                 onTap: _openLink,
               ),
