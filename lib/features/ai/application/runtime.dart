@@ -1053,7 +1053,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'To deploy local files, queue transfer_enqueue from fromGrantId to a remote host and exclude build output, dependencies and VCS folders the target does not need; to download, ask for a write grant and use toGrantId. '
       'An expired grant means the user must attach or grant it again. '
       'output_read only rereads an already shared projection, never raw buffers. Do not rerun actions to bypass output limits. '
-      'job_start runs one approved command in the background; poll job_read with nextOffset and job_status. Jobs end with this turn and are never replayed. '
+      'job_start runs one approved command in the background; poll job_read with nextOffset; it also returns state and exit code. Jobs end with this turn and are never replayed. '
       'settings, host, workspace, session and forwarding tools change this app locally; they still follow the frozen permission mode and host scope. '
       'Use only current saved IDs and do not claim success without tool evidence and exit status. '
       'A zero command exit code alone does not prove a repair worked. Request one exact command when needed; do not ask for credentials. '
@@ -1519,7 +1519,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'agent.terminalHistory',
       'agent.terminalScreen',
       'agent.jobs.read',
-      'agent.jobs.status',
       'agent.jobs.stop',
       'transfer.list',
       'transfer.cancel',
@@ -1798,12 +1797,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       }
     }
     return Ok(data());
-  }
-
-  Result<Object?> jobStatus(Map<String, Object?> args) {
-    _check();
-    final job = _job(args);
-    return job == null ? const Err(AppError('notFound', detail: 'job')) : Ok(_jobData(job));
   }
 
   Result<Object?> stopJob(Map<String, Object?> args) {
@@ -2443,7 +2436,6 @@ class ExternalAgentCommands {
 
   Result<Object?> job(String capability, Map<String, Object?> args) => switch (capability) {
     'agent.jobs.read' => _runtime.readJob(args),
-    'agent.jobs.status' => _runtime.jobStatus(args),
     'agent.jobs.stop' => _runtime.stopJob(args),
     _ => const Err(AppError('notExposed')),
   };

@@ -107,10 +107,10 @@ void main() {
     expect(job['isError'], false);
     await h.backend.started.future.timeout(const Duration(seconds: 5));
     final target = {'jobId': job['structuredContent']['jobId']};
-    expect((await h.tool(session, name: 'job_status', arguments: target))['structuredContent']['state'], 'running');
-    expect(await h.error(other, name: 'job_status', arguments: target), 'notFound');
+    expect((await h.tool(session, name: 'job_read', arguments: target))['structuredContent']['state'], 'running');
+    expect(await h.error(other, name: 'job_read', arguments: target), 'notFound');
     h.routes[_first] = 'changed-route';
-    expect(await h.error(session, name: 'job_status', arguments: target), 'scopeChanged');
+    expect(await h.error(session, name: 'job_read', arguments: target), 'scopeChanged');
     expect(await h.error(session, name: 'output_read', arguments: read), 'outsideScope');
     await h._until(() => h.backend.releases == 2);
     final records = await h.container.read(aiJournalProvider).load();

@@ -162,16 +162,6 @@ List<Capability> aiCapabilities(Ref ref) {
       ),
     ),
     FunctionCapability(
-      'agent.jobs.status',
-      Effect.query,
-      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
-          ? (c.authority as McpCall).commandTool('agent.jobs.status', a.raw, c)
-          : call(c, (r) async => r.jobStatus(a.raw)),
-      agentExposed: true,
-      externalAgentExposed: true,
-      inputSchema: schema({'jobId': host}, ['jobId']),
-    ),
-    FunctionCapability(
       'agent.jobs.stop',
       Effect.localChange,
       (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall

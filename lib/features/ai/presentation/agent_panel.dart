@@ -1792,7 +1792,6 @@ class _ExecutionCardState extends State<_ExecutionCard> {
       'forward.stop' => (l.aiAgentToolForwardStop, l.aiAgentToolForwardHint),
       'agent.jobs.start' => (l.aiAgentToolJobStart, l.aiAgentToolJobHint),
       'agent.jobs.read' => (l.aiAgentToolJobRead, l.aiAgentToolJobHint),
-      'agent.jobs.status' => (l.aiAgentToolJobStatus, l.aiAgentToolJobHint),
       'agent.jobs.stop' => (l.aiAgentToolJobStop, l.aiAgentToolJobHint),
       'agent.diagnose' => (l.aiAgentToolDiagnostics, l.aiAgentToolDiagnosticsHint),
       'agent.execute' => (l.aiAgentToolExecute, l.aiAgentToolExecuteHint),
@@ -1937,13 +1936,7 @@ class _ApprovalCard extends StatelessWidget {
     final theme = Theme.of(context);
     final terminalHistory = approval.capability == 'agent.terminalHistory';
     final terminalScreen = approval.capability == 'agent.terminalScreen';
-    final contentRead = const {
-      'file.list',
-      'file.stat',
-      'file.read',
-      'agent.jobs.read',
-      'agent.jobs.status',
-    }.contains(approval.capability);
+    final contentRead = const {'file.list', 'file.stat', 'file.read', 'agent.jobs.read'}.contains(approval.capability);
     final shell = const {'agent.execute', 'agent.jobs.start', 'agent.diagnose'}.contains(approval.capability);
     final reading = terminalHistory || terminalScreen || contentRead || approval.template != null;
     return Padding(

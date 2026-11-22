@@ -29,7 +29,7 @@ description: Use Airy’s SSH commands, terminal context, files, transfers and w
 Start with the configured Sshairy MCP server’s `tools/list` for the complete Airy tool catalog and schemas.
 Resolve the requested saved host with `host_list` and use its explicit host ID. Use `terminal_list` to resolve a
 specific window before requesting its history, screen, or an action on it. Ask the user when the target is ambiguous.
-Use `command_execute` for one authorized SSH command and `job_start`, `job_status`, `job_read` or `job_stop`
+Use `command_execute` for one authorized SSH command and `job_start`, `job_read` or `job_stop`
 for background work. Check returned exit status and never replay an operation with an unknown outcome.
 Use `files_*` for remote files and honor sensitive-file refusals. For local files use `local_request_access`
 and grant-relative paths. Let the user resolve host trust, permission denials and expired grants in Sshairy.

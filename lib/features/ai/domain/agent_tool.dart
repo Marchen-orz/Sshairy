@@ -89,14 +89,7 @@ const agentTools = <AgentTool>[
   AgentTool(
     'job_read',
     'agent.jobs.read',
-    'Read new bounded output of one job by jobId and byte offset; use nextOffset to continue.',
-    readOnly: true,
-    approval: false,
-  ),
-  AgentTool(
-    'job_status',
-    'agent.jobs.status',
-    'Read one job state, exit code, byte count and truncation.',
+    'Read new bounded output of one job by jobId and byte offset, with its state, exit code and truncation; use nextOffset to continue.',
     readOnly: true,
     approval: false,
   ),
