@@ -128,6 +128,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get closeOtherTabs => '关闭其他标签';
 
   @override
+  String get closeAll => '关闭全部';
+
+  @override
+  String get closeAbove => '关闭上方全部';
+
+  @override
+  String get closeBelow => '关闭下方全部';
+
+  @override
   String get noHosts => '暂无主机';
 
   @override

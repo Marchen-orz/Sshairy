@@ -141,6 +141,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get closeOtherTabs => 'Close other tabs';
 
   @override
+  String get closeAll => 'Close all';
+
+  @override
+  String get closeAbove => 'Close all above';
+
+  @override
+  String get closeBelow => 'Close all below';
+
+  @override
   String get noHosts => 'No hosts yet';
 
   @override

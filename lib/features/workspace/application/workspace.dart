@@ -96,7 +96,26 @@ class Workspace extends Notifier<WorkspaceState> {
     return tab.id;
   }
 
+  /// A desktop session has one mirror window: a live one is brought forward, a dead one is replaced.
   TabId openRemote(LinkTerminalTarget target, Future<ShellChannel> Function(int cols, int rows) openChannel) {
+    if (target.kind == LinkTerminalKind.mirror) {
+      for (final tab in state.tabs) {
+        final mirror = session(tab.layout.focusedLeaf.session);
+        final open = mirror?.linkTarget;
+        if (open == null ||
+            open.kind != LinkTerminalKind.mirror ||
+            open.peerId != target.peerId ||
+            open.remoteId != target.remoteId) {
+          continue;
+        }
+        if (mirror!.status != SessionStatus.failed && mirror.status != SessionStatus.disconnected) {
+          activate(tab.id);
+          return tab.id;
+        }
+        closeTab(tab.id);
+        break;
+      }
+    }
     final s = _sessions.openRemote(target, openChannel);
     final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
     _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));

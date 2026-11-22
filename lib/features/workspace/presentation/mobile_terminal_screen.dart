@@ -228,6 +228,50 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     }
   }
 
+  /// Closes from the sessions sheet, leaving the terminal screen once nothing is open.
+  void _closeFromSheet(BuildContext sheet, VoidCallback close) {
+    close();
+    Navigator.of(sheet).pop();
+    if (ref.read(workspaceProvider).tabs.isEmpty && mounted) Navigator.of(context).pop();
+  }
+
+  void _openSessionActions(BuildContext sheet, WorkspaceState state, WorkspaceTab tab) {
+    final l = AppLocalizations.of(context);
+    Widget closing(TabCloseScope scope, String label, IconData icon) => ListTile(
+      leading: Icon(icon),
+      title: Text(label),
+      enabled: state.tabsToClose(tab.id, scope).isNotEmpty,
+      onTap: () {
+        Navigator.of(sheet).pop();
+        _closeFromSheet(sheet, () => _workspace.closeTabs(tab.id, scope));
+      },
+    );
+    unawaited(
+      showModalBottomSheet<void>(
+        context: sheet,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (actions) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: Text(l.close),
+                onTap: () {
+                  Navigator.of(actions).pop();
+                  _closeFromSheet(sheet, () => _workspace.closeTab(tab.id));
+                },
+              ),
+              closing(TabCloseScope.left, l.closeAbove, Icons.vertical_align_top),
+              closing(TabCloseScope.right, l.closeBelow, Icons.vertical_align_bottom),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openSessionsSheet(WorkspaceState state, Map<SessionId, TerminalSession> sessions) {
     final l = AppLocalizations.of(context);
     unawaited(
@@ -238,7 +282,22 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.md, Space.sm),
-              child: Text(l.mobileSessions, style: Theme.of(context).textTheme.titleMedium),
+              child: Row(
+                children: [
+                  Expanded(child: Text(l.mobileSessions, style: Theme.of(context).textTheme.titleMedium)),
+                  Builder(
+                    builder: (sheet) => TextButton(
+                      key: const ValueKey('mobile-sessions-close-all'),
+                      onPressed: () => _closeFromSheet(sheet, () {
+                        for (final tab in ref.read(workspaceProvider).tabs) {
+                          _workspace.closeTab(tab.id);
+                        }
+                      }),
+                      child: Text(l.closeAll),
+                    ),
+                  ),
+                ],
+              ),
             ),
             Expanded(
               child: ListView.builder(
@@ -267,14 +326,9 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
                     trailing: IconButton(
                       tooltip: l.close,
                       icon: const Icon(Icons.close, size: 18),
-                      onPressed: () {
-                        _workspace.closeTab(tab.id);
-                        Navigator.of(context).pop();
-                        if (ref.read(workspaceProvider).tabs.isEmpty && mounted) {
-                          Navigator.of(this.context).pop();
-                        }
-                      },
+                      onPressed: () => _closeFromSheet(context, () => _workspace.closeTab(tab.id)),
                     ),
+                    onLongPress: () => _openSessionActions(context, state, tab),
                     onTap: () {
                       _workspace.activate(tab.id);
                       Navigator.of(context).pop();

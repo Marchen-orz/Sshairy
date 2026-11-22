@@ -314,6 +314,24 @@ abstract class AppLocalizations {
   /// **'Close other tabs'**
   String get closeOtherTabs;
 
+  /// No description provided for @closeAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Close all'**
+  String get closeAll;
+
+  /// No description provided for @closeAbove.
+  ///
+  /// In en, this message translates to:
+  /// **'Close all above'**
+  String get closeAbove;
+
+  /// No description provided for @closeBelow.
+  ///
+  /// In en, this message translates to:
+  /// **'Close all below'**
+  String get closeBelow;
+
   /// No description provided for @noHosts.
   ///
   /// In en, this message translates to:
