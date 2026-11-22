@@ -1178,6 +1178,18 @@ abstract class AppLocalizations {
   /// **'AI task step limit'**
   String get aiTaskSteps;
 
+  /// No description provided for @aiCompletionDelay.
+  ///
+  /// In en, this message translates to:
+  /// **'AI completion delay'**
+  String get aiCompletionDelay;
+
+  /// No description provided for @milliseconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} ms'**
+  String milliseconds(int n);
+
   /// No description provided for @completionTranslation.
   ///
   /// In en, this message translates to:

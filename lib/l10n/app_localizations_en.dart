@@ -612,6 +612,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiTaskSteps => 'AI task step limit';
 
   @override
+  String get aiCompletionDelay => 'AI completion delay';
+
+  @override
+  String milliseconds(int n) {
+    return '$n ms';
+  }
+
+  @override
   String get completionTranslation =>
       'Translate completion descriptions automatically';
 

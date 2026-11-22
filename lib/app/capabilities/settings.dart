@@ -83,6 +83,7 @@ Map<String, Object?> settingDescription(SettingDef<Object?> d, AppLocalizations 
     'copyOnSelect' => l.copyOnSelect,
     'rightClick' => l.rightClick,
     'aiTextStyle' => l.aiTextStyle,
+    'aiCompletionDelay' => l.aiCompletionDelay,
     'connectTimeout' => l.connectTimeout,
     'keepAlive' => l.keepAlive,
     'idleTtl' => l.idleTtl,

@@ -329,6 +329,7 @@ abstract final class SettingKeys {
 
   /// How many commands one inline AI task may run; the AI must not raise its own limit.
   static const aiTaskSteps = IntSetting('aiTaskSteps', 12, 1, 100, agentExposed: false);
+  static const aiCompletionDelay = IntSetting('aiCompletionDelay', 800, 200, 3000);
   static const completionTranslation = BoolSetting('completionTranslation', true, agentExposed: false);
   static const completionTranslationConcurrency = IntSetting(
     'completionTranslationConcurrency',
@@ -441,6 +442,7 @@ abstract final class SettingKeys {
     confirmPaste,
     aiTextStyle,
     aiTaskSteps,
+    aiCompletionDelay,
     completionTranslation,
     completionTranslationConcurrency,
     completionTranslationConfig,

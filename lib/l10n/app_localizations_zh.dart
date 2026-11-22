@@ -582,6 +582,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiTaskSteps => 'AI 任务步数上限';
 
   @override
+  String get aiCompletionDelay => 'AI 补全触发延迟';
+
+  @override
+  String milliseconds(int n) {
+    return '$n 毫秒';
+  }
+
+  @override
   String get completionTranslation => '自动翻译补全说明';
 
   @override

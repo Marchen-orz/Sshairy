@@ -465,6 +465,15 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
             onChanged: (v) => notifier.set(SettingKeys.aiTaskSteps, v),
           ),
         ),
+        _Field(
+          l.aiCompletionDelay,
+          _Choice<int>(
+            value: settings.get(SettingKeys.aiCompletionDelay),
+            choices: {300, 500, 800, 1200, 2000, settings.get(SettingKeys.aiCompletionDelay)}.toList()..sort(),
+            label: l.milliseconds,
+            onChanged: (v) => notifier.set(SettingKeys.aiCompletionDelay, v),
+          ),
+        ),
       ]),
       _Section(SettingsSectionId.workspace, l.workspaceSection, Icons.space_dashboard_outlined, [
         _Field(l.monitor, toggle(SettingKeys.showMonitor)),

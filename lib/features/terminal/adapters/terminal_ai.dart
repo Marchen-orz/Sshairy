@@ -152,7 +152,8 @@ extension _TerminalAiPane on _TerminalPaneState {
     if (had) _update(() {});
     _aiCompletionContext = context;
     final cancel = _aiCompletionCancel = CancellationToken();
-    _aiTimer = Timer(const Duration(milliseconds: 800), () => _requestAiCompletion(context, cancel));
+    final delay = Duration(milliseconds: ref.read(settingsProvider).get(SettingKeys.aiCompletionDelay));
+    _aiTimer = Timer(delay, () => _requestAiCompletion(context, cancel));
   }
 
   Future<void> _requestAiCompletion(TerminalAiContext expected, CancellationToken cancel) async {
@@ -213,8 +214,26 @@ extension _TerminalAiPane on _TerminalPaneState {
       final suffix = _ghost;
       if (cursor == null || suffix == null) return const SizedBox.shrink();
       final settings = ref.read(settingsProvider);
-      final ghost = Text(
-        suffix,
+      final block =
+          _terminal.cursorVisibleMode &&
+          (_terminal.applicationCursorType ??
+                  switch (settings.get(SettingKeys.cursorShape)) {
+                    CursorShape.block => TerminalCursorType.block,
+                    _ => null,
+                  }) ==
+              TerminalCursorType.block;
+      final first = String.fromCharCodes(suffix.runes.take(1));
+      final ghost = Text.rich(
+        TextSpan(
+          children: [
+            // A focused block cursor covers its cell; like the terminal, text there takes the background color.
+            TextSpan(
+              text: first,
+              style: block ? TextStyle(color: TerminalPalette.of(Theme.of(context)).background) : null,
+            ),
+            TextSpan(text: suffix.substring(first.length)),
+          ],
+        ),
         key: const ValueKey('terminal-ai-ghost'),
         maxLines: 1,
         softWrap: false,

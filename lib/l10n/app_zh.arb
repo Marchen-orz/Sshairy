@@ -186,6 +186,8 @@
   "aiTextFaint": "淡色",
   "aiTextPlain": "普通",
   "aiTaskSteps": "AI 任务步数上限",
+  "aiCompletionDelay": "AI 补全触发延迟",
+  "milliseconds": "{n} 毫秒",
   "completionTranslation": "自动翻译补全说明",
   "completionTranslationHint": "仅向所选服务发送公开命令说明，关闭后仍可使用缓存译文。",
   "translationService": "翻译服务",
