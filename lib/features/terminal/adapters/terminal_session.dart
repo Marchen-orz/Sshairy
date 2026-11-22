@@ -733,22 +733,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
         if (data.isEmpty) return;
-        // A soft-keyboard Enter skips the view's submit hook; an inline task still needs its command recorded.
-        if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
-        final bracketedPaste = data.startsWith('\x1b[200~');
-        if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
-          _historyBrowsing = true;
-        } else if (bracketedPaste ||
-            (!data.startsWith('\x1b') &&
-                (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b'))) {
-          _historyBrowsing = false;
-        }
-        _inputSequence++;
-        _inputPending = true;
-        _invalidateCommandDraft();
-        shell.write(utf8.encode(data));
-        if (data.contains('\r') && !bracketedPaste) _entered();
-        if (data.contains('\x03') || data.contains('\x04')) _pastedPromptLine = null;
+        _forwardTerminalInput(data, shell.write, trackEnter: true);
       };
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       shell.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -836,21 +821,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
-        if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
-        final bracketedPaste = data.startsWith('\x1b[200~');
-        if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
-          _historyBrowsing = true;
-        } else if (bracketedPaste ||
-            (!data.startsWith('\x1b') &&
-                (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b'))) {
-          _historyBrowsing = false;
-        }
-        _inputSequence++;
-        _inputPending = true;
-        _invalidateCommandDraft();
-        pty.write(utf8.encode(data));
-        if (data.contains('\r') && !bracketedPaste) _entered();
-        if (data.contains('\x03') || data.contains('\x04')) _pastedPromptLine = null;
+        _forwardTerminalInput(data, pty.write, trackEnter: true);
       };
       _terminal.onResize = (cols, rows, _, _) => pty.resize(cols, rows);
       pty.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -914,10 +885,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
-        if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
-        _inputSequence++;
-        _inputPending = true;
-        shell.write(utf8.encode(data));
+        _forwardTerminalInput(data, shell.write, trackEnter: false);
       };
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       final consumer = TerminalOutput([shell.stdout, shell.stderr], (data) {
@@ -949,6 +917,26 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       }
       ownedShell?.close();
     }
+  }
+
+  void _forwardTerminalInput(String data, void Function(Uint8List) write, {required bool trackEnter}) {
+    // A soft-keyboard Enter skips the view's submit hook; an inline task still needs its command recorded.
+    if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
+    final bracketedPaste = data.startsWith('\x1b[200~');
+    if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
+      _historyBrowsing = true;
+    } else if (bracketedPaste ||
+        (!data.startsWith('\x1b') &&
+            (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b'))) {
+      _historyBrowsing = false;
+    }
+    _inputSequence++;
+    _inputPending = true;
+    _invalidateCommandDraft();
+    write(utf8.encode(data));
+    final submitted = data.contains('\r') && !bracketedPaste;
+    if (submitted && trackEnter) _entered();
+    if (submitted || data.contains('\x03') || data.contains('\x04')) _pastedPromptLine = null;
   }
 
   void _output(String data) {
