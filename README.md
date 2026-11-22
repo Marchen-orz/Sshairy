@@ -35,7 +35,7 @@ AI is part of the SSH workflow: hand Airy a task or turn a sentence into a comma
 
 ## Airy
 
-Airy is the AI assistant beside your terminal, with **39 tools** for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model and decide how much to delegate.
+Airy is the AI assistant beside your terminal, with **43 tools** for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model and decide how much to delegate.
 
 - **Agent** — describe a task and Airy works through it step by step.
 - **Inline commands** — a plain-language request becomes a command you can edit before it runs.
@@ -47,9 +47,9 @@ Four permission modes cover the range from watching to hands-off: **Observe**, *
 
 ## MCP / Skill
 
-Open **Settings → MCP / Skill** to enable local MCP, choose an approval mode and copy connection settings for Claude Code, Codex, Zcode or DeepSeek Harness. Install the Sshairy Skill for each client using its own switch. The MCP tools list saved host aliases and collect fixed Linux system or disk-capacity diagnostics.
+Open **Settings → MCP / Skill**, choose an approval mode, then enable Claude Code, Codex, Zcode or DeepSeek Harness. Each switch installs the connection and Skill. Approve the client's first connection in Sshairy. MCP exposes the same tool catalog as Airy, including SSH commands and jobs, files and transfers, terminal context, workspace, hosts, settings, and port forwarding.
 
-**Host confirmation** is the default and asks once per host in each MCP session. **Model review** also requires an explicit model approval for every tool call. **Automatic within scope** runs on the hosts you select. The same settings page shows the audit and lets you revoke a client’s token.
+**Host confirmation** asks once per host per session. **Model review** also reviews each eligible call. **Automatic within scope** runs on selected hosts without a host prompt or per-call model review. Existing terminal access and local file grants still need explicit approval. The MCP settings also show the audit log and let you revoke client access.
 
 ## Themes
 

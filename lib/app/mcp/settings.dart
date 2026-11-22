@@ -9,6 +9,7 @@ import '../../design/dialog.dart';
 import '../../design/form_field.dart';
 import '../../design/select.dart';
 import '../../design/theme.dart';
+import '../../features/ai/api.dart';
 import '../../features/hosts/api.dart';
 import '../../features/settings/api.dart';
 import '../../foundation/ids.dart';
@@ -163,6 +164,7 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
         'serviceStates' => l.aiAgentDiagnosticServices,
         _ => l.aiAgentDiagnostics,
       },
+      final String name when agentTools.any((tool) => tool.name == name) => name,
       _ => l.mcpAuditNotExposed,
     };
     final client = McpClient.values.asNameMap()[record['client']]?.label ?? '${record['client']}';
@@ -420,13 +422,37 @@ class _McpPromptsState extends ConsumerState<McpPrompts> {
                 ? l.mcpTerminalHistoryPrompt(approval.client.label, terminal.label)
                 : l.mcpTerminalScreenPrompt(approval.client.label, terminal.label, maxLines),
           ),
+          McpWorkspaceApproval(:final capability, :final windows) => (
+            _workspaceAction(l, capability),
+            l.mcpWorkspacePrompt(approval.client.label, windows.join('\n')),
+          ),
+          McpLocalApproval(:final purpose, :final directory, :final write) => (
+            l.aiAgentLocalAccessTitle,
+            [
+              l.mcpLocalPrompt(approval.client.label),
+              if (write)
+                l.aiAgentLocalAccessWrite
+              else if (directory)
+                l.aiAgentLocalAccessFolder
+              else
+                l.aiAgentLocalAccessFile,
+              if (purpose.isNotEmpty) purpose,
+            ].join('\n'),
+          ),
         };
         return AppDialog(
           title: Text(title),
           content: SingleChildScrollView(child: Text(message)),
           actions: [
             TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(l.aiAgentHostAccessAllow)),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(switch (approval) {
+                McpLocalApproval(directory: true) => l.aiAgentLocalAccessChooseFolder,
+                McpLocalApproval() => l.aiAgentLocalAccessChooseFile,
+                _ => l.aiAgentHostAccessAllow,
+              }),
+            ),
           ],
         );
       },
@@ -441,12 +467,33 @@ class _McpPromptsState extends ConsumerState<McpPrompts> {
 
     controller.addListener(changed);
     try {
-      controller.decide(approval, await dialog ?? false);
+      final allowed = await dialog ?? false;
+      if (approval is McpLocalApproval && allowed && mounted && identical(controller.approval, approval)) {
+        String? path;
+        try {
+          path = await chooseLocalGrantPath(directory: approval.directory);
+        } on Object {
+          path = null;
+        }
+        controller.decideLocal(approval, mounted ? path : null);
+      } else {
+        controller.decide(approval, allowed && mounted);
+      }
     } finally {
       controller.removeListener(changed);
       if (mounted) setState(() => _shown = null);
     }
   }
+
+  String _workspaceAction(AppLocalizations l, String id) => switch (id) {
+    'session.close' => l.aiAgentToolSessionClose,
+    'session.reconnect' => l.aiAgentToolSessionReconnect,
+    'workspace.focus' => l.aiAgentToolWorkspaceFocus,
+    'workspace.split' => l.aiAgentToolWorkspaceSplit,
+    'workspace.renameTab' => l.aiAgentToolWorkspaceRename,
+    'workspace.closeTabs' => l.aiAgentToolWorkspaceCloseTabs,
+    _ => l.aiAgentHostAccessTitle,
+  };
 
   String _hostPrompt(AppLocalizations l, McpHostApproval approval) {
     final saved = ref.read(hostsProvider).where((host) => host.id == approval.host.id).firstOrNull;

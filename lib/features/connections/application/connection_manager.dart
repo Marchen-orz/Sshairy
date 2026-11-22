@@ -122,9 +122,15 @@ class ConnectionManager {
     Future<T> Function(TransportLease lease) channel, {
     LeasePurpose purpose = LeasePurpose.terminal,
     CancellationToken? cancel,
+    bool Function()? isAuthorized,
   }) async {
     for (var attempt = 0; ; attempt++) {
+      if (isAuthorized?.call() == false) throw const ConnectError(ConnectFailure.cancelled);
       final lease = await acquire(host, prompts, purpose: purpose, cancel: cancel);
+      if (isAuthorized?.call() == false) {
+        lease.release();
+        throw const ConnectError(ConnectFailure.cancelled);
+      }
       try {
         return (lease, await channel(lease));
       } on Object catch (e) {

@@ -81,9 +81,9 @@ class Workspace extends Notifier<WorkspaceState> {
     return tab == null ? null : session(tab.layout.focusedLeaf.session);
   }
 
-  TabId openHost(Host host) {
+  TabId openHost(Host host, {bool Function()? authorizeInitialConnection}) {
     if (!host.transient) ref.read(hostsProvider.notifier).touch(host.id).ignore();
-    final s = _sessions.open(host);
+    final s = _sessions.open(host, authorizeInitialConnection: authorizeInitialConnection);
     final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
     _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));
     return tab.id;
@@ -122,11 +122,12 @@ class Workspace extends Notifier<WorkspaceState> {
     return tab.id;
   }
 
-  TerminalSession? _copySession(TerminalSession session) => switch (session.target) {
-    LocalTerminalTarget(:final shell) => _sessions.openLocal(shell),
-    SshTerminalTarget() => _sessions.open(session.host),
-    LinkTerminalTarget() => null,
-  };
+  TerminalSession? _copySession(TerminalSession session, bool Function()? authorizeInitialConnection) =>
+      switch (session.target) {
+        LocalTerminalTarget(:final shell) => _sessions.openLocal(shell),
+        SshTerminalTarget() => _sessions.open(session.host, authorizeInitialConnection: authorizeInitialConnection),
+        LinkTerminalTarget() => null,
+      };
 
   /// A new tab with a fresh shell on the same target as [id]'s focused pane; the running process is not copied.
   TabId? duplicate(TabId id) {
@@ -227,12 +228,18 @@ class Workspace extends Notifier<WorkspaceState> {
         tab.layout.leaves.any((leaf) => leaf.pane == pane && session(leaf.session) != null);
   }
 
-  PaneId? splitPane(TabId tabId, PaneId pane, PaneSide side, {Layout? expectedLayout}) {
+  PaneId? splitPane(
+    TabId tabId,
+    PaneId pane,
+    PaneSide side, {
+    Layout? expectedLayout,
+    bool Function()? authorizeInitialConnection,
+  }) {
     if (!canSplitPane(tabId, pane, expectedLayout: expectedLayout)) return null;
     final tab = _tab(tabId)!;
     final current = session(tab.layout.leaves.firstWhere((leaf) => leaf.pane == pane).session)!;
     final added = PaneId(newId());
-    final s = _copySession(current);
+    final s = _copySession(current, authorizeInitialConnection);
     if (s == null) return null;
     final next = tab.layout.insert(pane, side, Layout.single(added, s.id));
     if (next == null) {

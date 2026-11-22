@@ -6,7 +6,14 @@ import '../../../foundation/result.dart';
 enum Effect { query, localChange, connect, remoteWrite, security }
 
 /// Who asked. Set by the caller's wiring, never taken from arguments, so an agent cannot claim to be the UI.
-enum Origin { ui, palette, agent, externalAgent }
+enum Origin {
+  ui,
+  palette,
+  agent,
+  externalAgent;
+
+  bool get isAgent => this == agent || this == externalAgent;
+}
 
 class RequestContext {
   RequestContext(

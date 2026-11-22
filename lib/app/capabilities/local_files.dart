@@ -5,12 +5,14 @@ import '../../features/capabilities/api.dart';
 import '../../features/files/api.dart';
 import '../../foundation/file_system.dart';
 import '../../foundation/result.dart';
+import '../mcp/controller.dart';
 import 'files.dart';
 
 /// The conversation's local grant behind an agent request; null when the caller is not the current Agent turn.
 LocalGrant? agentLocalGrant(Ref ref, RequestContext c, String id) {
   final authority = c.authority;
-  if (c.origin != Origin.agent || authority is! AgentRuntime || !identical(authority, ref.read(agentRuntimeProvider))) {
+  if (c.origin == Origin.externalAgent && authority is McpCall) return authority.localGrant(id);
+  if (!c.origin.isAgent || authority is! AgentRuntime || !identical(authority, ref.read(agentRuntimeProvider))) {
     return null;
   }
   return authority.localGrant(id);
@@ -91,11 +93,11 @@ List<Capability> localFileCapabilities(Ref ref) {
         'additionalProperties': false,
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) async {
         final authority = c.authority;
-        if (c.origin != Origin.agent ||
-            authority is! AgentRuntime ||
-            !identical(authority, ref.read(agentRuntimeProvider))) {
+        if (c.origin == Origin.externalAgent && authority is McpCall) return authority.requestLocalAccess(a.raw);
+        if (!c.origin.isAgent || authority is! AgentRuntime || !identical(authority, ref.read(agentRuntimeProvider))) {
           return const Err(AppError('notExposed'));
         }
         return authority.requestLocalAccess(a.raw);
@@ -115,6 +117,7 @@ List<Capability> localFileCapabilities(Ref ref) {
         'additionalProperties': false,
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, grant, relative) async {
         final at = await resolveGrantPath(fs, grant, relative, directory: true);
         final listing = await listFiles(fs, a, c, at: at) as Map<String, Object?>;
@@ -138,6 +141,7 @@ List<Capability> localFileCapabilities(Ref ref) {
         'additionalProperties': false,
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, grant, relative) async {
         final entry = await fs.stat(await resolveGrantPath(fs, grant, relative));
         return entry == null ? null : {...fileEntryDto(entry), 'path': relative};
@@ -157,6 +161,7 @@ List<Capability> localFileCapabilities(Ref ref) {
         'additionalProperties': false,
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(
         a,
         c,

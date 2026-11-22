@@ -19,3 +19,4 @@ export 'application/reviewer.dart';
 export 'presentation/agent_panel.dart';
 export 'presentation/host_approval.dart';
 export 'presentation/ai_settings.dart';
+export 'adapters/attachments.dart' show chooseLocalGrantPath;

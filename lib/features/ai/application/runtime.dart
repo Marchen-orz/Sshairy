@@ -79,6 +79,7 @@ class _AgentJob {
     this.turnToken,
     this.owner,
     this.execution,
+    this.isAuthorized,
   ) {
     stdout = const Utf8Decoder(allowMalformed: true)
         .startChunkedConversion(_JobTextSink((text) => _append(false, text), () => projectionFiltered = true));
@@ -92,6 +93,7 @@ class _AgentJob {
   final Duration timeout;
   final OperationRecord record;
   final AgentExecution execution;
+  final bool Function()? isAuthorized;
   late final Future<void> settled;
   final started = DateTime.now();
   final projection = BytesBuilder(copy: false);
@@ -311,7 +313,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     return after > retryDelays[attempt] ? after : retryDelays[attempt];
   }
 
-  final ModelProvider model;
+  final ModelProvider? model;
   final AgentBackend backend;
   final OperationJournal journal;
   final CapabilityDispatcher dispatcher;
@@ -357,6 +359,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   ModelProfile? _profile, _reviewProfile;
   int _configRevision = 0, _modelRequests = 0;
   String _owner = '', _goal = '', _language = 'en';
+  bool Function()? _externalCurrent;
+  String get _outputDestination => _externalCurrent == null ? _profile!.identity : _owner;
+  int get _outputRevision => _scope?.revision ?? 0;
   bool reviewing = false;
   final _deniedReads = <String>{};
   DateTime? _deadline;
@@ -425,10 +430,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   }
 
   void _check() {
-    final current = configuration();
     if (_cancel == null || _cancel!.isCancelled) {
       throw const AgentFailure('cancelled');
     }
+    if (_externalCurrent case final current?) {
+      if (!current()) throw const AgentFailure('scopeChanged');
+      return;
+    }
+    final current = configuration();
     if (!current.enabled ||
         current.revision != _configRevision ||
         current.profile?.identity != _profile?.identity ||
@@ -799,7 +808,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         _modelRequests++;
         for (var attempt = 0; ; attempt++) {
           try {
-            await for (final event in model.stream(
+            await for (final event in model!.stream(
               ModelRequest(profile: profile, system: _system, messages: history.messages, tools: tools),
               cancel,
             )) {
@@ -1561,54 +1570,26 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     final tool = _toolFor(capability.id);
     final hosts = tool == null ? null : _hostsFor(tool, args);
     if (hosts == null || hosts.isEmpty) return const Err(AppError('outsideScope'));
-    final record = OperationRecord(
-      context.operationId,
+    final result = await journalAgentWrite(
+      journal,
       hosts.first,
-      capability.id,
-      DateTime.now(),
-      OperationState.intent,
-    );
-    try {
-      await journal.record(record);
-    } on Object {
-      return const Err(AppError('journalFailed'));
-    }
-    var submitted = false;
-    try {
-      _checkTurn(token, owner);
-      final current = await revalidate(capability, args, context);
-      if (current case Err<void>(:final error)) {
-        await journal.record(record.withState(OperationState.failed));
-        return Err(error);
-      }
-      _checkTurn(token, owner);
-      submitted = true;
-      final result = await capability.invoke(args, context);
-      final uncertain =
-          result is Err && const {'lost', 'io', 'connect', 'cancelled', 'deadlineExceeded'}.contains(result.error.code);
-      await journal.record(
-        record.withState(
-          uncertain
-              ? OperationState.outcomeUnknown
-              : result is Err
-              ? OperationState.failed
-              : OperationState.completed,
-        ),
-      );
-      if (uncertain) {
-        if (identical(token, _cancel) && owner == _owner) _uncertain = true;
-        return const Err(AppError('outcomeUnknown'));
-      }
-      return result;
-    } on Object {
-      try {
-        await journal.record(record.withState(submitted ? OperationState.outcomeUnknown : OperationState.failed));
-      } on Object {
+      capability,
+      args,
+      context,
+      isCurrent: () async {
+        _checkTurn(token, owner);
+        final current = await revalidate(capability, args, context);
+        _checkTurn(token, owner);
+        return current is Ok<void> && context.isCurrent;
+      },
+      onJournalFailure: () {
         if (identical(token, _cancel) && owner == _owner) error = 'journalFailed';
-      }
-      if (submitted && identical(token, _cancel) && owner == _owner) _uncertain = true;
-      return Err(AppError(submitted ? 'outcomeUnknown' : 'cancelled'));
+      },
+    );
+    if (result is Err && result.error.code == 'outcomeUnknown' && identical(token, _cancel) && owner == _owner) {
+      _uncertain = true;
     }
+    return result;
   }
 
   Result<Object?> readOutput(Map<String, Object?> args) {
@@ -1671,14 +1652,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       ..command = command
       ..cwd = cwd;
     execution.purpose = _purpose(args['purpose']);
-    if (!_executions.contains(execution)) {
+    if (_externalCurrent == null && !_executions.contains(execution)) {
       _executions.add(execution);
       _timeline.add(execution);
     }
     final jobId = context.operationId.value, id = context.operationId;
     final cancel = CancellationToken();
     unawaited(token!.whenCancelled.then((_) => cancel.cancel()));
-    final output = outputs.create(owner, target.hostId, _profile!.identity, _scope!.revision);
+    final output = outputs.create(owner, target.hostId, _outputDestination, _outputRevision);
     final record = OperationRecord(id, target.hostId, 'agent.jobs.start', DateTime.now(), OperationState.intent);
     try {
       await journal.record(record);
@@ -1687,7 +1668,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     }
     try {
       _checkTurn(token, owner);
-      if (!target.current) throw const AgentFailure('scopeChanged');
+      if (!target.current || !context.isCurrent) throw const AgentFailure('scopeChanged');
     } on AgentFailure catch (failure) {
       try {
         await journal.record(record.withState(OperationState.failed));
@@ -1708,6 +1689,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       token,
       owner,
       execution,
+      _externalCurrent == null ? null : () => context.isCurrent,
     );
     execution.output = output;
     execution.state = 'running';
@@ -1723,11 +1705,13 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     Timer? watch;
     try {
       _checkTurn(job.turnToken, job.owner);
-      if (job.cancel.isCancelled || !job.target.current) throw const AgentFailure('scopeChanged');
+      if (job.cancel.isCancelled || !job.target.current || job.isAuthorized?.call() == false) {
+        throw const AgentFailure('scopeChanged');
+      }
       watch = Timer.periodic(const Duration(milliseconds: 200), (_) {
         try {
           _checkTurn(job.turnToken, job.owner);
-          if (!job.target.current) job.cancel.cancel();
+          if (!job.target.current || job.isAuthorized?.call() == false) job.cancel.cancel();
         } on Object {
           job.cancel.cancel();
         }
@@ -1775,6 +1759,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         job.execution.failure = 'journalFailed';
         if (currentTurn()) error = 'journalFailed';
       }
+      if (job.isAuthorized != null) job.target.release();
       job.done = true;
       if (currentTurn()) _emit();
     }
@@ -1842,7 +1827,13 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     required bool diagnostic,
   }) async {
     final token = _cancel, owner = _owner;
-    _checkTurn(token, owner);
+    final cancel = context.cancellation ?? token!;
+    void check() {
+      _checkTurn(token, owner);
+      if (!context.isCurrent) throw const AgentFailure('scopeChanged');
+    }
+
+    check();
     if (_answerOnly || !diagnostic && permissionMode == AgentPermissionMode.observe) {
       return const Err(AppError('notExposed'));
     }
@@ -1873,9 +1864,9 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       ..command = command
       ..cwd = cwd;
     if (!diagnostic) execution.purpose = _purpose(args['purpose']);
-    final output = outputs.create(owner, target.hostId, _profile!.identity, _scope!.revision);
+    final output = outputs.create(owner, target.hostId, _outputDestination, _outputRevision);
     execution.output = output;
-    if (!_executions.contains(execution)) {
+    if (_externalCurrent == null && !_executions.contains(execution)) {
       _executions.add(execution);
       _timeline.add(execution);
     }
@@ -1896,34 +1887,34 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           throw const AgentFailure('journalFailed');
         }
       }
-      _checkTurn(token, owner);
+      check();
       if (!target.current) throw const AgentFailure('scopeChanged');
       execution.state = 'running';
       _phase(AgentPhase.executing);
-      _checkTurn(token, owner);
+      check();
       // Revocation is also observed while the remote command is active, without another model request.
       watch = Timer.periodic(const Duration(milliseconds: 200), (_) {
         try {
-          _checkTurn(token, owner);
-          if (!target.current) token!.cancel();
+          check();
+          if (!target.current) cancel.cancel();
         } on Object {
-          token!.cancel();
+          cancel.cancel();
         }
       });
       void append(bool stderr, Uint8List bytes) {
-        if (!identical(token, _cancel) || owner != _owner || token!.isCancelled) return;
+        if (!identical(token, _cancel) || owner != _owner || cancel.isCancelled) return;
         outputs.append(output, stderr, bytes);
         _queueEmit();
       }
 
       submitted = true;
       execution.exitCode = diagnostic
-          ? await runAgentDiagnostic(target, template!, append, token!)
+          ? await runAgentDiagnostic(target, template!, append, cancel)
           : await target.execute(
               "sh -c ${_quote('cd -- ${_quote(cwd)} || exit\n$command')}",
               append,
               timeout: Duration(seconds: (args['timeoutSeconds'] as num?)?.toInt() ?? 60),
-              cancel: token!,
+              cancel: cancel,
             );
       remoteFinished = true;
       execution.state = execution.exitCode == null
@@ -1932,7 +1923,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           ? 'completed'
           : 'failed';
       try {
-        _checkTurn(token, owner);
+        check();
       } finally {
         if (!diagnostic) {
           try {
@@ -1950,11 +1941,11 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           }
         }
       }
-      _checkTurn(token, owner);
+      check();
       if (!target.current) throw const AgentFailure('scopeChanged');
       _uncertain |= execution.exitCode == null;
       _emit();
-      _checkTurn(token, owner);
+      check();
       if (!target.current) throw const AgentFailure('scopeChanged');
       if (diagnostic) {
         final data = agentDiagnosticProjection(template!, output.stdout);
@@ -1984,7 +1975,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     } on Object catch (failure) {
       final definite =
           failure is AgentFailure && const {'invalidCommand', 'scopeChanged', 'unsupported'}.contains(failure.code);
-      final unknown = submitted && !definite && (!remoteFinished || execution.exitCode == null);
+      final externalUnknown = _externalCurrent != null && cancel.isCancelled && execution.exitCode == null;
+      final unknown = submitted && (!definite || externalUnknown) && (!remoteFinished || execution.exitCode == null);
       if (!remoteFinished) {
         execution.state = unknown ? 'outcomeUnknown' : 'failed';
       }
@@ -2031,7 +2023,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     reviewing = true;
     _phase(AgentPhase.awaitingApproval);
     try {
-      final result = await AgentReviewer(model).review(
+      final result = await AgentReviewer(model!).review(
         profile: selected,
         goal: _goal,
         operation: {
@@ -2112,7 +2104,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     String? projection,
   }) {
     _checkTurn(token, owner);
-    if (output.owner != owner || output.destination != _profile!.identity || output.revision != _scope!.revision) {
+    if (output.owner != owner || output.destination != _outputDestination || output.revision != _outputRevision) {
       throw const AgentFailure('scopeChanged');
     }
     var text = projection ?? '';
@@ -2313,5 +2305,160 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     _updateTimer = null;
     stop();
     super.dispose();
+  }
+}
+
+/// Persists intent before invoking a remote write, then records its best-known outcome.
+Future<Result<Object?>> journalAgentWrite(
+  OperationJournal journal,
+  HostId host,
+  Capability capability,
+  Map<String, Object?> args,
+  RequestContext context, {
+  required FutureOr<bool> Function() isCurrent,
+  void Function()? onJournalFailure,
+}) async {
+  final record = OperationRecord(context.operationId, host, capability.id, DateTime.now(), OperationState.intent);
+  try {
+    await journal.record(record);
+  } on Object {
+    return const Err(AppError('journalFailed'));
+  }
+  var submitted = false;
+  try {
+    final current = isCurrent();
+    if ((current is Future<bool> ? !await current : !current) || !context.isCurrent) {
+      await journal.record(record.withState(OperationState.failed));
+      return const Err(AppError('scopeChanged'));
+    }
+    submitted = true;
+    final result = await capability.invoke(args, context);
+    final uncertain =
+        result is Err && const {'lost', 'io', 'connect', 'cancelled', 'deadlineExceeded'}.contains(result.error.code);
+    await journal.record(
+      record.withState(
+        uncertain
+            ? OperationState.outcomeUnknown
+            : result is Err
+            ? OperationState.failed
+            : OperationState.completed,
+      ),
+    );
+    return uncertain ? const Err(AppError('outcomeUnknown')) : result;
+  } on Object {
+    try {
+      await journal.record(record.withState(submitted ? OperationState.outcomeUnknown : OperationState.failed));
+    } on Object {
+      onJournalFailure?.call();
+    }
+    return Err(AppError(submitted ? 'outcomeUnknown' : 'cancelled'));
+  }
+}
+
+/// Uses the same SSH commands, job runner, intent journal and bounded output as Airy.
+/// The caller owns approval; this object owns only the command resources of one external session.
+class ExternalAgentCommands {
+  ExternalAgentCommands({
+    required String owner,
+    required bool Function() isCurrent,
+    required AgentBackend backend,
+    required OperationJournal journal,
+    required CapabilityDispatcher dispatcher,
+  }) : _runtime = AgentRuntime(
+         model: null,
+         backend: backend,
+         journal: journal,
+         dispatcher: dispatcher,
+         configuration: () => (enabled: false, profile: null, revision: 0),
+         outputs: OutputStore(totalLimit: 1 << 20, itemLimit: 128 << 10),
+       ) {
+    _runtime
+      .._owner = owner
+      .._externalCurrent = isCurrent
+      .._cancel = CancellationToken();
+  }
+
+  final AgentRuntime _runtime;
+  final _running = <HostId>{};
+  final _jobRoutes = <String, ({HostId host, String route})>{};
+  final _outputRoutes = <String, ({HostId host, String route})>{};
+
+  ({HostId host, String route})? jobRoute(String id) => _jobRoutes[id];
+
+  Future<Result<Object?>> run(
+    String capability,
+    Map<String, Object?> args,
+    RequestContext context, {
+    required HostId host,
+    required String route,
+  }) async {
+    final jobs = _runtime._jobs.values.where((job) => !job.done);
+    if (_running.contains(host) || _running.length + jobs.length >= 3 || jobs.any((job) => job.target.hostId == host)) {
+      return const Err(AppError('busy'));
+    }
+    _running.add(host);
+    final start = capability == 'agent.jobs.start';
+    AgentTarget? target;
+    try {
+      if (!context.isCurrent) return const Err(AppError('scopeChanged'));
+      target = await _runtime.backend.prepare(host, context.cancellation!);
+      if (!context.isCurrent || !target.current || target.hostId != host) return const Err(AppError('scopeChanged'));
+      _runtime._prepared[context.operationId] = _Prepared(target, route);
+      if (start) {
+        if (_jobRoutes.length >= 32) {
+          final done = _runtime._jobs.values.where((job) => job.done).firstOrNull;
+          if (done == null) return const Err(AppError('busy'));
+          _runtime._jobs.remove(done.id);
+          _jobRoutes.remove(done.id);
+        }
+        final result = await _runtime.startJob(args, context);
+        if (result is Ok) {
+          _jobRoutes[context.operationId.value] = (host: host, route: route);
+          target = null; // The background job releases its own lease.
+        }
+        return result;
+      }
+      final result = capability == 'agent.diagnose'
+          ? await _runtime.diagnose(args, context)
+          : await _runtime.execute(args, context);
+      if (result case Ok(value: {'handle': final String handle})) {
+        if (_outputRoutes.length >= 128) _outputRoutes.remove(_outputRoutes.keys.first);
+        _outputRoutes[handle] = (host: host, route: route);
+      }
+      return result;
+    } finally {
+      _runtime._prepared.remove(context.operationId);
+      target?.release();
+      _running.remove(host);
+    }
+  }
+
+  Result<Object?> readOutput(String handle, HostId host, String route) {
+    _runtime._check();
+    if (_outputRoutes[handle] != (host: host, route: route)) return const Err(AppError('unavailable'));
+    final owner = _runtime._owner;
+    final text = _runtime.outputs.read(handle, owner: owner, host: host, destination: owner, revision: 0);
+    return text == null ? const Err(AppError('unavailable')) : Ok({'handle': handle, 'text': text});
+  }
+
+  Result<Object?> job(String capability, Map<String, Object?> args) => switch (capability) {
+    'agent.jobs.read' => _runtime.readJob(args),
+    'agent.jobs.status' => _runtime.jobStatus(args),
+    'agent.jobs.stop' => _runtime.stopJob(args),
+    _ => const Err(AppError('notExposed')),
+  };
+
+  Future<void> close() async {
+    _runtime._cancel!.cancel();
+    final jobs = _runtime._jobs.values.toList();
+    for (final job in jobs) {
+      job.cancel.cancel();
+    }
+    await Future.wait(jobs.map((job) => job.settled));
+    _runtime.outputs.clear();
+    _runtime._jobs.clear();
+    _jobRoutes.clear();
+    _outputRoutes.clear();
+    _runtime.dispose();
   }
 }

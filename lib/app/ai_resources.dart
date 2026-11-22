@@ -142,7 +142,9 @@ class AppAgentResources implements AgentResourceReader {
         ? state.tabsToClose(tab.id, TabCloseScope.values.asNameMap()[args['scope']] ?? TabCloseScope.others)
         : [tab];
     final leafTargets = <Leaf>[];
-    if (capability == 'workspace.closeTabs' || capability == 'session.close' && rawTab != null && rawPane == null) {
+    if (capability == 'workspace.closeTabs' ||
+        capability == 'workspace.renameTab' ||
+        capability == 'session.close' && rawTab != null && rawPane == null) {
       leafTargets.addAll(tabTargets.expand((t) => t.layout.leaves));
     } else {
       final leaf = rawPane is String
@@ -172,8 +174,14 @@ class AppAgentResources implements AgentResourceReader {
         _identity(session),
         session.shellGeneration,
         session.status.name,
+        if (capability == 'workspace.renameTab') tab.title,
       ]);
+      final tabIndex = state.tabs.indexWhere((tab) => tab.layout.leaves.any((entry) => entry.pane == leaf.pane));
+      final owner = state.tabs[tabIndex];
+      final paneIndex = owner.layout.leaves.toList().indexWhere((entry) => entry.pane == leaf.pane);
+      final label = owner.title ?? host?.label ?? session.localShell?.name ?? session.id.value;
       details.add({
+        'label': '${tabIndex + 1}.${paneIndex + 1} · $label',
         'paneId': leaf.pane.value,
         'sessionId': session.id.value,
         'targetKind': session.isLocal ? 'local' : 'ssh',

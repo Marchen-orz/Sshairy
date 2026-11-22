@@ -101,7 +101,7 @@ List<Capability> hostCapabilities(Ref ref) {
   Future<Object?> save(Host host, Origin origin) async {
     await persist(() => hosts().save(host, expectedRevision: hosts().revision));
     final saved = hosts().byId(host.id)!;
-    return origin == Origin.agent ? agentHostDto(saved) : hostDto(saved);
+    return origin.isAgent ? agentHostDto(saved) : hostDto(saved);
   }
 
   return [
@@ -119,6 +119,7 @@ List<Capability> hostCapabilities(Ref ref) {
         'required': ['address'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       guardedWithContext((a, c) => save(build(a, null), c.origin)),
     ),
     FunctionCapability(
@@ -133,6 +134,7 @@ List<Capability> hostCapabilities(Ref ref) {
         'required': ['hostId'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       guardedWithContext((a, c) => save(build(a, find(a)), c.origin)),
     ),
     FunctionCapability(
@@ -158,6 +160,7 @@ List<Capability> hostCapabilities(Ref ref) {
         'required': ['hostIds'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       guardedWithContext((a, c) async {
         final raw = a.raw['hostIds'];
         if (raw is! List || raw.isEmpty || raw.any((id) => id is! String || id.isEmpty)) {
@@ -176,8 +179,7 @@ List<Capability> hostCapabilities(Ref ref) {
               : hosts().moveToGroupPath(ids, normalizeGroup(path), expectedRevision: revision),
         );
         return [
-          for (final id in ids.toSet())
-            c.origin == Origin.agent ? agentHostDto(hosts().byId(id)!) : hostDto(hosts().byId(id)!),
+          for (final id in ids.toSet()) c.origin.isAgent ? agentHostDto(hosts().byId(id)!) : hostDto(hosts().byId(id)!),
         ];
       }),
     ),
@@ -221,6 +223,7 @@ List<Capability> hostCapabilities(Ref ref) {
         'required': ['hostId'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       guarded((a) async {
         final host = find(a), revision = hosts().revision;
         await persist(() => hosts().delete(host, expectedRevision: revision));

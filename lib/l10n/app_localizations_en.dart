@@ -3037,11 +3037,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mcpModeHostHint =>
-      'You confirm each host on its first use in a session. Approved hosts then run fixed diagnostics without asking again.';
+      'Confirm each host once per session. Calls on approved hosts need no per-call review.';
 
   @override
   String get mcpModeAutoHint =>
-      'Only the hosts you select are reachable, and fixed diagnostics run without asking. Other hosts are refused.';
+      'Calls on the hosts you select run without host confirmation or model review.';
 
   @override
   String mcpScopeHosts(int count) {
@@ -3107,7 +3107,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String mcpConnectionPrompt(String client) {
-    return 'Allow $client to connect to Sshairy?';
+    return 'Allow $client to use the Airy tools in Sshairy?';
   }
 
   @override
@@ -3121,8 +3121,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String mcpWorkspacePrompt(String client, String windows) {
+    return 'Allow $client to perform this action on these windows?\n$windows';
+  }
+
+  @override
+  String mcpLocalPrompt(String client) {
+    return '$client is requesting local file access.';
+  }
+
+  @override
   String mcpHostPrompt(String client, String host) {
-    return 'Allow $client to run fixed diagnostics on $host for this MCP session?';
+    return 'Allow $client to access $host for this MCP session?';
   }
 
   @override

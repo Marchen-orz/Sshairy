@@ -12,6 +12,7 @@ import '../../features/hosts/api.dart';
 import '../../features/files/api.dart';
 import '../../features/terminal/api.dart' show terminalAiSensitiveText;
 import '../../features/ai/api.dart' show localSensitiveExcludes;
+import '../mcp/controller.dart';
 import 'local_files.dart';
 
 Map<String, Object?> fileEntryDto(FileEntry e) => {
@@ -58,13 +59,13 @@ List<Capability> fileCapabilities(Ref ref) {
       return Err(AppError(e.code));
     }
     final id = a.optional<String>('hostId');
-    if (c.origin == Origin.agent && id == null) return const Err(AppError('denied'));
+    if (c.origin.isAgent && id == null) return const Err(AppError('denied'));
     if (id != null && pool().host(HostId(id)) == null) return const Err(AppError('notFound', detail: 'host'));
     final FsHandle handle;
     try {
       handle = await pool().acquire(
         id == null ? null : HostId(id),
-        transfers().ui?.prompts ?? const NoPrompts(),
+        c.origin == Origin.externalAgent ? const NoPrompts() : transfers().ui?.prompts ?? const NoPrompts(),
         cancel: c.cancellation,
         deadline: c.deadline,
         isAuthorized: () => c.isCurrent,
@@ -75,14 +76,14 @@ List<Capability> fileCapabilities(Ref ref) {
       } on OpFailure catch (stopped) {
         return Err(AppError(stopped.code));
       }
-      return Err(AppError(e.kind.name, detail: c.origin == Origin.agent ? '' : e.detail));
+      return Err(AppError(e.kind.name, detail: c.origin.isAgent ? '' : e.detail));
     } on Object catch (e) {
-      return Err(AppError('connect', detail: c.origin == Origin.agent ? '' : '$e'));
+      return Err(AppError('connect', detail: c.origin.isAgent ? '' : '$e'));
     }
-    final current = c.origin == Origin.agent ? c.withAuthorization(() => handle.isCurrent) : c;
+    final current = c.origin.isAgent ? c.withAuthorization(() => handle.isCurrent) : c;
     try {
       _checkRequest(current);
-      if (c.origin == Origin.agent) {
+      if (c.origin.isAgent) {
         for (final key in ['path', 'from', 'to']) {
           final path = a.optional<String>(key);
           if (path != null) await _checkedPath(handle.fs, path, context: current, mayBeMissing: true);
@@ -91,11 +92,9 @@ List<Capability> fileCapabilities(Ref ref) {
       _checkRequest(current);
       return Ok(await body(handle.fs, current));
     } on FsError catch (e) {
-      return Err(
-        AppError(e.kind.name, detail: c.origin == Origin.agent ? '' : e.detail, retryable: e.kind == FsFailure.lost),
-      );
+      return Err(AppError(e.kind.name, detail: c.origin.isAgent ? '' : e.detail, retryable: e.kind == FsFailure.lost));
     } on OpFailure catch (e) {
-      return Err(AppError(e.code, detail: c.origin == Origin.agent ? '' : e.detail));
+      return Err(AppError(e.code, detail: c.origin.isAgent ? '' : e.detail));
     } finally {
       handle.release();
     }
@@ -122,6 +121,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, c) => listFiles(fs, a, c)),
     ),
     FunctionCapability(
@@ -133,6 +133,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, c) async {
         final e = await fs.stat(a.require<String>('path'));
         return e == null ? null : fileEntryDto(e);
@@ -151,6 +152,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, c) => readTextFile(fs, a, context: c)),
     ),
     FunctionCapability(
@@ -174,6 +176,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path', 'text'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, c) => writeTextFile(fs, a, context: c)),
     ),
     FunctionCapability(
@@ -185,6 +188,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, c) => fs.mkdir(a.require<String>('path'))),
     ),
     FunctionCapability(
@@ -196,6 +200,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['from', 'to'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(
         a,
         c,
@@ -211,6 +216,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['path'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) => on(a, c, (fs, c) async {
         final path = a.require<String>('path');
         final e = await fs.stat(path);
@@ -232,21 +238,27 @@ List<Capability> fileCapabilities(Ref ref) {
       Effect.query,
       (_, c) async => Ok([
         for (final t in ref.read(transfersProvider))
-          if (!t.sessionOnly)
-            c.origin == Origin.agent
-              ? {
-                  'id': t.id.value,
-                  'state': t.state.name,
-                  'bytes': t.bytes,
-                  if (t.total != null) 'total': t.total,
-                  'files': t.files,
-                  if (t.totalFiles != null) 'totalFiles': t.totalFiles,
-                  if (t.skipped > 0) 'skipped': t.skipped,
-                  if (t.error != null) 'error': t.error,
-                }
-              : transferDto(t),
+          if (!t.sessionOnly &&
+              (c.authority is! McpCall ||
+                  t.source.host != null &&
+                      t.target.host != null &&
+                      (c.authority as McpCall).canSeeHost(t.source.host!) &&
+                      (c.authority as McpCall).canSeeHost(t.target.host!)))
+            c.origin.isAgent
+                ? {
+                    'id': t.id.value,
+                    'state': t.state.name,
+                    'bytes': t.bytes,
+                    if (t.total != null) 'total': t.total,
+                    'files': t.files,
+                    if (t.totalFiles != null) 'totalFiles': t.totalFiles,
+                    if (t.skipped > 0) 'skipped': t.skipped,
+                    if (t.error != null) 'error': t.error,
+                  }
+                : transferDto(t),
       ]),
       agentExposed: true,
+      externalAgentExposed: true,
     ),
     FunctionCapability(
       'transfer.enqueue',
@@ -276,6 +288,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['paths', 'targetDir'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, c) async {
         _checkRequest(c);
         final from = hostArg(a, 'fromHostId'), to = hostArg(a, 'toHostId');
@@ -289,7 +302,7 @@ List<Capability> fileCapabilities(Ref ref) {
         if (exclude.any((pattern) => pattern.isEmpty || pattern.contains('/') || pattern.contains(r'\'))) {
           return const Err(AppError('invalidArgument'));
         }
-        if (c.origin == Origin.agent) {
+        if (c.origin.isAgent) {
           final fromGrant = a.optional<String>('fromGrantId'), toGrant = a.optional<String>('toGrantId');
           // Each end is exactly one of a saved host or a local grant, and this computer may be only one of them.
           if ((fromGrant != null) == a.has('fromHostId') || (toGrant != null) == a.has('toHostId')) {
@@ -324,9 +337,9 @@ List<Capability> fileCapabilities(Ref ref) {
           paths: sources,
           to: to,
           targetDir: targetDir,
-          cancel: c.origin == Origin.agent ? c.cancellation : null,
-          deadline: c.origin == Origin.agent ? c.deadline : null,
-          isAuthorized: c.origin == Origin.agent ? () => c.isCurrent : null,
+          cancel: c.origin.isAgent ? c.cancellation : null,
+          deadline: c.origin.isAgent ? c.deadline : null,
+          isAuthorized: c.origin.isAgent ? () => c.isCurrent : null,
           exclude: exclude,
         );
         return Ok({
@@ -345,6 +358,7 @@ List<Capability> fileCapabilities(Ref ref) {
         'required': ['transferId'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, _) async {
         final id = transferArg(a);
         if (transfers().byId(id) == null) return const Err(AppError('notFound', detail: 'transfer'));
@@ -475,7 +489,7 @@ Future<String> _checkedPath(FileSystem fs, String path, {RequestContext? context
 
 Future<Object?> listFiles(FileSystem fs, Args a, RequestContext c, {String? at}) async {
   final path = at ?? a.require<String>('path');
-  if (c.origin != Origin.agent) return [for (final e in await fs.list(path)) fileEntryDto(e)];
+  if (!c.origin.isAgent) return [for (final e in await fs.list(path)) fileEntryDto(e)];
   final offset = a.optional<int>('offset') ?? 0;
   if (offset < 0 || offset >= _maxDirectoryScan) throw const OpFailure('invalidArgument');
   if (fs is! BoundedFileListing) throw const FsError(FsFailure.unsupported, 'boundedListing');

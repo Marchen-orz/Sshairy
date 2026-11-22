@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,6 +49,8 @@ final mcpControllerProvider = Provider<McpController>((ref) {
     backend: () => ref.read(agentBackendProvider),
     routes: ref.read(agentConversationRoutesProvider),
     terminalHistory: ref.read(agentTerminalHistoryProvider),
+    resources: ref.read(agentResourceReaderProvider),
+    journal: ref.read(aiJournalProvider),
     routeDigests: () => ref.read(mcpRouteDigestsProvider),
     review: (operation, cancel) async {
       final config = ref.read(aiConfigurationProvider);
@@ -55,7 +58,7 @@ final mcpControllerProvider = Provider<McpController>((ref) {
       if (profile == null) return AgentReviewDecision.ask;
       return AgentReviewer(ref.read(aiModelProvider)).review(
         profile: profile,
-        goal: 'Review this read-only request from a paired local client. Host and terminal access are authorized separately.',
+        goal: 'Review this proposed Sshairy operation from a paired client. No independently verified user goal is provided.',
         operation: operation,
         cancel: cancel,
       );
@@ -105,6 +108,25 @@ final class McpTerminalApproval extends McpApproval {
   final int? maxLines;
 }
 
+final class McpWorkspaceApproval extends McpApproval {
+  McpWorkspaceApproval(this.session, this.capability, this.windows, OperationId operation, bool Function() isCurrent)
+    : super(session.client, operation.value, isCurrent);
+
+  final McpSession session;
+  final String capability;
+  final List<String> windows;
+}
+
+final class McpLocalApproval extends McpApproval {
+  McpLocalApproval(this.session, this.purpose, this.directory, this.write, OperationId operation)
+    : super(session.client, operation.value, () => session.current);
+
+  final McpSession session;
+  final String purpose;
+  final bool directory, write;
+  String? _path;
+}
+
 class McpController extends ChangeNotifier {
   McpController({
     required this.dispatcher,
@@ -113,6 +135,8 @@ class McpController extends ChangeNotifier {
     required this.routeDigests,
     required this.review,
     required this.audit,
+    required this.journal,
+    this.resources,
     required this.credentials,
     this.terminalHistory,
     McpClients? clients,
@@ -123,6 +147,8 @@ class McpController extends ChangeNotifier {
   final Map<HostId, String> Function() routes, routeDigests;
   final Future<AgentReviewDecision> Function(Map<String, Object?>, CancellationToken) review;
   final McpAudit audit;
+  final OperationJournal journal;
+  final AgentResourceReader? resources;
   final McpCredentials credentials;
   final McpClients clients;
   final TerminalHistoryReader? terminalHistory;
@@ -133,6 +159,8 @@ class McpController extends ChangeNotifier {
   final _clientUpdateFailed = <McpClient>{};
   final _approvals = <McpApproval>[];
   final _active = <Future<Map<String, Object?>>>{};
+  final _commands = <McpSession, ExternalAgentCommands>{};
+  final _closingCommands = <Future<void>>{};
   final _autoRoutes = <HostId, String>{};
   late McpConfig _settings;
   McpHttp? _http;
@@ -214,9 +242,11 @@ class McpController extends ChangeNotifier {
           if (!current()) return;
           if (_changing.contains(client)) continue;
           final stored = value?.reveal();
-          final approved = stored?.endsWith(':approved') ?? false;
+          final approved = stored?.endsWith(':catalog') ?? false;
           // The old suffix recorded a notification, not permission to connect.
           final raw = approved
+              ? stored!.substring(0, stored.length - ':catalog'.length)
+              : stored?.endsWith(':approved') == true
               ? stored!.substring(0, stored.length - ':approved'.length)
               : stored?.endsWith(':seen') == true
               ? stored!.substring(0, stored.length - ':seen'.length)
@@ -265,6 +295,7 @@ class McpController extends ChangeNotifier {
     if (_configured) _restart();
     await _sync;
     await Future.wait(_active.toList());
+    await Future.wait(_closingCommands.toList());
   }
 
   void resume() {
@@ -356,6 +387,13 @@ class McpController extends ChangeNotifier {
           'agent.hosts' => 'List available saved host IDs and aliases in pages.',
           'agent.terminalHistory' => 'Read bounded history for the specified sessionId after local approval.',
           'agent.terminalScreen' => 'Read visible text for the specified sessionId after approving this read locally.',
+          'agent.jobs.start' =>
+            'Start one authorized remote POSIX command in the background. Give a short, concrete purpose. '
+                'The job belongs to this MCP session and is cancelled when the session ends.',
+          'local.requestAccess' =>
+            'Ask the desktop user to pick a local file or folder for this MCP session. Give a short purpose. '
+                'Only a folder may be granted write access for downloads. The result is a grant ID.',
+          'forward.save' => 'Create or update a forwarding rule. Use Sshairy’s forwarding settings to approve a new non-loopback listener.',
           _ => tool.description,
         },
         'inputSchema': dispatcher[tool.capability]!.inputSchemaFor(Origin.externalAgent),
@@ -375,60 +413,56 @@ class McpController extends ChangeNotifier {
     CancellationToken cancel,
   ) async {
     final tool = _exposed.where((tool) => tool.name == params['name']).firstOrNull;
-    final authority = McpCall(this, session, _settings.mode, cancel, tool?.name);
+    final authority = McpCall(this, session, _settings.mode, cancel, tool);
     final context = RequestContext(
       Origin.externalAgent,
       authority: authority,
       cancellation: cancel,
       authorizationIsCurrent: () => session.current,
     );
+    authority.operation = context.operationId;
     try {
-      authority.operation = context.operationId;
-      try {
-        await authority.record('received', tool?.name, 'pending');
-      } on Object {
-        return mcpToolResult('auditUnavailable', error: true);
-      }
-      String outcome = 'failed';
-      Object? value;
-      try {
-        final args = params['arguments'] ?? const <String, Object?>{};
-        final result = tool == null
-            ? const Err<Object?>(AppError('notExposed'))
-            : args is! Map<String, Object?>
-            ? const Err<Object?>(AppError('invalidArgument'))
-            : await dispatcher.dispatch(tool.capability, args, context);
-        switch (result) {
-          case Ok(value: final value2):
-            value = value2;
-            outcome = 'completed';
-          case Err(:final error):
-            outcome = error.code;
-        }
-      } on AgentFailure catch (error) {
-        outcome = error.code;
-      } on Object {
-        outcome = 'failed';
-      }
-      if (!context.isCurrent) outcome = 'cancelled';
-      if (outcome == 'completed' && !authority.bound) outcome = 'scopeChanged';
-      try {
-        await authority.record('finished', tool?.name, outcome);
-      } on Object {
-        return mcpToolResult('auditUnavailable', error: true);
-      }
-      if (outcome == 'completed' && !authority.bound) {
-        try {
-          await authority.record('withheld', tool?.name, context.isCurrent ? 'scopeChanged' : 'cancelled');
-        } on Object {
-          return mcpToolResult('auditUnavailable', error: true);
-        }
-        return mcpToolResult('scopeChanged', error: true);
-      }
-      return outcome == 'completed' ? mcpToolResult(value) : mcpToolResult(outcome, error: true);
-    } finally {
-      authority._target?.release();
+      await authority.record('received', tool?.name, 'pending');
+    } on Object {
+      return mcpToolResult('auditUnavailable', error: true);
     }
+    String outcome = 'failed';
+    Object? value;
+    try {
+      final args = params['arguments'] ?? const <String, Object?>{};
+      final result = tool == null
+          ? const Err<Object?>(AppError('notExposed'))
+          : args is! Map<String, Object?>
+          ? const Err<Object?>(AppError('invalidArgument'))
+          : await dispatcher.dispatch(tool.capability, args, context);
+      switch (result) {
+        case Ok(value: final value2):
+          value = value2;
+          outcome = 'completed';
+        case Err(:final error):
+          outcome = error.code;
+      }
+    } on AgentFailure catch (error) {
+      outcome = error.code;
+    } on Object {
+      outcome = 'failed';
+    }
+    if (!context.isCurrent && outcome != 'outcomeUnknown') outcome = 'cancelled';
+    if (outcome == 'completed' && !authority.bound) outcome = 'scopeChanged';
+    try {
+      await authority.record('finished', tool?.name, outcome);
+    } on Object {
+      return mcpToolResult('auditUnavailable', error: true);
+    }
+    if (outcome == 'completed' && !authority.bound) {
+      try {
+        await authority.record('withheld', tool?.name, context.isCurrent ? 'scopeChanged' : 'cancelled');
+      } on Object {
+        return mcpToolResult('auditUnavailable', error: true);
+      }
+      return mcpToolResult('scopeChanged', error: true);
+    }
+    return outcome == 'completed' ? mcpToolResult(value) : mcpToolResult(outcome, error: true);
   }
 
   Future<bool> _confirm(McpSession session, AgentHost host, String binding, CancellationToken cancel) async {
@@ -469,7 +503,7 @@ class McpController extends ChangeNotifier {
           session.terminalGrants[terminal.sessionId] = (terminal: terminal, allowed: allowed);
         case McpConnectionApproval(:final client, :final _token) when allowed:
           _approvedClients.add(client);
-          unawaited(credentials.save(client.name, Secret('${_token.reveal()}:approved')).catchError((Object _) {}));
+          unawaited(credentials.save(client.name, Secret('${_token.reveal()}:catalog')).catchError((Object _) {}));
         default:
           break;
       }
@@ -478,11 +512,35 @@ class McpController extends ChangeNotifier {
     _notify();
   }
 
+  void decideLocal(McpLocalApproval item, String? path) {
+    if (!_approvals.contains(item)) return;
+    item._path = path;
+    decide(item, path != null && path.isNotEmpty);
+  }
+
+  ExternalAgentCommands _commandsFor(McpSession session) => _commands.putIfAbsent(
+    session,
+    () => ExternalAgentCommands(
+      owner: session.auditId,
+      isCurrent: () => session.current,
+      backend: backend(),
+      journal: journal,
+      dispatcher: dispatcher,
+    ),
+  );
+
   void _closeSession(McpSession session) {
+    if (_commands.remove(session) case final commands?) {
+      final work = commands.close();
+      _closingCommands.add(work);
+      unawaited(work.whenComplete(() => _closingCommands.remove(work)));
+    }
     for (final item in _approvals.toList()) {
       if (switch (item) {
         McpHostApproval(session: final expected) ||
-        McpTerminalApproval(session: final expected) => identical(expected, session),
+        McpTerminalApproval(session: final expected) ||
+        McpWorkspaceApproval(session: final expected) ||
+        McpLocalApproval(session: final expected) => identical(expected, session),
         _ => false,
       }) {
         decide(item, false);
@@ -492,18 +550,18 @@ class McpController extends ChangeNotifier {
 }
 
 /// An authority for one operation. It shares no Airy chat state or output handles.
-class McpCall implements AgentAuthority {
+class McpCall implements AgentAuthority, AgentInvocation {
   McpCall(this._owner, this._session, this._mode, this._cancel, this._tool);
   final McpController _owner;
   final McpSession _session;
   final McpApprovalMode _mode;
   final CancellationToken _cancel;
-  final String? _tool;
+  final AgentTool? _tool;
   late final OperationId operation;
-  AgentHost? _host;
-  String? _route;
+  final _callRoutes = <HostId, String>{};
+  AgentResourceSnapshot? _resource;
+  bool _committedRouteChange = false;
   DiagnosticTemplate? _template;
-  AgentTarget? _target;
   Map<HostId, String>? _listedRoutes;
   TerminalHistorySession? _terminal;
   List<TerminalHistorySession> _listedTerminals = const [];
@@ -511,15 +569,15 @@ class McpCall implements AgentAuthority {
   String _hostDecision = 'notRequired', _modelDecision = 'notRequired';
 
   bool get bound {
-    if (!_session.current || _cancel.isCancelled || !(_target?.current ?? true)) return false;
+    if (!_session.current || _cancel.isCancelled) return false;
     if (_terminal case final terminal?) {
       if (!_terminalCurrent(terminal)) return false;
     }
     if (!_listedTerminals.every(_terminalCurrent)) return false;
-    if (_host == null && _listedRoutes == null) return true;
+    if (_callRoutes.isEmpty && _listedRoutes == null) return true;
     final current = _owner.routes();
-    if (_host case final host?) return current[host.id] == _route;
-    return _listedRoutes!.entries.every((entry) => current[entry.key] == entry.value);
+    return (_committedRouteChange || _callRoutes.entries.every((entry) => current[entry.key] == entry.value)) &&
+        (_listedRoutes?.entries.every((entry) => current[entry.key] == entry.value) ?? true);
   }
 
   List<AgentHost> _hosts(Map<HostId, String> routes) => [
@@ -572,7 +630,8 @@ class McpCall implements AgentAuthority {
     'client': _session.client.name,
     'operation': operation.value,
     'tool': tool ?? 'unavailable',
-    'host': _host?.id.value,
+    'host': _callRoutes.keys.firstOrNull?.value,
+    if (_callRoutes.length > 1) 'hosts': _callRoutes.keys.map((id) => id.value).toList(),
     'terminal': _terminal?.sessionId.value,
     'template': _template?.name,
     'mode': _mode.name,
@@ -583,62 +642,212 @@ class McpCall implements AgentAuthority {
     'outcome': outcome,
   });
 
+  bool canSeeHost(HostId host) {
+    final routes = _owner.routes();
+    final route = routes[host];
+    if (route == null || (_mode == McpApprovalMode.automatic && !_owner.inAutomaticScope(host, routes))) return false;
+    (_listedRoutes ??= {})[host] = route;
+    return true;
+  }
+
+  LocalGrant? localGrant(String id) => bound ? _session.localGrants[id] : null;
+
+  Future<Result<Object?>> requestLocalAccess(Map<String, Object?> args) async {
+    final directory = args['kind'] == 'directory', write = args['write'] == true;
+    if (!directory && write) return const Err(AppError('invalidArgument'));
+    if (_session.localGrants.length >= 16) return const Err(AppError('busy'));
+    final raw = args['purpose'] as String;
+    final purpose = terminalAiSensitiveText(raw)
+        ? ''
+        : raw.replaceAll(RegExp(r'[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]'), ' ');
+    final approval = McpLocalApproval(_session, purpose, directory, write, operation);
+    final accepted = await _owner._ask(approval, _cancel);
+    if (!bound) return const Err(AppError('scopeChanged'));
+    final path = approval._path;
+    if (!accepted || path == null) return const Err(AppError('denied'));
+    final label = path.split(RegExp(r'[\\/]')).where((part) => part.isNotEmpty).lastOrNull ?? '';
+    final grant = LocalGrant(id: 'local-${newId()}', root: path, label: label, directory: directory, write: write);
+    _session.localGrants[grant.id] = grant;
+    return Ok(grant.description);
+  }
+
   @override
   Future<Result<void>> authorize(Capability capability, Map<String, Object?> args, RequestContext context) async {
+    final tool = _tool;
+    if (tool == null || tool.capability != capability.id) return const Err(AppError('notExposed'));
     if (!bound) return const Err(AppError('scopeChanged'));
-    if (capability.id == 'agent.diagnose') {
-      _template = DiagnosticTemplate.values.asNameMap()[args['template']];
-      if (!mcpDiagnosticTemplates.contains(_template)) {
-        return const Err(AppError('notExposed'));
+    final id = capability.id;
+    _template = id == 'agent.diagnose' ? DiagnosticTemplate.values.asNameMap()[args['template']] : null;
+    if (id == 'agent.diagnose' && _template == null) return const Err(AppError('invalidArgument'));
+    if (id == 'agent.terminalHistory' || id == 'agent.terminalScreen') {
+      final allowed = await _authorizeTerminal(args, screen: id == 'agent.terminalScreen');
+      if (allowed is Err<void>) return allowed;
+    }
+    if (agentResourceCapabilities.contains(id)) {
+      _resource = _owner.resources?.resolve(id, args);
+      if (_resource == null) return const Err(AppError('outsideScope'));
+    }
+    if (tool.grantFields.any((field) {
+      final requested = args[field];
+      return requested is String && localGrant(requested) == null;
+    })) {
+      return const Err(AppError('expired'));
+    }
+    if (id == 'transfer.enqueue') {
+      if (args['fromGrantId'] is String &&
+          (args['paths'] as List).any((path) => localRelativeParts(path as String) == null)) {
+        return const Err(AppError('invalidArgument'));
       }
-      final routes = _owner.routes();
-      _host = _hosts(routes).where((host) => host.id.value == args['hostId']).firstOrNull;
-      final host = _host;
-      if (host == null) return const Err(AppError('outsideScope'));
-      _route = routes[host.id];
-      if (_route == null) return const Err(AppError('outsideScope'));
+      if (args['toGrantId'] is String) {
+        if (localRelativeParts(args['targetDir'] as String) == null) return const Err(AppError('invalidArgument'));
+        if (localGrant(args['toGrantId'] as String)?.write != true) return const Err(AppError('denied'));
+      }
+    }
+    if (args['path'] case final String path when id.startsWith('local.') && localRelativeParts(path) == null) {
+      return const Err(AppError('invalidArgument'));
+    }
+    final windowTargets = (_resource?.details['sessions'] as List?)?.cast<Map<String, Object?>>() ?? const [];
+    final hosts = <HostId>{...?_resource?.hosts};
+    for (final window in windowTargets) {
+      if (window['hostId'] case final String host) {
+        hosts.add(HostId(host));
+      } else if (_mode == McpApprovalMode.automatic || window['targetKind'] != 'local') {
+        return const Err(AppError('outsideScope'));
+      }
+    }
+    for (final field in tool.hostFields) {
+      final requested = args[field];
+      final grant = args[tool.localFields[field]];
+      if (requested is String && grant == null) {
+        hosts.add(HostId(requested));
+      } else if (requested != null || grant is! String) {
+        return const Err(AppError('outsideScope'));
+      }
+    }
+    final routes = _owner.routes();
+    if (id.startsWith('agent.jobs.') && id != 'agent.jobs.start') {
+      final job = _owner._commands[_session]?.jobRoute(args['jobId'] as String);
+      if (job == null) return const Err(AppError('notFound'));
+      if (routes[job.host] != job.route) return const Err(AppError('scopeChanged'));
+      hosts.add(job.host);
+    }
+    final available = {for (final host in _hosts(routes)) host.id: host};
+    for (final host in hosts) {
+      if (!available.containsKey(host)) return const Err(AppError('outsideScope'));
+      _callRoutes[host] = routes[host]!;
+    }
+    bool current() => bound && _resourceCurrent(id, args);
+    for (final entry in _callRoutes.entries) {
+      if (!current()) return const Err(AppError('scopeChanged'));
       if (_mode == McpApprovalMode.automatic) {
         _hostDecision = 'scope';
       } else {
-        final accepted = await _owner._confirm(_session, host, _route!, _cancel);
+        final accepted = await _owner._confirm(_session, available[entry.key]!, entry.value, _cancel);
         _hostDecision = accepted ? 'approved' : 'denied';
-        if (!bound) return const Err(AppError('scopeChanged'));
+        if (!current()) return const Err(AppError('scopeChanged'));
         if (!accepted) return const Err(AppError('hostDenied'));
       }
-    } else if (capability.id == 'agent.terminalHistory' || capability.id == 'agent.terminalScreen') {
-      final allowed = await _authorizeTerminal(args, screen: capability.id == 'agent.terminalScreen');
-      if (allowed is Err<void>) return allowed;
-    } else if (capability.id != 'agent.hosts' && capability.id != 'agent.terminals') {
-      return const Err(AppError('notExposed'));
+    }
+    if (windowTargets.isNotEmpty) {
+      final labels = [for (final window in windowTargets) window['label'] as String? ?? window['sessionId'] as String];
+      final pending = McpWorkspaceApproval(_session, id, List.unmodifiable(labels), operation, current);
+      final accepted = await _owner._ask(pending, _cancel);
+      if (!current()) return const Err(AppError('scopeChanged'));
+      if (!accepted) return const Err(AppError('denied'));
     }
     if (_mode == McpApprovalMode.model) {
+      if (args['command'] case final String command when terminalAiSensitiveText(command)) {
+        return const Err(AppError('sensitive'));
+      }
+      const connectionMetadata = {'username', 'identityId', 'keyId', 'keyPath', 'proxy'};
+      final reviewArgs = <String, Object?>{
+        for (final entry in args.entries)
+          if (!(id == 'file.write' && entry.key == 'text'))
+            entry.key: id.startsWith('host.') && connectionMetadata.contains(entry.key) ? '[withheld]' : entry.value,
+        if (id == 'file.write') 'bytes': utf8.encode(args['text'] as String).length,
+      };
       _modelDecision = 'pending';
       final verdict = await _owner.review({
-        'capability': capability.id,
+        'capability': id,
         'version': capability.version,
-        if (_template != null) 'template': _template!.name,
-        if (_host != null) 'hostId': _host!.id.value,
-        if (args['offset'] case final num offset) 'offset': offset,
-        if (_terminal case final terminal?) 'sessionId': terminal.sessionId.value,
-        if (args['maxLines'] case final num maxLines) 'maxLines': maxLines,
+        'arguments': _reviewProjection(reviewArgs),
+        if (_callRoutes.isNotEmpty) 'hostIds': _callRoutes.keys.map((host) => host.value).toList(),
+        if (_resource case final resource?) 'affected': _reviewProjection(resource.details),
       }, _cancel);
       _modelDecision = verdict.name;
-      if (!bound) return const Err(AppError('scopeChanged'));
+      if (!current()) return const Err(AppError('scopeChanged'));
       if (verdict != AgentReviewDecision.allow) {
         return Err(AppError(verdict == AgentReviewDecision.deny ? 'reviewDenied' : 'reviewUnavailable'));
       }
     }
     try {
-      await record('starting', _tool, 'allowed');
+      await record('starting', tool.name, 'allowed');
     } on Object {
       return const Err(AppError('auditUnavailable'));
     }
     return revalidate(capability, args, context);
   }
 
+  Object? _reviewProjection(Object? value) => switch (value) {
+    String() => terminalAiSensitiveText(value) ? '[withheld]' : value,
+    List() => value.map(_reviewProjection).toList(),
+    Map() => {for (final entry in value.entries) entry.key: _reviewProjection(entry.value)},
+    _ => value,
+  };
+
+  bool _resourceCurrent(String capability, Map<String, Object?> args) =>
+      _resource == null || _owner.resources?.resolve(capability, args)?.binding == _resource!.binding;
+
   @override
   Future<Result<void>> revalidate(Capability capability, Map<String, Object?> args, RequestContext context) async =>
-      context.operationId == operation && bound ? const Ok(null) : const Err(AppError('scopeChanged'));
+      context.operationId == operation && bound && _resourceCurrent(capability.id, args)
+      ? const Ok(null)
+      : const Err(AppError('scopeChanged'));
+
+  @override
+  Future<Result<Object?>> invokeAuthorized(
+    Capability capability,
+    Map<String, Object?> args,
+    RequestContext context,
+  ) async {
+    final guarded = context.withAuthorization(() => bound);
+    final id = capability.id;
+    final routesCanChange = id == 'host.update' || id == 'host.delete' || id == 'host.move';
+    if (!guarded.isCurrent || !_resourceCurrent(id, args)) return const Err(AppError('scopeChanged'));
+    if (capability.effect == Effect.remoteWrite && !id.startsWith('agent.')) {
+      final host = _callRoutes.keys.firstOrNull;
+      if (host == null) return const Err(AppError('outsideScope'));
+      return journalAgentWrite(
+        _owner.journal,
+        host,
+        capability,
+        args,
+        guarded,
+        isCurrent: () => guarded.isCurrent && _resourceCurrent(id, args),
+      );
+    }
+    final result = await capability.invoke(args, guarded);
+    // These handlers intentionally change the approved route and return only safe metadata.
+    if (routesCanChange && result is Ok) _committedRouteChange = true;
+    return result;
+  }
+
+  Future<Result<Object?>> commandTool(String capability, Map<String, Object?> args, RequestContext context) async {
+    if (!context.isCurrent) return const Err(AppError('scopeChanged'));
+    if (capability.startsWith('agent.jobs.') && capability != 'agent.jobs.start') {
+      return _owner._commands[_session]?.job(capability, args) ?? const Err(AppError('notFound'));
+    }
+    final entry = _callRoutes.entries.single;
+    if (capability == 'agent.output') {
+      return _owner._commands[_session]?.readOutput(args['handle'] as String, entry.key, entry.value) ??
+          const Err(AppError('unavailable'));
+    }
+    final result = await _owner
+        ._commandsFor(_session)
+        .run(capability, args, context, host: entry.key, route: entry.value);
+    if (result case Ok(value: {'exitCode': final int code})) _exitCode = code;
+    return result;
+  }
 
   Result<Object?> listHosts(Map<String, Object?> args) {
     final routes = _owner.routes();
@@ -674,38 +883,5 @@ class McpCall implements AgentAuthority {
     if (snapshot == null) return const Err(AppError('scopeChanged'));
     if (terminalAiSensitiveText(snapshot.text)) return const Err(AppError('sensitive'));
     return Ok(agentTerminalScreenData(snapshot));
-  }
-
-  Future<Result<Object?>> diagnose(RequestContext context) async {
-    if (!bound) return const Err(AppError('scopeChanged'));
-    final host = _host!, template = _template!;
-    final target = await _owner.backend().prepare(host.id, _cancel);
-    _target = target;
-    Timer? watch;
-    try {
-      if (!bound || !target.current || target.hostId != host.id) return const Err(AppError('scopeChanged'));
-      watch = Timer.periodic(const Duration(milliseconds: 200), (_) {
-        if (!bound || !target.current) _cancel.cancel();
-      });
-      final output = OutputStore(totalLimit: 65537, itemLimit: 65537);
-      final item = output.create(operation.value, host.id, _session.auditId, 0);
-      _exitCode = await runAgentDiagnostic(target, template, (stderr, bytes) {
-        if (!stderr) output.append(item, false, bytes);
-      }, _cancel);
-      if (!bound || !target.current) return const Err(AppError('scopeChanged'));
-      final data = item.truncated
-          ? {'supported': false, 'status': 'outputLimit'}
-          : agentDiagnosticProjection(template, item.stdout);
-      return Ok({
-        'executionId': context.operationId.value,
-        'template': template.name,
-        'version': 1,
-        'exitCode': _exitCode,
-        'data': data,
-        'truncated': item.truncated || data['truncated'] == true,
-      });
-    } finally {
-      watch?.cancel();
-    }
   }
 }

@@ -25,10 +25,15 @@ List<Capability> workspaceCapabilities(Ref ref) {
         'required': ['hostId'],
       },
       agentExposed: true,
-      (a, _) async {
+      externalAgentExposed: true,
+      (a, context) async {
         final host = ref.read(hostsProvider.notifier).byId(HostId(a.require<String>('hostId')));
         if (host == null) return const Err(AppError('notFound', detail: 'host'));
-        return Ok({'tabId': workspace().openHost(host).value});
+        final tab = workspace().openHost(
+          host,
+          authorizeInitialConnection: context.origin == Origin.externalAgent ? () => context.isCurrent : null,
+        );
+        return Ok({'tabId': tab.value});
       },
     ),
     FunctionCapability(
@@ -59,6 +64,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, _) async {
         final id = a.optional<String>('tabId'), pane = a.optional<String>('paneId');
         if (pane != null) {
@@ -92,6 +98,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, _) async {
         final id = a.optional<String>('tabId'), pane = a.optional<String>('paneId');
         if (id != null || pane != null) {
@@ -128,6 +135,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, context) async {
         final rawAxis = a.optional<String>('axis'), rawSide = a.optional<String>('side');
         final axis = SplitAxis.values.asNameMap()[rawAxis], side = PaneSide.values.asNameMap()[rawSide];
@@ -140,13 +148,14 @@ List<Capability> workspaceCapabilities(Ref ref) {
         if (tab == null) return const Err(AppError('cannotSplit'));
         final leaf = _leaf(tab, a.optional<String>('paneId'));
         if (leaf == null) return const Err(AppError('notFound', detail: 'pane'));
-        if (context.origin == Origin.agent && workspace().session(leaf.session)?.isLocal == true) {
+        if (context.origin.isAgent && workspace().session(leaf.session)?.isLocal == true) {
           return const Err(AppError('notExposed'));
         }
         final added = workspace().splitPane(
           tab.id,
           leaf.pane,
           side ?? (axis == SplitAxis.horizontal ? PaneSide.right : PaneSide.bottom),
+          authorizeInitialConnection: context.origin == Origin.externalAgent ? () => context.isCurrent : null,
         );
         return added == null ? const Err(AppError('cannotSplit')) : Ok({'tabId': tab.id.value, 'paneId': added.value});
       },
@@ -214,6 +223,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         },
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, context) async {
         final id = a.optional<String>('tabId');
         final tab = id == null ? ref.read(workspaceProvider).activeTab : _tab(ref, TabId(id));
@@ -222,9 +232,9 @@ List<Capability> workspaceCapabilities(Ref ref) {
         if (leaf == null) return const Err(AppError('notFound', detail: 'pane'));
         final s = workspace().session(leaf.session);
         if (s == null) return const Err(AppError('notFound', detail: 'session'));
-        if (context.origin == Origin.agent && s.isLocal) return const Err(AppError('notExposed'));
+        if (context.origin.isAgent && s.isLocal) return const Err(AppError('notExposed'));
         if (!s.canReconnect) return const Err(AppError('cannotReconnect'));
-        unawaited(s.connect());
+        unawaited(s.connect(null, context.origin == Origin.externalAgent ? () => context.isCurrent : null));
         return const Ok(null);
       },
     ),
@@ -243,6 +253,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         'required': ['tabId'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, _) async {
         final id = TabId(a.require<String>('tabId'));
         if (_tab(ref, id) == null) return const Err(AppError('notFound', detail: 'tab'));
@@ -281,6 +292,7 @@ List<Capability> workspaceCapabilities(Ref ref) {
         'required': ['tabId', 'scope'],
       },
       agentExposed: true,
+      externalAgentExposed: true,
       (a, _) async {
         final id = TabId(a.require<String>('tabId'));
         final scope = TabCloseScope.values.asNameMap()[a.require<String>('scope')];

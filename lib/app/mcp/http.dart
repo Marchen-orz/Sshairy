@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../../features/ai/api.dart' show LocalGrant;
+import '../../features/capabilities/api.dart' show CapabilitySchema;
 import '../../features/terminal/api.dart';
 import '../../foundation/cancellation.dart';
 import '../../foundation/ids.dart';
@@ -16,6 +18,7 @@ class McpSession {
   final String version, id = mcpRandomToken();
   final auditId = mcpRandomToken().substring(0, 16);
   final grants = <String, bool>{};
+  final localGrants = <String, LocalGrant>{};
   final terminalGrants = <SessionId, ({TerminalHistorySession terminal, bool allowed})>{};
   final requests = <Object, CancellationToken>{};
   final expires = DateTime.now().add(const Duration(hours: 4));
@@ -29,6 +32,7 @@ class McpSession {
       token.cancel();
     }
     grants.clear();
+    localGrants.clear();
     terminalGrants.clear();
   }
 }
@@ -133,7 +137,9 @@ class McpHttp {
       try {
         final body = <int>[];
         await for (final chunk in request.timeout(const Duration(seconds: 5))) {
-          if (body.length + chunk.length > 8192) return status(HttpStatus.requestEntityTooLarge);
+          if (body.length + chunk.length > CapabilitySchema.maxBytes + 2048) {
+            return status(HttpStatus.requestEntityTooLarge);
+          }
           body.addAll(chunk);
         }
         if (_closed || authenticate(authorization!) != client || (session != null && !session.current)) {
@@ -206,13 +212,20 @@ class McpHttp {
           return write(id, code: -32000, message: 'Too many or duplicate requests');
         }
         final cancel = active = CancellationToken();
-        final timer = Timer(const Duration(seconds: 55), cancel.cancel);
+        final seconds = params['name'] == 'command_execute' && params['arguments'] is Map
+            ? (params['arguments'] as Map)['timeoutSeconds']
+            : null;
+        final timeout = params['name'] == 'command_execute' ? 55 + (seconds is int ? seconds.clamp(1, 300) : 60) : 55;
+        final timer = Timer(Duration(seconds: timeout), cancel.cancel);
         session.requests[id] = cancel;
         try {
-          final result = await call(session, params, cancel);
-          if (!session.current || cancel.isCancelled) {
-            return write(id, result: mcpToolResult('cancelled', error: true));
-          }
+          final response = await call(session, params, cancel);
+          // Cancellation withholds data but cannot establish the outcome of a submitted write.
+          final unknown =
+              response['isError'] == true && (response['content'] as List).single['text'] == 'outcomeUnknown';
+          final result = (!session.current || cancel.isCancelled) && !unknown
+              ? mcpToolResult('cancelled', error: true)
+              : response;
           write(id, result: result);
         } finally {
           session.requests.remove(id);

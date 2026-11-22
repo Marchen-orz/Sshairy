@@ -13,7 +13,7 @@ import '../../features/settings/api.dart';
 
 /// Both read and write through [SettingKeys]; an agent only sees and changes settings marked as exposed.
 List<Capability> settingsCapabilities(Ref ref) => [
-  FunctionCapability('settings.get', Effect.query, agentExposed: true, (_, c) async {
+  FunctionCapability('settings.get', Effect.query, agentExposed: true, externalAgentExposed: true, (_, c) async {
     final s = ref.read(settingsProvider);
     final language = s.locale ?? PlatformDispatcher.instance.locale.languageCode;
     final locale = language == 'zh' ? 'zh' : 'en';
@@ -22,9 +22,9 @@ List<Capability> settingsCapabilities(Ref ref) => [
       'revision': ref.read(settingsProvider.notifier).revision,
       'settings': {
         for (final d in SettingKeys.all)
-          if (c.origin != Origin.agent || d.agentExposed) d.key: d.encode(s.get(d)),
+          if (!c.origin.isAgent || d.agentExposed) d.key: d.encode(s.get(d)),
       },
-      if (c.origin == Origin.agent) ...{
+      if (c.origin.isAgent) ...{
         'locale': locale,
         'definitions': {
           for (final d in SettingKeys.all)
@@ -37,6 +37,7 @@ List<Capability> settingsCapabilities(Ref ref) => [
     'settings.patch',
     Effect.localChange,
     agentExposed: true,
+    externalAgentExposed: true,
     inputSchema: {
       'type': 'object',
       'additionalProperties': false,
@@ -53,8 +54,8 @@ List<Capability> settingsCapabilities(Ref ref) => [
             .read(settingsProvider.notifier)
             .patch(
               {...a.raw}..remove('expectedRevision'),
-              exposedOnly: c.origin == Origin.agent,
-              expectedRevision: c.origin == Origin.agent
+              exposedOnly: c.origin.isAgent,
+              expectedRevision: c.origin.isAgent
                   ? a.require<int>('expectedRevision')
                   : a.optional<int>('expectedRevision'),
             );

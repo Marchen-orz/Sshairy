@@ -64,6 +64,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     this.autoConnect = true,
     int scrollback = 2000,
     bool Function()? autoReconnect,
+    bool Function()? authorizeInitialConnection,
     this.completionProvider,
     CompletionSpecs? completionSpecs,
     CompletionTranslations? completionTranslations,
@@ -79,6 +80,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
        _translations = completionTranslations,
        _snippets = snippets ?? (() => const []) {
+    _authorizeInitialConnection = authorizeInitialConnection;
     _configureTerminal();
   }
 
@@ -570,6 +572,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
   /// The prompts of the pane that last connected, so a timer or the palette can reconnect too.
   ConnectPrompts? _prompts;
+  bool Function()? _authorizeInitialConnection;
 
   /// Seconds until the next automatic attempt; null when none is planned.
   int? reconnectIn;
@@ -665,7 +668,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   }
 
   /// A user's attempt: starts over the automatic retry budget.
-  Future<void> connect([ConnectPrompts? prompts]) {
+  Future<void> connect([ConnectPrompts? prompts, bool Function()? isAuthorized]) {
     _stopTimer();
     _attempts = 0;
     if (isLocal) {
@@ -678,7 +681,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     if (isRemote) {
       return _connectRemote();
     }
-    return _connect(prompts);
+    return _connect(prompts, isAuthorized);
   }
 
   /// Cancels a planned automatic attempt.
@@ -688,12 +691,14 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     notifyListeners();
   }
 
-  Future<void> _connect(ConnectPrompts? prompts) async {
+  Future<void> _connect(ConnectPrompts? prompts, [bool Function()? isAuthorized]) async {
     prompts ??= _prompts;
     if (prompts == null || _closed || status == SessionStatus.connecting || status == SessionStatus.connected) {
       return;
     }
     _prompts = prompts;
+    final authorize = isAuthorized ?? _authorizeInitialConnection;
+    _authorizeInitialConnection = null;
     final cancel = CancellationToken();
     _connecting = cancel;
     ShellChannel? ownedShell;
@@ -712,10 +717,12 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
           environment: {directoryVariable: _marker},
         ),
         cancel: cancel,
+        isAuthorized: authorize,
       );
       ownedShell = shell;
       ownedLease = lease;
       if (_closed) return;
+      if (authorize?.call() == false) throw const ConnectError(ConnectFailure.cancelled);
       _lease = lease;
       _shell = shell;
       _shellEnded = false;

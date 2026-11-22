@@ -2883,10 +2883,10 @@ class AppLocalizationsZh extends AppLocalizations {
       '每台主机在会话中首次使用时由你确认，之后每次调用再由审批模型判断，拒绝或无法判断的调用不执行。';
 
   @override
-  String get mcpModeHostHint => '每台主机在会话中首次使用时由你确认，确认后固定诊断直接执行，不再询问。';
+  String get mcpModeHostHint => '每台主机在会话中首次使用时由你确认。已确认主机的调用无需逐次审核。';
 
   @override
-  String get mcpModeAutoHint => '只能访问你选定的主机，固定诊断直接执行，不询问；其他主机一律拒绝。';
+  String get mcpModeAutoHint => '所选主机的调用无需主机确认或模型审核。';
 
   @override
   String mcpScopeHosts(int count) {
@@ -2951,7 +2951,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String mcpConnectionPrompt(String client) {
-    return '允许 $client 连接到 Sshairy？';
+    return '允许 $client 使用 Sshairy 的 Airy 工具？';
   }
 
   @override
@@ -2965,8 +2965,18 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String mcpWorkspacePrompt(String client, String windows) {
+    return '允许 $client 对以下窗口执行此操作？\n$windows';
+  }
+
+  @override
+  String mcpLocalPrompt(String client) {
+    return '$client 请求访问本地文件。';
+  }
+
+  @override
   String mcpHostPrompt(String client, String host) {
-    return '允许 $client 在本次 MCP 会话中诊断「$host」？';
+    return '允许 $client 在本次 MCP 会话中访问「$host」？';
   }
 
   @override

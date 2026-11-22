@@ -5,6 +5,7 @@ import '../../foundation/ids.dart';
 import '../../foundation/result.dart';
 import '../../features/capabilities/api.dart';
 import '../../features/forwarding/api.dart';
+import '../mcp/controller.dart';
 
 const _ruleSchema = {
   'id': {'type': 'string'},
@@ -53,12 +54,17 @@ List<Capability> forwardCapabilities(Ref ref) {
       'forward.list',
       Effect.query,
       agentExposed: true,
-      (a, context) async => Ok([for (final s in ref.read(forwardsProvider)) s.toJson()]),
+      externalAgentExposed: true,
+      (a, context) async => Ok([
+        for (final s in ref.read(forwardsProvider))
+          if (context.authority is! McpCall || (context.authority as McpCall).canSeeHost(s.rule.hostId)) s.toJson(),
+      ]),
     ),
     FunctionCapability(
       'forward.save',
       Effect.localChange,
       agentExposed: true,
+      externalAgentExposed: true,
       (a, context) => guarded(() async {
         final rule = ForwardRule(
           id: ForwardId(a.optional<String>('id') ?? newId()),
@@ -75,8 +81,8 @@ List<Capability> forwardCapabilities(Ref ref) {
         final expected = forwards().byId(rule.id)?.rule;
         await forwards().save(
           rule,
-          exposureConfirmed: a.optional<bool>('confirmExposed') ?? false,
-          checkExpected: context.origin == Origin.agent,
+          exposureConfirmed: context.origin != Origin.externalAgent && a.optional<bool>('confirmExposed') == true,
+          checkExpected: context.origin.isAgent,
           expected: expected,
         );
         return Ok(rule.toJson());
@@ -91,9 +97,10 @@ List<Capability> forwardCapabilities(Ref ref) {
       'forward.delete',
       Effect.localChange,
       agentExposed: true,
+      externalAgentExposed: true,
       (a, context) => guarded(() async {
         final id = ForwardId(a.require<String>('id'));
-        await forwards().delete(id, checkExpected: context.origin == Origin.agent, expected: forwards().byId(id)?.rule);
+        await forwards().delete(id, checkExpected: context.origin.isAgent, expected: forwards().byId(id)?.rule);
         return const Ok(null);
       }),
       inputSchema: _idSchema,
@@ -102,6 +109,7 @@ List<Capability> forwardCapabilities(Ref ref) {
       'forward.start',
       Effect.connect,
       agentExposed: true,
+      externalAgentExposed: true,
       (a, context) => guarded(() async {
         final id = ForwardId(a.require<String>('id'));
         final known = forwards().byId(id) ?? (throw const ForwardError(ForwardErrors.unknown));
@@ -131,6 +139,7 @@ List<Capability> forwardCapabilities(Ref ref) {
       'forward.stop',
       Effect.localChange,
       agentExposed: true,
+      externalAgentExposed: true,
       (a, context) => guarded(() async => outcome(await forwards().stop(ForwardId(a.require<String>('id'))))),
       inputSchema: _idSchema,
     ),

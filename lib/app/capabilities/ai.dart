@@ -84,7 +84,7 @@ List<Capability> aiCapabilities(Ref ref) {
       'agent.diagnose',
       Effect.connect,
       (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
-          ? (c.authority as McpCall).diagnose(c)
+          ? (c.authority as McpCall).commandTool('agent.diagnose', a.raw, c)
           : call(c, (r) => r.diagnose(a.raw, c)),
       agentExposed: true,
       externalAgentExposed: true,
@@ -94,8 +94,11 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.execute',
       Effect.remoteWrite,
-      (a, c) => call(c, (r) => r.execute(a.raw, c)),
+      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).commandTool('agent.execute', a.raw, c)
+          : call(c, (r) => r.execute(a.raw, c)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema(
         {
           'hostId': host,
@@ -110,8 +113,11 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.output',
       Effect.query,
-      (a, c) => call(c, (r) async => r.readOutput(a.raw)),
+      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).commandTool('agent.output', a.raw, c)
+          : call(c, (r) async => r.readOutput(a.raw)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema(
         {
           'hostId': host,
@@ -123,8 +129,11 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.jobs.start',
       Effect.remoteWrite,
-      (a, c) => call(c, (r) => r.startJob(a.raw, c)),
+      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).commandTool('agent.jobs.start', a.raw, c)
+          : call(c, (r) => r.startJob(a.raw, c)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema(
         {
           'hostId': host,
@@ -139,8 +148,11 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.jobs.read',
       Effect.query,
-      (a, c) => call(c, (r) async => r.readJob(a.raw)),
+      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).commandTool('agent.jobs.read', a.raw, c)
+          : call(c, (r) async => r.readJob(a.raw)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema(
         {
           'jobId': host,
@@ -152,15 +164,21 @@ List<Capability> aiCapabilities(Ref ref) {
     FunctionCapability(
       'agent.jobs.status',
       Effect.query,
-      (a, c) => call(c, (r) async => r.jobStatus(a.raw)),
+      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).commandTool('agent.jobs.status', a.raw, c)
+          : call(c, (r) async => r.jobStatus(a.raw)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema({'jobId': host}, ['jobId']),
     ),
     FunctionCapability(
       'agent.jobs.stop',
       Effect.localChange,
-      (a, c) => call(c, (r) async => r.stopJob(a.raw)),
+      (a, c) => c.origin == Origin.externalAgent && c.authority is McpCall
+          ? (c.authority as McpCall).commandTool('agent.jobs.stop', a.raw, c)
+          : call(c, (r) async => r.stopJob(a.raw)),
       agentExposed: true,
+      externalAgentExposed: true,
       inputSchema: schema({'jobId': host}, ['jobId']),
     ),
   ];

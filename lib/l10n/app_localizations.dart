@@ -5525,13 +5525,13 @@ abstract class AppLocalizations {
   /// No description provided for @mcpModeHostHint.
   ///
   /// In en, this message translates to:
-  /// **'You confirm each host on its first use in a session. Approved hosts then run fixed diagnostics without asking again.'**
+  /// **'Confirm each host once per session. Calls on approved hosts need no per-call review.'**
   String get mcpModeHostHint;
 
   /// No description provided for @mcpModeAutoHint.
   ///
   /// In en, this message translates to:
-  /// **'Only the hosts you select are reachable, and fixed diagnostics run without asking. Other hosts are refused.'**
+  /// **'Calls on the hosts you select run without host confirmation or model review.'**
   String get mcpModeAutoHint;
 
   /// No description provided for @mcpScopeHosts.
@@ -5639,7 +5639,7 @@ abstract class AppLocalizations {
   /// No description provided for @mcpConnectionPrompt.
   ///
   /// In en, this message translates to:
-  /// **'Allow {client} to connect to Sshairy?'**
+  /// **'Allow {client} to use the Airy tools in Sshairy?'**
   String mcpConnectionPrompt(String client);
 
   /// No description provided for @mcpTerminalHistoryPrompt.
@@ -5654,10 +5654,22 @@ abstract class AppLocalizations {
   /// **'Allow {client} to read up to {maxLines} visible lines from {terminal} now?'**
   String mcpTerminalScreenPrompt(String client, String terminal, int maxLines);
 
+  /// No description provided for @mcpWorkspacePrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow {client} to perform this action on these windows?\n{windows}'**
+  String mcpWorkspacePrompt(String client, String windows);
+
+  /// No description provided for @mcpLocalPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'{client} is requesting local file access.'**
+  String mcpLocalPrompt(String client);
+
   /// No description provided for @mcpHostPrompt.
   ///
   /// In en, this message translates to:
-  /// **'Allow {client} to run fixed diagnostics on {host} for this MCP session?'**
+  /// **'Allow {client} to access {host} for this MCP session?'**
   String mcpHostPrompt(String client, String host);
 
   /// No description provided for @mcpPortSave.
