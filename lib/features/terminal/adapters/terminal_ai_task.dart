@@ -4,9 +4,10 @@ part of 'terminal_session.dart';
 class _AiTask {
   _AiTask(this.instruction, this.maxSteps, AiTextStyle style)
     : sgr = switch (style) {
-        AiTextStyle.italicFaint => '\x1b[2;3m',
+        // The renderer dims SGR 2 toward black, which a light theme's dark text barely shows; its gray reads faint in both.
+        AiTextStyle.italicFaint => '\x1b[3;90m',
         AiTextStyle.italic => '\x1b[3m',
-        AiTextStyle.faint => '\x1b[2m',
+        AiTextStyle.faint => '\x1b[90m',
         AiTextStyle.plain => '',
       };
   final String instruction;
