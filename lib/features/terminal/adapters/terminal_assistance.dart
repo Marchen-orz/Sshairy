@@ -32,7 +32,8 @@ extension _CommandAssistance on TerminalSession {
     return text.toString();
   }
 
-  String? _echoedCommand() {
+  /// [wrapped] also reads a line the terminal soft-wrapped onto several rows; only exact comparisons rely on that.
+  String? _echoedCommand({bool wrapped = false}) {
     if (!canInsert || _inputPending || _terminal.isUsingAltBuffer) return null;
     final buffer = _terminal.buffer;
     final row = buffer.absoluteCursorY, column = buffer.cursorX;
@@ -40,15 +41,26 @@ extension _CommandAssistance on TerminalSession {
     final line = buffer.lines[row];
     if (column > 0 && line.getWidth(column) == 0 && line.getWidth(column - 1) == 2) return null;
     if (identical(line, _submittedLine)) return null;
-    if (line.isWrapped || (row + 1 < buffer.lines.length && buffer.lines[row + 1].isWrapped)) return null;
+    if (row + 1 < buffer.lines.length && buffer.lines[row + 1].isWrapped) return null;
+    if (line.isWrapped && !wrapped) return null;
+    var start = row;
+    while (start > 0 && buffer.lines[start].isWrapped) {
+      start--;
+    }
+    String text(int fromRow, int fromColumn) => [
+      for (var r = fromRow; r <= row; r++)
+        _rowText(r, r == fromRow ? fromColumn : 0, r == row ? column : buffer.lines[r].length),
+    ].join();
     final tail = _rowText(row, column, line.length);
     if (tail.trim().isNotEmpty) return null;
     if (_semanticSeen) {
-      if (!_semanticInput || row != _promptRow || column < (_promptColumn ?? 0)) return null;
-      final text = _rowText(row, _promptColumn!, column);
-      return commandIsSingleLine(text) ? text : null;
+      final promptRow = _promptRow, promptColumn = _promptColumn ?? 0;
+      if (!_semanticInput || promptRow == null || promptRow < start || promptRow > row) return null;
+      if (promptRow == row && column < promptColumn) return null;
+      final command = text(promptRow, promptColumn);
+      return commandIsSingleLine(command) ? command : null;
     }
-    final before = _rowText(row, 0, column);
+    final before = text(start, 0);
     final local = localShell;
     if (local != null) {
       if (local.kind == LocalShellKind.unix && !local.usesPosixSyntax) return null;

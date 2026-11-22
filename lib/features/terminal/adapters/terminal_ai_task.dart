@@ -123,12 +123,13 @@ extension _TerminalAiTask on TerminalSession {
       ..submitted = false
       ..awaiting = true;
     while (identical(_aiTask, task) && !task.submitted) {
+      // A slow echo still gets submitted: auto waits until it matches, the user presses Enter or turns auto off.
       final echoed =
           task.auto &&
           await _aiUntil(
             task,
-            () => task.submitted || pendingOutputBytes == 0 && _echoedCommand() == command,
-            const Duration(seconds: 2),
+            () => task.submitted || !task.auto || pendingOutputBytes == 0 && _echoedCommand(wrapped: true) == command,
+            null,
           );
       if (echoed && !task.submitted && task.auto) {
         _submitCommand();
