@@ -122,8 +122,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   void _openLogs() => _flyout((_) => const LogsPanel());
   void _openPalette() => _overlay(() => widget.openPalette(_surfaceContext));
   void _openKeys() => _flyout((_) => const KeysPanel());
-  void _openLink() =>
-      _flyout((_) => const SingleChildScrollView(child: LinkSettings()), width: WorkspaceSize.flyoutWide);
+  void _openLink() => _flyout((_) => const LinkSettings(), width: WorkspaceSize.flyoutWide);
   void _openTrust() => _flyout((context) => SingleChildScrollView(child: trustSettingsSection.build(context)));
 
   /// Status of every session on [host], for the quick-connect list.
@@ -681,45 +680,13 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
             width: navigationWidth,
             resizeLabel: l.resizeNavigation,
             onResize: (width) => _setNavigation(width: width),
-            navigation: IconRail(
-              header: const DesktopDragRegion(child: Center(child: BrandMark())),
-              expandedHeader: DesktopDragRegion(
-                child: Center(child: BrandLogo(width: min(BrandLogo.maxWidth, navigationWidth - Space.lg * 2))),
-              ),
-              expanded: navigationExpanded,
-              width: navigationWidth,
-              toggleLabel: navigationExpanded ? l.navigationCollapse : l.navigationExpand,
-              onToggle: () => _setNavigation(expanded: !navigationExpanded),
-              groups: [
-                [
-                  RailItem(icon: Icons.dns_outlined, label: l.hosts, selected: vault, onTap: _workspace.showVault),
-                  RailItem(
-                    icon: Icons.folder_copy_outlined,
-                    label: l.sftp,
-                    selected: state.files,
-                    onTap: _workspace.showFiles,
-                  ),
-                ],
-                [
-                  RailItem(
-                    icon: Icons.auto_awesome_outlined,
-                    label: l.aiAgentRail,
-                    selected: _agentOpen,
-                    onTap: _toggleAgent,
-                  ),
-                  RailItem(icon: Icons.key_outlined, label: l.keys, onTap: _openKeys),
-                  RailItem(icon: Icons.lan_outlined, label: l.proxy, onTap: _openProxies),
-                  RailItem(icon: Icons.route_outlined, label: l.portForwarding, onTap: _openForwarding),
-                  RailItem(icon: Icons.code, label: l.snippets, onTap: _openSnippets),
-                  RailItem(icon: Icons.verified_user_outlined, label: l.hostKeys, onTap: _openTrust),
-                  RailItem(icon: Icons.receipt_long_outlined, label: l.logs, onTap: _openLogs),
-                  if (isDesktopPlatform) RailItem(icon: Icons.phonelink_outlined, label: l.linkTitle, onTap: _openLink),
-                ],
-              ],
-              bottom: [
-                RailItem(icon: Icons.search, label: l.commandPalette, onTap: _openPalette),
-                RailItem(icon: Icons.settings_outlined, label: l.settings, onTap: _openSettings),
-              ],
+            navigation: _buildNavigation(
+              context,
+              l: l,
+              navigationExpanded: navigationExpanded,
+              navigationWidth: navigationWidth,
+              vault: vault,
+              files: state.files,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -757,6 +724,69 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildNavigation(
+    BuildContext context, {
+    required AppLocalizations l,
+    required bool navigationExpanded,
+    required double navigationWidth,
+    required bool vault,
+    required bool files,
+  }) {
+    Widget rail({required bool linkConnected}) {
+      final palette = BrandPalette.of(context);
+      return IconRail(
+        header: const DesktopDragRegion(child: Center(child: BrandMark())),
+        expandedHeader: DesktopDragRegion(
+          child: Center(child: BrandLogo(width: min(BrandLogo.maxWidth, navigationWidth - Space.lg * 2))),
+        ),
+        expanded: navigationExpanded,
+        width: navigationWidth,
+        toggleLabel: navigationExpanded ? l.navigationCollapse : l.navigationExpand,
+        onToggle: () => _setNavigation(expanded: !navigationExpanded),
+        groups: [
+          [
+            RailItem(icon: Icons.dns_outlined, label: l.hosts, selected: vault, onTap: _workspace.showVault),
+            RailItem(icon: Icons.folder_copy_outlined, label: l.sftp, selected: files, onTap: _workspace.showFiles),
+          ],
+          [
+            RailItem(
+              icon: Icons.auto_awesome_outlined,
+              label: l.aiAgentRail,
+              selected: _agentOpen,
+              onTap: _toggleAgent,
+            ),
+            RailItem(icon: Icons.key_outlined, label: l.keys, onTap: _openKeys),
+            RailItem(icon: Icons.lan_outlined, label: l.proxy, onTap: _openProxies),
+            RailItem(icon: Icons.route_outlined, label: l.portForwarding, onTap: _openForwarding),
+            RailItem(icon: Icons.code, label: l.snippets, onTap: _openSnippets),
+            RailItem(icon: Icons.verified_user_outlined, label: l.hostKeys, onTap: _openTrust),
+            RailItem(icon: Icons.receipt_long_outlined, label: l.logs, onTap: _openLogs),
+            if (isDesktopPlatform)
+              RailItem(
+                icon: Icons.phonelink_outlined,
+                label: l.linkTitle,
+                tooltip: linkConnected ? '${l.linkTitle} · ${l.linkOnline}' : null,
+                statusColor: linkConnected ? palette.success : null,
+                statusKey: const ValueKey('rail-link-connected'),
+                onTap: _openLink,
+              ),
+          ],
+        ],
+        bottom: [
+          RailItem(icon: Icons.search, label: l.commandPalette, onTap: _openPalette),
+          RailItem(icon: Icons.settings_outlined, label: l.settings, onTap: _openSettings),
+        ],
+      );
+    }
+
+    if (!isDesktopPlatform) return rail(linkConnected: false);
+    final linkHost = ref.watch(linkHostControllerProvider);
+    return ListenableBuilder(
+      listenable: linkHost,
+      builder: (context, _) => rail(linkConnected: linkHost.connectedCount > 0),
     );
   }
 }

@@ -5,12 +5,23 @@ import 'theme.dart';
 import 'scrolling.dart';
 
 class RailItem {
-  const RailItem({required this.icon, required this.label, required this.onTap, this.selected = false});
+  const RailItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+    this.tooltip,
+    this.statusColor,
+    this.statusKey,
+  });
 
   final IconData icon;
   final String label;
+  final String? tooltip;
   final VoidCallback onTap;
   final bool selected;
+  final Color? statusColor;
+  final Key? statusKey;
 }
 
 /// The navigation column keeps its content and focus while switching between icons and full labels.
@@ -129,15 +140,38 @@ class _RailButton extends StatelessWidget {
     final scheme = theme.colorScheme;
     final palette = BrandPalette.fromTheme(theme);
     final color = item.selected ? palette.onNavigationSelection : scheme.onSurfaceVariant;
-    final icon = Icon(item.icon, size: 18, color: color);
+    final baseIcon = Icon(item.icon, size: 18, color: item.selected ? color : (item.statusColor ?? color));
+    final icon = item.statusColor == null
+        ? baseIcon
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              baseIcon,
+              Positioned(
+                top: -2,
+                right: -3,
+                child: Container(
+                  key: item.statusKey,
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: item.statusColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: scheme.surfaceContainerLow, width: 1.5),
+                  ),
+                ),
+              ),
+            ],
+          );
+    final tip = item.tooltip ?? item.label;
     return Padding(
       padding: EdgeInsets.only(bottom: Space.xs, left: 6 + 2 * progress, right: 6 + 2 * progress),
       child: Tooltip(
-        message: item.label,
+        message: tip,
         child: Semantics(
           button: true,
           selected: item.selected,
-          label: item.label,
+          label: tip,
           excludeSemantics: true,
           child: TweenAnimationBuilder<Color?>(
             tween: ColorTween(
