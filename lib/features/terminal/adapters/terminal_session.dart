@@ -1050,7 +1050,13 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
   Future<String?> _look({bool force = false}) async {
     final lease = _lease, generation = _shellGeneration, revision = _directoryRevision;
-    if (_closed || _shellEnded || lease == null || lease.lost || (!force && !_directory.followed)) {
+    final source = remotePaths ?? _ownedPaths;
+    // A Link mirror or proxy terminal has no SSH lease; its own files still say where `~` starts.
+    if (_closed ||
+        _shellEnded ||
+        (lease == null && source == null) ||
+        (lease?.lost ?? false) ||
+        (!force && !_directory.followed)) {
       return _directory.value;
     }
     final pending = _directoryLookup;
@@ -1059,13 +1065,17 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     Future<String?> query() async {
       String? found;
       try {
-        final result = await lease.exec(
-          directoryQuery(_marker),
-          limit: 4096,
-          timeout: const Duration(seconds: 5),
-          cancel: cancel,
-        );
-        found = parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
+        if (lease == null) {
+          found = (await source!.browse(const RemotePathQuery(directory: '~'), cancel: cancel)).directory;
+        } else {
+          final result = await lease.exec(
+            directoryQuery(_marker),
+            limit: 4096,
+            timeout: const Duration(seconds: 5),
+            cancel: cancel,
+          );
+          found = parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
+        }
       } on Object {
         found = null;
       }
