@@ -25,7 +25,7 @@ final linkCredentialCatalogProvider = Provider<LinkCredentialCatalog Function()>
       () => (hosts: const [], keys: const [], aiProfileLabel: null),
 );
 
-/// Desktop settings section for Sshairy Link (docs/MOBILE.md §4-5).
+/// Desktop sidebar flyout for Sshairy Link (docs/MOBILE.md §4-5).
 class LinkSettings extends ConsumerStatefulWidget {
   const LinkSettings({super.key});
 
@@ -328,10 +328,29 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                             ).copyWith(letterSpacing: 4, fontWeight: FontWeight.w700, color: scheme.primary),
                           ),
                           const SizedBox(height: Space.xs),
-                          SelectableText(
-                            '${pairing.host}:${pairing.port}',
-                            style: mono(context, Theme.of(context).textTheme.bodySmall),
-                          ),
+                          if (host.addresses.length > 1)
+                            Wrap(
+                              spacing: Space.xs,
+                              runSpacing: Space.xs,
+                              children: [
+                                for (final addr in host.addresses)
+                                  ChoiceChip(
+                                    key: ValueKey('link-pairing-host-$addr'),
+                                    visualDensity: VisualDensity.compact,
+                                    label: Text(
+                                      '$addr:${pairing.port}',
+                                      style: mono(context, Theme.of(context).textTheme.labelSmall),
+                                    ),
+                                    selected: addr == pairing.host,
+                                    onSelected: (_) => host.selectPairingHost(addr),
+                                  ),
+                              ],
+                            )
+                          else
+                            SelectableText(
+                              '${pairing.host}:${pairing.port}',
+                              style: mono(context, Theme.of(context).textTheme.bodySmall),
+                            ),
                         ],
                       ),
                     ),

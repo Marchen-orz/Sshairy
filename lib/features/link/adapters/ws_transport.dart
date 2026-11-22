@@ -251,6 +251,14 @@ Future<List<DiscoveredDesktop>> discoverLanDesktops({
     } on Object {
       // broadcast may be blocked on some interfaces
     }
+    // The limited broadcast leaves through one interface only; each local /24 also gets a directed broadcast.
+    for (final address in await localLinkAddresses()) {
+      try {
+        socket.send(probe, InternetAddress('${address.substring(0, address.lastIndexOf('.'))}.255'), discoveryPort);
+      } on Object {
+        // an interface may refuse broadcasts
+      }
+    }
     try {
       socket.send(probe, InternetAddress.loopbackIPv4, discoveryPort);
     } on Object {

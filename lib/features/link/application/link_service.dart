@@ -126,7 +126,8 @@ class _NullDesktopBridge implements LinkDesktopBridge {
   @override
   Future<void> receiveClipboard(String text) async {}
   @override
-  Future<LinkFsHandle> openFiles(String target, CancellationToken cancel) async => throw const FsError(FsFailure.unsupported);
+  Future<LinkFsHandle> openFiles(String target, CancellationToken cancel) async =>
+      throw const FsError(FsFailure.unsupported);
 }
 
 class _NullMobileBridge implements LinkMobileBridge {
@@ -227,6 +228,7 @@ class LinkHostController extends ChangeNotifier {
   final _passwordSyncQueue = <LinkPasswordSyncRequest>[];
   _ActivePairing? _pairing;
   List<String> _addresses = const [];
+  String? _pairingHost;
   bool _enabled = false;
   bool _discoveryEnabled = true;
   int _port = linkDefaultPort;
@@ -251,6 +253,7 @@ class LinkHostController extends ChangeNotifier {
     final peer = _connected[id];
     return peer != null && peer.files.current ? peer.sharedFilesBinding : null;
   }
+
   int get connectedCount => _connected.length;
   LinkPasswordSyncRequest? get pendingPasswordSync => _passwordSyncQueue.firstOrNull;
 
@@ -258,7 +261,7 @@ class LinkHostController extends ChangeNotifier {
     final p = _pairing;
     final id = _identity;
     if (p == null || id == null || p.expired || p.locked || !running) return null;
-    final host = _addresses.isNotEmpty ? _addresses.first : '127.0.0.1';
+    final host = _addresses.contains(_pairingHost) ? _pairingHost! : _addresses.firstOrNull ?? '127.0.0.1';
     return LinkPairingInfo(
       code: p.code,
       deviceId: id.deviceId,
@@ -383,6 +386,12 @@ class LinkHostController extends ChangeNotifier {
     });
     _notify();
     return activePairing;
+  }
+
+  /// Which local address the pairing QR and URI point at, for a desktop on several networks.
+  void selectPairingHost(String host) {
+    _pairingHost = host;
+    _notify();
   }
 
   void cancelPairing() {
@@ -858,9 +867,11 @@ class LinkHostController extends ChangeNotifier {
   void _pushFileAccess(_ConnectedPeer peer) {
     final permissions = _findPeer(peer.deviceId)?.permissions;
     final local = permissions?.allowFiles == true;
-    unawaited(peer.session.sendMessage({
-      'type': 'fs.access', 'local': local, 'proxy': local && permissions!.allowProxy,
-    }).catchError((Object _) {}));
+    unawaited(
+      peer.session
+          .sendMessage({'type': 'fs.access', 'local': local, 'proxy': local && permissions!.allowProxy})
+          .catchError((Object _) {}),
+    );
   }
 
   void _pushSessionsTo(_ConnectedPeer peer) {
@@ -1044,7 +1055,8 @@ class LinkClientController extends ChangeNotifier {
   bool get desktopSharesFiles => desktopFilesBinding() != null;
   bool get desktopProxiesFiles => desktopFilesBinding(proxy: true) != null;
   Object? get filesBinding => connected ? _files : null;
-  Object? desktopFilesBinding({bool proxy = false}) => connected ? (proxy ? _proxyFilesBinding : _desktopFilesBinding) : null;
+  Object? desktopFilesBinding({bool proxy = false}) =>
+      connected ? (proxy ? _proxyFilesBinding : _desktopFilesBinding) : null;
 
   Future<FileSystem> openFiles(Object binding, {String? hostId}) async {
     if (!identical(desktopFilesBinding(proxy: hostId != null), binding)) throw const FsError(FsFailure.lost);
@@ -1213,6 +1225,7 @@ class LinkClientController extends ChangeNotifier {
       void disconnected() {
         if (identical(_session, session)) unawaited(disconnect());
       }
+
       _incomingSub = result.incoming.listen(
         _handleMessage,
         onError: (Object _) => disconnected(),
