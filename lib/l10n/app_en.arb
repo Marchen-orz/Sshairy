@@ -1220,6 +1220,8 @@
   "mobileNewFile": "New file",
   "mobileNewFolder": "New folder",
   "mobileUploadFile": "Upload file",
+  "mobileThisPhone": "This phone",
+  "linkSharePhoneFiles": "Share phone files",
   "mobileGenerateKey": "Generate Ed25519 key",
   "mobilePublicKeyCopied": "Public key copied",
   "mobileSecuritySection": "Security & background",

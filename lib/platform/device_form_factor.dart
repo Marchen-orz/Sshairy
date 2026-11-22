@@ -13,6 +13,8 @@ bool get isDesktopPlatform =>
 bool get isMobilePlatform =>
     !kIsWeb && const {TargetPlatform.android, TargetPlatform.iOS}.contains(defaultTargetPlatform);
 
+bool get isAndroidPlatform => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
 /// True on Android/iOS phones (shortestSide < 600dp regardless of orientation); tablets keep the desktop layout.
 bool isPhoneWorkspace(BuildContext context) {
   if (!isMobilePlatform) return false;

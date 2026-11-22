@@ -26,13 +26,17 @@ enum TransferPhase { scanning, copying, verifying, publishing }
 /// A path on this computer (no host) or on a host. [label] is the host's name when queued, so the history still
 /// reads well after the host is renamed or gone.
 class FileEnd {
-  const FileEnd(this.host, this.path, {this.label = ''});
+  const FileEnd(this.host, this.path, {this.label = '', this.locationId, this.pathStyle});
 
   final HostId? host;
   final String path;
   final String label;
 
-  bool get local => host == null;
+  final String? locationId;
+  final PathStyle? pathStyle;
+
+  bool get local => host == null && locationId == null;
+  String? get resourceId => locationId ?? host?.value;
 
   Map<String, Object?> toJson() => {if (host != null) 'host': host!.value, 'path': path, 'label': label};
 
@@ -218,6 +222,8 @@ class Transfer {
   /// Name patterns (`*`, `?`) skipped anywhere inside a directory copy.
   final List<String> exclude;
 
+  bool get sessionOnly => source.locationId != null || target.locationId != null;
+
   bool get upload => source.local && !target.local;
   bool get download => !source.local && target.local;
 
@@ -396,8 +402,8 @@ List<TransferId> runnable(List<Transfer> all, {required int global, int perHost 
       t.state == TransferState.running || t.state == TransferState.waiting || t.state == TransferState.pausing;
   bool holdsTarget(Transfer t) =>
       holdsSlot(t) || t.state == TransferState.paused || (t.state == TransferState.interrupted && t.checkpoint != null);
-  Iterable<String> hosts(Transfer t) => {?t.source.host?.value, ?t.target.host?.value};
-  String target(Transfer t) => '${t.target.host?.value ?? ''}\u0000${t.target.path}';
+  Iterable<String> hosts(Transfer t) => {?t.source.resourceId, ?t.target.resourceId};
+  String target(Transfer t) => '${t.target.resourceId ?? ''}\u0000${t.target.path}';
 
   var running = 0;
   final perHostCount = <String, int>{};

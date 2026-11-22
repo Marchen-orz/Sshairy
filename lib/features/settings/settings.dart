@@ -402,6 +402,9 @@ abstract final class SettingKeys {
   static const mobileHaptics = BoolSetting('mobileHaptics', true, agentExposed: false);
   static const mobileBiometricLock = BoolSetting('mobileBiometricLock', false, agentExposed: false);
 
+  /// Upright file panes sit side by side instead of stacked; turned, they always do.
+  static const mobileFilesColumns = BoolSetting('mobileFilesColumns', false, agentExposed: false);
+
   static const List<SettingDef<Object?>> all = [
     mcpEnabled,
     mcpPort,
@@ -415,6 +418,7 @@ abstract final class SettingKeys {
     mobileKeepAlive,
     mobileHaptics,
     mobileBiometricLock,
+    mobileFilesColumns,
     themeMode,
     accent,
     locale,

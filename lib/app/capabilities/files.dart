@@ -232,7 +232,8 @@ List<Capability> fileCapabilities(Ref ref) {
       Effect.query,
       (_, c) async => Ok([
         for (final t in ref.read(transfersProvider))
-          c.origin == Origin.agent
+          if (!t.sessionOnly)
+            c.origin == Origin.agent
               ? {
                   'id': t.id.value,
                   'state': t.state.name,

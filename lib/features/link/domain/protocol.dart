@@ -13,26 +13,35 @@ class LinkPeerPermissions {
   const LinkPeerPermissions({
     this.allowMirror = true,
     this.allowProxy = true,
+    this.allowFiles = false,
     this.allowSync = true,
     this.allowApproval = true,
   });
 
   final bool allowMirror;
   final bool allowProxy;
+  final bool allowFiles;
   final bool allowSync;
   final bool allowApproval;
 
-  LinkPeerPermissions copyWith({bool? allowMirror, bool? allowProxy, bool? allowSync, bool? allowApproval}) =>
-      LinkPeerPermissions(
-        allowMirror: allowMirror ?? this.allowMirror,
-        allowProxy: allowProxy ?? this.allowProxy,
-        allowSync: allowSync ?? this.allowSync,
-        allowApproval: allowApproval ?? this.allowApproval,
-      );
+  LinkPeerPermissions copyWith({
+    bool? allowMirror,
+    bool? allowProxy,
+    bool? allowFiles,
+    bool? allowSync,
+    bool? allowApproval,
+  }) => LinkPeerPermissions(
+    allowMirror: allowMirror ?? this.allowMirror,
+    allowProxy: allowProxy ?? this.allowProxy,
+    allowFiles: allowFiles ?? this.allowFiles,
+    allowSync: allowSync ?? this.allowSync,
+    allowApproval: allowApproval ?? this.allowApproval,
+  );
 
   Map<String, Object?> toJson() => {
     'allowMirror': allowMirror,
     'allowProxy': allowProxy,
+    'allowFiles': allowFiles,
     'allowSync': allowSync,
     'allowApproval': allowApproval,
   };
@@ -40,6 +49,7 @@ class LinkPeerPermissions {
   factory LinkPeerPermissions.fromJson(Map<String, dynamic> j) => LinkPeerPermissions(
     allowMirror: j['allowMirror'] as bool? ?? true,
     allowProxy: j['allowProxy'] as bool? ?? true,
+    allowFiles: j['allowFiles'] == true,
     allowSync: j['allowSync'] as bool? ?? true,
     allowApproval: j['allowApproval'] as bool? ?? true,
   );

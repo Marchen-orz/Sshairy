@@ -45,7 +45,7 @@ List<Override> appOverrides() => [
       sessions: () => ref.read(terminalSessionsProvider),
       forwards: () => ref.read(forwardsProvider),
       forwardBinding: (id) => ref.read(forwardsProvider.notifier).resourceBinding(id),
-      transfers: () => ref.read(transfersProvider),
+      transfers: () => ref.read(transfersProvider).where((t) => !t.sessionOnly).toList(),
       transferBinding: (id) => ref.read(transfersProvider.notifier).resourceBinding(id),
       hosts: () => ref.read(hostsProvider),
       hostRevision: () => ref.read(hostsProvider.notifier).revision,
@@ -126,6 +126,7 @@ List<Override> appOverrides() => [
     return bridge;
   }),
   linkMobileBridgeProvider.overrideWith((ref) => AppLinkMobileBridge(ref)),
+  fileLocationsProvider.overrideWith(linkFileLocations),
   linkCredentialCatalogProvider.overrideWith(
     (ref) => () {
       final aiProfile = ref.read(aiConfigurationProvider).profile;

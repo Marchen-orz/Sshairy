@@ -3277,6 +3277,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mobileUploadFile => '上传文件';
 
   @override
+  String get mobileThisPhone => '本机';
+
+  @override
+  String get linkSharePhoneFiles => '共享本机文件';
+
+  @override
   String get mobileGenerateKey => '生成 Ed25519 密钥';
 
   @override

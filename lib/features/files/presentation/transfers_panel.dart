@@ -180,7 +180,7 @@ class TransfersPanel extends ConsumerWidget {
               for (final p in opening) _EditProgressRow(p),
               for (final e in edits) _EditRow(e, progressOf(e)),
               if ((edits.isNotEmpty || opening.isNotEmpty) && transfers.isNotEmpty) const Divider(height: Space.xl),
-              for (final t in transfers) _TransferRow(t),
+              for (final t in transfers) TransferRow(t),
             ],
           ),
         ),
@@ -189,8 +189,8 @@ class TransfersPanel extends ConsumerWidget {
   }
 }
 
-class _TransferRow extends ConsumerWidget {
-  const _TransferRow(this.t);
+class TransferRow extends ConsumerWidget {
+  const TransferRow(this.t, {super.key});
   final Transfer t;
 
   @override
@@ -201,7 +201,7 @@ class _TransferRow extends ConsumerWidget {
     final muted = theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
     final manager = ref.read(transfersProvider.notifier);
     String place(FileEnd end) => end.local ? l.thisComputer : end.label;
-    final name = TransferManager.styleOf(t.source.host).name(t.source.path);
+    final name = TransferManager.endStyle(t.source).name(t.source.path);
     final total = t.total;
     final fraction = total == null || total == 0 ? null : (t.bytes / total).clamp(0.0, 1.0);
     final status = switch (t.state) {
@@ -272,7 +272,7 @@ class _TransferRow extends ConsumerWidget {
               ],
             ),
           ),
-          if (t.state == TransferState.running && t.phase == TransferPhase.copying && !t.directory)
+          if (t.state == TransferState.running && t.phase == TransferPhase.copying && !t.directory && !t.sessionOnly)
             IconButton(
               tooltip: l.pause,
               onPressed: () => manager.pause(t.id),
@@ -292,7 +292,7 @@ class _TransferRow extends ConsumerWidget {
               icon: const Icon(Icons.close, size: 16),
             )
           else ...[
-            if (t.state.canRetry)
+            if (t.state.canRetry && !t.sessionOnly)
               IconButton(
                 tooltip: l.retry,
                 onPressed: () => manager.retry(t.id),

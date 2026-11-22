@@ -14,6 +14,25 @@ Future<List<({String name, Uint8List bytes})>> pickUploadFiles() async {
   return [for (final f in picked) (name: f.name, bytes: await f.readAsBytes())];
 }
 
+/// Streamed file handle returned by the system SAF / file picker without loading whole files into memory.
+typedef PickedUploadStream = ({String name, int? size, Stream<Uint8List> Function() openRead});
+
+/// Picks files from the system dialog / Android SAF and exposes chunked [openRead] streams.
+Future<List<PickedUploadStream>> pickUploadFileStreams() async {
+  final picked = await selector.openFiles();
+  final out = <PickedUploadStream>[];
+  for (final f in picked) {
+    int? size;
+    try {
+      size = await f.length();
+    } on Object {
+      size = null;
+    }
+    out.add((name: f.name, size: size, openRead: () => f.openRead()));
+  }
+  return out;
+}
+
 /// A folder the user picks in the system dialog; null when cancelled.
 Future<String?> pickDirectory() => selector.getDirectoryPath();
 

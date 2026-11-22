@@ -6,7 +6,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/data_dir.dart';
+import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/secret.dart';
 import '../../connections/api.dart';
@@ -17,6 +19,7 @@ import '../adapters/link_storage.dart';
 import '../adapters/ws_transport.dart';
 import '../domain/protocol.dart';
 import '../domain/transport.dart';
+import 'link_fs.dart';
 
 /// Handle to a mirrored desktop terminal session.
 class MirrorAttachment {
@@ -60,6 +63,8 @@ abstract interface class LinkDesktopBridge {
 
   /// Writes text pushed over E2EE Link from a paired mobile peer to the desktop clipboard.
   Future<void> receiveClipboard(String text);
+
+  Future<LinkFsHandle> openFiles(String target, CancellationToken cancel);
 }
 
 /// Composition-layer bridge wired on Mobile to apply synced data and open mirrored/proxied terminal tabs.
@@ -75,6 +80,8 @@ abstract interface class LinkMobileBridge {
     required bool isMirror,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
   });
+
+  Future<LinkFsHandle> openFiles();
 }
 
 class _NullDesktopBridge implements LinkDesktopBridge {
@@ -118,6 +125,8 @@ class _NullDesktopBridge implements LinkDesktopBridge {
   bool handoffHost(String hostId) => false;
   @override
   Future<void> receiveClipboard(String text) async {}
+  @override
+  Future<LinkFsHandle> openFiles(String target, CancellationToken cancel) async => throw const FsError(FsFailure.unsupported);
 }
 
 class _NullMobileBridge implements LinkMobileBridge {
@@ -137,6 +146,8 @@ class _NullMobileBridge implements LinkMobileBridge {
     required bool isMirror,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
   }) {}
+  @override
+  Future<LinkFsHandle> openFiles() async => throw const FsError(FsFailure.unsupported);
 }
 
 final linkDesktopBridgeProvider = Provider<LinkDesktopBridge>((_) => const _NullDesktopBridge());
@@ -144,16 +155,19 @@ final linkMobileBridgeProvider = Provider<LinkMobileBridge>((_) => const _NullMo
 
 /// A desktop-side active connection from one paired mobile peer.
 class _ConnectedPeer {
-  _ConnectedPeer(this.deviceId, this.name, this.session);
+  _ConnectedPeer(this.deviceId, this.name, this.session, this.files);
 
   final String deviceId;
   final String name;
   final LinkCipherSession session;
+  final LinkFiles files;
+  Object? sharedFilesBinding;
   final mirrors = <String, MirrorAttachment>{};
   final proxyChannels =
       <String, ({ShellChannel channel, StreamSubscription<Uint8List> outSub, StreamSubscription<Uint8List> errSub})>{};
 
   void cleanup() {
+    files.close();
     for (final m in mirrors.values) {
       m.detach();
     }
@@ -229,6 +243,14 @@ class LinkHostController extends ChangeNotifier {
   List<String> get addresses => List.unmodifiable(_addresses);
   List<LinkPeer> get peers => List.unmodifiable(_peers);
   Set<String> get connectedDeviceIds => Set.unmodifiable(_connected.keys);
+  List<({String id, String name})> get sharedPhones => [
+    for (final peer in _connected.values)
+      if (peer.sharedFilesBinding != null && peer.files.current) (id: peer.deviceId, name: peer.name),
+  ];
+  Object? phoneFilesBinding(String id) {
+    final peer = _connected[id];
+    return peer != null && peer.files.current ? peer.sharedFilesBinding : null;
+  }
   int get connectedCount => _connected.length;
   LinkPasswordSyncRequest? get pendingPasswordSync => _passwordSyncQueue.firstOrNull;
 
@@ -377,7 +399,7 @@ class LinkHostController extends ChangeNotifier {
       for (final p in _peers)
         if (p.deviceId == deviceId) p.copyWith(permissions: permissions) else p,
     ];
-    await store.save(_peers);
+    final saved = store.save(_peers);
     // Clean up disallowed active mirrors/proxies immediately
     final active = _connected[deviceId];
     if (active != null) {
@@ -395,6 +417,8 @@ class LinkHostController extends ChangeNotifier {
         }
         active.proxyChannels.clear();
       }
+      active.files.revoke();
+      _pushFileAccess(active);
       if (permissions.allowApproval) {
         _pushApprovalsTo(active);
       } else {
@@ -413,11 +437,12 @@ class LinkHostController extends ChangeNotifier {
       }
     }
     _notify();
+    await saved;
   }
 
   Future<void> revokePeer(String deviceId) async {
     _peers = _peers.where((p) => p.deviceId != deviceId).toList();
-    await store.save(_peers);
+    final saved = store.save(_peers);
     _passwordSyncQueue.removeWhere((r) => r.deviceId == deviceId);
     final active = _connected.remove(deviceId);
     if (active != null) {
@@ -425,6 +450,7 @@ class LinkHostController extends ChangeNotifier {
       unawaited(active.session.close());
     }
     _notify();
+    await saved;
   }
 
   void disconnectPeer(String deviceId) {
@@ -488,6 +514,12 @@ class LinkHostController extends ChangeNotifier {
     return true;
   }
 
+  Future<FileSystem> openPhoneFiles(String id, Object binding) async {
+    final peer = _connected[id];
+    if (peer == null || !identical(phoneFilesBinding(id), binding)) throw const FsError(FsFailure.lost);
+    return peer.files.open('local');
+  }
+
   LinkPeer? _findPeer(String id) => _peers.where((p) => p.deviceId == id).firstOrNull;
 
   Future<void> _handleConnection(LinkTransport transport) async {
@@ -496,6 +528,7 @@ class LinkHostController extends ChangeNotifier {
       await transport.close();
       return;
     }
+    _ConnectedPeer? connection;
     try {
       final handshake = await performLinkServerHandshake(
         transport: transport,
@@ -565,7 +598,18 @@ class LinkHostController extends ChangeNotifier {
         previous.cleanup();
         unawaited(previous.session.close());
       }
-      final active = _ConnectedPeer(peerId, handshake.session.peerName, handshake.session);
+      final session = handshake.session;
+      final files = LinkFiles(
+        send: session.sendMessage,
+        isConnected: () => !session.isClosed,
+        canOpen: (target) {
+          final permissions = _findPeer(peerId)?.permissions;
+          return permissions?.allowFiles == true &&
+              (target == 'local' || (target.startsWith('host:') && permissions!.allowProxy));
+        },
+        openTarget: bridge.openFiles,
+      );
+      final active = connection = _ConnectedPeer(peerId, session.peerName, session, files);
       _connected[peerId] = active;
       _notify();
 
@@ -573,6 +617,7 @@ class LinkHostController extends ChangeNotifier {
       _pushSessionsTo(active);
       _pushHostsTo(active);
       _pushApprovalsTo(active);
+      _pushFileAccess(active);
 
       await for (final msg in handshake.incoming) {
         await _handleMessage(active, msg);
@@ -580,15 +625,14 @@ class LinkHostController extends ChangeNotifier {
     } on Object {
       // Handshake or transport closed
     } finally {
-      // Find & clean up if this connection is still registered
-      for (final entry in _connected.entries.toList()) {
-        if (entry.value.session.isClosed || entry.value.session.remoteLabel == transport.remoteLabel) {
-          final removed = _connected.remove(entry.key);
-          _passwordSyncQueue.removeWhere((r) => r.deviceId == entry.key);
-          removed?.cleanup();
-          _notify();
-        }
+      final active = connection;
+      if (active != null && identical(_connected[active.deviceId], active)) {
+        _connected.remove(active.deviceId);
+        _passwordSyncQueue.removeWhere((r) => r.deviceId == active.deviceId);
+        active.cleanup();
+        _notify();
       }
+      await transport.close();
     }
   }
 
@@ -801,7 +845,22 @@ class LinkHostController extends ChangeNotifier {
         if (text.isNotEmpty && text.length <= 64 * 1024) {
           await bridge.receiveClipboard(text);
         }
+
+      case 'fs.access':
+        peer.sharedFilesBinding = msg['local'] == true ? peer.sharedFilesBinding ?? Object() : null;
+        _notify();
+
+      default:
+        peer.files.handle(msg);
     }
+  }
+
+  void _pushFileAccess(_ConnectedPeer peer) {
+    final permissions = _findPeer(peer.deviceId)?.permissions;
+    final local = permissions?.allowFiles == true;
+    unawaited(peer.session.sendMessage({
+      'type': 'fs.access', 'local': local, 'proxy': local && permissions!.allowProxy,
+    }).catchError((Object _) {}));
   }
 
   void _pushSessionsTo(_ConnectedPeer peer) {
@@ -937,6 +996,7 @@ class LinkClientController extends ChangeNotifier {
 
   LinkIdentity? _identity;
   LinkCipherSession? _session;
+  LinkFiles? _files;
   StreamSubscription<Map<String, dynamic>>? _incomingSub;
 
   LinkConnectionStatus _status = LinkConnectionStatus.disconnected;
@@ -954,6 +1014,9 @@ class LinkClientController extends ChangeNotifier {
   LinkCredentialBundle? _pendingCredentialOffer;
   LinkPasswordSyncStatus _passwordSyncStatus = LinkPasswordSyncStatus.idle;
   int _lastImportedPasswordCount = 0;
+  bool _sharesPhoneFiles = false;
+  Object? _desktopFilesBinding, _proxyFilesBinding;
+  int _attempt = 0;
   bool _disposed = false;
 
   final _channels = <String, _LinkShellChannel>{};
@@ -977,6 +1040,25 @@ class LinkClientController extends ChangeNotifier {
   LinkCredentialBundle? get pendingCredentialOffer => _pendingCredentialOffer;
   LinkPasswordSyncStatus get passwordSyncStatus => _passwordSyncStatus;
   int get lastImportedPasswordCount => _lastImportedPasswordCount;
+  bool get sharesPhoneFiles => _sharesPhoneFiles;
+  bool get desktopSharesFiles => desktopFilesBinding() != null;
+  bool get desktopProxiesFiles => desktopFilesBinding(proxy: true) != null;
+  Object? get filesBinding => connected ? _files : null;
+  Object? desktopFilesBinding({bool proxy = false}) => connected ? (proxy ? _proxyFilesBinding : _desktopFilesBinding) : null;
+
+  Future<FileSystem> openFiles(Object binding, {String? hostId}) async {
+    if (!identical(desktopFilesBinding(proxy: hostId != null), binding)) throw const FsError(FsFailure.lost);
+    return _files!.open(hostId == null ? 'local' : 'host:$hostId');
+  }
+
+  Future<void> sharePhoneFiles(bool enabled, Object binding) async {
+    final session = _session;
+    if (session == null || !identical(filesBinding, binding)) return;
+    _sharesPhoneFiles = enabled;
+    _files?.revoke();
+    _notify();
+    await session.sendMessage({'type': 'fs.access', 'local': enabled}).catchError((Object _) {});
+  }
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -1070,7 +1152,9 @@ class LinkClientController extends ChangeNotifier {
     String? expectedPublicKey,
     String? deviceName,
   }) async {
-    await disconnect();
+    final attempt = ++_attempt;
+    await _disconnect();
+    if (_disposed || attempt != _attempt) return false;
     if (host.trim().isEmpty) {
       _lastError = LinkErrorKind.network;
       _status = LinkConnectionStatus.error;
@@ -1093,7 +1177,18 @@ class LinkClientController extends ChangeNotifier {
         expectedServerPublicKey: expectedPublicKey,
       );
 
-      _session = result.session;
+      final session = result.session;
+      if (_disposed || attempt != _attempt) {
+        await session.close();
+        return false;
+      }
+      _session = session;
+      _files = LinkFiles(
+        send: session.sendMessage,
+        isConnected: () => identical(_session, session) && !session.isClosed,
+        canOpen: (target) => target == 'local' && _sharesPhoneFiles,
+        openTarget: (_, _) => bridge.openFiles(),
+      );
       _connectedDesktopId = result.session.peerDeviceId;
       _connectedDesktopName = result.session.peerName;
       _status = LinkConnectionStatus.connected;
@@ -1113,20 +1208,30 @@ class LinkClientController extends ChangeNotifier {
           : existing.copyWith(name: result.session.peerName, lastSeen: now, lastAddress: host.trim(), lastPort: port);
       _peers = [..._peers.where((p) => p.deviceId != savedPeer.deviceId), savedPeer];
       await store.save(_peers);
+      if (!identical(_session, session)) return false;
 
+      void disconnected() {
+        if (identical(_session, session)) unawaited(disconnect());
+      }
       _incomingSub = result.incoming.listen(
         _handleMessage,
-        onError: (Object _) => unawaited(disconnect()),
-        onDone: () => unawaited(disconnect()),
+        onError: (Object _) => disconnected(),
+        onDone: disconnected,
       );
       _notify();
       return true;
     } on LinkException catch (e) {
+      if (_disposed || attempt != _attempt) return false;
+      await _disconnect();
+      if (attempt != _attempt) return false;
       _lastError = e.kind;
       _status = LinkConnectionStatus.error;
       _notify();
       return false;
     } on Object {
+      if (_disposed || attempt != _attempt) return false;
+      await _disconnect();
+      if (attempt != _attempt) return false;
       _lastError = LinkErrorKind.network;
       _status = LinkConnectionStatus.error;
       _notify();
@@ -1134,12 +1239,20 @@ class LinkClientController extends ChangeNotifier {
     }
   }
 
-  Future<void> disconnect() async {
-    await _incomingSub?.cancel();
+  Future<void> disconnect() {
+    _attempt++;
+    return _disconnect();
+  }
+
+  Future<void> _disconnect() async {
+    final incoming = _incomingSub;
     _incomingSub = null;
     final session = _session;
     _session = null;
-    if (session != null) await session.close();
+    _files?.close();
+    _files = null;
+    _sharesPhoneFiles = false;
+    _desktopFilesBinding = _proxyFilesBinding = null;
     for (final ch in _channels.values.toList()) {
       ch.finish();
     }
@@ -1166,6 +1279,8 @@ class LinkClientController extends ChangeNotifier {
       _status = LinkConnectionStatus.disconnected;
       _notify();
     }
+    await incoming?.cancel();
+    await session?.close();
   }
 
   Future<void> forgetDesktop(String deviceId) async {
@@ -1533,6 +1648,12 @@ class LinkClientController extends ChangeNotifier {
           _passwordSyncStatus = LinkPasswordSyncStatus.declined;
           _notify();
         }
+      case 'fs.access':
+        _desktopFilesBinding = msg['local'] == true ? _desktopFilesBinding ?? Object() : null;
+        _proxyFilesBinding = msg['proxy'] == true ? _proxyFilesBinding ?? Object() : null;
+        _notify();
+      default:
+        _files?.handle(msg);
     }
   }
 

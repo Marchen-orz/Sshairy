@@ -3,8 +3,11 @@ package dev.sshairy.sshairy
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -17,6 +20,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterFragmentActivity() {
     private var pendingNotifResult: MethodChannel.Result? = null
+    private var pendingStorageResult: MethodChannel.Result? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,6 +127,58 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                 }
+                "sharedStoragePath" -> {
+                    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        Environment.isExternalStorageManager()
+                    } else {
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                            PackageManager.PERMISSION_GRANTED &&
+                            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                            PackageManager.PERMISSION_GRANTED
+                    }
+                    result.success(if (granted) Environment.getExternalStorageDirectory().absolutePath else null)
+                }
+                "requestAllFilesAccess" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        if (Environment.isExternalStorageManager()) {
+                            result.success(true)
+                        } else {
+                            if (pendingStorageResult != null) {
+                                result.success(false)
+                                return@setMethodCallHandler
+                            }
+                            pendingStorageResult = result
+                            try {
+                                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                    data = Uri.parse("package:$packageName")
+                                }
+                                startActivityForResult(intent, REQ_STORAGE_SETTINGS)
+                            } catch (_: android.content.ActivityNotFoundException) {
+                                pendingStorageResult = null
+                                result.success(false)
+                            }
+                        }
+                    } else {
+                        val hasRead = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                            PackageManager.PERMISSION_GRANTED
+                        val hasWrite = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                            PackageManager.PERMISSION_GRANTED
+                        if (hasRead && hasWrite) {
+                            result.success(true)
+                        } else {
+                            pendingStorageResult?.success(false)
+                            pendingStorageResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(
+                                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                ),
+                                REQ_STORAGE,
+                            )
+                        }
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -134,11 +190,26 @@ class MainActivity : FlutterFragmentActivity() {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             pendingNotifResult?.success(granted)
             pendingNotifResult = null
+        } else if (requestCode == REQ_STORAGE) {
+            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            pendingStorageResult?.success(granted)
+            pendingStorageResult = null
+        }
+    }
+
+    @Deprecated("Used to receive the result of the Android storage settings screen")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_STORAGE_SETTINGS && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            pendingStorageResult?.success(Environment.isExternalStorageManager())
+            pendingStorageResult = null
         }
     }
 
     companion object {
+        private const val REQ_STORAGE_SETTINGS = 47831
         private const val CHANNEL = "dev.sshairy.sshairy/mobile_platform"
         private const val REQ_NOTIFICATIONS = 47829
+        private const val REQ_STORAGE = 47830
     }
 }

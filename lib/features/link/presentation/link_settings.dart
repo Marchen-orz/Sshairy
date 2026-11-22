@@ -434,6 +434,11 @@ class _PeerCard extends StatelessWidget {
                 onSelected: (v) => onUpdatePermissions(p.copyWith(allowProxy: v)),
               ),
               FilterChip(
+                label: Text(l.files),
+                selected: p.allowFiles,
+                onSelected: (v) => onUpdatePermissions(p.copyWith(allowFiles: v)),
+              ),
+              FilterChip(
                 label: Text(l.linkPermSync),
                 selected: p.allowSync,
                 onSelected: (v) => onUpdatePermissions(p.copyWith(allowSync: v)),

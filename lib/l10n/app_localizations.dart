@@ -6242,6 +6242,18 @@ abstract class AppLocalizations {
   /// **'Upload file'**
   String get mobileUploadFile;
 
+  /// No description provided for @mobileThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone'**
+  String get mobileThisPhone;
+
+  /// No description provided for @linkSharePhoneFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Share phone files'**
+  String get linkSharePhoneFiles;
+
   /// No description provided for @mobileGenerateKey.
   ///
   /// In en, this message translates to:

@@ -73,4 +73,28 @@ abstract final class MobilePlatform {
       return false;
     }
   }
+
+  /// Android's primary shared storage, when the user has granted access.
+  static Future<String?> sharedStoragePath() async {
+    if (!isAndroidPlatform) return null;
+    try {
+      return await _channel.invokeMethod<String>('sharedStoragePath');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// Opens the Android system "All files access" toggle (API 30+) or requests legacy storage permission.
+  static Future<bool> requestAllFilesAccess() async {
+    if (!isAndroidPlatform) return true;
+    try {
+      return await _channel.invokeMethod<bool>('requestAllFilesAccess') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
 }

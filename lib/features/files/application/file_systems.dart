@@ -11,6 +11,39 @@ import '../adapters/local_fs.dart';
 
 const localFiles = LocalFileSystem();
 
+enum FileLocationKind { phone, computer, server }
+
+/// A file browser target tied to a platform picker or an authenticated device connection.
+class FileLocation {
+  const FileLocation({
+    required this.id,
+    required this.label,
+    required this.open,
+    this.isCurrent,
+    this.kind = FileLocationKind.phone,
+  });
+
+  final String id, label;
+  final Future<FileSystem> Function() open;
+  final bool Function()? isCurrent;
+  final FileLocationKind kind;
+
+  bool get current => isCurrent?.call() ?? true;
+
+  Future<FsHandle> acquire() async {
+    if (!current) throw const FsError(FsFailure.lost);
+    final fs = await open();
+    if (!current) {
+      await fs.close();
+      throw const FsError(FsFailure.lost);
+    }
+    return FsHandle(fs, () => fs.close().ignore(), isCurrent: isCurrent);
+  }
+}
+
+/// Linked devices' folders a pane can open besides this device and saved hosts; the composition root fills it.
+final fileLocationsProvider = Provider<List<FileLocation>>((ref) => const []);
+
 /// A file system in use; [release] once done with it.
 class FsHandle {
   FsHandle(this.fs, this._release, {bool Function()? isCurrent})

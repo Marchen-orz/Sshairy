@@ -37,6 +37,8 @@ class FileBrowser extends ChangeNotifier {
 
   /// Null for this computer.
   Host? host;
+  FileLocation? location;
+  FsHandle? _locationHandle;
   FileSystem? fs;
   TransportLease? _lease;
   BrowserStatus status = BrowserStatus.idle;
@@ -70,9 +72,9 @@ class FileBrowser extends ChangeNotifier {
 
   bool get refreshingQuietly => _refreshPulse?.isActive ?? false;
 
-  bool get local => host == null;
+  bool get local => host == null && location == null;
   bool get suspended => _suspended;
-  bool get ready => status == BrowserStatus.ready && fs != null;
+  bool get ready => status == BrowserStatus.ready && fs != null && (location?.current ?? true);
   bool get canBack => _back.isNotEmpty;
   bool get canForward => _forward.isNotEmpty;
   PathStyle get style => fs?.style ?? (local ? localFiles.style : PathStyle.posix);
@@ -104,15 +106,28 @@ class FileBrowser extends ChangeNotifier {
 
   String pathOf(FileEntry e) => style.join(path, e.name);
 
+  /// Where a transfer to or from this pane goes when it is a linked device rather than a host.
+  (FileLocation, PathStyle)? get placement => location == null ? null : (location!, style);
+
   /// Starts over on [target] (null for this computer). A host connects through the shared transport, so a
   /// terminal already logged in means no second password.
   Future<void> open(Host? target, ConnectPrompts prompts, {String? at}) => _open(target, prompts, at: at);
 
-  Future<void> _open(Host? target, ConnectPrompts prompts, {String? at, bool restoring = false}) async {
+  Future<void> openLocation(FileLocation location, {String? at}) =>
+      _open(null, const NoPrompts(), at: at, location: location);
+
+  Future<void> _open(
+    Host? target,
+    ConnectPrompts prompts, {
+    String? at,
+    bool restoring = false,
+    FileLocation? location,
+  }) async {
     if (_disposed) return;
     _closeFs();
     _suspended = false;
     host = target;
+    this.location = location;
     final gen = ++_generation;
     status = BrowserStatus.connecting;
     connectError = null;
@@ -128,7 +143,15 @@ class FileBrowser extends ChangeNotifier {
     }
     _notify();
     try {
-      if (target == null) {
+      if (location != null) {
+        final handle = await location.acquire();
+        if (gen != _generation || _disposed) {
+          handle.release();
+          return;
+        }
+        _locationHandle = handle;
+        fs = handle.fs;
+      } else if (target == null) {
         fs = localFiles;
       } else {
         final (lease, opened) = await _connections.open(
@@ -151,8 +174,9 @@ class FileBrowser extends ChangeNotifier {
         }).ignore();
       }
       status = BrowserStatus.ready;
-      final start = at ?? await fs!.home();
-      if (!await _load(start, gen) && at != null && gen == _generation) await _load(await fs!.home(), gen);
+      final opened = fs!;
+      final start = at ?? await opened.home();
+      if (!await _load(start, gen) && at != null && gen == _generation) await _load(await opened.home(), gen);
     } on ConnectError catch (e) {
       if (gen != _generation) return;
       status = BrowserStatus.failed;
@@ -161,8 +185,19 @@ class FileBrowser extends ChangeNotifier {
     } on FsError catch (e) {
       if (gen != _generation) return;
       listError = e;
+      if (location != null && fs == null) status = BrowserStatus.failed;
       _notify();
     }
+  }
+
+  void checkLocation() {
+    if (location?.current != false || status == BrowserStatus.lost) return;
+    _closeFs();
+    status = BrowserStatus.lost;
+    loading = false;
+    entries = const [];
+    selected = {};
+    _notify();
   }
 
   /// Releases only the browsing channel. Transfers and editors own independent resources.
@@ -186,11 +221,12 @@ class FileBrowser extends ChangeNotifier {
   /// An unopened pane stays unopened; the other metadata survives idle release.
   Future<void> resume(ConnectPrompts prompts) async {
     if (!_suspended || _disposed) return;
-    await _open(host, prompts, at: path.isEmpty ? null : path, restoring: true);
+    await _open(host, prompts, at: path.isEmpty ? null : path, restoring: true, location: location);
   }
 
   /// Back where it was, after the connection dropped.
-  Future<void> reconnect(ConnectPrompts prompts) => open(host, prompts, at: path);
+  Future<void> reconnect(ConnectPrompts prompts) =>
+      _open(host, prompts, at: path.isEmpty ? null : path, location: location);
 
   /// A typed path is resolved first, so `~` and `..` work and a mistyped path changes nothing.
   Future<FsError?> goTyped(String typed) async {
@@ -248,7 +284,7 @@ class FileBrowser extends ChangeNotifier {
 
   Future<bool> _load(String to, int gen, {bool keepSelection = false, bool quiet = false}) async {
     final fs = this.fs;
-    if (fs == null || gen != _generation) return false;
+    if (fs == null || gen != _generation || location?.current == false) return false;
     final seq = ++_loads;
     if (!quiet) {
       loading = true;
@@ -390,9 +426,11 @@ class FileBrowser extends ChangeNotifier {
     _refreshPulse?.cancel();
     _refreshPulse = null;
     _generation++;
-    final fs = this.fs, lease = _lease;
+    final fs = this.fs, lease = _lease, handle = _locationHandle;
     this.fs = null;
     _lease = null;
+    _locationHandle = null;
+    handle?.release();
     if (fs != null && lease != null) fs.close().whenComplete(lease.release).ignore();
   }
 

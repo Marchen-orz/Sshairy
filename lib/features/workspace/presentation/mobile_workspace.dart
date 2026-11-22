@@ -132,6 +132,19 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
     _openTerminalScreen();
   }
 
+  void _openFiles() => unawaited(
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => MobileFilesPage(
+          onAskAiry: (prompt) {
+            Navigator.of(routeContext).pop();
+            _askAiry(prompt);
+          },
+        ),
+      ),
+    ),
+  );
+
   void _askAiry(String seed) {
     if (seed.trim().isNotEmpty) {
       final draft = ref.read(agentComposerProvider);
@@ -196,7 +209,9 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
                       Column(
                         children: [
                           _MobileTabHeader(title: l.linkTitle),
-                          Expanded(child: MobileLinkPage(onOpenedTerminal: _openTerminalScreen)),
+                          Expanded(
+                            child: MobileLinkPage(onOpenedTerminal: _openTerminalScreen, onOpenFiles: _openFiles),
+                          ),
                         ],
                       ),
                       const _MobileMeTab(),

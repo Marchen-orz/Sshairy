@@ -52,6 +52,7 @@ class TransferManager extends Notifier<List<Transfer>> {
 
   TransferUi? ui;
   final _jobs = <TransferId, _Job>{};
+  final _locations = <TransferId, (FileLocation?, FileLocation?)>{};
   final _authorities = <TransferId, _TransferAuthority>{};
   final _policy = <String, Map<ConflictKind, ConflictChoice>>{};
   Future<void> _asking = Future.value();
@@ -88,7 +89,11 @@ class TransferManager extends Notifier<List<Transfer>> {
   Transfer? byId(TransferId id) => state.where((t) => t.id == id).firstOrNull;
 
   /// An approval follows one attempt, rather than another job resumed or retried under the same ID.
-  Object? resourceBinding(TransferId id) => _jobs[id] ?? byId(id);
+  Object? resourceBinding(TransferId id) {
+    final transfer = byId(id);
+    if (transfer == null || transfer.sessionOnly) return null;
+    return _jobs[id] ?? transfer;
+  }
 
   /// Copies [paths] on [from] (null for this computer) into [targetDir] on [to]. One call is one batch; names matching
   /// [exclude] are left out of directory copies.
@@ -97,6 +102,8 @@ class TransferManager extends Notifier<List<Transfer>> {
     required List<String> paths,
     required Host? to,
     required String targetDir,
+    (FileLocation, PathStyle)? fromLocation,
+    (FileLocation, PathStyle)? toLocation,
     CancellationToken? cancel,
     DateTime? deadline,
     bool Function()? isAuthorized,
@@ -112,14 +119,26 @@ class TransferManager extends Notifier<List<Transfer>> {
     }
     final batch = newId();
     final now = DateTime.now();
-    final srcStyle = styleOf(from?.id), dstStyle = styleOf(to?.id);
+    final srcStyle = fromLocation?.$2 ?? styleOf(from?.id);
+    final dstStyle = toLocation?.$2 ?? styleOf(to?.id);
+    for (final path in paths) {
+      final name = srcStyle.name(path);
+      if (!validCopyName(name, dstStyle)) throw const OpFailure('invalidName');
+    }
+    FileEnd end(Host? host, String path, (FileLocation, PathStyle)? location) => FileEnd(
+      host?.id,
+      path,
+      label: location?.$1.label ?? host?.title ?? '',
+      locationId: location?.$1.id,
+      pathStyle: location?.$2,
+    );
     final added = [
       for (final p in paths)
         Transfer(
           id: TransferId(newId()),
           batch: batch,
-          source: FileEnd(from?.id, p, label: from?.title ?? ''),
-          target: FileEnd(to?.id, dstStyle.join(targetDir, srcStyle.name(p)), label: to?.title ?? ''),
+          source: end(from, p, fromLocation),
+          target: end(to, dstStyle.join(targetDir, srcStyle.name(p)), toLocation),
           created: now,
           needsAuthorization: isAuthorized != null,
           exclude: List.unmodifiable(exclude),
@@ -130,18 +149,26 @@ class TransferManager extends Notifier<List<Transfer>> {
         _authorities[transfer.id] = authority;
       }
     }
+    if (fromLocation != null || toLocation != null) {
+      for (final transfer in added) {
+        _locations[transfer.id] = (fromLocation?.$1, toLocation?.$1);
+      }
+    }
     _set([...state, ...added]);
     _pump();
     return [for (final t in added) t.id];
   }
 
   static PathStyle styleOf(HostId? host) => host == null ? localFiles.style : PathStyle.posix;
+  static PathStyle endStyle(FileEnd end) => end.pathStyle ?? styleOf(end.host);
 
   /// Parks a single-file transfer at a stable length. Called before the source is even known, the park takes
   /// effect at the first stable point; directories and transfers waiting on a conflict are left alone.
   void pause(TransferId id) {
     final job = _jobs[id];
-    if (job == null || job.singleFile == false || job.state != TransferState.running) return;
+    if (job == null || job.transfer.sessionOnly || job.singleFile == false || job.state != TransferState.running) {
+      return;
+    }
     job.state = TransferState.pausing;
     _replace(job.snapshot());
     job.pause.cancel();
@@ -184,7 +211,7 @@ class TransferManager extends Notifier<List<Transfer>> {
   Future<void> retry(TransferId id) async {
     if (_closing) return;
     final t = byId(id);
-    if (t == null || !t.state.canRetry) return;
+    if (t == null || t.sessionOnly || !t.state.canRetry) return;
     if (t.checkpoint != null && !await _cleanupPart(t)) {
       _update(
         id,
@@ -222,7 +249,7 @@ class TransferManager extends Notifier<List<Transfer>> {
   Future<void> shutdown({Duration grace = const Duration(seconds: 3)}) async {
     _closing = true;
     for (final j in _jobs.values) {
-      if (j.singleFile == true && j.phase == TransferPhase.copying && j.conflict == null) {
+      if (!j.transfer.sessionOnly && j.singleFile == true && j.phase == TransferPhase.copying && j.conflict == null) {
         j.pause.cancel();
       } else {
         j.stop.cancel();
@@ -267,30 +294,36 @@ class TransferManager extends Notifier<List<Transfer>> {
     FsHandle? src, dst;
     FileEntry? entry;
     final prompts = ui?.prompts ?? const NoPrompts();
+    final locations = _locations[t.id];
+    bool locationsCurrent() => (locations?.$1?.current ?? true) && (locations?.$2?.current ?? true);
     Timer? validity;
     try {
       job.check();
-      if (job.authority case final authority?) {
+      if (job.authority != null || locations != null) {
         validity = Timer.periodic(const Duration(milliseconds: 200), (_) {
-          if (!authority.current) job.stop.cancel();
+          if (job.authority?.current == false || !locationsCurrent()) job.stop.cancel();
         });
       }
-      src = await _pool.acquire(
-        t.source.host,
-        prompts,
-        cancel: job.stop,
-        deadline: job.authority?.deadline,
-        isAuthorized: job.authority == null ? null : () => job.authority!.current,
-      );
+      src =
+          await (locations?.$1?.acquire() ??
+              _pool.acquire(
+                t.source.host,
+                prompts,
+                cancel: job.stop,
+                deadline: job.authority?.deadline,
+                isAuthorized: job.authority == null ? null : () => job.authority!.current,
+              ));
       job.currentHandles = () => src!.isCurrent;
       job.check();
-      dst = await _pool.acquire(
-        t.target.host,
-        prompts,
-        cancel: job.stop,
-        deadline: job.authority?.deadline,
-        isAuthorized: job.authority == null ? null : () => job.authority!.current && src!.isCurrent,
-      );
+      dst =
+          await (locations?.$2?.acquire() ??
+              _pool.acquire(
+                t.target.host,
+                prompts,
+                cancel: job.stop,
+                deadline: job.authority?.deadline,
+                isAuthorized: job.authority == null ? null : () => job.authority!.current && src!.isCurrent,
+              ));
       job.currentHandles = () => src!.isCurrent && dst!.isCurrent;
       job.check();
       // Started only now: connecting may wait on a password dialog for as long as the user likes.
@@ -390,7 +423,7 @@ class TransferManager extends Notifier<List<Transfer>> {
     if (cp == null) return true;
     final authority = _authorities[t.id];
     if (t.needsAuthorization && authority == null || authority != null && !authority.current) return false;
-    if (!partDerived(t, cp, styleOf(t.target.host))) return false;
+    if (!partDerived(t, cp, endStyle(t.target))) return false;
     FsHandle? dst;
     try {
       dst = await _pool.acquire(
@@ -415,7 +448,7 @@ class TransferManager extends Notifier<List<Transfer>> {
   Future<bool> _discardPart(_Job job, FsHandle? dst) async {
     final cp = job.checkpoint;
     if (cp == null) return true;
-    if (!partDerived(job.transfer, cp, styleOf(job.transfer.target.host))) return false;
+    if (!partDerived(job.transfer, cp, endStyle(job.transfer.target))) return false;
     final fs = dst?.fs;
     if (fs == null) return false;
     try {
@@ -527,9 +560,13 @@ class TransferManager extends Notifier<List<Transfer>> {
         if (t.state.active || t.checkpoint != null) t.id,
     };
     _authorities.removeWhere((id, authority) => !authorized.contains(id) || !authority.current);
+    _locations.removeWhere((id, _) => !authorized.contains(id));
     _file.write({
       'schemaVersion': 1,
-      'transfers': [for (final t in kept) t.toJson()],
+      'transfers': [
+        for (final t in kept)
+          if (!t.sessionOnly) t.toJson(),
+      ],
     });
   }
 }
@@ -596,7 +633,8 @@ class _Job {
 
   void check() {
     if (stop.isCancelled) throw const _Stopped();
-    if (authority != null && (!authority!.current || currentHandles?.call() == false)) {
+    if (authority?.current == false ||
+        ((authority != null || transfer.sessionOnly) && currentHandles?.call() == false)) {
       throw const OpFailure('scopeChanged');
     }
   }
@@ -686,7 +724,7 @@ class _Copy {
       }
     }
     final part = partPathFor(_dst.style, path, _job.transfer.id);
-    if (_job.singleFile == true) {
+    if (_job.singleFile == true && !_job.transfer.sessionOnly) {
       // Recorded before any byte: a crash leaves the part's location known for cleanup, but not resumable.
       _job.checkpoint = TransferCheckpoint(offset: 0, source: incoming, target: path, part: part, replacing: baseline);
       _manager._replace(_job.snapshot());
@@ -808,6 +846,9 @@ class _Copy {
         if (nameMatchesAny(e.name, _job.transfer.exclude)) {
           _job.skipped++;
           continue;
+        }
+        if (!validCopyName(e.name, _src.style) || !validCopyName(e.name, _dst.style)) {
+          throw const OpFailure('invalidName');
         }
         final child = [...rel, e.name];
         switch (e.kind) {

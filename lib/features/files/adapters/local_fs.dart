@@ -6,7 +6,27 @@ import '../../../foundation/file_system.dart';
 
 /// This computer's files. On Windows the empty path lists the drives.
 class LocalFileSystem implements FileSystem, BoundedFileListing {
-  const LocalFileSystem();
+  const LocalFileSystem({this.root});
+
+  /// A mobile directory presented as `/`. The unrooted desktop view uses native paths.
+  final String? root;
+
+  Future<String> _native(String path) async {
+    final root = this.root;
+    if (root == null) return path;
+    if (!path.startsWith('/') || path.contains('\x00') || path.split('/').contains('..')) {
+      throw const FsError(FsFailure.permission);
+    }
+    final base = await _guard(() => Directory(root).resolveSymbolicLinks());
+    var native = base;
+    for (final part in path.split('/').where((part) => part.isNotEmpty && part != '.')) {
+      native = '$native/$part';
+      if (await FileSystemEntity.type(native, followLinks: false) == FileSystemEntityType.link) {
+        throw const FsError(FsFailure.permission);
+      }
+    }
+    return native;
+  }
 
   @override
   Future<BoundedListing> listBounded(
@@ -18,7 +38,7 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
     final out = <FileEntry>[];
     var scanned = 0;
     try {
-      await for (final e in Directory(dir).list(followLinks: false)) {
+      await for (final e in Directory(await _native(dir)).list(followLinks: false)) {
         if (cancel?.isCancelled ?? false) throw const FsError(FsFailure.failed, 'cancelled');
         if (scanned == maxScanned) return BoundedListing(out, scanned: scanned, complete: false);
         scanned++;
@@ -40,15 +60,22 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
   PathStyle get style => Platform.isWindows ? PathStyle.windows : PathStyle.posix;
 
   @override
-  Future<String> home() async => Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '/';
+  Future<String> home() async =>
+      root != null ? '/' : Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '/';
 
   @override
   Future<String> resolve(String path) async {
-    if (path.isEmpty && Platform.isWindows) return '';
+    if (root == null && path.isEmpty && Platform.isWindows) return '';
     var p = path;
     if (p == '~' || p.startsWith('~/') || p.startsWith(r'~\')) p = await home() + p.substring(1);
     try {
-      return await Directory(p).resolveSymbolicLinks();
+      final resolved = await Directory(await _native(p)).resolveSymbolicLinks();
+      final root = this.root;
+      if (root == null) return resolved;
+      final base = await Directory(root).resolveSymbolicLinks();
+      if (resolved == base) return '/';
+      if (!resolved.startsWith('$base/')) throw const FsError(FsFailure.permission);
+      return resolved.substring(base.length);
     } on FileSystemException catch (e) {
       throw _map(e);
     }
@@ -56,10 +83,10 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
 
   @override
   Future<List<FileEntry>> list(String dir) async {
-    if (dir.isEmpty && Platform.isWindows) return _drives();
+    if (root == null && dir.isEmpty && Platform.isWindows) return _drives();
     try {
       final out = <FileEntry>[];
-      await for (final e in Directory(dir).list(followLinks: false)) {
+      await for (final e in Directory(await _native(dir)).list(followLinks: false)) {
         final entry = await _entry(
           e.path,
           e is Link ? FileKind.link : (e is Directory ? FileKind.directory : FileKind.file),
@@ -74,6 +101,10 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
 
   @override
   Future<FileEntry?> stat(String path) async {
+    return _stat(await _native(path));
+  }
+
+  Future<FileEntry?> _stat(String path) async {
     final type = await FileSystemEntity.type(path, followLinks: false);
     return switch (type) {
       FileSystemEntityType.notFound => null,
@@ -88,7 +119,7 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
   Future<void> mkdir(String path) => _guard(() async {
     // Directory.create succeeds on an existing directory; mkdir must not.
     if (await stat(path) != null) throw const FsError(FsFailure.exists);
-    await Directory(path).create();
+    await Directory(await _writable(path)).create();
   });
 
   @override
@@ -97,12 +128,13 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
     final existing = await stat(to);
     checkCurrent?.call();
     if (existing != null) throw const FsError(FsFailure.exists);
-    final type = await FileSystemEntity.type(from, followLinks: false);
+    final source = await _writable(from), target = await _writable(to);
+    final type = await FileSystemEntity.type(source, followLinks: false);
     checkCurrent?.call();
     await switch (type) {
-      FileSystemEntityType.directory => Directory(from).rename(to),
-      FileSystemEntityType.link => Link(from).rename(to),
-      _ => File(from).rename(to),
+      FileSystemEntityType.directory => Directory(source).rename(target),
+      FileSystemEntityType.link => Link(source).rename(target),
+      _ => File(source).rename(target),
     };
   });
 
@@ -112,35 +144,52 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
   /// File.rename replaces the target in one step on Windows (MoveFileEx) and POSIX (rename).
   @override
   Future<void> replace(String from, String to, {void Function()? checkCurrent}) {
-    checkCurrent?.call();
-    return _guard(() => File(from).rename(to));
+    return _guard(() async {
+      final source = await _writable(from), target = await _writable(to);
+      checkCurrent?.call();
+      await File(source).rename(target);
+    });
   }
 
   @override
   Future<void> delete(String path) => _guard(() async {
-    final type = await FileSystemEntity.type(path, followLinks: false);
+    final native = await _writable(path);
+    final type = await FileSystemEntity.type(native, followLinks: false);
     if (type == FileSystemEntityType.directory) throw const FsError(FsFailure.failed, 'is a directory');
-    await (type == FileSystemEntityType.link ? Link(path).delete() : File(path).delete());
+    await (type == FileSystemEntityType.link ? Link(native).delete() : File(native).delete());
   });
 
   @override
-  Future<void> rmdir(String path) => _guard(() => Directory(path).delete());
+  Future<void> rmdir(String path) => _guard(() async {
+    await Directory(await _writable(path)).delete();
+  });
+
+  Future<String> _writable(String path) async {
+    if (root != null && path.split('/').every((part) => part.isEmpty || part == '.')) {
+      throw const FsError(FsFailure.permission);
+    }
+    return _native(path);
+  }
 
   @override
-  bool get canChmod => !Platform.isWindows;
+  bool get canChmod => root == null && !Platform.isWindows;
 
   @override
   Future<void> chmod(String path, int mode) => _guard(() async {
+    if (!canChmod) throw const FsError(FsFailure.unsupported);
     // Arguments go to chmod directly, never through a shell.
     final r = await Process.run('chmod', [(mode & 0xFFF).toRadixString(8), path]);
     if (r.exitCode != 0) throw FsError(FsFailure.permission, '${r.stderr}'.trim());
   });
 
   @override
-  Stream<Uint8List> read(String path, {int offset = 0}) =>
-      File(path).openRead(offset).map((c) => c is Uint8List ? c : Uint8List.fromList(c)).handleError((Object e) {
-        throw e is FileSystemException ? _map(e) : e;
-      });
+  Stream<Uint8List> read(String path, {int offset = 0}) async* {
+    try {
+      yield* File(await _native(path)).openRead(offset).map((c) => c is Uint8List ? c : Uint8List.fromList(c));
+    } on FileSystemException catch (e) {
+      throw _map(e);
+    }
+  }
 
   @override
   Future<int> create(
@@ -156,7 +205,8 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
     }
 
     check();
-    final file = File(path);
+    final file = File(await _writable(path));
+    check();
     await file.create(exclusive: true);
     check();
     final raf = await file.open(mode: FileMode.writeOnly);
@@ -196,7 +246,8 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
     }
 
     check();
-    final file = File(path);
+    final file = File(await _writable(path));
+    check();
     if (!await file.exists()) throw const FsError(FsFailure.notFound);
     check();
     final length = await file.length();
@@ -229,11 +280,11 @@ class LocalFileSystem implements FileSystem, BoundedFileListing {
     if (s.type == FileSystemEntityType.notFound && kind != FileKind.link) return null;
     return FileEntry(
       name,
-      kind,
+      kind == FileKind.file && s.type != FileSystemEntityType.file ? FileKind.other : kind,
       size: kind == FileKind.file || (kind == FileKind.link && s.type == FileSystemEntityType.file) ? s.size : null,
       modified: s.type == FileSystemEntityType.notFound ? null : s.modified,
       mode: Platform.isWindows || s.type == FileSystemEntityType.notFound ? null : s.mode & 0xFFF,
-      linkToDir: kind == FileKind.link && s.type == FileSystemEntityType.directory,
+      linkToDir: root == null && kind == FileKind.link && s.type == FileSystemEntityType.directory,
     );
   }
 

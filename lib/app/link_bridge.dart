@@ -9,11 +9,14 @@ import '../design/theme.dart';
 import '../features/ai/api.dart';
 import '../features/connections/api.dart';
 import '../features/credentials/api.dart';
+import '../features/files/api.dart';
 import '../features/hosts/api.dart';
 import '../features/link/api.dart';
 import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
+import '../foundation/cancellation.dart';
+import '../foundation/file_system.dart';
 import '../foundation/ids.dart';
 import '../foundation/result.dart';
 import '../foundation/secret.dart';
@@ -168,6 +171,30 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
     } on Object {
       throw const LinkException(LinkErrorKind.hostUnavailable);
     }
+  }
+
+  @override
+  Future<LinkFsHandle> openFiles(String target, CancellationToken cancel) async {
+    if (target == 'local') return LinkFsHandle(localFiles, localFiles.close);
+    if (!target.startsWith('host:')) throw const FsError(FsFailure.unsupported);
+    final id = HostId(target.substring(5));
+    final hosts = _ref.read(hostsProvider.notifier);
+    final host = hosts.byId(id);
+    if (host == null || host.transient) throw const FsError(FsFailure.notFound);
+    final route = ConnectionManager.keyOf(host);
+    bool currentRoute() {
+      final current = hosts.byId(id);
+      return current != null && !current.transient && ConnectionManager.keyOf(current) == route;
+    }
+
+    final (lease, fs) = await _ref
+        .read(connectionManagerProvider)
+        .open(host, const NoPrompts(), (lease) => lease.openFiles(), cancel: cancel, purpose: LeasePurpose.files);
+    return LinkFsHandle(
+      fs,
+      () => fs.close().whenComplete(lease.release),
+      isCurrent: () => currentRoute() && lease.isCurrent,
+    );
   }
 
   @override
@@ -379,6 +406,12 @@ class AppLinkMobileBridge implements LinkMobileBridge {
   AppLinkMobileBridge(this._ref);
 
   final Ref _ref;
+
+  @override
+  Future<LinkFsHandle> openFiles() async {
+    final fs = await openMobileStorage(sharedOnly: true);
+    return LinkFsHandle(fs, fs.close);
+  }
 
   @override
   Future<LinkSyncSummary> applySyncBundle(LinkSyncBundle bundle) async {
@@ -670,4 +703,59 @@ class _LinkHostLifecycleState extends ConsumerState<LinkHostLifecycle> {
     }
     return widget.child;
   }
+}
+
+/// The linked devices' folders for file panes: phones sharing theirs on a computer; the computer's folders and the
+/// servers it reaches on a phone. Rebuilt only when that set changes; a reconnect gives new IDs.
+List<FileLocation> linkFileLocations(Ref ref) {
+  List<FileLocation> places() {
+    if (!isMobilePlatform) {
+      final host = ref.read(linkHostControllerProvider);
+      return [
+        for (final phone in host.sharedPhones)
+          if (host.phoneFilesBinding(phone.id) case final binding?)
+            FileLocation(
+              id: 'link:${phone.id}:${identityHashCode(binding)}',
+              label: phone.name,
+              open: () => host.openPhoneFiles(phone.id, binding),
+              isCurrent: () => identical(host.phoneFilesBinding(phone.id), binding),
+            ),
+      ];
+    }
+    final client = ref.read(linkClientControllerProvider);
+    final local = client.desktopFilesBinding(), proxy = client.desktopFilesBinding(proxy: true);
+    return [
+      if (local != null)
+        FileLocation(
+          id: 'link:local:${identityHashCode(local)}',
+          label: client.connectedDesktopName ?? '',
+          open: () => client.openFiles(local),
+          isCurrent: () => identical(client.desktopFilesBinding(), local),
+          kind: FileLocationKind.computer,
+        ),
+      if (proxy != null)
+        for (final h in client.desktopHosts)
+          FileLocation(
+            id: 'link:host:${h.hostId}:${identityHashCode(proxy)}',
+            label: h.label,
+            open: () => client.openFiles(proxy, hostId: h.hostId),
+            isCurrent: () => identical(client.desktopFilesBinding(proxy: true), proxy),
+            kind: FileLocationKind.server,
+          ),
+    ];
+  }
+
+  String keyOf(List<FileLocation> all) => [for (final l in all) '${l.id}\u0000${l.label}'].join('\n');
+  final Listenable controller = isMobilePlatform
+      ? ref.watch(linkClientControllerProvider)
+      : ref.watch(linkHostControllerProvider);
+  final current = places();
+  final key = keyOf(current);
+  void changed() {
+    if (keyOf(places()) != key) ref.invalidateSelf();
+  }
+
+  controller.addListener(changed);
+  ref.onDispose(() => controller.removeListener(changed));
+  return current;
 }

@@ -116,6 +116,18 @@ String? badName(String name, PathStyle style) {
   return null;
 }
 
+/// Validate the original name before joining it onto a directory on another device.
+bool validCopyName(String name, PathStyle style) {
+  if (badName(name, style) != null) return false;
+  if (style == PathStyle.posix) return true;
+  return !name.endsWith(' ') &&
+      !name.endsWith('.') &&
+      !RegExp(
+        r'[\x00-\x1f]|^(?:CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³]) *(?:\.|$)',
+        caseSensitive: false,
+      ).hasMatch(name);
+}
+
 /// Counts what deleting [path] would remove, stopping at [limit].
 Future<int> countTree(FileSystem fs, String path, FileEntry entry, {int limit = 20000}) async {
   if (!entry.isDir) return 1;

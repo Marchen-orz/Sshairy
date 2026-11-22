@@ -22,6 +22,7 @@ import '../adapters/desktop.dart';
 import '../application/browser.dart';
 import '../application/edits.dart';
 import '../application/file_ops.dart';
+import '../application/file_systems.dart';
 import '../application/open_with.dart';
 import '../application/transfers.dart';
 import '../domain/transfer.dart';
@@ -126,7 +127,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
     if (e.kind != FileKind.file) return;
     final host = b.host;
     if (host == null) {
-      await openFile(b.pathOf(e));
+      if (b.location == null) await openFile(b.pathOf(e));
       return;
     }
     final result = await ref.read(editsProvider.notifier).open(host, b.pathOf(e));
@@ -154,15 +155,12 @@ class _FilePaneState extends ConsumerState<FilePane> {
     return [clicked];
   }
 
-  void _send(List<FileEntry> items, FileBrowser to) {
-    if (items.isEmpty || !to.ready) return;
-    _transfers.enqueue(from: b.host, paths: [for (final e in items) b.pathOf(e)], to: to.host, targetDir: to.path);
-  }
+  void _send(List<FileEntry> items, FileBrowser to) => _report(FilePaneSend(FileDrag(b, items), to).run(_transfers));
 
   Future<void> _downloadTo(List<FileEntry> items) async {
     final dir = await pickDirectory();
     if (dir == null || items.isEmpty) return;
-    _transfers.enqueue(from: b.host, paths: [for (final e in items) b.pathOf(e)], to: null, targetDir: dir);
+    _report(queueCopy(_transfers, b, [for (final e in items) b.pathOf(e)], null, dir));
   }
 
   Future<void> _uploadPicked() async {
@@ -171,7 +169,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
 
   void _upload(List<String> localPaths) {
     if (localPaths.isEmpty || !b.ready) return;
-    _transfers.enqueue(from: null, paths: localPaths, to: b.host, targetDir: b.path);
+    _report(queueCopy(_transfers, null, localPaths, b, b.path));
   }
 
   Future<void> _newFolder() async {
@@ -238,11 +236,11 @@ class _FilePaneState extends ConsumerState<FilePane> {
       items: [
         if (single != null) ...[
           item(
-            single.browsable || b.local ? l.open : l.editFile,
+            single.browsable || b.host == null ? l.open : l.editFile,
             single.browsable ? Icons.folder_open_outlined : Icons.edit_outlined,
-            single.browsable || single.kind == FileKind.file ? () => _open(single) : null,
+            single.browsable || single.kind == FileKind.file && b.location == null ? () => _open(single) : null,
           ),
-          if (single.kind == FileKind.file && !b.local && ref.read(editorLauncherProvider).canChoose)
+          if (single.kind == FileKind.file && b.host != null && ref.read(editorLauncherProvider).canChoose)
             item(l.openWith, Icons.open_in_new, () => _openWith(single)),
         ],
         if (items.isNotEmpty) ...[
@@ -350,7 +348,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
 
   /// Whether a transfer that ended at [end] changed what this pane lists.
   bool _shows(FileEnd end) {
-    if (!b.ready || end.host != b.host?.id) return false;
+    if (!b.ready || end.host != b.host?.id || end.locationId != b.location?.id) return false;
     final sep = b.style.separator;
     return b.style.parent(end.path) == b.path || b.path == end.path || b.path.startsWith('${end.path}$sep');
   }
@@ -359,6 +357,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     ref.listen(settingsProvider.select((s) => s.get(SettingKeys.showHidden)), (_, value) => b.setShowHidden(value));
+    ref.listen(fileLocationsProvider, (_, _) => b.checkLocation());
     ref.listen(transfersProvider, (before, now) {
       final running = {
         for (final t in before ?? const <Transfer>[])
@@ -374,7 +373,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
         onDrop: _upload,
         child: DragTarget<FileDrag>(
           onWillAcceptWithDetails: (d) => d.data.from != b && b.ready,
-          onAcceptWithDetails: (d) => FilePaneSend(d.data, b).run(_transfers),
+          onAcceptWithDetails: (d) => _report(FilePaneSend(d.data, b).run(_transfers)),
           builder: (context, candidates, _) => DecoratedBox(
             decoration: BoxDecoration(
               border: Border.all(
@@ -662,15 +661,28 @@ class FilePaneSend {
   final FileDrag drag;
   final FileBrowser to;
 
-  void run(TransferManager transfers) {
+  /// The failure, if the copy could not be queued.
+  Object? run(TransferManager transfers) {
     final from = drag.from;
-    if (drag.entries.isEmpty || !to.ready) return;
+    if (drag.entries.isEmpty || !to.ready) return null;
+    return queueCopy(transfers, from, [for (final e in drag.entries) from.pathOf(e)], to, to.path);
+  }
+}
+
+/// Queues [paths] on [from] into [targetDir] on [to], either null for this device; the failure, if any.
+Object? queueCopy(TransferManager transfers, FileBrowser? from, List<String> paths, FileBrowser? to, String targetDir) {
+  try {
     transfers.enqueue(
-      from: from.host,
-      paths: [for (final e in drag.entries) from.pathOf(e)],
-      to: to.host,
-      targetDir: to.path,
+      from: from?.host,
+      paths: paths,
+      to: to?.host,
+      targetDir: targetDir,
+      fromLocation: from?.placement,
+      toLocation: to?.placement,
     );
+    return null;
+  } on OpFailure catch (e) {
+    return e;
   }
 }
 
@@ -859,11 +871,14 @@ class _HostPicker extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final hosts = sortHosts(ref.watch(hostsProvider), recent: true);
+    final places = ref.watch(fileLocationsProvider);
     final current = browser.host;
-    return AppMenuButton<Host?>(
-      onSelected: (h) => browser.open(h, DialogPrompts(context)),
+    final location = browser.location;
+    return AppMenuButton<Object?>(
+      onSelected: (v) => v is FileLocation ? browser.openLocation(v) : browser.open(v as Host?, DialogPrompts(context)),
       items: () => [
         AppMenuItem(value: null, label: l.thisComputer, icon: Icons.computer),
+        for (final p in places) AppMenuItem(value: p, label: p.label, icon: Icons.smartphone),
         for (final h in hosts) AppMenuItem(value: h, label: h.title, icon: Icons.dns_outlined),
       ],
       child: Padding(
@@ -873,11 +888,18 @@ class _HostPicker extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(current == null && browser.fs != null ? Icons.computer : Icons.dns_outlined, size: 16),
+              Icon(
+                location != null
+                    ? Icons.smartphone
+                    : current == null && browser.fs != null
+                    ? Icons.computer
+                    : Icons.dns_outlined,
+                size: 16,
+              ),
               const SizedBox(width: Space.sm),
               Flexible(
                 child: Text(
-                  current?.title ?? (browser.fs != null ? l.thisComputer : '—'),
+                  location?.label ?? current?.title ?? (browser.fs != null ? l.thisComputer : '—'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -911,6 +933,13 @@ class _HostList extends ConsumerWidget {
           title: Text(l.thisComputer),
           onTap: () => browser.open(null, DialogPrompts(context)),
         ),
+        for (final p in ref.watch(fileLocationsProvider))
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.smartphone),
+            title: Text(p.label),
+            onTap: () => browser.openLocation(p),
+          ),
         for (final h in hosts)
           ListTile(
             dense: true,

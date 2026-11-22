@@ -3435,6 +3435,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mobileUploadFile => 'Upload file';
 
   @override
+  String get mobileThisPhone => 'This phone';
+
+  @override
+  String get linkSharePhoneFiles => 'Share phone files';
+
+  @override
   String get mobileGenerateKey => 'Generate Ed25519 key';
 
   @override

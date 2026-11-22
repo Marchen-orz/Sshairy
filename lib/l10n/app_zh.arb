@@ -1060,6 +1060,8 @@
   "mobileNewFile": "新建文件",
   "mobileNewFolder": "新建文件夹",
   "mobileUploadFile": "上传文件",
+  "mobileThisPhone": "本机",
+  "linkSharePhoneFiles": "共享本机文件",
   "mobileGenerateKey": "生成 Ed25519 密钥",
   "mobilePublicKeyCopied": "公钥已复制",
   "mobileSecuritySection": "安全与后台",

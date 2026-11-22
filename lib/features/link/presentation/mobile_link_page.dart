@@ -8,6 +8,7 @@ import '../../../design/brand.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../platform/device_form_factor.dart';
+import '../../../platform/mobile_platform.dart';
 import '../adapters/qr_adapter.dart';
 import '../application/link_service.dart';
 import '../domain/protocol.dart';
@@ -15,10 +16,13 @@ import '../domain/protocol.dart';
 /// Mobile "Link" hub for pairing with Desktop, live terminal mirroring, desktop-proxied SSH,
 /// config/credential sync, and remote Agent/MCP approvals (docs/MOBILE.md §3-4).
 class MobileLinkPage extends ConsumerStatefulWidget {
-  const MobileLinkPage({super.key, this.onOpenedTerminal});
+  const MobileLinkPage({super.key, this.onOpenedTerminal, this.onOpenFiles});
 
   /// Invoked after opening a mirrored or desktop-proxied terminal so the shell can switch to the terminal tab.
   final VoidCallback? onOpenedTerminal;
+
+  /// Opens the file page on this phone and the computer.
+  final VoidCallback? onOpenFiles;
 
   @override
   ConsumerState<MobileLinkPage> createState() => _MobileLinkPageState();
@@ -112,6 +116,14 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     final ok = await ref.read(linkClientControllerProvider).pushClipboardToDesktop(text);
     if (!mounted) return;
     if (ok) _showNotice(AppLocalizations.of(context).mobileClipboardSent);
+  }
+
+  /// Sharing needs Android's all-files access; refused, the chip stays off. A reconnect meanwhile drops the answer.
+  Future<void> _sharePhoneFiles(LinkClientController client, bool on) async {
+    final binding = client.filesBinding;
+    if (binding == null) return;
+    if (on && !await MobilePlatform.requestAllFilesAccess()) return;
+    await client.sharePhoneFiles(on, binding);
   }
 
   Future<void> _syncNow() async {
@@ -402,6 +414,19 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                     onPressed: _pushClipboard,
                     icon: const Icon(Icons.content_paste_go_rounded, size: 16),
                     label: Text(l.mobilePushClipboard),
+                  ),
+                  if (client.desktopSharesFiles && widget.onOpenFiles != null)
+                    OutlinedButton.icon(
+                      key: const ValueKey('link-files-button'),
+                      onPressed: widget.onOpenFiles,
+                      icon: const Icon(Icons.folder_outlined, size: 16),
+                      label: Text(l.files),
+                    ),
+                  FilterChip(
+                    key: const ValueKey('link-share-files-chip'),
+                    label: Text(l.linkSharePhoneFiles),
+                    selected: client.sharesPhoneFiles,
+                    onSelected: (on) => unawaited(_sharePhoneFiles(client, on)),
                   ),
                   if (_notice != null)
                     Text(_notice!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.primary)),
