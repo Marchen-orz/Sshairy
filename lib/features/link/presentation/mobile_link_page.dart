@@ -160,7 +160,6 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   Widget _buildDisconnected(BuildContext context, AppLocalizations l, ColorScheme scheme, LinkClientController client) {
     final connecting = client.status == LinkConnectionStatus.connecting;
     const pairingActionStyle = ButtonStyle(
-      minimumSize: WidgetStatePropertyAll(Size.fromHeight(MobileSize.touchTarget)),
       padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs)),
     );
     return ListView(

@@ -475,7 +475,10 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
             body: SafeArea(
-              child: HostForm(host: host, group: _group),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                child: HostForm(host: host, group: _group),
+              ),
             ),
           ),
         ),
@@ -1044,10 +1047,7 @@ class _MobileMeTab extends ConsumerWidget {
         Expanded(
           child: Semantics(
             label: label,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: MobileSize.touchTarget),
-              child: AppSelect(value: value, options: options, onChanged: onChanged),
-            ),
+            child: AppSelect(value: value, options: options, onChanged: onChanged),
           ),
         ),
       ],

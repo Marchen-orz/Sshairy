@@ -60,11 +60,13 @@ class _AppSelectState<T> extends State<AppSelect<T>> {
     if (onChanged == null || _open) return;
     final context = _field.currentContext!;
     final anchor = anchorOf(context);
+    // The layout width, not the anchor's: under interface scaling the anchor is in screen pixels.
+    final width = context.size!.width;
     setState(() => _open = true);
     final picked = await showAnchoredPopup<AppOption<T>>(
       context: context,
       anchor: anchor,
-      width: anchor.width < 180 ? 180 : anchor.width,
+      width: width < 180 ? 180 : width,
       maxHeight: 360,
       builder: (_) => _OptionList<T>(
         options: widget.options,

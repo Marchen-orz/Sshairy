@@ -91,7 +91,15 @@ class _AnchoredRoute<T> extends PopupRoute<T> {
             child: popupTransition(
               context,
               animation,
-              capturedThemes.wrap(Builder(builder: builder)),
+              // Lists inside would otherwise pad themselves again for the phone's status and navigation bars.
+              MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                removeBottom: true,
+                removeLeft: true,
+                removeRight: true,
+                child: capturedThemes.wrap(Builder(builder: builder)),
+              ),
               offset: placement == PopupPlacement.below ? const Offset(0, -6) : const Offset(-6, 0),
               duration: Motion.normal,
             ),
