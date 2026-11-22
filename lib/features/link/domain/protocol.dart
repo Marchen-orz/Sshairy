@@ -6,6 +6,7 @@ const int linkDefaultPort = 47827;
 const int linkDiscoveryPort = 47828;
 const int linkMaxFrameBytes = 256 * 1024;
 const int linkSnapshotMaxBytes = 64 * 1024;
+const int linkMonitorMaxBytes = 128 * 1024;
 const int linkMaxProxyChannelsPerPeer = 8;
 
 /// Per-device capabilities granted on the desktop side.

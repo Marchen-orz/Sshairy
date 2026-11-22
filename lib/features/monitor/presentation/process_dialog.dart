@@ -189,19 +189,21 @@ class _ProcessDialogState extends State<ProcessDialog> {
           label: l.copyCommand,
           icon: Icons.content_copy,
         ),
-        const AppMenuDivider(),
-        AppMenuItem(
-          value: () => _signal(p, ProcessSignal.term),
-          label: l.terminateProcess,
-          icon: Icons.stop_circle_outlined,
-          destructive: true,
-        ),
-        AppMenuItem(
-          value: () => _signal(p, ProcessSignal.kill),
-          label: l.killProcess,
-          icon: Icons.dangerous_outlined,
-          destructive: true,
-        ),
+        if (widget.monitor.canSignal) ...[
+          const AppMenuDivider(),
+          AppMenuItem(
+            value: () => _signal(p, ProcessSignal.term),
+            label: l.terminateProcess,
+            icon: Icons.stop_circle_outlined,
+            destructive: true,
+          ),
+          AppMenuItem(
+            value: () => _signal(p, ProcessSignal.kill),
+            label: l.killProcess,
+            icon: Icons.dangerous_outlined,
+            destructive: true,
+          ),
+        ],
       ],
     );
     action?.call();
@@ -221,7 +223,7 @@ class _ProcessDialogState extends State<ProcessDialog> {
       if (offset + WorkspaceSize.treeRow > _scroll.offset + view) _scroll.jumpTo(offset + WorkspaceSize.treeRow - view);
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.delete && index >= 0) {
+    if (widget.monitor.canSignal && key == LogicalKeyboardKey.delete && index >= 0) {
       _signal(rows[index], ProcessSignal.term);
       return KeyEventResult.handled;
     }

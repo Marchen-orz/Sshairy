@@ -624,6 +624,10 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
           ? _shell != null
           : _shell != null && !(_lease?.lost ?? true));
 
+  /// Live resources for the exact shell instance, including the route that opened an SSH terminal.
+  ShellChannel? get linkShellChannel => isRemote && canInsert ? _shell : null;
+  TransportLease? get liveSshLease => canInsert && _lease?.isCurrent == true ? _lease : null;
+
   Future<InsertResult> insert(
     String text, {
     bool run = false,

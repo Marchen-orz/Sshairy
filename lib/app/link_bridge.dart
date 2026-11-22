@@ -12,6 +12,7 @@ import '../features/credentials/api.dart';
 import '../features/files/api.dart';
 import '../features/hosts/api.dart';
 import '../features/link/api.dart';
+import '../features/monitor/api.dart';
 import '../features/snippets/api.dart';
 import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
@@ -130,11 +131,40 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
     if (session == null || session.isRemote) return null;
     final snapshot = session.captureMirrorSnapshot(maxBytes: linkSnapshotMaxBytes);
     final sub = session.mirrorOutput.listen(onOutput, onError: (Object _) {});
+    bool current() =>
+        identical(_watchedSessions[session.id], session) &&
+        session.canInsert &&
+        (session.isLocal || session.liveSshLease != null);
     return MirrorAttachment(
       snapshot: snapshot,
       write: session.sendRemoteInput,
       resize: session.resizeFromRemote,
       detach: () => unawaited(sub.cancel()),
+      resources: LinkTerminalResources(
+        current: current,
+        sample: session.isLocal && !LocalMonitorExec.supported
+            ? null
+            : ({required processes, required gpu, required cancel}) async {
+                if (!current()) throw const ExecError(ExecFailure.cancelled);
+                final generation = session.shellGeneration;
+                final result = await _sampleLinkedTerminal(
+                  session.liveSshLease,
+                  local: session.isLocal,
+                  processes: processes,
+                  gpu: gpu,
+                  cancel: cancel,
+                );
+                if (!current() || session.shellGeneration != generation) throw const ExecError(ExecFailure.cancelled);
+                return result;
+              },
+        openFiles: (cancel) async {
+          if (cancel.isCancelled || !current()) throw const FsError(FsFailure.lost);
+          final generation = session.shellGeneration;
+          bool sameShell() => current() && session.shellGeneration == generation;
+          if (session.isLocal) return LinkFsHandle(localFiles, localFiles.close, isCurrent: sameShell);
+          return _linkedTerminalFiles(session.liveSshLease!, cancel, sameShell);
+        },
+      ),
     );
   }
 
@@ -525,13 +555,52 @@ class _NonInteractiveProxyPrompts implements ConnectPrompts {
   Future<SecretAnswer?> secret(SecretRequest request) async => null;
 }
 
-class _LeasedShellChannel implements ShellChannel {
+Future<ExecResult> _sampleLinkedTerminal(
+  TransportLease? lease, {
+  required bool local,
+  required bool processes,
+  required bool gpu,
+  required CancellationToken cancel,
+}) async {
+  const timeout = Duration(seconds: 10);
+  final command = statsCommand(processes: processes, gpu: gpu);
+  if (local) {
+    return const LocalMonitorExec().exec(command, limit: linkMonitorMaxBytes, timeout: timeout, cancel: cancel);
+  }
+  if (lease == null || !lease.isCurrent) throw const ExecError(ExecFailure.cancelled);
+  return lease.exec(command, limit: linkMonitorMaxBytes, timeout: timeout, cancel: cancel);
+}
+
+Future<LinkFsHandle> _linkedTerminalFiles(
+  TransportLease lease,
+  CancellationToken cancel,
+  bool Function() current,
+) async {
+  if (cancel.isCancelled || !current() || !lease.isCurrent) throw const FsError(FsFailure.lost);
+  final fs = await lease.openFiles();
+  bool stillCurrent() => current() && lease.isCurrent;
+  if (cancel.isCancelled || !stillCurrent()) {
+    await fs.close();
+    throw const FsError(FsFailure.lost);
+  }
+  return LinkFsHandle(fs, fs.close, isCurrent: stillCurrent);
+}
+
+class _LeasedShellChannel implements LinkProxyShell {
   _LeasedShellChannel(this._lease, this._inner) {
     unawaited(_inner.done.whenComplete(_lease.release));
   }
 
   final TransportLease _lease;
   final ShellChannel _inner;
+
+  @override
+  late final resources = LinkTerminalResources(
+    current: () => _lease.isCurrent,
+    sample: ({required processes, required gpu, required cancel}) =>
+        _sampleLinkedTerminal(_lease, local: false, processes: processes, gpu: gpu, cancel: cancel),
+    openFiles: (cancel) => _linkedTerminalFiles(_lease, cancel, () => _lease.isCurrent),
+  );
 
   @override
   Stream<Uint8List> get stdout => _inner.stdout;

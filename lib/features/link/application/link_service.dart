@@ -13,6 +13,7 @@ import '../../../foundation/ids.dart';
 import '../../../foundation/secret.dart';
 import '../../connections/api.dart';
 import '../../credentials/api.dart';
+import '../../monitor/api.dart';
 import '../../settings/api.dart';
 import '../adapters/crypto.dart';
 import '../adapters/link_storage.dart';
@@ -21,14 +22,34 @@ import '../domain/protocol.dart';
 import '../domain/transport.dart';
 import 'link_fs.dart';
 
+/// Access to the exact desktop terminal that owns a Link channel.
+class LinkTerminalResources {
+  const LinkTerminalResources({required this.current, required this.openFiles, this.sample});
+
+  final bool Function() current;
+  final Future<LinkFsHandle> Function(CancellationToken cancel) openFiles;
+  final MonitorSample? sample;
+}
+
+abstract interface class LinkProxyShell implements ShellChannel {
+  LinkTerminalResources get resources;
+}
+
 /// Handle to a mirrored desktop terminal session.
 class MirrorAttachment {
-  const MirrorAttachment({required this.snapshot, required this.write, required this.resize, required this.detach});
+  const MirrorAttachment({
+    required this.snapshot,
+    required this.write,
+    required this.resize,
+    required this.detach,
+    this.resources,
+  });
 
   final Uint8List snapshot;
   final void Function(Uint8List data) write;
   final void Function(int cols, int rows) resize;
   final VoidCallback detach;
+  final LinkTerminalResources? resources;
 }
 
 /// Composition-layer bridge wired on Desktop to connect Sshairy Link to workspace, SSH, hosts, snippets, trust & AI/MCP.
@@ -167,7 +188,25 @@ class _ConnectedPeer {
   final proxyChannels =
       <String, ({ShellChannel channel, StreamSubscription<Uint8List> outSub, StreamSubscription<Uint8List> errSub})>{};
 
+  final monitorRequests = <String, ({String channelId, CancellationToken cancel})>{};
+
+  LinkTerminalResources? resources(String channelId, LinkPeerPermissions permissions) {
+    if (mirrors[channelId]?.resources case final resources? when permissions.allowMirror) return resources;
+    final channel = proxyChannels[channelId]?.channel;
+    return permissions.allowProxy && channel is LinkProxyShell ? channel.resources : null;
+  }
+
+  void revokeTerminalResources({String? channelId}) {
+    for (final request in monitorRequests.values) {
+      if (channelId == null || request.channelId == channelId) request.cancel.cancel();
+    }
+    files.revoke();
+  }
+
   void cleanup() {
+    for (final request in monitorRequests.values) {
+      request.cancel.cancel();
+    }
     files.close();
     for (final m in mirrors.values) {
       m.detach();
@@ -413,18 +452,24 @@ class LinkHostController extends ChangeNotifier {
     final active = _connected[deviceId];
     if (active != null) {
       if (!permissions.allowMirror) {
-        for (final m in active.mirrors.values) {
-          m.detach();
+        for (final entry in active.mirrors.entries) {
+          entry.value.detach();
+          _notifyClosedChannel(active, 'mirror.closed', entry.key);
         }
         active.mirrors.clear();
       }
       if (!permissions.allowProxy) {
-        for (final ch in active.proxyChannels.values) {
-          unawaited(ch.outSub.cancel());
-          unawaited(ch.errSub.cancel());
-          ch.channel.close();
+        for (final entry in active.proxyChannels.entries) {
+          final channel = entry.value;
+          unawaited(channel.outSub.cancel());
+          unawaited(channel.errSub.cancel());
+          channel.channel.close();
+          _notifyClosedChannel(active, 'proxy.closed', entry.key);
         }
         active.proxyChannels.clear();
+      }
+      for (final request in active.monitorRequests.values) {
+        if (active.resources(request.channelId, permissions) == null) request.cancel.cancel();
       }
       active.files.revoke();
       _pushFileAccess(active);
@@ -608,17 +653,31 @@ class LinkHostController extends ChangeNotifier {
         unawaited(previous.session.close());
       }
       final session = handshake.session;
+      late final _ConnectedPeer active;
+      LinkTerminalResources? terminalResources(String target) {
+        final permissions = _findPeer(peerId)?.permissions;
+        if (permissions == null || !permissions.allowFiles) return null;
+        return active.resources(target.substring('terminal:'.length), permissions);
+      }
+
       final files = LinkFiles(
         send: session.sendMessage,
         isConnected: () => !session.isClosed,
         canOpen: (target) {
+          if (target.startsWith('terminal:')) return terminalResources(target)?.current() == true;
           final permissions = _findPeer(peerId)?.permissions;
           return permissions?.allowFiles == true &&
               (target == 'local' || (target.startsWith('host:') && permissions!.allowProxy));
         },
-        openTarget: bridge.openFiles,
+        openTarget: (target, cancel) {
+          if (!target.startsWith('terminal:')) return bridge.openFiles(target, cancel);
+          final resources = terminalResources(target);
+          if (resources == null || !resources.current()) throw const FsError(FsFailure.lost);
+          return resources.openFiles(cancel);
+        },
       );
-      final active = connection = _ConnectedPeer(peerId, session.peerName, session, files);
+      active = _ConnectedPeer(peerId, session.peerName, session, files);
+      connection = active;
       _connected[peerId] = active;
       _notify();
 
@@ -665,7 +724,10 @@ class LinkHostController extends ChangeNotifier {
       case 'mirror.attach':
         final channelId = msg['channelId'] as String? ?? '';
         final sessionId = msg['sessionId'] as String? ?? '';
-        if (!perms.allowMirror) {
+        if (!perms.allowMirror ||
+            channelId.isEmpty ||
+            channelId.length > 64 ||
+            peer.proxyChannels.containsKey(channelId)) {
           await peer.session.sendMessage({
             'type': 'mirror.error',
             'channelId': channelId,
@@ -674,6 +736,7 @@ class LinkHostController extends ChangeNotifier {
           return;
         }
         peer.mirrors.remove(channelId)?.detach();
+        peer.revokeTerminalResources(channelId: channelId);
         final attachment = bridge.attachMirror(sessionId, (chunk) {
           if (peer.session.isClosed || !peer.mirrors.containsKey(channelId)) return;
           unawaited(
@@ -696,17 +759,24 @@ class LinkHostController extends ChangeNotifier {
           'channelId': channelId,
           'sessionId': sessionId,
           'data': base64Encode(attachment.snapshot),
+          if (attachment.resources case final resources?) ...{'files': true, 'monitor': resources.sample != null},
         });
 
       case 'mirror.detach':
         final channelId = msg['channelId'] as String? ?? '';
         peer.mirrors.remove(channelId)?.detach();
+        peer.revokeTerminalResources(channelId: channelId);
 
       case 'mirror.input':
         if (!perms.allowMirror) return;
         final channelId = msg['channelId'] as String? ?? '';
         final data = msg['data'] as String?;
         if (data != null) peer.mirrors[channelId]?.write(base64Decode(data));
+
+      case 'terminal.monitor':
+        unawaited(_sampleTerminal(peer, msg, perms));
+      case 'terminal.monitor.cancel':
+        peer.monitorRequests[msg['reqId']]?.cancel.cancel();
 
       case 'mirror.resize':
         if (!perms.allowMirror) return;
@@ -730,7 +800,11 @@ class LinkHostController extends ChangeNotifier {
           });
           return;
         }
-        if (peer.proxyChannels.length >= linkMaxProxyChannelsPerPeer) {
+        if (channelId.isEmpty ||
+            channelId.length > 64 ||
+            peer.mirrors.containsKey(channelId) ||
+            peer.proxyChannels.containsKey(channelId) ||
+            peer.proxyChannels.length >= linkMaxProxyChannelsPerPeer) {
           await peer.session.sendMessage({
             'type': 'proxy.error',
             'channelId': channelId,
@@ -756,19 +830,21 @@ class LinkHostController extends ChangeNotifier {
           final outSub = shell.stdout.listen(sendBytes, onError: (Object _) {});
           final errSub = shell.stderr.listen(sendBytes, onError: (Object _) {});
           peer.proxyChannels[channelId] = (channel: shell, outSub: outSub, errSub: errSub);
-          await peer.session.sendMessage({'type': 'proxy.opened', 'channelId': channelId});
+          await peer.session.sendMessage({
+            'type': 'proxy.opened',
+            'channelId': channelId,
+            if (shell is LinkProxyShell) ...{'files': true, 'monitor': shell.resources.sample != null},
+          });
           unawaited(
             shell.done.whenComplete(() {
+              if (!identical(peer.proxyChannels[channelId]?.channel, shell)) return;
               final entry = peer.proxyChannels.remove(channelId);
+              peer.revokeTerminalResources(channelId: channelId);
               if (entry != null) {
                 unawaited(entry.outSub.cancel());
                 unawaited(entry.errSub.cancel());
               }
-              if (!peer.session.isClosed) {
-                unawaited(
-                  peer.session.sendMessage({'type': 'proxy.closed', 'channelId': channelId}).catchError((Object _) {}),
-                );
-              }
+              _notifyClosedChannel(peer, 'proxy.closed', channelId);
             }),
           );
         } on Object catch (e) {
@@ -798,6 +874,7 @@ class LinkHostController extends ChangeNotifier {
       case 'proxy.close':
         final channelId = msg['channelId'] as String? ?? '';
         final entry = peer.proxyChannels.remove(channelId);
+        peer.revokeTerminalResources(channelId: channelId);
         if (entry != null) {
           unawaited(entry.outSub.cancel());
           unawaited(entry.errSub.cancel());
@@ -864,6 +941,50 @@ class LinkHostController extends ChangeNotifier {
     }
   }
 
+  Future<void> _sampleTerminal(_ConnectedPeer peer, Map<String, dynamic> msg, LinkPeerPermissions permissions) async {
+    final reqId = msg['reqId'], channelId = msg['channelId'];
+    if (reqId is! String ||
+        reqId.length > 64 ||
+        channelId is! String ||
+        channelId.length > 64 ||
+        peer.monitorRequests.containsKey(reqId)) {
+      return;
+    }
+    final resources = peer.resources(channelId, permissions), sample = resources?.sample;
+    final reply = <String, Object?>{'type': 'terminal.monitor.result', 'reqId': reqId};
+    if (sample != null &&
+        resources!.current() &&
+        peer.monitorRequests.length < 3 &&
+        !peer.monitorRequests.values.any((request) => request.channelId == channelId)) {
+      final cancel = CancellationToken();
+      peer.monitorRequests[reqId] = (channelId: channelId, cancel: cancel);
+      try {
+        final result = await sample(processes: msg['processes'] == true, gpu: msg['gpu'] == true, cancel: cancel);
+        final currentPermissions = _findPeer(peer.deviceId)?.permissions;
+        if (!cancel.isCancelled &&
+            resources.current() &&
+            currentPermissions != null &&
+            identical(peer.resources(channelId, currentPermissions), resources)) {
+          final limit = min(result.stdout.length, linkMonitorMaxBytes);
+          reply['output'] = base64Encode(Uint8List.sublistView(result.stdout, 0, limit));
+          reply['exitCode'] = result.exitCode;
+          reply['truncated'] = result.truncated || limit < result.stdout.length;
+        }
+      } on Object {
+        // The client displays a failed sample and can retry on its next tick.
+      } finally {
+        peer.monitorRequests.remove(reqId);
+      }
+    }
+    if (!peer.session.isClosed) await peer.session.sendMessage(reply).catchError((Object _) {});
+  }
+
+  void _notifyClosedChannel(_ConnectedPeer peer, String type, String channelId) {
+    if (!peer.session.isClosed) {
+      unawaited(peer.session.sendMessage({'type': type, 'channelId': channelId}).catchError((Object _) {}));
+    }
+  }
+
   void _pushFileAccess(_ConnectedPeer peer) {
     final permissions = _findPeer(peer.deviceId)?.permissions;
     final local = permissions?.allowFiles == true;
@@ -926,10 +1047,12 @@ class LinkHostController extends ChangeNotifier {
 
 /// Client-side [ShellChannel] backed by either a desktop mirror or a desktop-proxied SSH channel over E2EE Link.
 class _LinkShellChannel implements ShellChannel {
-  _LinkShellChannel({required this.onWrite, required this.onResize, required this.onClose}) {
+  _LinkShellChannel(this.id, {required this.onWrite, required this.onResize, required this.onClose}) {
     _stdout = StreamController<Uint8List>.broadcast(onListen: _flushPending);
   }
 
+  final String id;
+  bool hasFiles = false, hasMonitor = false;
   final void Function(Uint8List data) onWrite;
   final void Function(int cols, int rows) onResize;
   final VoidCallback onClose;
@@ -1032,6 +1155,7 @@ class LinkClientController extends ChangeNotifier {
 
   final _channels = <String, _LinkShellChannel>{};
   final _openWaiters = <String, Completer<void>>{};
+  final _monitorWaiters = <String, Completer<Map<String, dynamic>>>{};
   final _syncWaiters = <String, Completer<({LinkSyncBundle bundle, bool awaitingPasswordApproval})>>{};
   final _requestedPasswordSyncIds = <String>{};
   final _followDesktopChannels = <String>{};
@@ -1061,6 +1185,67 @@ class LinkClientController extends ChangeNotifier {
   Future<FileSystem> openFiles(Object binding, {String? hostId}) async {
     if (!identical(desktopFilesBinding(proxy: hostId != null), binding)) throw const FsError(FsFailure.lost);
     return _files!.open(hostId == null ? 'local' : 'host:$hostId');
+  }
+
+  bool _channelCurrent(_LinkShellChannel channel) =>
+      connected && !channel._closed && identical(_channels[channel.id], channel);
+
+  bool terminalFilesAvailable(ShellChannel? channel) =>
+      channel is _LinkShellChannel && channel.hasFiles && desktopSharesFiles && _channelCurrent(channel);
+
+  Future<FileSystem> openTerminalFiles(ShellChannel channel) async {
+    if (!terminalFilesAvailable(channel)) throw const FsError(FsFailure.lost);
+    return _files!.open('terminal:${(channel as _LinkShellChannel).id}');
+  }
+
+  MonitorSample? terminalMonitor(ShellChannel? channel) {
+    if (channel is! _LinkShellChannel || !channel.hasMonitor || !_channelCurrent(channel)) return null;
+    return ({required processes, required gpu, required cancel}) =>
+        _sampleTerminal(channel, processes: processes, gpu: gpu, cancel: cancel);
+  }
+
+  Future<ExecResult> _sampleTerminal(
+    _LinkShellChannel channel, {
+    required bool processes,
+    required bool gpu,
+    required CancellationToken cancel,
+  }) async {
+    final session = _session;
+    if (session == null || !_channelCurrent(channel) || cancel.isCancelled) {
+      throw const ExecError(ExecFailure.cancelled);
+    }
+    final reqId = newId(), waiter = Completer<Map<String, dynamic>>();
+    _monitorWaiters[reqId] = waiter;
+    var completed = false;
+    try {
+      final message = await Future.any([
+        Future.wait([
+          waiter.future,
+          session.sendMessage({
+            'type': 'terminal.monitor',
+            'reqId': reqId,
+            'channelId': channel.id,
+            'processes': processes,
+            'gpu': gpu,
+          }),
+        ], eagerError: true).then((values) => values.first as Map<String, dynamic>),
+        cancel.whenCancelled.then<Map<String, dynamic>>((_) => throw const ExecError(ExecFailure.cancelled)),
+      ]).timeout(const Duration(seconds: 12));
+      completed = true;
+      final output = message['output'];
+      if (output is! String || !_channelCurrent(channel)) throw const LinkException(LinkErrorKind.hostUnavailable);
+      return ExecResult(
+        base64Decode(output),
+        Uint8List(0),
+        message['exitCode'] as int?,
+        truncated: message['truncated'] == true,
+      );
+    } finally {
+      _monitorWaiters.remove(reqId);
+      if (!completed && !session.isClosed) {
+        unawaited(session.sendMessage({'type': 'terminal.monitor.cancel', 'reqId': reqId}).catchError((Object _) {}));
+      }
+    }
   }
 
   Future<void> sharePhoneFiles(bool enabled, Object binding) async {
@@ -1275,6 +1460,10 @@ class LinkClientController extends ChangeNotifier {
       if (!w.isCompleted) w.completeError(const LinkException(LinkErrorKind.network));
     }
     _openWaiters.clear();
+    for (final waiter in _monitorWaiters.values) {
+      if (!waiter.isCompleted) waiter.completeError(const LinkException(LinkErrorKind.network));
+    }
+    _monitorWaiters.clear();
     for (final w in _syncWaiters.values) {
       if (!w.isCompleted) w.completeError(const LinkException(LinkErrorKind.network));
     }
@@ -1312,6 +1501,7 @@ class LinkClientController extends ChangeNotifier {
     _openWaiters[channelId] = waiter;
     if (followDesktopSize) _followDesktopChannels.add(channelId);
     final channel = _LinkShellChannel(
+      channelId,
       onWrite: (data) {
         if (!connected) return;
         unawaited(
@@ -1358,6 +1548,7 @@ class LinkClientController extends ChangeNotifier {
     final waiter = Completer<void>();
     _openWaiters[channelId] = waiter;
     final channel = _LinkShellChannel(
+      channelId,
       onWrite: (data) {
         if (!connected) return;
         unawaited(
@@ -1544,6 +1735,13 @@ class LinkClientController extends ChangeNotifier {
     );
   }
 
+  void _setChannelResources(String id, Map<String, dynamic> msg) {
+    if (_channels[id] case final channel?) {
+      channel.hasFiles = msg['files'] == true;
+      channel.hasMonitor = msg['monitor'] == true;
+    }
+  }
+
   void _handleMessage(Map<String, dynamic> msg) {
     final type = msg['type'] as String? ?? '';
     switch (type) {
@@ -1571,6 +1769,7 @@ class LinkClientController extends ChangeNotifier {
       case 'mirror.snapshot':
         final channelId = msg['channelId'] as String? ?? '';
         final data = msg['data'] as String?;
+        _setChannelResources(channelId, msg);
         final waiter = _openWaiters.remove(channelId);
         if (waiter != null && !waiter.isCompleted) waiter.complete();
         if (data != null && data.isNotEmpty) {
@@ -1592,8 +1791,12 @@ class LinkClientController extends ChangeNotifier {
         if (waiter != null && !waiter.isCompleted) waiter.completeError(LinkException(kind));
         _channels.remove(channelId)?.finish();
 
+      case 'terminal.monitor.result':
+        _monitorWaiters.remove(msg['reqId'])?.complete(msg);
+
       case 'proxy.opened':
         final channelId = msg['channelId'] as String? ?? '';
+        _setChannelResources(channelId, msg);
         final waiter = _openWaiters.remove(channelId);
         if (waiter != null && !waiter.isCompleted) waiter.complete();
 
@@ -1604,8 +1807,10 @@ class LinkClientController extends ChangeNotifier {
           _channels[channelId]?.deliverOutput(base64Decode(data));
         }
 
+      case 'mirror.closed':
       case 'proxy.closed':
         final channelId = msg['channelId'] as String? ?? '';
+        _followDesktopChannels.remove(channelId);
         _channels.remove(channelId)?.finish();
 
       case 'proxy.error':

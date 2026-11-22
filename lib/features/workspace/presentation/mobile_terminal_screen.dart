@@ -198,26 +198,91 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
   void _openMonitorSheet(Host host) =>
       unawaited(_showSheet(heightFactor: 0.72, MonitorPanel(host: host, active: true)));
 
-  void _openFilesPage(Host host, TerminalSession session) {
+  void _openFilesPage(TerminalSession session, {Host? host, FileLocation? location}) {
     unawaited(
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (routeContext) => MobileFilesPage(
             host: host,
+            location: location,
             onSendPathToTerminal: (path) {
               Navigator.of(routeContext).pop();
               final escaped = path.contains(' ') ? "'${path.replaceAll("'", "'\\''")}'" : path;
               unawaited(session.insert(escaped, run: false, confirm: (_) async => true, confirmMultiline: false));
             },
-            onAskAiry: (prompt) {
-              Navigator.of(routeContext).pop();
-              _openAirySheet(seed: prompt);
-            },
+            onAskAiry: location != null
+                ? null
+                : (prompt) {
+                    Navigator.of(routeContext).pop();
+                    _openAirySheet(seed: prompt);
+                  },
           ),
         ),
       ),
     );
   }
+
+  Widget _terminalTools(TerminalSession session, LinkClientController link) => ListenableBuilder(
+    listenable: Listenable.merge([session, link]),
+    builder: (context, _) {
+      final l = AppLocalizations.of(context);
+      final host = session.sshHost, channel = session.linkShellChannel;
+      final remoteMonitor = link.terminalMonitor(channel);
+      final remoteFiles = channel != null && link.terminalFilesAvailable(channel);
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (host != null || remoteFiles)
+            IconButton(
+              key: const ValueKey('mobile-terminal-files'),
+              visualDensity: VisualDensity.compact,
+              tooltip: l.files,
+              icon: const Icon(Icons.folder_outlined, size: 19),
+              onPressed: () {
+                if (host != null) {
+                  _openFilesPage(session, host: host);
+                  return;
+                }
+                final target = session.linkTarget!;
+                final local =
+                    target.kind == LinkTerminalKind.mirror &&
+                    link.desktopSessions.any((entry) => entry.sessionId == target.remoteId && entry.isLocal);
+                _openFilesPage(
+                  session,
+                  location: FileLocation(
+                    id: 'link:terminal:${session.id.value}:${session.shellGeneration}',
+                    label: local ? target.peerName : session.title,
+                    kind: local ? FileLocationKind.computer : FileLocationKind.server,
+                    open: () => link.openTerminalFiles(channel!),
+                    isCurrent: () =>
+                        identical(session.linkShellChannel, channel) && link.terminalFilesAvailable(channel),
+                  ),
+                );
+              },
+            ),
+          if (host != null || remoteMonitor != null)
+            IconButton(
+              key: const ValueKey('mobile-terminal-monitor'),
+              visualDensity: VisualDensity.compact,
+              tooltip: l.monitor,
+              icon: const Icon(Icons.monitor_heart_outlined, size: 19),
+              onPressed: () {
+                if (host != null) {
+                  _openMonitorSheet(host);
+                  return;
+                }
+                unawaited(
+                  _showSheet(
+                    heightFactor: .72,
+                    MonitorPanel.remote(remote: remoteMonitor!, remoteName: session.title, active: true),
+                  ),
+                );
+              },
+            ),
+        ],
+      );
+    },
+  );
 
   Future<void> _handoffHost(Host host) async {
     final l = AppLocalizations.of(context);
@@ -454,22 +519,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
           icon: Icon(Icons.auto_awesome_rounded, size: 19, color: palette.primary),
           onPressed: _openAirySheet,
         ),
-        if (host != null) ...[
-          IconButton(
-            key: const ValueKey('mobile-terminal-files'),
-            visualDensity: VisualDensity.compact,
-            tooltip: l.files,
-            icon: const Icon(Icons.folder_outlined, size: 19),
-            onPressed: () => _openFilesPage(host, activeSession),
-          ),
-          IconButton(
-            key: const ValueKey('mobile-terminal-monitor'),
-            visualDensity: VisualDensity.compact,
-            tooltip: l.monitor,
-            icon: const Icon(Icons.monitor_heart_outlined, size: 19),
-            onPressed: () => _openMonitorSheet(host),
-          ),
-        ],
+        _terminalTools(activeSession, link),
         PopupMenuButton<String>(
           key: const ValueKey('mobile-terminal-more'),
           icon: const Icon(Icons.more_vert_rounded, size: 19),

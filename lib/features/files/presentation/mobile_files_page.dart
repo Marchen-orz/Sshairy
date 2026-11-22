@@ -38,10 +38,18 @@ class _Drag {
 /// Two panes on a phone (docs/MOBILE.md §3.3): side by side when turned, stacked or side by side upright, and
 /// compact while upright. Each pane picks its own place; an entry dropped on the other pane is copied into its folder.
 class MobileFilesPage extends ConsumerStatefulWidget {
-  const MobileFilesPage({super.key, this.host, this.initialPath, this.onSendPathToTerminal, this.onAskAiry});
+  const MobileFilesPage({
+    super.key,
+    this.host,
+    this.location,
+    this.initialPath,
+    this.onSendPathToTerminal,
+    this.onAskAiry,
+  }) : assert(host == null || location == null);
 
   /// Opens in the first pane beside this phone; without it, this phone sits beside the linked computer.
   final Host? host;
+  final FileLocation? location;
   final String? initialPath;
   final ValueChanged<String>? onSendPathToTerminal;
   final ValueChanged<String>? onAskAiry;
@@ -70,9 +78,13 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
     _panes = [for (var i = 0; i < 2; i++) FileBrowser(connections, showHidden: hidden)];
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final host = widget.host;
-      if (host != null) {
-        unawaited(_panes[0].open(host, DialogPrompts(context), at: widget.initialPath));
+      final host = widget.host, location = widget.location;
+      if (host != null || location != null) {
+        unawaited(
+          location != null
+              ? _panes[0].openLocation(location, at: widget.initialPath)
+              : _panes[0].open(host, DialogPrompts(context), at: widget.initialPath),
+        );
         unawaited(_panes[1].openLocation(_phone));
         return;
       }
@@ -310,7 +322,9 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
               const Divider(height: 1),
               if (!entry.browsable)
                 action(Icons.edit_outlined, l.mobileFileEditor, () => unawaited(_openEditor(b, entry))),
-              if (toTerminal != null && b.host != null && b.host!.id == widget.host?.id)
+              if (toTerminal != null &&
+                  (b.host != null && b.host!.id == widget.host?.id ||
+                      widget.location != null && b.location?.id == widget.location!.id))
                 action(Icons.terminal, l.mobileSendPathToTerminal, () {
                   toTerminal(fullPath);
                   Navigator.of(this.context).maybePop();
@@ -408,6 +422,7 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
     });
     final places = <String, Object>{
       _phone.id: _phone,
+      ?widget.location?.id: ?widget.location,
       for (final p in ref.watch(fileLocationsProvider)) p.id: p,
       for (final h in sortHosts(ref.watch(hostsProvider), recent: true)) 'host:${h.id.value}': h,
     };

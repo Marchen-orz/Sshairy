@@ -21,13 +21,29 @@ enum _Page { system, gpu }
 
 /// The server's vital signs beside its terminal (docs/MODULES.md §8). Polls only while [active].
 class MonitorPanel extends ConsumerStatefulWidget {
-  const MonitorPanel({super.key, required this.host, required this.active}) : local = null;
+  const MonitorPanel({super.key, required this.host, required this.active})
+    : local = null,
+      remote = null,
+      remoteName = null;
 
   /// This computer, for a local terminal on macOS or Linux.
-  const MonitorPanel.local({super.key, required LocalMonitorExec this.local, required this.active}) : host = null;
+  const MonitorPanel.local({super.key, required LocalMonitorExec this.local, required this.active})
+    : host = null,
+      remote = null,
+      remoteName = null;
+
+  const MonitorPanel.remote({
+    super.key,
+    required MonitorSample this.remote,
+    required this.remoteName,
+    required this.active,
+  }) : host = null,
+       local = null;
 
   final Host? host;
   final LocalMonitorExec? local;
+  final MonitorSample? remote;
+  final String? remoteName;
   final bool active;
 
   @override
@@ -42,12 +58,12 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
   Duration get _interval => Duration(seconds: ref.read(settingsProvider).get(SettingKeys.monitorInterval));
 
   ServerMonitor _create() {
-    final local = widget.local;
-    final m =
-        (local == null
-              ? ServerMonitor(ref.read(connectionManagerProvider), widget.host!, interval: _interval)
-              : ServerMonitor.local(local, localName: local.name, interval: _interval))
-          ..gpuVisible = _page == _Page.gpu;
+    final m = switch ((widget.local, widget.remote)) {
+      (final local?, _) => ServerMonitor.local(local, localName: local.name, interval: _interval),
+      (_, final remote?) => ServerMonitor.remote(remote, localName: widget.remoteName!, interval: _interval),
+      _ => ServerMonitor(ref.read(connectionManagerProvider), widget.host!, interval: _interval),
+    };
+    m.gpuVisible = _page == _Page.gpu;
     if (widget.active) m.start();
     return m;
   }
@@ -55,7 +71,10 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
   @override
   void didUpdateWidget(MonitorPanel old) {
     super.didUpdateWidget(old);
-    if (old.host?.id != widget.host?.id || !identical(old.local, widget.local)) {
+    if (old.host?.id != widget.host?.id ||
+        old.local != widget.local ||
+        old.remote != widget.remote ||
+        old.remoteName != widget.remoteName) {
       _monitor.dispose();
       _monitor = _create();
     } else if (widget.active != old.active) {
@@ -89,7 +108,7 @@ class _MonitorPanelState extends ConsumerState<MonitorPanel> {
           final gpus = _monitor.snapshot?.sample.gpuVendors.isNotEmpty ?? false;
           return _Content(
             monitor: _monitor,
-            title: widget.host?.title ?? widget.local!.name,
+            title: _monitor.name,
             address: widget.host?.address,
             page: gpus ? _page : _Page.system,
             onPage: gpus ? _show : null,

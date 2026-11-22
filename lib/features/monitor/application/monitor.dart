@@ -20,12 +20,20 @@ abstract interface class MonitorExec {
   Future<ExecResult> exec(String command, {required int limit, Duration? timeout, CancellationToken? cancel});
 }
 
+/// Fixed read-only sampling, for a linked terminal whose desktop runs the probe.
+typedef MonitorSample = Future<ExecResult> Function({
+  required bool processes,
+  required bool gpu,
+  required CancellationToken cancel,
+});
+
 /// Polls one target with [statsCommand] (docs/MODULES.md §8, ADR-14). For a host it uses an exec lease and never
 /// dials: with no live connection it reports [MonitorState.offline] and looks again on the next tick. For this
 /// computer it runs the same probe locally.
 class ServerMonitor extends ChangeNotifier {
   ServerMonitor(this._connections, this.host, {Duration interval = const Duration(seconds: 3)})
     : _local = null,
+      _remote = null,
       localName = null,
       _interval = interval; // ignore: prefer_initializing_formals, a private named parameter is not allowed
 
@@ -33,11 +41,21 @@ class ServerMonitor extends ChangeNotifier {
     : _connections = null,
       host = null,
       _local = local,
+      _remote = null,
+      _interval = interval; // ignore: prefer_initializing_formals, a private named parameter is not allowed
+
+  ServerMonitor.remote(MonitorSample sample, {required this.localName, Duration interval = const Duration(seconds: 3)})
+    : _connections = null,
+      host = null,
+      _local = null,
+      _remote = sample,
       _interval = interval; // ignore: prefer_initializing_formals, a private named parameter is not allowed
 
   final ConnectionManager? _connections;
   final Host? host;
   final MonitorExec? _local;
+  final MonitorSample? _remote;
+  bool get canSignal => _remote == null;
   final String? localName;
 
   /// What the process window titles itself.
@@ -204,28 +222,31 @@ class ServerMonitor extends ChangeNotifier {
   }
 
   /// Runs one probe, allowing [stop] and a dropped lease to cancel it.
-  Future<ExecResult> _run(String command, {required int limit, TransportLease? lease}) async {
+  Future<ExecResult> _run(String? command, {required int limit, TransportLease? lease}) async {
     final cancel = CancellationToken();
     _executions.add(cancel);
     try {
+      if (_remote case final sample?) {
+        return await sample(processes: _processViews > 0, gpu: _gpuVisible, cancel: cancel);
+      }
+      final actual = command ?? statsCommand(processes: _processViews > 0, gpu: _gpuVisible);
       if (_local case final local?) {
-        return await local.exec(command, limit: limit, timeout: _timeout, cancel: cancel);
+        return await local.exec(actual, limit: limit, timeout: _timeout, cancel: cancel);
       }
       if (lease == null) throw StateError('no lease to sample with');
-      return await lease.exec(command, limit: limit, timeout: _timeout, cancel: cancel);
+      return await lease.exec(actual, limit: limit, timeout: _timeout, cancel: cancel);
     } finally {
       _executions.remove(cancel);
     }
   }
 
   Future<void> _poll(int generation) async {
-    final lease = _local == null ? await _acquire(generation: generation) : null;
+    final lease = _connections != null ? await _acquire(generation: generation) : null;
     if (!_running || generation != _generation) return;
-    if (_local == null && lease == null) return _set(MonitorState.offline);
+    if (_connections != null && lease == null) return _set(MonitorState.offline);
     final ExecResult result;
     try {
-      final command = statsCommand(processes: _processViews > 0, gpu: _gpuVisible);
-      result = await _run(command, limit: _limit, lease: lease);
+      result = await _run(null, limit: _limit, lease: lease);
     } on Object {
       if (!_running || generation != _generation) return;
       if (lease != null && lease.lost) {
@@ -271,6 +292,7 @@ class ServerMonitor extends ChangeNotifier {
   /// capability: only the process window calls it, after the user confirmed. The command is built from an integer
   /// and an enum; pids 0 and 1 and negative ones, which address groups or init, are refused.
   Future<Result<void>> signal(int pid, ProcessSignal signal) async {
+    if (!canSignal) return const Err(AppError('unsupported'));
     if (pid <= 1) return Err(AppError('invalidArgument', detail: '$pid'));
     final name = switch (signal) {
       ProcessSignal.term => 'TERM',
