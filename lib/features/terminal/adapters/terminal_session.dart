@@ -16,6 +16,7 @@ import '../../../design/terminal_palette.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/cancellation.dart';
+import '../../../foundation/file_system.dart';
 import '../../../foundation/shortcuts.dart';
 import '../../../foundation/open_external.dart';
 import '../../../l10n/app_localizations.dart';
@@ -79,7 +80,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
        _autoReconnect = autoReconnect ?? (() => false),
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
        _translations = completionTranslations,
-       _snippets = snippets ?? (() => const []) {
+       _snippets = snippets ?? (() => const []),
+       linkedFiles = null {
     _authorizeInitialConnection = authorizeInitialConnection;
     _configureTerminal();
   }
@@ -104,6 +106,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
        _completionSpecs = completionSpecs ?? CompletionSpecs.shared,
        _translations = completionTranslations,
        _snippets = snippets ?? (() => const []),
+       linkedFiles = null,
        remotePaths = null {
     _configureTerminal();
   }
@@ -119,6 +122,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     CompletionSpecs? completionSpecs,
     CompletionTranslations? completionTranslations,
     List<CommandSnippet> Function()? snippets,
+    this.linkedFiles,
   }) : _sshHost = null,
        target = linkTarget,
        _connections = null,
@@ -247,6 +251,9 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   final List<CommandSnippet> Function() _snippets;
   final RemotePathSource? remotePaths;
   RemotePathSource? _ownedPaths;
+
+  /// Files behind a non-SSH shell, used for path completion once that shell is live.
+  final Future<FileSystem> Function()? linkedFiles;
   final _browseStack = <_BrowseFrame>[];
   final _commands = CommandHistory();
   final _aiHistory = <TerminalAiHistoryEntry>[];
@@ -886,6 +893,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       _shell = shell;
       _shellEnded = false;
       _resetCommandDraft();
+      _ownedPaths = linkedFiles == null ? null : LinkedRemotePathSource(linkedFiles!, generation: _shellGeneration);
       void ended() {
         if (!identical(_shell, shell)) return;
         _shellEnded = true;

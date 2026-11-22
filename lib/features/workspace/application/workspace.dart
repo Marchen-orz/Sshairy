@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/data_dir.dart';
+import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/json_file.dart';
 import '../../connections/api.dart' show ShellChannel;
@@ -97,7 +98,11 @@ class Workspace extends Notifier<WorkspaceState> {
   }
 
   /// A desktop session has one mirror window: a live one is brought forward, a dead one is replaced.
-  TabId openRemote(LinkTerminalTarget target, Future<ShellChannel> Function(int cols, int rows) openChannel) {
+  TabId openRemote(
+    LinkTerminalTarget target,
+    Future<ShellChannel> Function(int cols, int rows) openChannel, {
+    Future<FileSystem> Function()? files,
+  }) {
     if (target.kind == LinkTerminalKind.mirror) {
       for (final tab in state.tabs) {
         final mirror = session(tab.layout.focusedLeaf.session);
@@ -116,7 +121,7 @@ class Workspace extends Notifier<WorkspaceState> {
         break;
       }
     }
-    final s = _sessions.openRemote(target, openChannel);
+    final s = _sessions.openRemote(target, openChannel, files: files);
     final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
     _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));
     return tab.id;

@@ -13,6 +13,16 @@ class LeaseRemotePathSource extends RemotePathBrowser {
     : super(SftpDirectoryReader(lease.openFiles, isLost: () => lease.lost, limit: timeout));
 }
 
+/// Path completion over the files of a non-SSH shell, such as a Sshairy Link mirror or desktop-proxied terminal.
+/// [open] supplies the terminal's own file system; a lost or forbidden mount fails as unavailable.
+class LinkedRemotePathSource extends RemotePathBrowser {
+  LinkedRemotePathSource(
+    Future<FileSystem> Function() open, {
+    required super.generation,
+    super.timeout = const Duration(seconds: 5),
+  }) : super(SftpDirectoryReader(open, limit: timeout));
+}
+
 /// [RemoteDirectoryReader] over an SFTP channel that [_open] provides on demand. The channel is opened by the first
 /// request, closed after [idle] without one, and closed at once when a request is cancelled, times out or the lease is
 /// lost: closing it is what stops a request that cannot be interrupted otherwise.

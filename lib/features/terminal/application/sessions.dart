@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
@@ -82,6 +83,7 @@ class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
     Future<ShellChannel> Function(int cols, int rows) openChannel, {
     SessionId? id,
     bool autoConnect = true,
+    Future<FileSystem> Function()? files,
   }) {
     final session = TerminalSession.remote(
       id ?? SessionId(newId()),
@@ -90,6 +92,7 @@ class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
       autoConnect: autoConnect,
       scrollback: ref.read(settingsProvider).get(SettingKeys.scrollback),
       snippets: () => ref.read(terminalSnippetsProvider),
+      linkedFiles: files,
     );
     _owned[session.id] = session;
     state = {...state, session.id: session};

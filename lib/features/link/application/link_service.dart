@@ -106,6 +106,7 @@ abstract interface class LinkMobileBridge {
     required String targetLabel,
     required bool isMirror,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
+    Future<FileSystem> Function()? files,
   });
 
   Future<LinkFsHandle> openFiles();
@@ -177,6 +178,7 @@ class _NullMobileBridge implements LinkMobileBridge {
     required String targetLabel,
     required bool isMirror,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
+    Future<FileSystem> Function()? files,
   }) {}
   @override
   Future<LinkFsHandle> openFiles() async => throw const FsError(FsFailure.unsupported);
@@ -1755,6 +1757,7 @@ class LinkClientController extends ChangeNotifier {
   /// Opens a desktop mirror tab in the local workspace via [bridge].
   void openMirroredSessionInWorkspace(LinkSessionSummary target, {bool followDesktopSize = true}) {
     if (!connected || _connectedDesktopId == null) return;
+    ShellChannel? opened;
     bridge.openRemoteTerminal(
       peerId: _connectedDesktopId!,
       peerName: _connectedDesktopName ?? _connectedDesktopId!,
@@ -1762,7 +1765,9 @@ class LinkClientController extends ChangeNotifier {
       title: target.title,
       targetLabel: '${_connectedDesktopName ?? 'Desktop'} · ${target.targetLabel}',
       isMirror: true,
-      openChannel: (_, _) => openMirrorChannel(target.sessionId, followDesktopSize: followDesktopSize),
+      openChannel: (_, _) async =>
+          opened = await openMirrorChannel(target.sessionId, followDesktopSize: followDesktopSize),
+      files: () => openTerminalFiles(opened!),
     );
   }
 
@@ -1802,6 +1807,7 @@ class LinkClientController extends ChangeNotifier {
   /// Opens a desktop-proxied SSH tab in the local workspace via [bridge].
   void openProxiedHostInWorkspace(LinkHostSummary host) {
     if (!connected || _connectedDesktopId == null) return;
+    ShellChannel? opened;
     bridge.openRemoteTerminal(
       peerId: _connectedDesktopId!,
       peerName: _connectedDesktopName ?? _connectedDesktopId!,
@@ -1809,7 +1815,8 @@ class LinkClientController extends ChangeNotifier {
       title: host.label.isEmpty ? host.targetLabel : host.label,
       targetLabel: '${_connectedDesktopName ?? 'Desktop'} ⇄ ${host.targetLabel}',
       isMirror: false,
-      openChannel: (cols, rows) => openProxyChannel(host.hostId, cols: cols, rows: rows),
+      openChannel: (cols, rows) async => opened = await openProxyChannel(host.hostId, cols: cols, rows: rows),
+      files: () => openTerminalFiles(opened!),
     );
   }
 

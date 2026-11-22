@@ -603,6 +603,7 @@ class AppLinkMobileBridge implements LinkMobileBridge {
     required String targetLabel,
     required bool isMirror,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
+    Future<FileSystem> Function()? files,
   }) {
     _ref
         .read(workspaceProvider.notifier)
@@ -616,6 +617,7 @@ class AppLinkMobileBridge implements LinkMobileBridge {
             kind: isMirror ? LinkTerminalKind.mirror : LinkTerminalKind.proxy,
           ),
           openChannel,
+          files: files,
         );
   }
 }
