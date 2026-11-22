@@ -80,6 +80,10 @@ class CommandAssistanceState {
 bool commandIsSingleLine(String text) =>
     text.length <= CommandHistory.maxLength && !text.runes.any((r) => r < 32 || (r >= 127 && r <= 159));
 
+bool _echoedDraftValid(String text, {bool allowMultiline = false}) =>
+    text.length <= CommandHistory.maxLength &&
+    !text.runes.any((r) => (r < 32 && !(allowMultiline && r == 10)) || (r >= 127 && r <= 159));
+
 class CommandHistory {
   static const limit = 100, maxLength = 2048;
   final _commands = <String>[];
@@ -94,23 +98,35 @@ class CommandHistory {
   void clear() => _commands.clear();
 }
 
-String? visibleShellCommand(String beforeCursor, String afterCursor) {
+String? visibleShellCommand(String beforeCursor, String afterCursor, {bool allowMultiline = false}) {
   if (afterCursor.trim().isNotEmpty) return null;
   // Conda and virtualenv put `(env) ` in front of the usual user@host prompt.
   final prompt = RegExp(r'^(?:\([^)\r\n]+\) )*(?:\[[^\]\r\n]*@[^\]\r\n]+\]|[\w.-]+@[\w.-]+:[^\r\n]*?)[#$] ')
       .firstMatch(beforeCursor);
   if (prompt == null) return null;
   final command = beforeCursor.substring(prompt.end);
-  return commandIsSingleLine(command) ? command : null;
+  return _echoedDraftValid(command, allowMultiline: allowMultiline) ? command : null;
 }
 
 /// Default Unix prompts for local shells and SSH; custom prompts still require semantic OSC boundaries.
-String? visibleUnixShellCommand(String beforeCursor, String afterCursor, {bool percent = false, bool fish = false}) {
+String? visibleUnixShellCommand(
+  String beforeCursor,
+  String afterCursor, {
+  bool percent = false,
+  bool fish = false,
+  bool allowMultiline = false,
+}) {
   if (afterCursor.trim().isNotEmpty) return null;
   if (!fish) {
     final known =
-        visibleShellCommand(beforeCursor, afterCursor) ??
-        visibleLocalShellCommand(beforeCursor, afterCursor, powershell: false, bash: true);
+        visibleShellCommand(beforeCursor, afterCursor, allowMultiline: allowMultiline) ??
+        visibleLocalShellCommand(
+          beforeCursor,
+          afterCursor,
+          powershell: false,
+          bash: true,
+          allowMultiline: allowMultiline,
+        );
     if (known != null) return known;
   }
   const envPrefix = r'(?:\([^)\r\n]+\) )*';
@@ -129,7 +145,7 @@ String? visibleUnixShellCommand(String beforeCursor, String afterCursor, {bool p
           ?.firstMatch(beforeCursor);
   if (prompt == null) return null;
   final command = beforeCursor.substring(prompt.end);
-  return commandIsSingleLine(command) ? command : null;
+  return _echoedDraftValid(command, allowMultiline: allowMultiline) ? command : null;
 }
 
 /// Conservative defaults for local shells. Custom prompts still require semantic OSC boundaries.
@@ -138,6 +154,7 @@ String? visibleLocalShellCommand(
   String afterCursor, {
   required bool powershell,
   required bool bash,
+  bool allowMultiline = false,
 }) {
   if (afterCursor.trim().isNotEmpty) return null;
   const envPrefix = r'(?:\([^)\r\n]+\) )*';
@@ -159,7 +176,7 @@ String? visibleLocalShellCommand(
           .firstMatch(beforeCursor);
   if (prompt == null) return null;
   final command = beforeCursor.substring(prompt.end);
-  return commandIsSingleLine(command) ? command : null;
+  return _echoedDraftValid(command, allowMultiline: allowMultiline) ? command : null;
 }
 
 const commandCandidateLimit = 200, commandHistoryCandidateLimit = 50;

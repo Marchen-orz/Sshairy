@@ -179,7 +179,7 @@ extension _TerminalHistoryResults on TerminalSession {
     _pendingCommandResult = _PendingCommandResult(
       entry,
       buffer.createAnchorFromCursor(),
-      _rowText(buffer.absoluteCursorY, 0, buffer.cursorX),
+      _logicalLinePrefix(buffer.absoluteCursorY, buffer.cursorX),
       _terminal.resultMutation,
       buffer.screenClearGeneration,
     );
@@ -200,7 +200,7 @@ extension _TerminalHistoryResults on TerminalSession {
         pending.mutation == _terminal.resultMutation &&
         pending.screenGeneration == buffer.screenClearGeneration &&
         buffer.ownsAnchor(pending.submitted) &&
-        _rowText(pending.submitted.y, 0, pending.submitted.x) == pending.prefix;
+        _logicalLinePrefix(pending.submitted.y, pending.submitted.x) == pending.prefix;
   }
 
   void _historyOsc(String code, List<String> arguments) {
@@ -247,8 +247,9 @@ extension _TerminalHistoryResults on TerminalSession {
     if (_semanticSeen || _echoedCommand() != '') return;
     final buffer = _terminal.mainBuffer;
     if (buffer.absoluteCursorY <= pending.submitted.y) return;
-    if (_rowText(buffer.absoluteCursorY, 0, buffer.cursorX) !=
-        pending.prefix.substring(0, pending.prefix.length - pending.entry.text.length)) {
+    if (pending.prefix.length < pending.entry.text.length ||
+        _rowText(buffer.absoluteCursorY, 0, buffer.cursorX) !=
+            pending.prefix.substring(0, pending.prefix.length - pending.entry.text.length)) {
       _discardPendingCommandResult();
       return;
     }

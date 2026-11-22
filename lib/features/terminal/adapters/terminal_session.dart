@@ -262,7 +262,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   var _shellGeneration = 0, _draftRevision = 0, _inputSequence = 0;
   var _semanticSeen = false, _semanticInput = false;
   int? _promptRow, _promptColumn;
-  BufferLine? _submittedLine;
+  BufferLine? _submittedLine, _pastedPromptLine;
   String? _submittedText;
   var _inputPending = false, _historyBrowsing = false;
 
@@ -285,8 +285,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
   @override
   TerminalAiContext readAiContext() {
-    final echoed = pendingOutputBytes == 0 ? _echoedCommand() : null;
-    final draft = echoed != null && (echoed.isEmpty || validTerminalAiCommand(echoed)) ? echoed : null;
+    final echoed = pendingOutputBytes == 0 ? _echoedCommand(allowMultiline: true) : null;
+    final draft = echoed != null && (echoed.isEmpty || validTerminalAiDraft(echoed)) ? echoed : null;
     return TerminalAiContext(
       sessionId: id,
       target: switch (target) {
@@ -415,7 +415,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     final stopped = CancellationToken();
     final result = Completer<InsertResult>();
     final buffer = _terminal.buffer;
-    final line = buffer.lines[buffer.absoluteCursorY];
+    final startRow = _promptStartRow() ?? _logicalStartRow(buffer.absoluteCursorY);
+    final startLine = buffer.lines[startRow];
     _insertions.add(stopped);
     void finish(InsertResult value) {
       if (!result.isCompleted) result.complete(value);
@@ -425,17 +426,31 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     void check() {
       if (sequence == null) return;
       final current = readAiContext();
+      final lines = _terminal.buffer.lines;
       final row = _terminal.buffer.absoluteCursorY;
-      final currentLine = row >= 0 && row < _terminal.buffer.lines.length ? _terminal.buffer.lines[row] : null;
+      final currentLine = row >= 0 && row < lines.length ? lines[row] : null;
+      final activeStart = _promptStartRow();
+      final samePrompt =
+          currentLine != null &&
+          (activeStart != null
+              ? identical(lines[activeStart], startLine)
+              : () {
+                  final floor = max(0, row - 32);
+                  for (var r = row; r >= floor; r--) {
+                    if (identical(lines[r], startLine)) return true;
+                  }
+                  return false;
+                }());
       if (isCurrent?.call() == false) {
         finish(InsertResult.cancelled);
       } else if (!canInsert ||
           sequence != _inputSequence ||
-          !identical(currentLine, line) ||
+          !samePrompt ||
           expected.historyRevision != current.historyRevision ||
           !sameTerminalAiEnvironment(expected, current)) {
         finish(InsertResult.stale);
-      } else if (current.ready && current.draft!.isEmpty) {
+      } else if (current.ready && current.draft!.isEmpty && identical(currentLine, startLine)) {
+        _pastedPromptLine = null;
         finish(InsertResult.sent);
       }
     }
@@ -446,12 +461,14 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     unawaited(Future.any([stopped.whenCancelled, ?cancel?.whenCancelled]).then((_) => finish(InsertResult.cancelled)));
     try {
       // Use the same erase key as terminal input; only a confirmed empty echo permits the following paste.
-      for (final _ in expected.draft!.runes) {
+      final runes = expected.draft!.runes.length;
+      for (var i = 0; i < runes; i++) {
         if (!_terminal.keyInput(TerminalKey.backspace)) return InsertResult.rejected;
       }
       sequence = _inputSequence;
       check();
-      return await result.future.timeout(const Duration(seconds: 2), onTimeout: () => InsertResult.rejected);
+      final wait = Duration(milliseconds: 2000 + min(3000, runes * 10));
+      return await result.future.timeout(wait, onTimeout: () => InsertResult.rejected);
     } finally {
       _assistance.removeListener(check);
       _directory.changes.removeListener(check);
@@ -623,6 +640,12 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       cancel: cancel,
       current: () => canInsert && identical(_shell, shell) && identical(_lease, lease) && identical(_localPty, local),
       send: () {
+        if (!run && _terminal.bracketedPasteMode && (text.contains('\n') || text.contains('\r'))) {
+          final start = _echoedCommand(allowMultiline: true) != null ? _promptStartRow() : null;
+          _pastedPromptLine = start != null ? _terminal.buffer.lines[start] : null;
+        } else if (run) {
+          _pastedPromptLine = null;
+        }
         _terminal.paste(text);
         if (run) {
           _discardPendingCommandResult();
@@ -712,17 +735,20 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         if (data.isEmpty) return;
         // A soft-keyboard Enter skips the view's submit hook; an inline task still needs its command recorded.
         if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
+        final bracketedPaste = data.startsWith('\x1b[200~');
         if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
           _historyBrowsing = true;
-        } else if (!data.startsWith('\x1b') &&
-            (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b')) {
+        } else if (bracketedPaste ||
+            (!data.startsWith('\x1b') &&
+                (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b'))) {
           _historyBrowsing = false;
         }
         _inputSequence++;
         _inputPending = true;
         _invalidateCommandDraft();
         shell.write(utf8.encode(data));
-        if (data.contains('\r')) _entered();
+        if (data.contains('\r') && !bracketedPaste) _entered();
+        if (data.contains('\x03') || data.contains('\x04')) _pastedPromptLine = null;
       };
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       shell.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -811,17 +837,20 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
         if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
+        final bracketedPaste = data.startsWith('\x1b[200~');
         if (data == '\x1b[A' || data == '\x1b[B' || data == '\x1bOA' || data == '\x1bOB') {
           _historyBrowsing = true;
-        } else if (!data.startsWith('\x1b') &&
-            (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b')) {
+        } else if (bracketedPaste ||
+            (!data.startsWith('\x1b') &&
+                (data.runes.any((rune) => rune >= 32 && rune != 127) || data == '\x7f' || data == '\b'))) {
           _historyBrowsing = false;
         }
         _inputSequence++;
         _inputPending = true;
         _invalidateCommandDraft();
         pty.write(utf8.encode(data));
-        if (data.contains('\r')) _entered();
+        if (data.contains('\r') && !bracketedPaste) _entered();
+        if (data.contains('\x03') || data.contains('\x04')) _pastedPromptLine = null;
       };
       _terminal.onResize = (cols, rows, _, _) => pty.resize(cols, rows);
       pty.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -1106,6 +1135,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _assistance.value = const CommandAssistanceState();
     _submittedLine = null;
     _submittedText = null;
+    _pastedPromptLine = null;
     _history.dispose();
     _assistance.dispose();
     _dismissInsertions();

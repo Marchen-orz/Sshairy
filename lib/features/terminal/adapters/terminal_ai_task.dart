@@ -128,7 +128,7 @@ extension _TerminalAiTask on TerminalSession {
           task.auto &&
           await _aiUntil(
             task,
-            () => task.submitted || !task.auto || pendingOutputBytes == 0 && _echoedCommand(wrapped: true) == command,
+            () => task.submitted || !task.auto || pendingOutputBytes == 0 && _echoedCommand() == command,
             null,
           );
       if (echoed && !task.submitted && task.auto) {

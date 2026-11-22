@@ -32,35 +32,100 @@ extension _CommandAssistance on TerminalSession {
     return text.toString();
   }
 
-  /// [wrapped] also reads a line the terminal soft-wrapped onto several rows; only exact comparisons rely on that.
-  String? _echoedCommand({bool wrapped = false}) {
+  /// Strips unwritten trailing cells (such as wide-char wrap padding) while preserving real spaces (`code == 32`).
+  int _rowContentEnd(int row, int minEnd) {
+    final line = _terminal.buffer.lines[row];
+    return max(minEnd, min(line.length, line.getTrimmedLength(line.length)));
+  }
+
+  int _logicalStartRow(int row) {
+    final lines = _terminal.buffer.lines;
+    var start = row;
+    while (start > 0 && lines[start].isWrapped) {
+      start--;
+    }
+    return start;
+  }
+
+  String _logicalLinePrefix(int row, int column) {
+    final start = _logicalStartRow(row);
+    final text = StringBuffer();
+    for (var r = start; r <= row; r++) {
+      final end = r == row ? column : _rowContentEnd(r, 0);
+      text.write(_rowText(r, 0, end));
+    }
+    return text.toString();
+  }
+
+  int? _promptStartRow() {
+    final buffer = _terminal.buffer;
+    final row = buffer.absoluteCursorY;
+    if (row < 0 || row >= buffer.lines.length) return null;
+    final start = _logicalStartRow(row);
+    if (_semanticSeen) {
+      final promptRow = _promptRow;
+      if (!_semanticInput || promptRow == null || promptRow > row) return null;
+      if (promptRow >= start) return promptRow;
+      return row - promptRow <= 32 ? promptRow : null;
+    }
+    final pasted = _pastedPromptLine;
+    if (pasted != null) {
+      final floor = max(0, row - 32);
+      for (var r = start; r >= floor; r--) {
+        if (identical(buffer.lines[r], pasted)) return r;
+      }
+      _pastedPromptLine = null;
+    }
+    return start;
+  }
+
+  String? _joinPromptRows(int fromRow, int fromColumn, int toRow, int toColumn, {required bool allowMultiline}) {
+    final lines = _terminal.buffer.lines;
+    final text = StringBuffer();
+    for (var r = fromRow; r <= toRow; r++) {
+      final colStart = r == fromRow ? fromColumn : 0;
+      if (r > fromRow) {
+        final line = lines[r];
+        final prev = lines[r - 1];
+        final prevMin = r - 1 == fromRow ? fromColumn : 0;
+        final prevEnd = _rowContentEnd(r - 1, prevMin);
+        final margin = line.length > 0 && line.getWidth(0) == 2 ? 1 : 0;
+        final softWrapped = line.isWrapped || (prev.length > 0 && prevEnd >= prev.length - margin);
+        if (!softWrapped) {
+          if (!allowMultiline) return null;
+          text.write('\n');
+        }
+      }
+      final colEnd = r == toRow ? toColumn : _rowContentEnd(r, colStart);
+      text.write(_rowText(r, colStart, colEnd));
+    }
+    return text.toString();
+  }
+
+  /// Reads the echoed prompt command across soft-wrapped rows, and when [allowMultiline] is set also across hard
+  /// newlines inside a verified semantic or bracketed-paste prompt.
+  String? _echoedCommand({bool allowMultiline = false}) {
     if (!canInsert || _inputPending || _terminal.isUsingAltBuffer) return null;
     final buffer = _terminal.buffer;
     final row = buffer.absoluteCursorY, column = buffer.cursorX;
     if (row < 0 || row >= buffer.lines.length) return null;
     final line = buffer.lines[row];
-    if (column > 0 && line.getWidth(column) == 0 && line.getWidth(column - 1) == 2) return null;
+    if (column > 0 && column < line.length && line.getWidth(column) == 0 && line.getWidth(column - 1) == 2) return null;
     if (identical(line, _submittedLine)) return null;
     if (row + 1 < buffer.lines.length && buffer.lines[row + 1].isWrapped) return null;
-    if (line.isWrapped && !wrapped) return null;
-    var start = row;
-    while (start > 0 && buffer.lines[start].isWrapped) {
-      start--;
-    }
-    String text(int fromRow, int fromColumn) => [
-      for (var r = fromRow; r <= row; r++)
-        _rowText(r, r == fromRow ? fromColumn : 0, r == row ? column : buffer.lines[r].length),
-    ].join();
+    final start = _promptStartRow();
+    if (start == null || identical(buffer.lines[start], _submittedLine)) return null;
     final tail = _rowText(row, column, line.length);
     if (tail.trim().isNotEmpty) return null;
     if (_semanticSeen) {
-      final promptRow = _promptRow, promptColumn = _promptColumn ?? 0;
-      if (!_semanticInput || promptRow == null || promptRow < start || promptRow > row) return null;
-      if (promptRow == row && column < promptColumn) return null;
-      final command = text(promptRow, promptColumn);
-      return commandIsSingleLine(command) ? command : null;
+      final promptColumn = _promptColumn ?? 0;
+      if (start == row && column < promptColumn) return null;
+      final command = _joinPromptRows(start, promptColumn, row, column, allowMultiline: allowMultiline);
+      if (command == null) return null;
+      return (allowMultiline ? validTerminalAiDraft(command) : commandIsSingleLine(command)) ? command : null;
     }
-    final before = text(start, 0);
+    final before = _joinPromptRows(start, 0, row, column, allowMultiline: allowMultiline);
+    if (before == null) return null;
     final local = localShell;
     if (local != null) {
       if (local.kind == LocalShellKind.unix && !local.usesPosixSyntax) return null;
@@ -74,6 +139,7 @@ extension _CommandAssistance on TerminalSession {
           tail,
           percent: local.kind == LocalShellKind.zsh,
           fish: local.kind == LocalShellKind.fish,
+          allowMultiline: allowMultiline,
         );
       }
       return visibleLocalShellCommand(
@@ -81,10 +147,11 @@ extension _CommandAssistance on TerminalSession {
         tail,
         powershell: local.kind == LocalShellKind.powershell || local.kind == LocalShellKind.pwsh,
         bash: local.kind == LocalShellKind.gitBash,
+        allowMultiline: allowMultiline,
       );
     }
     // SSH also often prints a bare `$ ` or `# `; the same Bash prompt rule applies there.
-    return visibleUnixShellCommand(before, tail);
+    return visibleUnixShellCommand(before, tail, allowMultiline: allowMultiline);
   }
 
   bool _requestCurrent(CommandCompletionRequest request) =>
@@ -352,6 +419,7 @@ extension _CommandAssistance on TerminalSession {
 
   void _submitCommand() {
     _historyBrowsing = false;
+    _pastedPromptLine = null;
     final text = _echoedCommand();
     // Enter inside a running integrated command is input to it; its D boundary still closes the result.
     if (text != null || _pendingCommandResult?.start == null) _discardPendingCommandResult();
@@ -370,6 +438,7 @@ extension _CommandAssistance on TerminalSession {
     _promptRow = _promptColumn = null;
     _submittedLine = null;
     _submittedText = null;
+    _pastedPromptLine = null;
     _inputPending = _historyBrowsing = false;
     _ownedPaths?.dispose();
     _ownedPaths = null;

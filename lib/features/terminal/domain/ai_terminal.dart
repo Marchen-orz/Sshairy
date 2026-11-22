@@ -340,3 +340,21 @@ bool validTerminalAiCommand(String text) =>
           (r >= 0x202a && r <= 0x202e) ||
           (r >= 0x2066 && r <= 0x2069),
     );
+
+/// Like [validTerminalAiCommand], but also accepts pasted newlines in a user's own echoed prompt draft.
+bool validTerminalAiDraft(String text) =>
+    text.length <= 2048 &&
+    utf8.encode(text).length <= 4096 &&
+    !text.runes.any(
+      (r) =>
+          (r < 32 && r != 10) ||
+          (r >= 127 && r <= 159) ||
+          (r >= 0xd800 && r <= 0xdfff) ||
+          r == 0x2028 ||
+          r == 0x2029 ||
+          r == 0x061c ||
+          r == 0x200e ||
+          r == 0x200f ||
+          (r >= 0x202a && r <= 0x202e) ||
+          (r >= 0x2066 && r <= 0x2069),
+    );

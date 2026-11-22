@@ -193,7 +193,9 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
       final rect = MatrixUtils.transformRect(render.getTransformTo(null), view.cursorRect);
       if (box is RenderBox && box.hasSize) {
         final local = Rect.fromPoints(box.globalToLocal(rect.topLeft), box.globalToLocal(rect.bottomRight));
-        _completionCursor.value = (Offset.zero & box.size).overlaps(local) ? local : null;
+        final visible =
+            local.right > 0 && local.left <= box.size.width && local.bottom > 0 && local.top < box.size.height;
+        _completionCursor.value = visible ? local : null;
       }
       if (!_focus.hasFocus) return;
       if (rect == _imeRect) return;
@@ -377,6 +379,10 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
       confirmMultiline: ref.read(settingsProvider).get(SettingKeys.confirmPaste),
       confirm: (preview) => confirmTerminalInsert(context, preview),
     );
+    if (mounted && widget.active && !_searching && !_composerOpen && !_inlineAiOpen) {
+      _focus.requestFocus();
+      _scheduleAi();
+    }
   }
 
   void _selectAll() {
