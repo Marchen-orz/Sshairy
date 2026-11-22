@@ -24,14 +24,14 @@ AI is part of the SSH workflow: hand Airy a task or turn a sentence into a comma
 
 <img src="media/features.png" alt="Host library, context-aware completion, dual-pane SFTP, live metrics and port forwarding." width="100%">
 
-| | |
-|---|---|
-| **Connect** | Hosts in groups with tags, pins and search. Password and key authentication, Ed25519 key generation, jump hosts and proxies. |
-| **Work** | Tabbed terminals, draggable splits, local shells, search, reconnect and restored layouts. |
-| **Move files** | Dual-pane SFTP, transfer queues, resumable file transfers, conflict handling and external editing. |
-| **Keep watch** | CPU, memory, disk and process monitoring over SSH, with nothing to install on the server. |
-| **Reach further** | Local, remote and dynamic port forwarding. Saved snippets and 1,453 shell completion specs. |
-| **Stay in control** | Modern native interface with fluid tabs, splits and panels. Host-key verification, OS-backed credential storage, English and Chinese interfaces, customizable shortcuts. |
+<table>
+<tr><td><b>Connect</b></td><td>Hosts in groups with tags, pins and search. Password and key authentication, Ed25519 key generation, jump hosts and proxies.</td></tr>
+<tr><td><b>Work</b></td><td>Tabbed terminals, draggable splits, local shells, search, reconnect and restored layouts.</td></tr>
+<tr><td><b>Move files</b></td><td>Dual-pane SFTP, transfer queues, resumable file transfers, conflict handling and external editing.</td></tr>
+<tr><td><b>Keep watch</b></td><td>CPU, memory, disk and process monitoring over SSH, with nothing to install on the server.</td></tr>
+<tr><td><b>Reach further</b></td><td>Local, remote and dynamic port forwarding. Saved snippets and 1,453 shell completion specs.</td></tr>
+<tr><td><b>Stay in control</b></td><td>Modern native interface with fluid tabs, splits and panels. Host-key verification, OS-backed credential storage, English and Chinese interfaces, customizable shortcuts.</td></tr>
+</table>
 
 ## Airy
 
