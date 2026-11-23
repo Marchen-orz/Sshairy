@@ -353,6 +353,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   final _deniedLocalRequests = <String>{};
   Future<void>? _working;
   AgentScope? _scope;
+  AgentPermissionMode? _permissionMode;
   List<AgentHost> _availableHosts = const [];
   HostId? _resolvedHost;
   bool _hostsListed = false;
@@ -381,7 +382,19 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   List<AgentTimelineEntry> get timeline => List.unmodifiable(_timeline);
   bool get busy => _cancel != null;
   HostId? get resolvedHost => _resolvedHost;
-  AgentPermissionMode get permissionMode => _scope?.permissionMode ?? AgentPermissionMode.confirm;
+
+  /// The policy for decisions still ahead in this turn; the user may change it mid-turn.
+  AgentPermissionMode get permissionMode =>
+      _scope == null ? AgentPermissionMode.confirm : _permissionMode ?? _scope!.permissionMode;
+
+  /// Applies a user change to the running turn. Decisions already made, including a
+  /// pending approval, are not revisited; the next authorization uses the new value.
+  void setPermissionMode(AgentPermissionMode mode) {
+    if (_disposed || _scope == null || permissionMode == mode) return;
+    _permissionMode = mode;
+    _emit();
+  }
+
   ReasoningEffort get reasoningEffort => _profile?.reasoningEffort ?? ReasoningEffort.modelDefault;
   int contextUsedTokens = 0, contextWindow = 0;
   double get contextUsageRatio => contextWindow == 0 ? 0 : (contextUsedTokens / contextWindow).clamp(0, 1);
@@ -631,6 +644,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     }
     _cancel = CancellationToken();
     _answerOnly = answerOnly;
+    _permissionMode = null;
     _profile = config.profile;
     _reviewProfile = reviewProfile?.call() ?? config.profile;
     _goal = goal;
@@ -751,13 +765,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     });
     try {
       _check();
-      final tools = <ModelTool>[
-        if (_hasTools)
-          for (final tool in agentTools)
-            if (dispatcher[tool.capability] case final capability?)
-              if (_allowedInMode(capability))
-                ModelTool(tool.name, tool.description, _agentSchema(tool, capability.inputSchema)),
-      ];
       final focused = _terminalSessions.where((session) => session.sessionId == _defaultTerminal).firstOrNull;
       final currentTerminal = focused == null ? null : _terminalData(focused);
       // Host aliases and terminal records are untrusted data, never system instructions.
@@ -785,6 +792,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       var toolCount = 0, messageCount = 1;
       while (true) {
         _check();
+        // The user can change permission mode mid-turn, so each request offers the current catalog.
+        final tools = <ModelTool>[
+          if (_hasTools)
+            for (final tool in agentTools)
+              if (dispatcher[tool.capability] case final capability?)
+                if (_allowedInMode(capability))
+                  ModelTool(tool.name, tool.description, _agentSchema(tool, capability.inputSchema)),
+        ];
         if (_modelRequests >= maxModelRequests) throw const AgentFailure('stepLimit');
         final profile = _profile!;
         final int Function(List<ModelMessage>)? estimate = estimateInputBytes == null
@@ -1005,6 +1020,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       capability.id == 'agent.diagnose';
   String get _system =>
       '$_systemBase '
+      'The user\'s current permissionMode is ${permissionMode.name}; it can change while you work, and the latest value governs every new action. '
       '${_language == 'zh' ? 'Write every user-visible field, including purpose, assumptions and the final answer, in Simplified Chinese. Keep commands, paths and identifiers unchanged.' : 'Write every user-visible field, including purpose, assumptions and the final answer, in English. Keep commands, paths and identifiers unchanged.'}';
 
   static const _systemBase =
@@ -1024,7 +1040,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'The purpose field of command_execute and job_start must be a short, concrete phrase saying what that command checks or changes (for example "check free space on /var"), not a description of the tool. '
       'When several commands run in sequence, each purpose should read as one step in the same investigation. '
       // Authorization and scope.
-      'permissionMode is frozen per turn: observe offers terminal context and fixed read-only diagnostics but no arbitrary shell; observe and confirm require local approval for diagnostics and commands. '
+      'permissionMode reflects the user\'s current choice: observe offers terminal context and fixed read-only diagnostics but no arbitrary shell; observe and confirm require local approval for diagnostics and commands. '
       'review delegates action approval to an isolated reviewer, falling back to the user; auto omits individual action approvals. '
       'currentTerminal contains the safe bounded context of the exact terminal focused when the user sent this message. '
       'terminal_history_read defaults to that frozen window. terminal_list lists open connected sessions, including background tabs, splits and local shells. '
@@ -1054,7 +1070,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       'An expired grant means the user must attach or grant it again. '
       'output_read only rereads an already shared projection, never raw buffers. Do not rerun actions to bypass output limits. '
       'job_start runs one approved command in the background; poll job_read with nextOffset; it also returns state and exit code. Jobs end with this turn and are never replayed. '
-      'settings, host, workspace, session and forwarding tools change this app locally; they still follow the frozen permission mode and host scope. '
+      'settings, host, workspace, session and forwarding tools change this app locally; they still follow the current permission mode and host scope. '
       'Use only current saved IDs and do not claim success without tool evidence and exit status. '
       'A zero command exit code alone does not prove a repair worked. Request one exact command when needed; do not ask for credentials. '
       'Answer directly; cite returned executionIds in backticks only when useful, and never invent evidence. '

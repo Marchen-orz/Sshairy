@@ -543,8 +543,8 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                                   final usage = _ContextUsage(runtime: runtime, window: profile?.contextWindow ?? 0);
                                   final permission = _PermissionPicker(
                                     compact: toolbar.maxWidth < 480 * MediaQuery.textScalerOf(context).scale(1),
-                                    mode: runtime.busy ? runtime.permissionMode : permissionMode,
-                                    onChanged: !enabled || runtime.busy
+                                    mode: permissionMode,
+                                    onChanged: !enabled
                                         ? null
                                         : ref.read(selectedAgentPermissionModeProvider.notifier).select,
                                   );
