@@ -815,7 +815,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get updateInstallPrompt => 'Install it now? The app will close first.';
+  String get updateLaunchFailed =>
+      'Could not open the update package. Open it from Downloads.';
 
   @override
   String get updateDownloadFailed =>
@@ -826,7 +827,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'No installable package is available for this platform. Open the release page instead.';
 
   @override
-  String get installNow => 'Install now';
+  String get installNow => 'Restart and update';
 
   @override
   String get later => 'Later';

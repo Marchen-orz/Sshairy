@@ -278,7 +278,11 @@ class UpdateState {
   final UpdateStatus status;
   final List<ReleaseNote> releases;
 
-  ReleaseNote? get latest => releases.isEmpty ? null : releases.first;
+  Iterable<ReleaseNote> get newerReleases => releases.where(_isUpdate);
+
+  ReleaseNote? get latest => (status == UpdateStatus.available ? newerReleases : releases).firstOrNull;
+
+  static bool _isUpdate(ReleaseNote release) => isNewerVersion(release.version, appVersion);
 }
 
 class UpdateCheck extends Notifier<UpdateState> {
@@ -292,9 +296,8 @@ class UpdateCheck extends Notifier<UpdateState> {
     if (!silent) state = const UpdateState(UpdateStatus.checking);
     try {
       final releases = await ref.read(releaseSourceProvider).fetch();
-      final newest = releases.isEmpty ? null : releases.first;
       state = UpdateState(
-        newest != null && isNewerVersion(newest.version, appVersion) ? UpdateStatus.available : UpdateStatus.upToDate,
+        releases.any(UpdateState._isUpdate) ? UpdateStatus.available : UpdateStatus.upToDate,
         releases: releases,
       );
     } on Object {

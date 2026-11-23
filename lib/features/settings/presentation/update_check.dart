@@ -127,14 +127,15 @@ class UpdateCheckControl extends ConsumerWidget {
           ),
         if (state.status == UpdateStatus.available)
           FilledButton(onPressed: () => showReleaseNotes(context, state), child: Text(l.updateDownload))
-        else
+        else ...[
           TextButton(
             onPressed: state.status == UpdateStatus.checking
                 ? null
                 : () => ref.read(updateCheckProvider.notifier).check(),
             child: Text(l.checkForUpdates),
           ),
-        TextButton(onPressed: () => _showNotes(context, ref), child: Text(l.releaseNotes)),
+          TextButton(onPressed: () => _showNotes(context, ref), child: Text(l.releaseNotes)),
+        ],
       ],
     );
   }
@@ -148,19 +149,21 @@ class UpdateCheckControl extends ConsumerWidget {
       state = ref.read(updateCheckProvider);
     }
     if (state.releases.isEmpty) return;
-    if (context.mounted) await showReleaseNotes(context, state, history: true);
+    if (context.mounted) await showReleaseNotes(context, state);
   }
 }
 
-/// An available update shows only its own notes; [history] lists every release without the download actions.
-Future<void> showReleaseNotes(BuildContext context, UpdateState state, {bool history = false}) {
+Future<void> showReleaseNotes(BuildContext context, UpdateState state) {
   final latest = state.latest;
   if (latest == null) return Future.value();
-  final available = !history && state.status == UpdateStatus.available;
+  final available = state.status == UpdateStatus.available;
   return showAppDialog<void>(
     context: context,
-    builder: (context) =>
-        _ReleaseNotesDialog(latest: latest, releases: available ? [latest] : state.releases, available: available),
+    builder: (context) => _ReleaseNotesDialog(
+      latest: latest,
+      releases: available ? state.newerReleases.toList(growable: false) : state.releases,
+      available: available,
+    ),
   );
 }
 
@@ -179,6 +182,8 @@ class _ReleaseNotesDialogState extends ConsumerState<_ReleaseNotesDialog> {
   UpdateDownloader? _downloader;
   UpdateDownloadState _download = const UpdateDownloadState.idle();
   ReleaseAsset? _asset;
+  var _installing = false;
+  var _launchFailed = false;
 
   @override
   void initState() {
@@ -229,8 +234,18 @@ class _ReleaseNotesDialogState extends ConsumerState<_ReleaseNotesDialog> {
 
   Future<void> _install() async {
     final path = _download.path;
-    if (path == null) return;
-    await DesktopWindow.instance.installAndQuit(path);
+    if (path == null || _installing) return;
+    setState(() {
+      _installing = true;
+      _launchFailed = false;
+    });
+    try {
+      await DesktopWindow.instance.installAndQuit(path);
+    } on Object {
+      if (mounted) setState(() => _launchFailed = true);
+    } finally {
+      if (mounted) setState(() => _installing = false);
+    }
   }
 
   @override
@@ -252,27 +267,31 @@ class _ReleaseNotesDialogState extends ConsumerState<_ReleaseNotesDialog> {
               Text(l.updateNoPackage, style: theme.textTheme.bodySmall),
               const SizedBox(height: Space.md),
             ],
-            if (status != UpdateDownloadStatus.idle) ...[
-              _DownloadStatus(download: _download),
-              const SizedBox(height: Space.md),
-            ],
             Expanded(
-              child: ListView.separated(
-                itemCount: widget.releases.length,
-                separatorBuilder: (_, _) => const Divider(height: Space.xl),
-                itemBuilder: (context, index) {
-                  final release = widget.releases[index];
-                  final notes = releaseNotesFor(release.notes, Localizations.localeOf(context).languageCode);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              child: SingleChildScrollView(
+                primary: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final (index, release) in widget.releases.indexed) ...[
+                      if (index > 0) const Divider(height: Space.xl),
                       Text('${release.version} · ${release.title}', style: theme.textTheme.titleSmall),
-                      if (notes.isNotEmpty) ...[const SizedBox(height: Space.xs), ReleaseNotesView(notes)],
+                      if (releaseNotesFor(release.notes, Localizations.localeOf(context).languageCode) case final notes
+                          when notes.isNotEmpty) ...[
+                        const SizedBox(height: Space.xs),
+                        ReleaseNotesView(notes),
+                      ],
                     ],
-                  );
-                },
+                  ],
+                ),
               ),
             ),
+            if (status != UpdateDownloadStatus.idle) ...[
+              const SizedBox(height: Space.md),
+              _DownloadStatus(download: _download),
+            ],
+            if (_launchFailed)
+              Text(l.updateLaunchFailed, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
           ],
         ),
       ),
@@ -290,7 +309,7 @@ class _ReleaseNotesDialogState extends ConsumerState<_ReleaseNotesDialog> {
         ),
         if (widget.available && asset != null) ...[
           if (status == UpdateDownloadStatus.ready)
-            FilledButton(onPressed: _install, child: Text(l.installNow))
+            FilledButton(onPressed: _installing ? null : _install, child: Text(l.installNow))
           else if (status == UpdateDownloadStatus.failed)
             FilledButton(onPressed: _startDownload, child: Text(l.retryAction))
           else if (status == UpdateDownloadStatus.downloading || status == UpdateDownloadStatus.verifying)
@@ -336,14 +355,7 @@ class _DownloadStatus extends StatelessWidget {
           const LinearProgressIndicator(minHeight: 4),
         ],
       ),
-      UpdateDownloadStatus.ready => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SelectableText(l.updateDownloaded(download.path ?? ''), style: text),
-          const SizedBox(height: Space.xs),
-          Text(l.updateInstallPrompt, style: text),
-        ],
-      ),
+      UpdateDownloadStatus.ready => SelectableText(l.updateDownloaded(download.path ?? ''), style: text),
       UpdateDownloadStatus.failed => Text(
         l.updateDownloadFailed,
         style: text?.copyWith(color: theme.colorScheme.error),

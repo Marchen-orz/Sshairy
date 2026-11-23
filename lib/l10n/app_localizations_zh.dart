@@ -774,7 +774,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get updateInstallPrompt => '现在安装吗？安装前会退出当前软件。';
+  String get updateLaunchFailed => '无法打开安装包，请在下载目录手动打开。';
 
   @override
   String get updateDownloadFailed => '下载失败，请检查网络后重试。';
@@ -783,7 +783,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get updateNoPackage => '当前平台没有可自动安装的包，请打开发布页下载。';
 
   @override
-  String get installNow => '立即安装';
+  String get installNow => '重启并更新';
 
   @override
   String get later => '稍后';

@@ -1,9 +1,13 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <windows.h>
 
+#include <cwchar>
 #include <fstream>
+#include <memory>
+#include <optional>
 #include <regex>
 #include <sstream>
 
@@ -35,6 +39,40 @@ static bool UseImpeller() {
   return !std::regex_search(text.str(), std::regex(R"("renderer"\s*:\s*"skia")"));
 }
 
+// Updating a running installation would keep its executable and DLLs locked.
+// A detached copy of the runner waits for the old process, without starting Flutter.
+static std::optional<int> FinishUpdate() {
+  int count = 0;
+  std::unique_ptr<wchar_t*, decltype(&::LocalFree)> args(
+      ::CommandLineToArgvW(::GetCommandLineW(), &count), ::LocalFree);
+  if (!args || count < 2 || std::wcscmp(args.get()[1], L"--finish-update") != 0) {
+    return std::nullopt;
+  }
+  if (count != 4) return EXIT_FAILURE;
+  const wchar_t* pid_text = args.get()[2];
+  wchar_t* end = nullptr;
+  const DWORD pid = std::wcstoul(pid_text, &end, 10);
+  if (end == pid_text || *end != L'\0' || pid == 0 || pid == ::GetCurrentProcessId()) {
+    return EXIT_FAILURE;
+  }
+  const HANDLE parent = ::OpenProcess(SYNCHRONIZE, FALSE, pid);
+  if (parent != nullptr) {
+    const DWORD result = ::WaitForSingleObject(parent, 120 * 1000);
+    ::CloseHandle(parent);
+    if (result != WAIT_OBJECT_0) return EXIT_FAILURE;
+  } else if (::GetLastError() != ERROR_INVALID_PARAMETER) {
+    return EXIT_FAILURE;
+  }
+
+  SHELLEXECUTEINFOW launch = {};
+  launch.cbSize = sizeof(launch);
+  launch.fMask = SEE_MASK_NOASYNC;
+  launch.lpVerb = L"open";
+  launch.lpFile = args.get()[3];
+  launch.nShow = SW_SHOWNORMAL;
+  return ::ShellExecuteExW(&launch) ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -46,6 +84,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  if (const auto update = FinishUpdate()) {
+    ::CoUninitialize();
+    return *update;
+  }
 
   // An ID no shortcut carries: under the implicit one the taskbar button takes the icon of the Start menu shortcut
   // that targets this exe and ignores the window icons switched with the theme.

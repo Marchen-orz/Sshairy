@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 
 class DesktopWindowState {
   const DesktopWindowState({
@@ -115,7 +116,6 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
   Future<AppExitResponse> close() => ServicesBinding.instance.exitApplication(AppExitType.cancelable);
 
   var _relaunch = false;
-  String? _installer;
 
   /// Closes through the same confirmed path and starts the app again once that close has drained.
   Future<void> restart() async {
@@ -123,15 +123,20 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
     if (await close() == AppExitResponse.cancel) _relaunch = false;
   }
 
-  /// Closes through the same confirmed path, then starts [installer]; false when the user cancels the close.
-  Future<bool> installAndQuit(String path) async {
-    if (!_desktop) return false;
-    _installer = path;
-    if (await close() == AppExitResponse.cancel) {
-      _installer = null;
-      return false;
+  /// Gets the real quit decision before handing the package to the OS.
+  Future<void> installAndQuit(String path) async {
+    if (!_desktop) return;
+    final installer = File(path).absolute;
+    if (!await installer.exists()) throw FileSystemException('Update package unavailable', path);
+    // On Windows a cancelable System.exitApplication returns before the close observers decide.
+    if (await WidgetsBinding.instance.handleRequestAppExit() == AppExitResponse.cancel) return;
+    try {
+      await _startInstaller(installer);
+    } on Object {
+      await show();
+      rethrow;
     }
-    return true;
+    await ServicesBinding.instance.exitApplication(AppExitType.required);
   }
 
   /// Called by the close path after everything is saved and released, right before the process exits.
@@ -145,26 +150,25 @@ class DesktopWindow extends ValueNotifier<DesktopWindowState> {
         // The close still goes ahead; the user can start the app again by hand.
       }
     }
-    final installer = _installer;
-    _installer = null;
-    if (installer != null) await _startInstaller(installer);
   }
 
-  Future<void> _startInstaller(String path) async {
-    try {
-      if (Platform.isLinux) {
-        // Downloads arrive without the executable bit; xdg-open would only show the archive.
-        if (path.toLowerCase().endsWith('.appimage')) {
-          await Process.run('chmod', ['+x', path]);
-        }
-        await Process.start('xdg-open', [path], mode: ProcessStartMode.detached);
-      } else if (Platform.isMacOS) {
-        await Process.start('open', [path], mode: ProcessStartMode.detached);
-      } else {
-        await Process.start(path, const [], mode: ProcessStartMode.detached);
+  Future<void> _startInstaller(File installer) async {
+    final path = installer.path;
+    if (Platform.isWindows) {
+      await Process.start(
+        Platform.resolvedExecutable,
+        ['--finish-update', '$pid', path],
+        workingDirectory: installer.parent.path,
+        mode: ProcessStartMode.detached,
+      );
+    } else if (Platform.isMacOS) {
+      await Process.start('open', [path], mode: ProcessStartMode.detached);
+    } else if (Platform.isLinux) {
+      // Downloads arrive without the executable bit; xdg-open would only show the archive.
+      if (path.toLowerCase().endsWith('.appimage')) {
+        await Process.run('chmod', ['+x', path]);
       }
-    } on ProcessException {
-      // The file stays in Downloads so the user can start it by hand.
+      await Process.start('xdg-open', [path], mode: ProcessStartMode.detached);
     }
   }
 

@@ -1544,11 +1544,11 @@ abstract class AppLocalizations {
   /// **'Downloaded to {path}'**
   String updateDownloaded(String path);
 
-  /// No description provided for @updateInstallPrompt.
+  /// No description provided for @updateLaunchFailed.
   ///
   /// In en, this message translates to:
-  /// **'Install it now? The app will close first.'**
-  String get updateInstallPrompt;
+  /// **'Could not open the update package. Open it from Downloads.'**
+  String get updateLaunchFailed;
 
   /// No description provided for @updateDownloadFailed.
   ///
@@ -1565,7 +1565,7 @@ abstract class AppLocalizations {
   /// No description provided for @installNow.
   ///
   /// In en, this message translates to:
-  /// **'Install now'**
+  /// **'Restart and update'**
   String get installNow;
 
   /// No description provided for @later.
