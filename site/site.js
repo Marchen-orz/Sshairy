@@ -10,8 +10,8 @@
       nTour: 'Tour', nLink: 'Link', nPerf: 'Performance', nDocs: 'Docs', nGet: 'Download',
       h1a: 'Lightweight SSH.', h1b: 'Powered by AI.',
       lede: 'Terminals, SFTP, tunnels and server monitoring in one modern native window. Airy works right in your terminal, and your phone links in to mirror sessions and approve actions.',
-      dl: { win: 'Download for Windows', mac: 'Download for macOS', linux: 'Download for Linux', android: 'Download for Android' }, src: 'View source',
-      fine: 'Preview 0.3.0 · Windows, macOS, Linux and Android · MIT License',
+      dl: { win: 'Download for Windows', mac: 'Download for macOS', linux: 'Download for Linux', android: 'Download for Android' }, dlAlt: 'Android', src: 'View source',
+      fine: 'Preview {v} · Windows, macOS, Linux and Android · MIT License',
       stats: [['0.62', 's', 'to open'], ['131', 'MiB', 'at idle'], ['27', 'MiB', 'to download'], ['1', 'process', 'no browser engine']],
       tourH: 'One window for <span class="k-serif">every</span> server.',
       tabs: ['Terminals', 'Hosts', 'Files', 'Monitor', 'Completion', 'Inline tasks', 'Link', 'Palette', 'Forwarding'],
@@ -51,8 +51,8 @@
       nTour: '导览', nLink: '互联', nPerf: '性能', nDocs: '文档', nGet: '下载',
       h1a: '轻量 SSH', h1b: 'AI 加持',
       lede: '终端、SFTP、端口转发和服务器监控收进同一个现代原生窗口；Airy 直接在终端里干活，手机扫码互联，随时镜像会话、批准操作',
-      dl: { win: '下载 Windows 版', mac: '下载 macOS 版', linux: '下载 Linux 版', android: '下载 Android 版' }, src: '查看源码',
-      fine: '预览版 0.3.0 · Windows、macOS、Linux 与 Android · MIT 许可证',
+      dl: { win: '下载 Windows 版', mac: '下载 macOS 版', linux: '下载 Linux 版', android: '下载 Android 版' }, dlAlt: 'Android 版', src: '查看源码',
+      fine: '预览版 {v} · Windows、macOS、Linux 与 Android · MIT 许可证',
       stats: [['0.62', '秒', '启动'], ['131', 'MiB', '空闲内存'], ['27', 'MiB', '下载体积'], ['1', '个进程', '无需浏览器内核']],
       tourH: '所有服务器，一个窗口',
       tabs: ['终端', '主机', '文件', '监控', '补全', '行内任务', '互联', '命令面板', '端口转发'],
@@ -102,6 +102,9 @@
   // The head script already set data-scheme from the stored choice or the system.
   const night = matchMedia('(prefers-color-scheme: dark)');
   let scheme = root.dataset.scheme === 'dark' ? 'dark' : 'light';
+  // The newest release names the version and the arm64 APK. Until GitHub answers, or when it cannot, the page uses the cached or built-in values.
+  let release = { version: '0.3.0', apk: '', at: 0 };
+  try { Object.assign(release, JSON.parse(store('release'))); } catch {}
   let tour = 0, mode = 1, dark = scheme === 'dark', toured = false, chatSeen = false, timers = [];
   root.classList.add('js');
   if (!still) root.classList.add('intro');
@@ -187,6 +190,13 @@
     requestAnimationFrame(step);
   }
 
+  function showRelease() {
+    const t = T[lang], latest = link('releases/latest');
+    $('#fine').innerHTML = t.fine.replace('{v}', `<a href="${latest}">${release.version}</a>`);
+    $('#dl').href = os === 'android' && release.apk || latest;
+    $('#dlAndroid').href = release.apk || latest;
+  }
+
   function render() {
     const t = T[lang], d = window.SSHAIRY_DATA;
     root.lang = lang === 'zh' ? 'zh-CN' : 'en';
@@ -194,6 +204,9 @@
     $$('[data-i]').forEach((el) => (el.innerHTML = t[el.dataset.i]));
     $('#lang').textContent = lang === 'zh' ? 'EN' : '中文';
     $('#dlLabel').textContent = t.dl[os];
+    $('#dlAndroid').innerHTML = `${SshairyMock.icon('phone', 20)}<span>${t.dlAlt}</span>`;
+    $('#dlAndroid').hidden = os === 'android';
+    showRelease();
     $$('img[data-brand^="wordmark"]').forEach((img) => (img.dataset.brand = scheme === 'dark' ? 'wordmark-dark' : 'wordmark'));
     $('#chat').dataset.mode = scheme;
     $('#phones').innerHTML = [{ screen: 'link', approval: 1 }, { screen: 'term', draft: '' }].map((o) => `<div>${SshairyMock.part('phone', lang, { ...o, mode: scheme })}</div>`).join('');
@@ -294,6 +307,13 @@
   document.fonts.ready.then(slideAll);
 
   render();
+  if (Date.now() - release.at > 30 * 60e3) fetch(REPO.replace('github.com', 'api.github.com/repos') + '/releases/latest')
+    .then((response) => (response.ok ? response.json() : Promise.reject()))
+    .then((data) => {
+      release = { version: data.tag_name.replace(/^v/, ''), apk: data.assets.find((asset) => asset.name.endsWith('-android-arm64-v8a.apk'))?.browser_download_url || '', at: Date.now() };
+      store('release', JSON.stringify(release));
+      showRelease();
+    }).catch(() => {});
   $$('#stats [data-n]').forEach(count);
   setTimeout(() => root.classList.remove('intro'), 1800);
 
