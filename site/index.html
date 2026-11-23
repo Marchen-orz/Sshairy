@@ -6,9 +6,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sshairy · Lightweight SSH. Powered by AI.</title>
-<meta name="description" content="Sshairy is a lightweight, native SSH client for Windows, macOS and Linux: terminals, SFTP, tunnels, server monitoring and an AI assistant, with no browser engine.">
+<meta name="description" content="Sshairy is a lightweight, native SSH client for Windows, macOS, Linux and Android: terminals, SFTP, tunnels, server monitoring, AI in the terminal and a phone link, with no browser engine.">
 <meta property="og:title" content="Sshairy · Lightweight SSH. Powered by AI.">
-<meta property="og:description" content="Terminals, SFTP, tunnels and server monitoring in one clean native window.">
+<meta property="og:description" content="Terminals, SFTP, tunnels, monitoring and AI in one native window, with your phone linked in.">
 <meta property="og:image" content="https://sshairy.marchen.top/media/poster-en.jpg">
 <meta name="theme-color" content="#F1F7FF">
 <script>try{document.documentElement.dataset.scheme=localStorage.getItem('scheme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}</script>
@@ -25,6 +25,7 @@
   <nav>
     <a href="#tour" data-i="nTour"></a>
     <a href="#airy">Airy</a>
+    <a href="#link" data-i="nLink"></a>
     <a href="#performance" data-i="nPerf"></a>
     <a href="#docs" data-i="nDocs"></a>
   </nav>
@@ -77,6 +78,16 @@
   </div>
 </section>
 
+<section class="band" id="link" data-pose="ssh-connected">
+  <div class="wrap two">
+    <div>
+      <h2 class="rv" data-i="linkH"></h2>
+      <p class="lede rv" data-i="linkP"></p>
+    </div>
+    <div class="phones rv" id="phones"></div>
+  </div>
+</section>
+
 <section class="band" id="themes" data-pose="happy">
   <div class="wrap">
     <div class="head rv"><h2 data-i="themesH"></h2><div class="seg" id="mode" role="group"></div></div>
@@ -109,7 +120,7 @@
 <section class="band mint" id="download" data-pose="sftp-transfer">
   <div class="wrap">
     <h2 class="rv" data-i="getH"></h2>
-    <div class="os3 stg" id="osCards"></div>
+    <div class="os4 stg" id="osCards"></div>
     <div class="code rv" id="build"><button id="copy" type="button"></button><pre><code id="steps"></code></pre></div>
   </div>
 </section>

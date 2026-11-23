@@ -35,6 +35,21 @@
     max: '<rect x="6.5" y="6.5" width="11" height="11" rx="1"/>',
     refresh: '<path d="M19 12a7 7 0 1 1-2.2-5.100M19 5v4h-4"/>',
     arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    phone: '<rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 18h2"/>',
+    desk: '<rect x="3.5" y="4.5" width="17" height="11" rx="1.5"/><path d="M9 19.5h6M12 15.5v4"/>',
+    link: '<path d="M14 15.5H4.5A1.5 1.5 0 0 1 3 14V6.5A1.5 1.5 0 0 1 4.5 5H16a1.5 1.5 0 0 1 1.5 1.5V8M6 19h8"/><rect x="16" y="10" width="5.5" height="10" rx="1.2"/>',
+    bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+    user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
+    back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+    vdots: '<path d="M12 6h.01M12 12h.01M12 18h.01"/>',
+    pulse: '<path d="M3.5 12h4l2-4.5 3 9 2-4.5h6"/>',
+    send: '<path d="M4.5 12L19.5 5l-4 14-3.5-5.5z"/><path d="M12 13.5L19.5 5"/>',
+    sync: '<path d="M5 10.5a7 7 0 0 1 12.3-4L19 8.3M19 4v4.3h-4.3M19 13.5a7 7 0 0 1-12.3 4L5 15.7M5 20v-4.3h4.3"/>',
+    pad: '<rect x="5" y="4" width="14" height="16" rx="3"/><path d="M5 14h14M12 14v6"/>',
+    edit: '<path d="M4.5 19.5h4l10-10-4-4-10 10zM13 7l4 4"/>',
+    stop: '<rect x="7" y="7" width="10" height="10" rx="2"/>',
+    fix: '<path d="M14.5 4.8a4.2 4.2 0 0 0-5.2 5.4L4 15.5 8.5 20l5.3-5.3a4.2 4.2 0 0 0 5.4-5.2l-2.7 2.7-3.1-.9-.9-3.1z"/>',
+    expand: '<path d="M7 10l5 5 5-5"/>',
   };
   const cog = Array.from({ length: 16 }, (_, i) => {
     const r = i % 2 ? 6.4 : 8.6, a = (i * Math.PI) / 8 + Math.PI / 16;
@@ -56,9 +71,18 @@
       confirm: 'Confirm', name: 'Name', size: 'Size', modified: 'Modified', transfers: 'Transfers',
       cpu: 'CPU', memory: 'Memory', disks: 'Disks', network: 'Network', processes: 'Processes', load: 'Load', cores: '4 cores',
       palette: 'Hosts, sessions, actions', pal: ['Split pane right', 'Open settings', 'Toggle Agent panel'],
-      inline: 'find the 5 largest files under /var/log', fill: 'Insert', regen: 'Regenerate',
-      cmp: [['restart', 'Restart one or more units'], ['reload', 'Reload one or more units'], ['status', 'Show runtime status'], ['enable', 'Enable one or more unit files']],
-      ai: 'restart reports-api', fwd: ['Local', 'Remote', 'Dynamic'], running: 'Running', stopped: 'Stopped',
+      cmp: [['restart', 'Restart one or more units'], ['reload', 'Reload one or more units'], ['reenable', 'Reenable one or more unit files'], ['reset-failed', 'Reset the failed state of units']],
+      ghost: 'load nginx', fwd: ['Local', 'Remote', 'Dynamic'], running: 'Running', stopped: 'Stopped', auto: 'Run automatically',
+      hosts: 'Hosts', linkTab: 'Link', me: 'Me', link: 'Device Link', desktopTerms: 'Desktop terminals', quick: 'Quick connect',
+      pending: 'Pending', mirror: 'Mirror', via: 'Via desktop', direct: 'Direct', sessions: '2 sessions', linked: 'Linked with workstation',
+      sync: 'Sync config', clip: 'Send clipboard', share: 'Share phone files', approvals: 'Pending approvals', allow: 'Allow', deny: 'Deny',
+      viaHosts: 'Connect via desktop', code: 'Pairing code', lan: 'LAN addresses', paired: 'Paired devices', online: 'Connected',
+      perms: ['Terminal mirror', 'Proxy SSH', 'Files', 'Config sync', 'Remote approval'], linkOn: 'Enable desktop link', draft: 'Type command or ask Airy…',
+      quickAi: ['CPU & Memory', 'Disk usage', 'Recent errors', 'Open ports'], ask2: 'Why does web-01 return 502 on /api/reports?',
+      task: ['Why does /api/reports return 502?', 'Checking the nginx error log first', 'The upstream on 8080 refuses connections. Checking the reports-api container',
+        'The container was killed for running out of memory (exit 137). Restarting it should bring the endpoint back', 'Fixed: /api/reports returns 200. Its memory limit is still 256 MiB'],
+      fix: ['Fix the last failed command', 'The unit name is misspelled. It should be nginx', 'nginx restarted'], phoneName: 'Phone', desk: 'workstation',
+      mcp: ['Allow MCP connection', 'Allow Claude Code to use the Airy tools in Sshairy?', 'Cancel', 'Allow access'],
     },
     zh: {
       search: '搜索主机或 user@host', newHost: '新建主机', all: '全部', goal: '描述你想检查或处理的问题…',
@@ -71,9 +95,18 @@
       confirm: '确认', name: '名称', size: '大小', modified: '修改时间', transfers: '传输',
       cpu: 'CPU', memory: '内存', disks: '磁盘', network: '网络', processes: '进程', load: '负载', cores: '4 核',
       palette: '主机、会话、操作', pal: ['向右分屏', '打开设置', '开合 Agent 侧栏'],
-      inline: '找出 /var/log 下最大的 5 个文件', fill: '填入', regen: '重新生成',
-      cmp: [['restart', '重启一个或多个单元'], ['reload', '重新加载一个或多个单元'], ['status', '显示运行状态'], ['enable', '启用一个或多个单元文件']],
-      ai: 'restart reports-api', fwd: ['本地', '远程', '动态'], running: '运行中', stopped: '已停止',
+      cmp: [['restart', '重启一个或多个单元'], ['reload', '重新加载一个或多个单元'], ['reenable', '重新启用一个或多个单元文件'], ['reset-failed', '重置单元的失败状态']],
+      ghost: 'load nginx', fwd: ['本地', '远程', '动态'], running: '运行中', stopped: '已停止', auto: '自动执行',
+      hosts: '主机', linkTab: '互联', me: '我的', link: '手机互联', desktopTerms: '电脑实时终端', quick: '快速连接',
+      pending: '待连接', mirror: '镜像', via: '经电脑连接', direct: '直连', sessions: '2 个会话', linked: '已互联：workstation',
+      sync: '同步配置', clip: '推送剪贴板', share: '共享本机文件', approvals: '待审批请求', allow: '批准', deny: '拒绝',
+      viaHosts: '经电脑代理连接', code: '配对码', lan: '本机地址', paired: '已配对设备', online: '已连接',
+      perms: ['终端镜像', '电脑代理连接', '文件', '配置同步', '远程审批'], linkOn: '启用电脑互联', draft: '输入命令，或直接描述让 Airy 生成…',
+      quickAi: ['负载与内存', '磁盘占用', '最近报错日志', '监听端口'], ask2: 'web-01 的 /api/reports 为什么返回 502？',
+      task: ['/api/reports 为什么返回 502', '先看 nginx 的错误日志', '上游 8080 拒绝连接，看看 reports-api 容器',
+        '容器因内存不足被终止（退出码 137），重启即可恢复', '已恢复，/api/reports 返回 200；内存上限仍是 256 MiB'],
+      fix: ['修复上一条失败的命令', '服务名拼错了，应为 nginx', 'nginx 已重启'], phoneName: '我的手机', desk: 'workstation',
+      mcp: ['允许 MCP 连接', '允许 Claude Code 使用 Sshairy 的 Airy 工具？', '取消', '允许访问'],
     },
   };
 
@@ -84,10 +117,18 @@
   ];
   const GROUPS = [['Lab', 3], ['Production', 4], ['Staging', 2]];
 
-  // Terminal text: {n|text} colors with ANSI n, {b|text} is bold.
+  // Terminal text: {n|text} colors with ANSI n, {b|text} is bold, {g|text} is AI ghost text after the cursor,
+  // {t|text} is an inline AI task line (✦ in the primary color, text italic and dim as the app writes it).
+  const MARK = {
+    cur: () => '<i class="sa-cur"></i>', ai: () => `<i class="sa-aibtn">${I('spark', 12)}</i>`, fix: () => `<i class="sa-aibtn fix">${I('fix', 12)}</i>`,
+    g: (body) => `<span class="sa-ghost">${body}</span>`, t: (body) => `<b class="sa-star">✦</b> <em class="sa-tx">${body}</em>`,
+    // The running task's badge: {badge|label} with automatic execution off, {badgeon|label} with it on.
+    badge: (body) => `<i class="sa-badge">${I('spark', 12)}<span>${body}</span><u></u>${I('stop', 12)}</i>`,
+    badgeon: (body) => `<i class="sa-badge on">${I('spark', 12)}<span>${body}</span><u></u>${I('stop', 12)}</i>`,
+  };
   const line = (text) =>
     text.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
-      .replace(/\{(\w+)\|([^}]*)\}/g, (_, k, body) => (k === 'cur' ? '<i class="sa-cur"></i>' : k === 'ai' ? `<i class="sa-aibtn">${I('spark', 12)}</i>` : `<span class="a${k}">${body}</span>`));
+      .replace(/\{(\w+)\|([^}]*)\}/g, (_, k, body) => (MARK[k] ? MARK[k](body) : `<span class="a${k}">${body}</span>`));
   const prompt = (user, host, dir = '~') => `{2|${user}@${host}}:{4|${dir}}$ `;
   const CUR = '{cur|}';
   const term = (lines, tail = '') => `<div class="sa-term">${lines.map((l) => `<div>${line(l)}</div>`).join('')}${tail}</div>`;
@@ -132,6 +173,33 @@
       '/dev/nvme0n1p2  196G  121G   66G  {3|65%}',
     ],
   };
+  // An inline AI task run to the end in one terminal. TASK_WAIT is the line where the restart waits for Enter.
+  const TASK_WAIT = 12;
+  const taskLines = (lang) => {
+    const t = T[lang].task, curl = web + 'curl -s -o /dev/null -w "%{http_code}" localhost/api/reports';
+    const err = '{8|13:42:15} {1|[error]} connect() failed (111: Connection refused), upstream: 127.0.0.1:8080';
+    return [curl, '{1|502}', `{t|${t[0]}}`, `{t|${t[1]}}`, web + 'sudo tail -n 2 /var/log/nginx/error.log', err, err.replace('15}', '19}'),
+      `{t|${t[2]}}`, web + 'docker ps -a --filter name=reports-api', '{b|NAMES         STATUS}', 'reports-api   {1|Exited (137) 12 minutes ago}',
+      `{t|${t[3]}}`, web + 'docker restart reports-api', 'reports-api', curl, '{2|200}', `{t|${t[4]}}`, web + CUR];
+  };
+  const solo = (lines, tail = '') => `<div class="sa-split"><div class="sa-pane">${term(lines, tail)}</div></div>`;
+  // A fictional QR pattern: three finder squares and seeded modules. It is an illustration, not a scannable code.
+  const qr = (n = 25) => {
+    let seed = 7, cells = '';
+    const finder = (x, y) => x < 7 && y < 7 || x >= n - 7 && y < 7 || x < 7 && y >= n - 7;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      if (!finder(x, y) && seed / 2147483648 < 0.47 && !(x < 8 && y < 8) && !(x >= n - 8 && y < 8) && !(x < 8 && y >= n - 8)) cells += `M${x} ${y}h1v1h-1z`;
+    }
+    const eye = (x, y) => `<path d="M${x} ${y}h7v7h-7zM${x + 1} ${y + 1}v5h5v-5z" fill-rule="evenodd"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3"/>`;
+    return `<svg viewBox="-1 -1 ${n + 2} ${n + 2}" shape-rendering="crispEdges"><rect x="-1" y="-1" width="${n + 2}" height="${n + 2}" fill="#fff"/><g fill="#1F3A5F">${eye(0, 0)}${eye(n - 7, 0)}${eye(0, n - 7)}<path d="${cells}"/></g></svg>`;
+  };
+  // A desktop session as the phone mirrors it, short enough for a portrait screen.
+  const MIRROR = [
+    web + 'uptime', ' 13:58:02 up 14 days,  load: 0.42', web + 'docker ps --format "{{.Names}}"', 'reports-api', 'nginx', 'redis',
+    web + 'curl -sI localhost/api/reports', 'HTTP/1.1 {2|200 OK}', 'Server: nginx/1.26.2', 'Content-Type: application/json',
+    web + 'free -h', '{b|       total   used   free}', 'Mem:    7.7Gi  5.1Gi  1.2Gi', 'Swap:   2.0Gi  0.1Gi  1.9Gi',
+  ];
   const pane = (host, key, o = {}) =>
     `<div class="sa-pane${o.focus ? ' focus' : ''}" style="${o.area ? `grid-area:${o.area}` : ''}">${o.bare ? '' : `<div class="sa-ph"><i></i><b>${host}</b></div>`}${term(
       SESSIONS[key].concat(o.extra || []), o.tail || '')}</div>`;
@@ -147,7 +215,7 @@
       return `<div class="sa-hosts" style="--cols:${o.cols || 4}"><div class="sa-search"><div class="sa-field">${I('search', 16)}${t.search}</div><span class="ib">${I('list')}</span><span class="ib">${I('tune')}</span><div class="sa-btn">${I('plus', 16)}${t.newHost}</div></div><div class="sa-chips"><div class="sa-chip on">${t.all}<em>9</em></div>${chips}</div><div class="sa-cards">${cards}</div>${o.mascot === false ? '' : `<img class="sa-water" data-pose="${o.pose || 'speed'}" alt="">`}</div>`;
     },
     terminal(lang, o = {}) {
-      if (o.single) return `<div class="sa-split">${pane('web-01', 'status', { bare: 1, extra: [web + (o.typed || '') + CUR + (o.ai ? '{ai|}' : '')], tail: o.tail || '' })}</div>`;
+      if (o.single) return `<div class="sa-split">${pane('web-01', 'status', { bare: 1, extra: [web + (o.typed || '') + CUR + (o.ghost ? `{g|${o.ghost}}` : '') + (o.ai ? '{ai|}' : '')], tail: o.tail || '' })}</div>`;
       return `<div class="sa-split" style="grid-template:'a b' 1.25fr 'a c' 1fr / 1.15fr 1fr">${pane('web-01', 'status', { focus: 1, area: 'a', extra: [web + CUR], tail: o.tail || '' })}${pane('web-01', 'logs', { area: 'b' })}${pane('db-primary', 'docker', { area: 'c' })}</div>`;
     },
     airy(lang, o = {}) {
@@ -196,18 +264,80 @@
       const keys = ['Ctrl+D', 'Ctrl+,', 'Ctrl+L'];
       return `<div class="sa-dim"></div><div class="sa-pal"><header>${I('search', 17)}<b>we</b><span>${t.palette}</span></header>${hosts}${t.pal.map((label, i) => `<div>${I(['panel', 'gear', 'spark'][i], 16)}${label}<small><kbd>${keys[i]}</kbd></small></div>`).join('')}</div>`;
     },
-    inline(lang, o = {}) {
-      const t = T[lang];
-      return `<div class="sa-pop sa-inl" style="${o.style || 'left:150px;top:344px'}"><header>${I('spark', 16)}<span>${t.inline}</span>${I('x', 14)}</header><pre>find /var/log -type f -printf '%s %p\\n' | sort -nr | head -5</pre><footer><div class="sa-btn ghost">${t.regen}</div><div class="sa-btn">${t.fill}</div></footer></div>`;
+    // The whole inline AI task, or its first `upto` lines with the last command waiting for Enter beside the task badge.
+    task(lang, o = {}) {
+      const lines = taskLines(lang);
+      if (!o.upto) return solo(lines);
+      const shown = lines.slice(0, o.upto);
+      shown[o.upto - 1] += CUR + `{${o.auto ? 'badgeon' : 'badge'}|${T[lang].auto}}`;
+      return solo(shown);
     },
+    // Spec candidates for the word being typed; the AI suggestion is ghost text in the terminal line, not a row here.
     completion(lang, o = {}) {
+      const rows = T[lang].cmp.map(([word, hint], i) => `<div class="${i ? '' : 'on'}"><b>${word}</b><span>${hint}</span></div>`).join('');
+      return `<div class="sa-pop sa-cmp" style="${o.style || 'left:240px;top:322px'}">${rows}</div>`;
+    },
+    // Phone screens: o.screen is hosts, link or term; o.banner floats an approval over any of them.
+    phone(lang, o = {}) {
+      const t = T[lang], screen = o.screen || 'hosts';
+      const tag = (text, kind = '') => `<em class="sa-tag ${kind}">${text}</em>`;
+      const row = (icon, name, sub, end = '') => `<div class="sa-prow"><span>${I(icon, 18)}</span><div><b>${name}</b>${sub ? `<small>${sub}</small>` : ''}</div>${end}</div>`;
+      const approval = (cls = '') => `<div class="sa-pap ${cls}"><h6>${I('shield', 16)}<b>Airy · web-01</b><em>${t.timeout}</em></h6><pre>docker restart reports-api</pre><footer><span class="sa-btn ghost">${t.deny}</span><span class="sa-btn">${t.allow}</span></footer></div>`;
+      const bars = '<svg width="54" height="12" viewBox="0 0 54 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="4.5" y="5.5" width="3" height="6.5" rx="1"/><rect x="9" y="3" width="3" height="9" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/><path d="M28 3.2a9 9 0 0 1 10 0l-1.4 1.6a6.8 6.8 0 0 0-7.2 0zM30.3 6a5.4 5.4 0 0 1 5.4 0L33 9z"/><rect x="41" y="1.5" width="11" height="9" rx="2.5" fill="none" stroke="currentColor"/><rect x="42.8" y="3.3" width="6.5" height="5.4" rx="1"/></svg>';
+      let body = '', chrome = '';
+      if (screen === 'term') {
+        const keys = ['ESC', 'TAB', 'CTRL', 'ALT', '^C', '^D', '↑', '↓', '←', '→', '|', '/'].map((k) => `<span>${k}</span>`).join('');
+        body = `<div class="sa-ptb">${I('back', 20)}<b>web-01</b>${I('expand', 15)}${tag(o.direct ? t.direct : t.mirror)}<span class="sp"></span><i class="pr">${I('spark', 19)}</i>${I('files', 19)}${I('pulse', 19)}${I('vdots', 19)}</div>`
+          + `<div class="sa-pterm">${term(o.lines || MIRROR.concat(web + CUR))}</div>`
+          + (o.draft !== undefined ? `<div class="sa-pdr"><span class="${o.draft ? 'on' : ''}">${o.draft || t.draft}</span><i class="pr">${I('spark', 18)}</i><i class="pr">${I('send', 18)}</i></div>` : '')
+          + `<div class="sa-pkeys"><div>${keys}</div><span>${I('pad', 18)}</span><hr><span>${I('edit', 18)}</span></div>`;
+      } else {
+        if (screen === 'link') {
+          body = `<header class="sa-phd"><b>${t.linkTab}</b></header><div class="sa-pscroll">`
+            + `<div class="sa-plk"><span>${I('link', 20)}</span><b>${t.linked}</b><i></i></div>`
+            + `<div class="sa-pact"><span>${I('sync', 16)}${t.sync}</span><span>${I('clip', 16)}${t.clip}</span></div>`
+            + `<div class="sa-psw">${I('folder', 17)}<span>${t.share}</span><u></u></div>`
+            + (o.approval ? `<h6>${t.approvals}</h6>${approval()}` : '')
+            + `<h6>${t.desktopTerms}</h6>${row('term', 'web-01', 'deploy@192.0.2.11', tag(t.mirror))}${row('server', 'db-primary', 'postgres@192.0.2.21', tag(t.pending, 'wait'))}${row('term', 'PowerShell', '')}`
+            + `<h6>${t.viaHosts}</h6>${row('net', 'bastion', 'ops@bastion.example.com')}${row('net', 'gpu-box', 'ml@203.0.113.40')}</div>`;
+        } else {
+          const chips = [['pin', 'web-01'], ['pin', 'db-primary'], ['bolt', 'staging']].map(([icon, name]) => `<span class="sa-pqc">${I(icon, 14)}${name}</span>`).join('');
+          const groups = [t.all, ...GROUPS.map(([name]) => name)].map((name, i) => `<span class="sa-pg${i ? '' : ' on'}">${name}</span>`).join('');
+          const cards = HOSTS.slice(0, 5).map(([name, at, pinned]) => `<div class="sa-pcd"><span>${I('server', 19)}</span><div><b>${name}${pinned ? I('pin', 12) : ''}</b><small>${at}</small></div>${I('vdots', 18)}</div>`).join('');
+          body = `<header class="sa-phd"><img data-mark alt=""><b>${t.hosts}</b><span class="sp"></span><i class="pr">${I('plus', 22)}</i></header><div class="sa-pscroll">`
+            + `<div class="sa-pse">${I('search', 18)}${t.search}</div>`
+            + `<h6>${I('desk', 15)}${t.desktopTerms}</h6><div class="sa-pro">${['web-01', 'db-primary', 'PowerShell'].map((name) => `<span class="sa-pdt">${I('term', 15)}${name}</span>`).join('')}</div>`
+            + `<h6>${t.quick}</h6><div class="sa-pro">${chips}</div><div class="sa-pro">${groups}</div>${cards}</div>`;
+          chrome = `<div class="sa-ppl"><i></i><b>web-01</b>${tag(t.mirror)}<span class="sp"></span><small>${t.sessions}</small>${I('x', 15)}</div>`;
+        }
+        const tabs = [['server', t.hosts], ['spark', 'Airy'], ['link', t.linkTab], ['user', t.me]];
+        chrome += `<nav class="sa-pnav">${tabs.map(([icon, label], i) => `<div class="${i === (screen === 'link' ? 2 : 0) ? 'on' : ''}"><i>${I(icon, 22)}${i === 2 && o.banner ? '<em>1</em>' : ''}</i><span>${label}</span></div>`).join('')}</nav>`;
+      }
+      return `<div class="sa-phone" data-mode="${o.mode || 'light'}"><div class="sa-psc"><div class="sa-sb"><b>9:41</b>${bars}</div>${body}${chrome}${o.banner ? approval('banner') : ''}</div></div>`;
+    },
+    // The dialog an MCP client's first connection raises.
+    mcp(lang) {
+      const [title, ask, cancel, allow] = T[lang].mcp;
+      return `<div class="sa-mcp"><h6>${I('shield', 18)}${title}</h6><p>${ask}</p><footer><span class="sa-btn ghost">${cancel}</span><span class="sa-btn">${allow}</span></footer></div>`;
+    },
+    // A failed command, then the fix task it started from the error-colored icon.
+    fix(lang, o = {}) {
+      const t = T[lang], cmd = web + 'sudo systemctl restart ';
+      const lines = [cmd + 'ngnix', '{1|Failed to restart ngnix.service: Unit ngnix.service not found.}'];
+      return term(o.icon ? lines.concat(web + CUR + '{fix|}') : lines.concat(`{t|${t.fix[0]}}`, `{t|${t.fix[1]}}`, cmd + 'nginx' + CUR));
+    },
+    // The desktop's Device Link popover with a pairing code and one connected phone.
+    linkpop(lang) {
       const t = T[lang];
-      const rows = t.cmp.map(([word, hint], i) => `<div class="${i ? '' : 'on'}"><b>${word}</b><span>${hint}</span></div>`).join('');
-      return `<div class="sa-pop sa-cmp" style="${o.style || 'left:216px;top:338px'}"><div class="ai">${I('spark', 14)}<b>${t.ai}</b></div>${rows}</div>`;
+      const perms = t.perms.map((name) => `<span>${I('ok', 13)}${name}</span>`).join('');
+      return `<div class="sa-lk"><header>${I('phone', 18)}<b>${t.link}</b><span class="sp"></span>${I('x', 16)}</header>`
+        + `<div class="sa-lkr"><span>${t.linkOn}</span><u></u></div>`
+        + `<div class="sa-lkp"><div class="qr">${qr()}</div><div><small>${t.code}</small><b>482 913</b><small>${t.lan}</small><code>192.168.1.20${I('expand', 14)}</code></div></div>`
+        + `<h6>${t.paired}</h6><div class="sa-lkd"><div>${I('phone', 17)}<b>${t.phoneName}</b><em><i></i>${t.online}</em></div><p>${perms}</p></div></div>`;
     },
   };
 
-  const RAIL = ['server', 'files', null, 'spark', 'key', 'net', 'route', 'code', 'shield', 'log'];
+  const RAIL = ['server', 'files', null, 'spark', 'key', 'net', 'route', 'code', 'shield', 'log', 'link'];
   // o: { mode, w, h, rail, tabs: [[title, active]], main: html, overlay: html, panels: [icon names shown active] }
   function app(o = {}) {
     const rail = RAIL.map((name) => (name ? `<b class="${name === (o.rail || 'server') ? 'on' : ''}">${I(name)}</b>` : '<hr>')).join('');
@@ -225,8 +355,9 @@
     files: (lang, o) => app({ ...o, rail: 'files', tabs: TABS, main: S.files(lang) }),
     monitor: (lang, o) => app({ ...o, rail: 'none', tabs: TABS, panels: ['panel'], main: S.monitor(lang) + S.terminal(lang, { single: 1 }) }),
     palette: (lang, o) => app({ ...o, main: S.hosts(lang, o), overlay: S.palette(lang) }),
-    inline: (lang, o) => app({ ...o, rail: 'none', tabs: TABS, main: S.terminal(lang, { single: 1, ai: 1, typed: T[lang].inline, tail: S.inline(lang) }) }),
-    completion: (lang, o) => app({ ...o, rail: 'none', tabs: TABS, main: S.terminal(lang, { single: 1, typed: 'systemctl ', tail: S.completion(lang) }) }),
+    task: (lang, o) => app({ ...o, rail: 'none', tabs: TABS, main: S.task(lang, { upto: TASK_WAIT + 1, ...o }) }),
+    completion: (lang, o) => app({ ...o, rail: 'none', tabs: TABS, main: S.terminal(lang, { single: 1, typed: 'sudo systemctl re', ghost: T[lang].ghost, tail: S.completion(lang) }) }),
+    link: (lang, o) => app({ ...o, rail: 'link', tabs: TABS, main: S.terminal(lang, { single: 1 }), overlay: S.linkpop(lang) }),
     forwards: (lang, o) => app({ ...o, rail: 'route', main: S.forwards(lang) }),
   };
 
@@ -252,6 +383,6 @@
       });
       paint(root, base);
     },
-    paint, icon: I, text: T, term, prompt,
+    paint, icon: I, text: T, term, prompt, line, taskLines, TASK_WAIT, MIRROR, CUR,
   };
 })();

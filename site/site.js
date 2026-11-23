@@ -3,31 +3,33 @@
   // Every outbound link is built from this one line.
   const REPO = 'https://github.com/Marchen-orz/sshairy';
   const THEMES = ['blue', 'green', 'violet', 'orange', 'deepSea', 'pink'];
-  const TOUR = ['terminal', 'hosts', 'files', 'monitor', 'completion', 'inline', 'palette', 'forwards'];
+  const TOUR = ['terminal', 'hosts', 'files', 'monitor', 'completion', 'task', 'link', 'palette', 'forwards'];
   const T = {
     en: {
       title: 'Sshairy · Lightweight SSH. Powered by AI.',
-      nTour: 'Tour', nPerf: 'Performance', nDocs: 'Docs', nGet: 'Download',
+      nTour: 'Tour', nLink: 'Link', nPerf: 'Performance', nDocs: 'Docs', nGet: 'Download',
       h1a: 'Lightweight SSH.', h1b: 'Powered by AI.',
-      lede: 'Terminals, SFTP, tunnels and server monitoring in one modern native window with clean, fluid tabs, splits and panels; AI is part of the workflow.',
-      dl: { win: 'Download for Windows', mac: 'Download for macOS', linux: 'Download for Linux' }, src: 'View source',
-      fine: 'Preview 0.2.3 · Windows, macOS and Linux · MIT License',
+      lede: 'Terminals, SFTP, tunnels and server monitoring in one modern native window. Airy works right in your terminal, and your phone links in to mirror sessions and approve actions.',
+      dl: { win: 'Download for Windows', mac: 'Download for macOS', linux: 'Download for Linux', android: 'Download for Android' }, src: 'View source',
+      fine: 'Preview 0.3.0 · Windows, macOS, Linux and Android · MIT License',
       stats: [['0.62', 's', 'to open'], ['131', 'MiB', 'at idle'], ['27', 'MiB', 'to download'], ['1', 'process', 'no browser engine']],
       tourH: 'One window for <span class="k-serif">every</span> server.',
-      tabs: ['Terminals', 'Hosts', 'Files', 'Monitor', 'Completion', 'Inline AI', 'Palette', 'Forwarding'],
+      tabs: ['Terminals', 'Hosts', 'Files', 'Monitor', 'Completion', 'Inline tasks', 'Link', 'Palette', 'Forwarding'],
       feats: [
-        ['server', 'Connect', 'Hosts in groups with tags, pins and search. Password and key sign-in, Ed25519 keys, jump hosts and proxies.'],
+        ['server', 'Connect', 'Hosts in groups with tags, pins and search. Password and key sign-in, jump hosts, proxies and verified host keys.'],
         ['term', 'Work', 'Tabbed terminals, draggable splits, local shells, search, reconnect and restored layouts.'],
         ['files', 'Move files', 'Dual-pane SFTP, transfer queues, resumable transfers, conflict handling and external editing.'],
         ['log', 'Keep watch', 'CPU, memory, disk and processes over SSH, with nothing to install on the server.'],
-        ['route', 'Reach further', 'Local, remote and dynamic port forwarding. Snippets and 1,453 shell completion specs.'],
-        ['shield', 'Stay in control', 'Modern native interface with fluid tabs, splits and panels; host-key verification, OS-backed credential storage, English and Chinese, custom shortcuts.'],
+        ['route', 'Reach further', 'Local, remote and dynamic port forwarding. Snippets, 1,453 shell specs and AI ghost text after the cursor.'],
+        ['phone', 'Go mobile', 'An Android preview with a touch terminal, SFTP and Airy. Link it to your desktop to mirror sessions and proxy connections.'],
       ],
       airyH: 'Meet <span class="k-grad">Airy</span>.',
-      airyP: 'The AI assistant beside your terminal, with 39 tools for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model.',
-      ways: [['Agent', 'Describe a task and Airy works through it step by step.'], ['Inline commands', 'A plain-language request becomes a command you can edit before it runs.'], ['AI completion', 'Suggestions as you type, next to shell specs and your history.']],
+      airyP: 'An AI assistant beside your terminal and inside it, with 42 tools for hosts, files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model.',
+      ways: [['Agent', 'Describe a task and Airy works through it step by step.'], ['Inline tasks', 'Ask at the prompt. Airy explains each step in ✦ lines and fills in the next command for you to run.'], ['Completion and fixes', 'AI ghost text after the cursor, and a fix icon beside a failed command.'], ['MCP', 'Claude Code and other MCP clients use the same 42 tools once you allow them.']],
       modes: ['Observe', 'Confirm', 'Auto confirm', 'Full auto'],
       hints: ['Read-only tools, and you approve each read.', 'You approve every read and every command. The default.', 'A separate model reviews each action and asks you when unsure.', 'Reads, runs and shares results without asking.'],
+      linkH: 'Your servers, <span class="k-serif">in your</span> pocket.',
+      linkP: 'Mirror desktop sessions, connect through the desktop, swap files and approve Airy from your phone. Pairing takes one scan, and the link is end-to-end encrypted.',
       replay: 'Replay', themesH: 'Six ways to feel at home.', light: 'Light', dark: 'Dark', theme: 'Theme',
       names: ['Ice Blue / Mint', 'Mint Green', 'Violet', 'Sunset Orange', 'Deep Sea Blue', 'Sakura Pink'],
       perfH: 'Less waiting. More working.',
@@ -36,9 +38,9 @@
       parts: ['Shell completions', 'Flutter engine', 'App code · AOT', 'Brand artwork', 'Other files'],
       pills: ['One app process', 'No Chromium', 'No WebView'],
       tableS: 'Full comparison', cols: ['Client', 'Startup', 'Idle memory', 'Download'],
-      filmH: 'Fifty-seven seconds of Sshairy.',
+      filmH: 'Fifty-eight seconds of Sshairy.',
       getH: 'Get Sshairy.', winP: 'Installer or single-file portable app for 64-bit Windows.', winB: 'Download · 27 MiB',
-      macP: 'Universal DMG for Apple silicon and Intel. Early build.', linuxP: 'AppImage and .deb for x64. Early build.', osB: 'Download →', getB: 'Download',
+      macP: 'Universal DMG for Apple silicon and Intel. Early build.', linuxP: 'AppImage and .deb for x64. Early build.', androidP: 'APK for Android 8.0 and later on arm64-v8a, armeabi-v7a or x86_64. Preview.', osB: 'Download →', getB: 'Download',
       copy: 'Copy', copied: 'Copied', or: '# or macos, linux',
       docsH: 'Docs.', read: 'Read', soon: 'Coming soon',
       docs: [['Getting started', 'Install, add your first host and open a session.'], ['Build from source', 'Toolchain, commands and Windows packaging.'], ['Guides', 'Airy, permissions, themes and shortcuts.']],
@@ -46,27 +48,29 @@
     },
     zh: {
       title: 'Sshairy · 轻量 SSH，AI 加持',
-      nTour: '导览', nPerf: '性能', nDocs: '文档', nGet: '下载',
+      nTour: '导览', nLink: '互联', nPerf: '性能', nDocs: '文档', nGet: '下载',
       h1a: '轻量 SSH', h1b: 'AI 加持',
-      lede: '终端、SFTP、端口转发和服务器监控收进同一个现代原生窗口：界面清爽，分屏、标签与面板切换顺手；AI 融进日常 SSH 工作流',
-      dl: { win: '下载 Windows 版', mac: '下载 macOS 版', linux: '下载 Linux 版' }, src: '查看源码',
-      fine: '预览版 0.2.3 · Windows、macOS 与 Linux · MIT 许可证',
+      lede: '终端、SFTP、端口转发和服务器监控收进同一个现代原生窗口；Airy 直接在终端里干活，手机扫码互联，随时镜像会话、批准操作',
+      dl: { win: '下载 Windows 版', mac: '下载 macOS 版', linux: '下载 Linux 版', android: '下载 Android 版' }, src: '查看源码',
+      fine: '预览版 0.3.0 · Windows、macOS、Linux 与 Android · MIT 许可证',
       stats: [['0.62', '秒', '启动'], ['131', 'MiB', '空闲内存'], ['27', 'MiB', '下载体积'], ['1', '个进程', '无需浏览器内核']],
       tourH: '所有服务器，一个窗口',
-      tabs: ['终端', '主机', '文件', '监控', '补全', '行内 AI', '命令面板', '端口转发'],
+      tabs: ['终端', '主机', '文件', '监控', '补全', '行内任务', '互联', '命令面板', '端口转发'],
       feats: [
-        ['server', '连接', '主机分组、标签、置顶、搜索；密码与密钥认证，生成 Ed25519 密钥，支持跳板与代理'],
+        ['server', '连接', '主机分组、标签、置顶、搜索；密码与密钥认证，支持跳板与代理，主机密钥逐一校验'],
         ['term', '终端', '多标签、拖放分屏、本地 Shell、搜索、重连与布局恢复'],
         ['files', '文件', '双栏 SFTP、传输队列、断点续传、冲突处理与外部编辑器'],
         ['log', '监控', '通过 SSH 查看 CPU、内存、磁盘与进程，服务器无需安装任何东西'],
-        ['route', '工具', '本地、远程、动态端口转发；命令片段和 1,453 个 Shell 补全规格'],
-        ['shield', '体验', '现代原生界面，分屏、标签与面板切换顺手；主机密钥校验、系统凭据存储、中英文界面与自定义快捷键'],
+        ['route', '工具', '本地、远程、动态端口转发；命令片段、1,453 个 Shell 补全规格，AI 建议直接接在光标后'],
+        ['phone', '手机', 'Android 预览版自带触控终端、SFTP 和 Airy；与电脑互联后可镜像会话、经电脑连接主机'],
       ],
       airyH: '认识 <span class="k-grad">Airy</span>',
-      airyP: 'Airy 就在终端旁边，是一位 AI 助手，配备 39 个工具，可管理主机、远端文件、命令、会话、布局与设置；接入你自己的 Anthropic 或 OpenAI 兼容模型',
-      ways: [['Agent', '说出任务，Airy 一步步处理'], ['行内命令', '一句自然语言变成命令，运行前可以修改'], ['AI 补全', '边输入边给建议，和 Shell 规格、命令历史排在一起']],
+      airyP: 'Airy 在终端旁边，也在终端里，配备 42 个工具，可管理主机、文件、命令、会话、布局与设置；接入你自己的 Anthropic 或 OpenAI 兼容模型',
+      ways: [['Agent', '说出任务，Airy 一步步处理'], ['行内任务', '在提示符里直接提需求，✦ 行说明每一步，命令填好等你回车'], ['补全与修复', 'AI 建议以灰字接在光标后；命令失败时旁边出现修复图标'], ['MCP', 'Claude Code 等 MCP 客户端经你允许后，共用这 42 个工具']],
       modes: ['观察', '确认', '自动确认', '全自动'],
       hints: ['只用只读工具，每次读取由你批准', '读取和命令都由你批准，默认模式', '由另一个模型审核每个操作，拿不准时再问你', '读取、执行、使用结果，全程不再询问'],
+      linkH: '服务器，装进口袋',
+      linkP: '在手机上镜像电脑会话、经电脑连接主机、互传文件、批准 Airy 的操作；扫码即可配对，通道端到端加密',
       replay: '重播', themesH: '六种配色，换个心情', light: '浅色', dark: '深色', theme: '主题',
       names: ['冰蓝薄荷', '薄荷绿', '紫罗兰', '落日橙', '深海蓝', '樱花粉'],
       perfH: '打开就用',
@@ -75,9 +79,9 @@
       parts: ['Shell 补全规格', 'Flutter 引擎', 'AOT 应用代码', '品牌素材', '其余文件'],
       pills: ['单个应用进程', '无 Chromium', '无 WebView'],
       tableS: '完整对比', cols: ['客户端', '启动', '空闲内存', '下载体积'],
-      filmH: '57 秒，看完 Sshairy',
+      filmH: '58 秒，看完 Sshairy',
       getH: '获取 Sshairy', winP: '64 位 Windows 安装包或单文件便携版', winB: '下载 · 27 MiB',
-      macP: '通用 DMG，支持 Apple 芯片与 Intel，早期构建', linuxP: 'x64 的 AppImage 与 .deb，早期构建', osB: '下载 →', getB: '下载',
+      macP: '通用 DMG，支持 Apple 芯片与 Intel，早期构建', linuxP: 'x64 的 AppImage 与 .deb，早期构建', androidP: '适用于 Android 8.0 及以上的 APK，提供 arm64-v8a、armeabi-v7a 与 x86_64，预览版', osB: '下载 →', getB: '下载',
       copy: '复制', copied: '已复制', or: '# 或 macos、linux',
       docsH: '文档', read: '阅读', soon: '即将补充',
       docs: [['快速开始', '安装、添加第一台主机、打开会话'], ['从源码构建', '工具链、命令与 Windows 打包'], ['使用指南', 'Airy、权限、主题与快捷键']],
@@ -94,7 +98,7 @@
   let lang = store('lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   let theme = THEMES.includes(store('theme')) ? store('theme') : 'blue';
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
-  const os = /mac/i.test(platform) ? 'mac' : /linux|x11/i.test(platform) && !/android/i.test(navigator.userAgent) ? 'linux' : 'win';
+  const os = /android/i.test(navigator.userAgent) ? 'android' : /mac/i.test(platform) ? 'mac' : /linux|x11/i.test(platform) ? 'linux' : 'win';
   // The head script already set data-scheme from the stored choice or the system.
   const night = matchMedia('(prefers-color-scheme: dark)');
   let scheme = root.dataset.scheme === 'dark' ? 'dark' : 'light';
@@ -192,6 +196,7 @@
     $('#dlLabel').textContent = t.dl[os];
     $$('img[data-brand^="wordmark"]').forEach((img) => (img.dataset.brand = scheme === 'dark' ? 'wordmark-dark' : 'wordmark'));
     $('#chat').dataset.mode = scheme;
+    $('#phones').innerHTML = [{ screen: 'link', approval: 1 }, { screen: 'term', draft: '' }].map((o) => `<div>${SshairyMock.part('phone', lang, { ...o, mode: scheme })}</div>`).join('');
     $('#scheme').setAttribute('aria-label', t.scheme);
     $('#scheme').setAttribute('aria-pressed', scheme === 'dark');
     $('meta[name="theme-color"]').content = scheme === 'dark' ? '#0B0E13' : '#F1F7FF';
@@ -220,7 +225,7 @@
       : `<div class="doc" style="--i:${i}"><b>${title}</b><span>${text}</span><em>${t.soon}</em></div>`).join('');
     // The visitor's platform leads the download cards.
     const latest = link('releases/latest');
-    $('#osCards').innerHTML = [['win', 'Windows', t.winP], ['mac', 'macOS', t.macP], ['linux', 'Linux', t.linuxP]]
+    $('#osCards').innerHTML = [['win', 'Windows', t.winP], ['mac', 'macOS', t.macP], ['linux', 'Linux', t.linuxP], ['android', 'Android', t.androidP]]
       .sort((a, b) => (b[0] === os) - (a[0] === os))
       .map(([key, name, text], i) => key === os
         ? `<article class="os main" style="--i:${i}"><h3>${name}</h3><p>${text}</p><a class="btn big" href="${latest}">${key === 'win' ? t.winB : t.getB}</a></article>`
