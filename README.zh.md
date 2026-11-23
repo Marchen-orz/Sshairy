@@ -4,15 +4,15 @@
 
 [功能](#功能) · [Airy](#airy) · [主题](#主题) · [性能](#性能) · [初衷](#初衷) · [获取](#获取) · [English](README.md)
 
-![预览版](https://img.shields.io/badge/preview-0.2.5-2E6EF7?style=flat-square&labelColor=1F3A5F)
-![桌面平台](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-2E6EF7?style=flat-square&labelColor=1F3A5F)
+![预览版](https://img.shields.io/badge/preview-0.3.0-2E6EF7?style=flat-square&labelColor=1F3A5F)
+![平台](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-2E6EF7?style=flat-square&labelColor=1F3A5F)
 [![Flutter](https://img.shields.io/badge/Flutter-native-5AB6FF?style=flat-square&labelColor=1F3A5F)](https://flutter.dev)
 ![AI](https://img.shields.io/badge/AI-Airy-3CC9A7?style=flat-square&labelColor=1F3A5F)
 [![LINUX DO](https://img.shields.io/badge/community-LINUX%20DO-F5A623?style=flat-square&labelColor=1F3A5F)](https://linux.do)
 
 </div>
 
-**Sshairy** 是一款面向 **Windows、macOS、Linux** 的轻量 SSH 客户端。终端、SFTP、端口转发和服务器监控收进同一个现代原生窗口，界面清爽，分屏、标签与面板切换顺手，基于 Dart 与 Flutter 构建
+**Sshairy** 是一款面向 **Windows、macOS、Linux 和 Android** 的轻量 SSH 客户端，基于 Dart 与 Flutter 构建。电脑端在同一个原生窗口中提供终端、SFTP、端口转发与服务器监控，支持标签、分屏与面板。Android 可用触控终端直连 SSH，也可通过「手机互联」镜像电脑会话并互传文件。
 
 AI 直接融进日常 SSH 工作流：把任务交给 Airy，或把一句话变成命令，读上下文、查服务器、执行操作都由它接着做。轻量、现代、流畅易用，同时不依赖 Chromium，不套 WebView，也不用额外带一套浏览器运行时
 
@@ -35,11 +35,11 @@ AI 直接融进日常 SSH 工作流：把任务交给 Airy，或把一句话变�
 
 ## Airy
 
-Airy 就在终端旁边，是一位 AI 助手，配备 **43 个工具**，可管理主机、远端文件、命令、会话、布局与设置。接入你自己的 Anthropic 或 OpenAI 兼容模型，交给它多少由你决定
+Airy 就在终端旁边，是一位 AI 助手，配备 **42 个工具**，可管理主机、远端文件、命令、会话、布局与设置。接入你自己的 Anthropic 或 OpenAI 兼容模型，交给它多少由你决定
 
-- **Agent**：说出任务，Airy 一步步处理
-- **行内命令**：一句自然语言变成命令，运行前可以修改
-- **AI 补全**：边输入边给建议，和 Shell 规格、命令历史排在一起
+- **Agent** 根据描述分步处理任务。
+- **行内 AI 任务**在当前终端分步进行，每条命令可以先检查再执行。
+- **AI 补全**在输入时把建议显示在光标后。
 
 四档权限覆盖从旁观到放手：**观察、确认、自动确认、全自动**。默认是确认，每个操作都先展示目标和具体内容，由你批准
 
@@ -99,13 +99,17 @@ Sshairy 花了我不少心血，也借鉴了同类软件里做得好的地方。
 
 ## 获取
 
-安装包发布在 [Releases](https://github.com/Marchen-orz/sshairy/releases) 页面：
+安装包可在 [GitHub Releases](https://github.com/Marchen-orz/sshairy/releases) 下载。版本变化见 [更新日志](CHANGELOG.md)。
 
-- **Windows x64**：`setup.exe` 为当前用户安装；`portable.exe` 是单文件便携版，免安装直接运行
-- **macOS**：通用 DMG 或 ZIP，支持 Apple 芯片与 Intel，早期构建
-- **Linux x64**：AppImage 或 `.deb`，早期构建
+| 平台 | 安装包 |
+|---|---|
+| Windows x64 | `setup.exe` 为当前用户安装，`portable.exe` 免安装直接运行 |
+| macOS（Apple 芯片与 Intel） | 通用 DMG 或 ZIP，早期构建 |
+| Linux x64 | AppImage 或 `.deb`，早期构建 |
+| Android 8.0 及以上 | 通用预览 APK，包含 ARM64、ARMv7 和 x86_64 |
+| iOS | 暂无发行包 |
 
-安装包暂未签名。Windows 首次启动可能出现 SmartScreen 提示（更多信息 → 仍要运行）；macOS 可右键应用选择“打开”，或在“系统设置 → 隐私与安全性”中允许
+桌面安装包暂未做分发签名。Windows 首次启动可能出现 SmartScreen 提示（更多信息 → 仍要运行）。macOS 可右键应用选择「打开」，或在「系统设置 → 隐私与安全性」中允许。Android 预览 APK 使用开发签名。
 
 从源码构建需要 Flutter 3.47.9 / Dart 3.13.7。Windows 还需安装 Visual Studio 的 **C++ 桌面开发**工作负载
 

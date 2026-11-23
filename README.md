@@ -4,15 +4,15 @@
 
 [Features](#features) · [Airy](#airy) · [Themes](#themes) · [Performance](#performance) · [Why](#why) · [Get Sshairy](#get-sshairy) · [中文](README.zh.md)
 
-![Preview](https://img.shields.io/badge/preview-0.2.5-2E6EF7?style=flat-square&labelColor=1F3A5F)
-![Desktop platforms](https://img.shields.io/badge/desktop-Windows%20%7C%20macOS%20%7C%20Linux-2E6EF7?style=flat-square&labelColor=1F3A5F)
+![Preview](https://img.shields.io/badge/preview-0.3.0-2E6EF7?style=flat-square&labelColor=1F3A5F)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-2E6EF7?style=flat-square&labelColor=1F3A5F)
 [![Flutter](https://img.shields.io/badge/Flutter-native-5AB6FF?style=flat-square&labelColor=1F3A5F)](https://flutter.dev)
 ![AI](https://img.shields.io/badge/AI-Airy-3CC9A7?style=flat-square&labelColor=1F3A5F)
 [![LINUX DO](https://img.shields.io/badge/community-LINUX%20DO-F5A623?style=flat-square&labelColor=1F3A5F)](https://linux.do)
 
 </div>
 
-**Sshairy** is a lightweight SSH client for **Windows, macOS and Linux**. Terminals, SFTP, tunnels and server monitoring share one modern native window with clean, fluid tabs, splits and panels, built with Dart and Flutter.
+**Sshairy** is a lightweight SSH client for **Windows, macOS, Linux, and Android**, built with Dart and Flutter. On desktop, terminals, SFTP, tunnels, and server monitoring share one native window with tabs, splits, and panels. On Android, connect directly with a touch terminal or use Device Link to mirror sessions and share files with a computer.
 
 AI is part of the SSH workflow: hand Airy a task or turn a sentence into a command, and it reads context, checks servers and carries out the work. Lightweight, modern and easy to use, with no Chromium, no WebView and no browser runtime to carry around.
 
@@ -35,11 +35,11 @@ AI is part of the SSH workflow: hand Airy a task or turn a sentence into a comma
 
 ## Airy
 
-Airy is the AI assistant beside your terminal, with **43 tools** for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model and decide how much to delegate.
+Airy is the AI assistant beside your terminal, with **42 tools** for hosts, remote files, commands, sessions, layouts and settings. Bring your own Anthropic or OpenAI-compatible model and decide how much to delegate.
 
-- **Agent** — describe a task and Airy works through it step by step.
-- **Inline commands** — a plain-language request becomes a command you can edit before it runs.
-- **AI completion** — suggestions as you type, next to shell specs and your history.
+- **Agent.** Describe a task and Airy works through it step by step.
+- **Inline AI tasks.** Work through a task in the current terminal and review each command before running it.
+- **AI completion.** See suggestions after the cursor as you type.
 
 Four permission modes cover the range from watching to hands-off: **Observe**, **Confirm**, **Auto confirm** and **Full auto**. Confirm is the default, and every action shows its target and exact operation before you approve it.
 
@@ -99,13 +99,17 @@ Sshairy has taken a lot of work, and it draws on the best ideas from other clien
 
 ## Get Sshairy
 
-Builds are published on the [Releases](https://github.com/Marchen-orz/sshairy/releases) page:
+Download builds on [GitHub Releases](https://github.com/Marchen-orz/sshairy/releases). See what's changed in the [changelog](CHANGELOG.md).
 
-- **Windows x64**: `setup.exe` installs for the current user; `portable.exe` is a single file that runs without installing.
-- **macOS**: a universal DMG or ZIP for Apple silicon and Intel. Early build.
-- **Linux x64**: AppImage or `.deb`. Early build.
+| Platform | Download |
+|---|---|
+| Windows x64 | `setup.exe` for the current user or `portable.exe` to run without installing |
+| macOS (Apple silicon and Intel) | Universal DMG or ZIP, early build |
+| Linux x64 | AppImage or `.deb`, early build |
+| Android 8.0+ | Universal preview APK for ARM64, ARMv7, and x86_64 |
+| iOS | Pending |
 
-Builds are not code-signed yet. Windows SmartScreen may warn on first launch (More info → Run anyway); on macOS, right-click the app and choose Open, or allow it in System Settings → Privacy & Security.
+Desktop packages lack distribution signing. Windows SmartScreen may warn on first launch (More info → Run anyway). On macOS, right-click the app and choose Open, or allow it in System Settings → Privacy & Security. The Android preview APK uses a development signature.
 
 To build from source you need Flutter 3.47.9 / Dart 3.13.7. On Windows, also install Visual Studio's **Desktop development with C++** workload.
 
