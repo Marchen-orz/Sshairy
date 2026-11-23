@@ -1,9 +1,29 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
 import '../../connections/api.dart' show TransportLease;
+import '../domain/directory.dart';
 import '../domain/terminal_paths.dart';
+
+/// Queries the working directory of one marked SSH shell over its existing lease.
+class SshShellDirectory {
+  final _marker = [for (var i = 0; i < 8; i++) Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')].join();
+
+  Map<String, String> get environment => {directoryVariable: _marker};
+
+  Future<String?> read(TransportLease lease, CancellationToken cancel) async {
+    final result = await lease.exec(
+      directoryQuery(_marker),
+      limit: 4096,
+      timeout: const Duration(seconds: 5),
+      cancel: cancel,
+    );
+    return parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
+  }
+}
 
 /// Path completion over the SFTP channel of a lease the terminal already holds (docs/TERMINAL_ASSISTANCE.md). One
 /// instance per lease and connection [generation]; [dispose] closes its channel and leaves the lease to its owner.
@@ -18,9 +38,22 @@ class LeaseRemotePathSource extends RemotePathBrowser {
 class LinkedRemotePathSource extends RemotePathBrowser {
   LinkedRemotePathSource(
     Future<FileSystem> Function() open, {
-    required super.generation,
-    super.timeout = const Duration(seconds: 5),
-  }) : super(SftpDirectoryReader(open, limit: timeout));
+    required int generation,
+    Duration timeout = const Duration(seconds: 5),
+  }) : this._(
+         SftpDirectoryReader(open, limit: timeout),
+         generation: generation,
+         timeout: timeout,
+       );
+
+  LinkedRemotePathSource._(this._reader, {required super.generation, required super.timeout}) : super(_reader);
+
+  final SftpDirectoryReader _reader;
+
+  Future<String?> workingDirectory(CancellationToken cancel) => _reader._use(
+    cancel,
+    (fs, _) async => fs is ShellWorkingDirectory ? (fs as ShellWorkingDirectory).workingDirectory() : null,
+  );
 }
 
 /// [RemoteDirectoryReader] over an SFTP channel that [_open] provides on demand. The channel is opened by the first

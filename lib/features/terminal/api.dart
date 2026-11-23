@@ -13,6 +13,7 @@ export 'domain/terminal_paths.dart'
         RemotePathException,
         RemotePathFailure;
 export 'adapters/terminal_session.dart';
+export 'adapters/terminal_paths.dart' show SshShellDirectory;
 export 'adapters/completion_licenses.dart' show registerCompletionLicenses;
 export 'application/sessions.dart';
 export 'application/completion_translations.dart' show completionTranslationsProvider;

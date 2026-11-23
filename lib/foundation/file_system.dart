@@ -163,6 +163,11 @@ abstract interface class FileSystem {
   Future<void> close();
 }
 
+/// Optional metadata on a file system bound to a particular live shell.
+abstract interface class ShellWorkingDirectory {
+  Future<String?> workingDirectory();
+}
+
 /// What one bounded scan of a directory saw. [scanned] counts every name read, [entries] only the accepted ones.
 class BoundedListing {
   const BoundedListing(this.entries, {required this.scanned, required this.complete});

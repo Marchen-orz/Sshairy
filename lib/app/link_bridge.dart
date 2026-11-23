@@ -165,7 +165,7 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
           final generation = session.shellGeneration;
           bool sameShell() => current() && session.shellGeneration == generation;
           if (session.isLocal) return LinkFsHandle(localFiles, localFiles.close, isCurrent: sameShell);
-          return _linkedTerminalFiles(session.liveSshLease!, cancel, sameShell);
+          return _linkedTerminalFiles(session.liveSshLease!, cancel, sameShell, session.readSshWorkingDirectory);
         },
       ),
     );
@@ -191,14 +191,15 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
     if (host == null) throw const LinkException(LinkErrorKind.hostUnavailable);
     final connections = _ref.read(connectionManagerProvider);
     final prompts = _NonInteractiveProxyPrompts();
+    final directory = SshShellDirectory();
     try {
       final (lease, channel) = await connections.open(
         host,
         prompts,
-        (lease) => lease.openShell(cols: cols, rows: rows),
+        (lease) => lease.openShell(cols: cols, rows: rows, environment: directory.environment),
         purpose: LeasePurpose.terminal,
       );
-      return _LeasedShellChannel(lease, channel);
+      return _LeasedShellChannel(lease, channel, directory);
     } on ConnectError catch (e) {
       throw LinkException(LinkErrorKind.hostUnavailable, e.kind.name);
     } on Object {
@@ -650,6 +651,7 @@ Future<LinkFsHandle> _linkedTerminalFiles(
   TransportLease lease,
   CancellationToken cancel,
   bool Function() current,
+  Future<String?> Function(CancellationToken cancel) readWorkingDirectory,
 ) async {
   if (cancel.isCancelled || !current() || !lease.isCurrent) throw const FsError(FsFailure.lost);
   final fs = await lease.openFiles();
@@ -658,23 +660,29 @@ Future<LinkFsHandle> _linkedTerminalFiles(
     await fs.close();
     throw const FsError(FsFailure.lost);
   }
-  return LinkFsHandle(fs, fs.close, isCurrent: stillCurrent);
+  return LinkFsHandle(fs, fs.close, isCurrent: stillCurrent, readWorkingDirectory: readWorkingDirectory);
 }
 
 class _LeasedShellChannel implements LinkProxyShell {
-  _LeasedShellChannel(this._lease, this._inner) {
+  _LeasedShellChannel(this._lease, this._inner, this._directory) {
     unawaited(_inner.done.whenComplete(_lease.release));
   }
 
   final TransportLease _lease;
   final ShellChannel _inner;
+  final SshShellDirectory _directory;
 
   @override
   late final resources = LinkTerminalResources(
     current: () => _lease.isCurrent,
     sample: ({required processes, required gpu, required cancel}) =>
         _sampleLinkedTerminal(_lease, local: false, processes: processes, gpu: gpu, cancel: cancel),
-    openFiles: (cancel) => _linkedTerminalFiles(_lease, cancel, () => _lease.isCurrent),
+    openFiles: (cancel) => _linkedTerminalFiles(
+      _lease,
+      cancel,
+      () => _lease.isCurrent,
+      (lookupCancel) => _directory.read(_lease, lookupCancel),
+    ),
   );
 
   @override

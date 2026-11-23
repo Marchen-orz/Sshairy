@@ -206,6 +206,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     if (_closed || _shellEnded || bytes.isEmpty) return;
     if (_shell != null) {
       _shell!.write(bytes);
+      if (bytes.length == 1 && bytes.single == 13) _entered();
     } else if (_localPty != null) {
       _localPty!.write(bytes);
     }
@@ -587,8 +588,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   var _attempts = 0;
   static const _backoff = [1, 2, 4, 8, 16];
 
-  /// The marker in this session's shell environment (docs/MODULES.md §3).
-  final _marker = [for (var i = 0; i < 8; i++) Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')].join();
+  final _sshDirectory = SshShellDirectory();
   late final _directory = _DirectoryNotifier(_following);
   String? _reported;
   final _lookups = <Timer>[];
@@ -725,7 +725,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         (lease) => lease.openShell(
           cols: _terminal.viewWidth,
           rows: _terminal.viewHeight,
-          environment: {directoryVariable: _marker},
+          environment: _sshDirectory.environment,
         ),
         cancel: cancel,
         isAuthorized: authorize,
@@ -751,7 +751,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
         if (data.isEmpty) return;
-        _forwardTerminalInput(data, shell.write, trackEnter: true);
+        _forwardTerminalInput(data, shell.write);
       };
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       shell.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -839,7 +839,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
-        _forwardTerminalInput(data, pty.write, trackEnter: true);
+        _forwardTerminalInput(data, pty.write);
       };
       _terminal.onResize = (cols, rows, _, _) => pty.resize(cols, rows);
       pty.resize(_terminal.viewWidth, _terminal.viewHeight);
@@ -904,7 +904,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       shell.done.then((_) => ended(), onError: (Object _) => ended());
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
-        _forwardTerminalInput(data, shell.write, trackEnter: false);
+        _forwardTerminalInput(data, shell.write);
       };
       _terminal.onResize = (cols, rows, _, _) => shell.resize(cols, rows);
       final consumer = TerminalOutput([shell.stdout, shell.stderr], (data) {
@@ -938,7 +938,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     }
   }
 
-  void _forwardTerminalInput(String data, void Function(Uint8List) write, {required bool trackEnter}) {
+  void _forwardTerminalInput(String data, void Function(Uint8List) write) {
     // A soft-keyboard Enter skips the view's submit hook; an inline task still needs its command recorded.
     if (data == '\r' && _aiTask?.awaiting == true) _submitCommand();
     final bracketedPaste = data.startsWith('\x1b[200~');
@@ -954,7 +954,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     _invalidateCommandDraft();
     write(utf8.encode(data));
     final submitted = data.contains('\r') && !bracketedPaste;
-    if (submitted && trackEnter) _entered();
+    if (submitted) _entered();
     if (submitted || data.contains('\x03') || data.contains('\x04')) _pastedPromptLine = null;
   }
 
@@ -1048,46 +1048,39 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     }
   }
 
-  Future<String?> _look({bool force = false}) async {
+  /// Reads the exact SSH shell's directory for a local follower or its authorized Link mirror.
+  Future<String?> readSshWorkingDirectory(CancellationToken cancel) async {
     final lease = _lease, generation = _shellGeneration, revision = _directoryRevision;
-    final source = remotePaths ?? _ownedPaths;
-    // A Link mirror or proxy terminal has no SSH lease; its own files still say where `~` starts.
+    if (_closed || _shellEnded || lease == null || lease.lost || cancel.isCancelled) return null;
+    String? found;
+    try {
+      found = await _sshDirectory.read(lease, cancel);
+    } on Object {
+      found = null;
+    }
     if (_closed ||
         _shellEnded ||
-        (lease == null && source == null) ||
-        (lease?.lost ?? false) ||
-        (!force && !_directory.followed)) {
+        cancel.isCancelled ||
+        generation != _shellGeneration ||
+        revision != _directoryRevision ||
+        !identical(_lease, lease)) {
+      return null;
+    }
+    // A server that refused the marker or has no /proc may still report through OSC 7.
+    return found ?? _reported;
+  }
+
+  Future<String?> _look({bool force = false}) async {
+    final lease = _lease;
+    if (_closed || _shellEnded || lease == null || lease.lost || (!force && !_directory.followed)) {
       return _directory.value;
     }
     final pending = _directoryLookup;
     if (pending != null) return pending;
     final cancel = _directoryCancel = CancellationToken();
     Future<String?> query() async {
-      String? found;
-      try {
-        if (lease == null) {
-          found = (await source!.browse(const RemotePathQuery(directory: '~'), cancel: cancel)).directory;
-        } else {
-          final result = await lease.exec(
-            directoryQuery(_marker),
-            limit: 4096,
-            timeout: const Duration(seconds: 5),
-            cancel: cancel,
-          );
-          found = parseDirectoryQuery(utf8.decode(result.stdout, allowMalformed: true));
-        }
-      } on Object {
-        found = null;
-      }
-      if (_closed ||
-          cancel.isCancelled ||
-          generation != _shellGeneration ||
-          revision != _directoryRevision ||
-          !identical(_lease, lease)) {
-        return null;
-      }
-      // A server that refused the marker or has no /proc may still report through OSC 7.
-      found ??= _reported;
+      final found = await readSshWorkingDirectory(cancel);
+      if (cancel.isCancelled) return null;
       if (found != null) {
         _directory.value = found;
         // The lookup follows a finished command, so what the panel lists for this shell is stale.

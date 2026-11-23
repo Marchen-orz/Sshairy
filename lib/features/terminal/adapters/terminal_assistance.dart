@@ -286,11 +286,21 @@ extension _CommandAssistance on TerminalSession {
             typedDirectory = './$typedDirectory';
           }
           String? cwd = request.directory ?? _directory.value;
-          if (RemotePaths.absolute(typedDirectory, cwd: cwd) == null) {
-            cwd = await _look(force: true);
+          var directory = RemotePaths.absolute(typedDirectory);
+          if (directory == null && source != null) {
+            if (source is LinkedRemotePathSource) {
+              // The desktop may have run a command since the previous draft.
+              try {
+                cwd = await source.workingDirectory(cancel) ?? _reported;
+              } on RemotePathException {
+                cwd = _reported;
+              }
+            } else if (RemotePaths.absolute(typedDirectory, cwd: cwd) == null) {
+              cwd = await _look(force: true);
+            }
+            directory = RemotePaths.absolute(typedDirectory, cwd: cwd);
           }
           if (!current()) return;
-          final directory = RemotePaths.absolute(typedDirectory, cwd: cwd);
           if (source == null || directory == null) {
             browse = CommandBrowseState(
               label: path.directory.isEmpty ? '.' : path.directory,

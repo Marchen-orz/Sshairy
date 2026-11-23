@@ -14,12 +14,13 @@ const _maxEntries = 20000;
 
 /// An authorized file system and the lifetime and path checks of the grant that opened it.
 class LinkFsHandle {
-  const LinkFsHandle(this.fs, this.release, {this.isCurrent, this.checkPath});
+  const LinkFsHandle(this.fs, this.release, {this.isCurrent, this.checkPath, this.readWorkingDirectory});
 
   final FileSystem fs;
   final Future<void> Function() release;
   final bool Function()? isCurrent;
   final Future<void> Function(String path)? checkPath;
+  final Future<String?> Function(CancellationToken cancel)? readWorkingDirectory;
 }
 
 /// One file protocol per authenticated connection, in both directions.
@@ -221,6 +222,11 @@ class _Mount {
     }
 
     switch (op) {
+      case 'cwd':
+        final cwd = await handle!.readWorkingDirectory?.call(lifetime);
+        if (cwd == null || !cwd.startsWith('/') || cwd.length > 4096 || cwd.contains('\x00')) return const {};
+        await handle!.checkPath?.call(cwd);
+        return {'path': cwd};
       case 'resolve':
         final resolved = await fs.resolve(await path('path'));
         await handle!.checkPath?.call(resolved);
@@ -437,7 +443,7 @@ class _Write {
   }
 }
 
-class _RemoteFileSystem implements FileSystem {
+class _RemoteFileSystem implements FileSystem, ShellWorkingDirectory {
   _RemoteFileSystem(this._link, this._id, this.style, this._home, {required this.canReplace});
 
   final LinkFiles _link;
@@ -459,6 +465,16 @@ class _RemoteFileSystem implements FileSystem {
 
   @override
   Future<String> home() async => _home;
+
+  @override
+  Future<String?> workingDirectory() async {
+    try {
+      return (await _rpc('cwd'))['path'] as String?;
+    } on FsError catch (e) {
+      if (e.kind == FsFailure.unsupported) return null; // Older peers have no cwd operation.
+      rethrow;
+    }
+  }
 
   @override
   Future<String> resolve(String path) async =>
