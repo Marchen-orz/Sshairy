@@ -77,6 +77,7 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
   late var _navigationExpanded = ref.read(settingsProvider).get(SettingKeys.navigationExpanded);
   late var _navigationWidth = ref.read(settingsProvider).get(SettingKeys.navigationWidth);
   late var _monitorWidth = ref.read(settingsProvider).get(SettingKeys.monitorWidth);
+  var _windowWidth = 0.0;
   final _surfaceKey = GlobalKey();
 
   BuildContext get _surfaceContext => _surfaceKey.currentContext ?? context;
@@ -391,7 +392,10 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     });
     final vault = state.active == null && !state.files;
     _filesBuilt |= state.files;
-    final wide = MediaQuery.sizeOf(context).width >= WorkspaceSize.wideBreakpoint;
+    // A minimized window reports 0×0; keeping the last real width stops panels from leaving and sliding in again.
+    final width = MediaQuery.sizeOf(context).width;
+    if (width > 0) _windowWidth = width;
+    final wide = _windowWidth >= WorkspaceSize.wideBreakpoint;
     final showMonitor = settings.get(SettingKeys.showMonitor);
     final showFiles = settings.get(SettingKeys.showFiles);
     final dock = settings.get(SettingKeys.filesDock);
