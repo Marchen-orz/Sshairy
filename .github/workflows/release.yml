@@ -164,10 +164,10 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358'
-      - run: flutter pub get
       - name: Build split APKs
+        # Let the release build run pub get so Flutter excludes test-only plugins from the registrant.
         # Flutter adds an ABI offset to the base version code. Keep the base above the v0.3.0 build (2008).
-        run: flutter build apk --release --no-pub --split-per-abi --build-number "$((2008 + GITHUB_RUN_NUMBER))"
+        run: flutter build apk --release --split-per-abi --build-number "$((2008 + GITHUB_RUN_NUMBER))"
       - name: Package and verify APKs
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
