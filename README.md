@@ -106,7 +106,7 @@ Download builds on [GitHub Releases](https://github.com/Marchen-orz/sshairy/rele
 | Windows x64 | `setup.exe` for the current user or `portable.exe` to run without installing |
 | macOS (Apple silicon and Intel) | Universal DMG or ZIP, early build |
 | Linux x64 | AppImage or `.deb`, early build |
-| Android 8.0+ | Universal preview APK for ARM64, ARMv7, and x86_64 |
+| Android 8.0+ | Preview APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64` |
 | iOS | Pending |
 
 Desktop packages lack distribution signing. Windows SmartScreen may warn on first launch (More info → Run anyway). On macOS, right-click the app and choose Open, or allow it in System Settings → Privacy & Security. The Android preview APK uses a development signature.

@@ -22,7 +22,7 @@
 
 ## 下载
 
-Windows x64 提供安装版和便携版，macOS 提供 Apple 芯片与 Intel 通用包，Linux x64 提供 AppImage 和 deb。Android 8.0 及以上可下载通用预览 APK，含 ARM64、ARMv7 和 x86_64。预览 APK 使用开发签名。
+Windows x64 提供安装版和便携版，macOS 提供 Apple 芯片与 Intel 通用包，Linux x64 提供 AppImage 和 deb。Android 8.0 及以上可按设备架构选择 `arm64-v8a`、`armeabi-v7a` 或 `x86_64` 预览 APK。预览 APK 使用开发签名。
 
 [查看自 v0.2.5 起的全部提交](https://github.com/Marchen-orz/sshairy/compare/v0.2.5...v0.3.0)
 <!-- /zh -->
@@ -49,7 +49,7 @@ Windows x64 提供安装版和便携版，macOS 提供 Apple 芯片与 Intel 通
 
 ## Downloads
 
-Windows x64 has an installer and a portable EXE. The macOS universal builds run on Apple silicon and Intel, and Linux x64 has an AppImage and a deb. Android 8.0 and later can use the universal preview APK, with ARM64, ARMv7, and x86_64 included. The preview APK uses a development signature.
+Windows x64 has an installer and a portable EXE. The macOS universal builds run on Apple silicon and Intel, and Linux x64 has an AppImage and a deb. On Android 8.0 and later, choose the preview APK for your device architecture (`arm64-v8a`, `armeabi-v7a`, or `x86_64`). The preview APKs use a development signature.
 
 [View all commits since v0.2.5](https://github.com/Marchen-orz/sshairy/compare/v0.2.5...v0.3.0)
 <!-- /en -->

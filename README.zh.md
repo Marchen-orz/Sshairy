@@ -106,7 +106,7 @@ Sshairy 花了我不少心血，也借鉴了同类软件里做得好的地方。
 | Windows x64 | `setup.exe` 为当前用户安装，`portable.exe` 免安装直接运行 |
 | macOS（Apple 芯片与 Intel） | 通用 DMG 或 ZIP，早期构建 |
 | Linux x64 | AppImage 或 `.deb`，早期构建 |
-| Android 8.0 及以上 | 通用预览 APK，包含 ARM64、ARMv7 和 x86_64 |
+| Android 8.0 及以上 | `arm64-v8a`、`armeabi-v7a` 和 `x86_64` 各有独立的预览 APK |
 | iOS | 暂无发行包 |
 
 桌面安装包暂未做分发签名。Windows 首次启动可能出现 SmartScreen 提示（更多信息 → 仍要运行）。macOS 可右键应用选择「打开」，或在「系统设置 → 隐私与安全性」中允许。Android 预览 APK 使用开发签名。
