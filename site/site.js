@@ -39,7 +39,7 @@
       pills: ['One app process', 'No Chromium', 'No WebView'],
       tableS: 'Full comparison', cols: ['Client', 'Startup', 'Idle memory', 'Download'],
       filmH: 'Fifty-eight seconds of Sshairy.',
-      getH: 'Get Sshairy.', winP: 'Installer or single-file portable app for 64-bit Windows.', winB: 'Download · 27 MiB',
+      getH: 'Get Sshairy.', winP: 'Installer or single-file portable app for 64-bit Windows.', sizeB: 'Download · {s}',
       macP: 'Universal DMG for Apple silicon and Intel. Early build.', linuxP: 'AppImage and .deb for x64. Early build.', androidP: 'APK for Android 8.0 and later on arm64-v8a, armeabi-v7a or x86_64. Preview.', osB: 'Download →', getB: 'Download',
       copy: 'Copy', copied: 'Copied', or: '# or macos, linux',
       docsH: 'Docs.', read: 'Read', soon: 'Coming soon',
@@ -80,7 +80,7 @@
       pills: ['单个应用进程', '无 Chromium', '无 WebView'],
       tableS: '完整对比', cols: ['客户端', '启动', '空闲内存', '下载体积'],
       filmH: '58 秒，看完 Sshairy',
-      getH: '获取 Sshairy', winP: '64 位 Windows 安装包或单文件便携版', winB: '下载 · 27 MiB',
+      getH: '获取 Sshairy', winP: '64 位 Windows 安装包或单文件便携版', sizeB: '下载 · {s}',
       macP: '通用 DMG，支持 Apple 芯片与 Intel，早期构建', linuxP: 'x64 的 AppImage 与 .deb，早期构建', androidP: '适用于 Android 8.0 及以上的 APK，提供 arm64-v8a、armeabi-v7a 与 x86_64，预览版', osB: '下载 →', getB: '下载',
       copy: '复制', copied: '已复制', or: '# 或 macos、linux',
       docsH: '文档', read: '阅读', soon: '即将补充',
@@ -102,8 +102,10 @@
   // The head script already set data-scheme from the stored choice or the system.
   const night = matchMedia('(prefers-color-scheme: dark)');
   let scheme = root.dataset.scheme === 'dark' ? 'dark' : 'light';
-  // The newest release names the version and the arm64 APK. Until GitHub answers, or when it cannot, the page uses the cached or built-in values.
-  let release = { version: '0.3.0', apk: '', at: 0 };
+  // The newest release names the version, the arm64 APK and each platform's main package size in bytes.
+  // Until GitHub answers, or when it cannot, the page uses the cached or built-in values.
+  const PACKAGES = { win: '-windows-x64-setup.exe', mac: '-macos-universal.dmg', linux: '-linux-x64.AppImage', android: '-android-arm64-v8a.apk' };
+  let release = { version: '0.3.0', apk: '', sizes: { win: 23855510, mac: 57541986, linux: 24611320, android: 46951941 }, at: 0 };
   try { Object.assign(release, JSON.parse(store('release'))); } catch {}
   let tour = 0, mode = 1, dark = scheme === 'dark', toured = false, chatSeen = false, timers = [];
   root.classList.add('js');
@@ -195,6 +197,8 @@
     $('#fine').innerHTML = t.fine.replace('{v}', `<a href="${latest}">${release.version}</a>`);
     $('#dl').href = os === 'android' && release.apk || latest;
     $('#dlAndroid').href = release.apk || latest;
+    const size = release.sizes[os];
+    $('#mainB').textContent = size ? t.sizeB.replace('{s}', `${Math.round(size / 1048576)} MiB`) : t.getB;
   }
 
   function render() {
@@ -206,7 +210,6 @@
     $('#dlLabel').textContent = t.dl[os];
     $('#dlAndroid').innerHTML = `${SshairyMock.icon('phone', 20)}<span>${t.dlAlt}</span>`;
     $('#dlAndroid').hidden = os === 'android';
-    showRelease();
     $$('img[data-brand^="wordmark"]').forEach((img) => (img.dataset.brand = scheme === 'dark' ? 'wordmark-dark' : 'wordmark'));
     $('#chat').dataset.mode = scheme;
     $('#phones').innerHTML = [{ screen: 'link', approval: 1 }, { screen: 'term', draft: '' }].map((o) => `<div>${SshairyMock.part('phone', lang, { ...o, mode: scheme })}</div>`).join('');
@@ -241,8 +244,9 @@
     $('#osCards').innerHTML = [['win', 'Windows', t.winP], ['mac', 'macOS', t.macP], ['linux', 'Linux', t.linuxP], ['android', 'Android', t.androidP]]
       .sort((a, b) => (b[0] === os) - (a[0] === os))
       .map(([key, name, text], i) => key === os
-        ? `<article class="os main" style="--i:${i}"><h3>${name}</h3><p>${text}</p><a class="btn big" href="${latest}">${key === 'win' ? t.winB : t.getB}</a></article>`
+        ? `<article class="os main" style="--i:${i}"><h3>${name}</h3><p>${text}</p><a class="btn big" id="mainB" href="${latest}"></a></article>`
         : `<article class="os" style="--i:${i}"><h3>${name}</h3><p>${text}</p><a class="more" href="${latest}">${t.osB}</a></article>`).join('');
+    showRelease();
     $('#steps').innerHTML = `git clone ${REPO}.git\ncd sshairy\nflutter pub get\nflutter run -d windows  <span class="c">${t.or}</span>`;
     $('#copy').textContent = t.copy;
     const video = $('#video'), film = `media/sshairy-${lang}.mp4`;
@@ -310,7 +314,9 @@
   if (Date.now() - release.at > 30 * 60e3) fetch(REPO.replace('github.com', 'api.github.com/repos') + '/releases/latest')
     .then((response) => (response.ok ? response.json() : Promise.reject()))
     .then((data) => {
-      release = { version: data.tag_name.replace(/^v/, ''), apk: data.assets.find((asset) => asset.name.endsWith('-android-arm64-v8a.apk'))?.browser_download_url || '', at: Date.now() };
+      const asset = (key) => data.assets.find((item) => item.name.endsWith(PACKAGES[key]));
+      const sizes = Object.fromEntries(Object.keys(PACKAGES).map((key) => [key, asset(key)?.size || 0]));
+      release = { version: data.tag_name.replace(/^v/, ''), apk: asset('android')?.browser_download_url || '', sizes, at: Date.now() };
       store('release', JSON.stringify(release));
       showRelease();
     }).catch(() => {});
