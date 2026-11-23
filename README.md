@@ -90,6 +90,10 @@ Pair your phone with the desktop by scanning a code or finding it on the local n
 
 <img src="media/link.png" alt="The desktop's Device Link popover with a pairing code beside two phones: one shows the Link page with a pending Airy approval, the other mirrors a desktop terminal." width="100%">
 
+<img src="media/case-pair.gif" alt="The phone scans the desktop's pairing code and links. Sync config brings over hosts, snippets and keys, the desktop asks before sending six saved passwords, and the synced hosts appear on the phone." width="100%">
+
+<img src="media/case-handoff.gif" alt="Tapping a pending desktop tab on the phone makes the desktop connect it while the phone mirrors it. A long-pressed host opens in a new desktop tab, and a command typed on the phone runs on both screens." width="100%">
+
 ## Themes
 
 Ice Blue / Mint, Mint Green, Violet, Sunset Orange, Deep Sea Blue and Sakura Pink. Each palette carries through the interface, the terminal and Airy's artwork, in light and dark.

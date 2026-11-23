@@ -50,6 +50,9 @@
     stop: '<rect x="7" y="7" width="10" height="10" rx="2"/>',
     fix: '<path d="M14.5 4.8a4.2 4.2 0 0 0-5.2 5.4L4 15.5 8.5 20l5.3-5.3a4.2 4.2 0 0 0 5.4-5.2l-2.7 2.7-3.1-.9-.9-3.1z"/>',
     expand: '<path d="M7 10l5 5 5-5"/>',
+    scan: '<path d="M4 8.5v-3A1.5 1.5 0 0 1 5.5 4h3M15.5 4h3A1.5 1.5 0 0 1 20 5.5v3M20 15.5v3a1.5 1.5 0 0 1-1.5 1.5h-3M8.5 20h-3A1.5 1.5 0 0 1 4 18.5v-3M4 12h16"/>',
+    radar: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 12l5.7-5.7"/>',
+    paste: '<rect x="5.5" y="5" width="13" height="15.5" rx="2"/><path d="M9 3.5h6v3H9z"/>',
   };
   const cog = Array.from({ length: 16 }, (_, i) => {
     const r = i % 2 ? 6.4 : 8.6, a = (i * Math.PI) / 8 + Math.PI / 16;
@@ -83,6 +86,11 @@
         'The container was killed for running out of memory (exit 137). Restarting it should bring the endpoint back', 'Fixed: /api/reports returns 200. Its memory limit is still 256 MiB'],
       fix: ['Fix the last failed command', 'The unit name is misspelled. It should be nginx', 'nginx restarted'], phoneName: 'Phone', desk: 'workstation',
       mcp: ['Allow MCP connection', 'Allow Claude Code to use the Airy tools in Sshairy?', 'Cancel', 'Allow access'],
+      scanQr: 'Scan desktop QR', scanHint: 'Point at the pairing QR code on Sshairy desktop', scanLan: 'Scan LAN', pasteUri: 'Paste pairing URI',
+      manual: 'Pair with desktop', hostIp: 'Desktop IP / Tailscale IP', port: 'Link port', pair: 'Pair', noPeers: 'No paired devices yet.',
+      pw: ['Confirm server password sync', '{d} requested {n} saved server passwords.', 'Skip passwords', 'Sync passwords'],
+      synced: 'Synced 9 hosts, 12 snippets, +9 keys + AI config', pwWait: 'Confirm password sync on desktop…', pwDone: 'Synced 6 server passwords',
+      openOnDesk: 'Open on desktop with mirror',
     },
     zh: {
       search: '搜索主机或 user@host', newHost: '新建主机', all: '全部', goal: '描述你想检查或处理的问题…',
@@ -107,6 +115,11 @@
         '容器因内存不足被终止（退出码 137），重启即可恢复', '已恢复，/api/reports 返回 200；内存上限仍是 256 MiB'],
       fix: ['修复上一条失败的命令', '服务名拼错了，应为 nginx', 'nginx 已重启'], phoneName: '我的手机', desk: 'workstation',
       mcp: ['允许 MCP 连接', '允许 Claude Code 使用 Sshairy 的 Airy 工具？', '取消', '允许访问'],
+      scanQr: '扫码配对电脑', scanHint: '对准电脑端 Sshairy 手机互联二维码', scanLan: '扫描局域网', pasteUri: '粘贴配对链接',
+      manual: '与电脑配对', hostIp: '电脑 IP / Tailscale 地址', port: '互联端口', pair: '配对', noPeers: '暂无已配对设备。',
+      pw: ['确认同步服务器密码', '「{d}」请求同步 {n} 个已保存的服务器密码。', '不同步密码', '同步密码'],
+      synced: '已同步 9 台主机、12 条片段、+9 条信任密钥 + AI 配置', pwWait: '请在电脑端确认同步服务器密码…', pwDone: '已同步 6 个服务器密码',
+      openOnDesk: '在电脑上打开并镜像',
     },
   };
 
@@ -277,7 +290,8 @@
       const rows = T[lang].cmp.map(([word, hint], i) => `<div class="${i ? '' : 'on'}"><b>${word}</b><span>${hint}</span></div>`).join('');
       return `<div class="sa-pop sa-cmp" style="${o.style || 'left:240px;top:322px'}">${rows}</div>`;
     },
-    // Phone screens: o.screen is hosts, link or term; o.banner floats an approval over any of them.
+    // Phone screens: o.screen is hosts, link, pair, scan or term; o.banner floats an approval over any of them.
+    // On link, o.notice adds the sync status under the actions and o.sheet opens a host's long-press sheet.
     phone(lang, o = {}) {
       const t = T[lang], screen = o.screen || 'hosts';
       const tag = (text, kind = '') => `<em class="sa-tag ${kind}">${text}</em>`;
@@ -287,19 +301,29 @@
       let body = '', chrome = '';
       if (screen === 'term') {
         const keys = ['ESC', 'TAB', 'CTRL', 'ALT', '^C', '^D', '↑', '↓', '←', '→', '|', '/'].map((k) => `<span>${k}</span>`).join('');
-        body = `<div class="sa-ptb">${I('back', 20)}<b>web-01</b>${I('expand', 15)}${tag(o.direct ? t.direct : t.mirror)}<span class="sp"></span><i class="pr">${I('spark', 19)}</i>${I('files', 19)}${I('pulse', 19)}${I('vdots', 19)}</div>`
+        body = `<div class="sa-ptb">${I('back', 20)}<b>${o.host || 'web-01'}</b>${I('expand', 15)}${tag(o.direct ? t.direct : t.mirror)}<span class="sp"></span><i class="pr">${I('spark', 19)}</i>${I('files', 19)}${I('pulse', 19)}${I('vdots', 19)}</div>`
           + `<div class="sa-pterm">${term(o.lines || MIRROR.concat(web + CUR))}</div>`
           + (o.draft !== undefined ? `<div class="sa-pdr"><span class="${o.draft ? 'on' : ''}">${o.draft || t.draft}</span><i class="pr">${I('spark', 18)}</i><i class="pr">${I('send', 18)}</i></div>` : '')
           + `<div class="sa-pkeys"><div>${keys}</div><span>${I('pad', 18)}</span><hr><span>${I('edit', 18)}</span></div>`;
+      } else if (screen === 'scan') {
+        // The camera view sees the desktop's pairing code inside the viewfinder.
+        body = `<div class="sa-pscan"><header>${I('back', 20)}<b>${t.scanQr}</b><span class="sp"></span>${I('bolt', 19)}</header><div class="vf"><div class="qr">${qr()}</div></div><p>${t.scanHint}</p></div>`;
       } else {
         if (screen === 'link') {
           body = `<header class="sa-phd"><b>${t.linkTab}</b></header><div class="sa-pscroll">`
             + `<div class="sa-plk"><span>${I('link', 20)}</span><b>${t.linked}</b><i></i></div>`
             + `<div class="sa-pact"><span>${I('sync', 16)}${t.sync}</span><span>${I('clip', 16)}${t.clip}</span></div>`
             + `<div class="sa-psw">${I('folder', 17)}<span>${t.share}</span><u></u></div>`
+            + (o.notice !== undefined ? `<div class="sa-pnt">${o.notice}</div>` : '')
             + (o.approval ? `<h6>${t.approvals}</h6>${approval()}` : '')
             + `<h6>${t.desktopTerms}</h6>${row('term', 'web-01', 'deploy@192.0.2.11', tag(t.mirror))}${row('server', 'db-primary', 'postgres@192.0.2.21', tag(t.pending, 'wait'))}${row('term', 'PowerShell', '')}`
             + `<h6>${t.viaHosts}</h6>${row('net', 'bastion', 'ops@bastion.example.com')}${row('net', 'gpu-box', 'ml@203.0.113.40')}</div>`;
+          if (o.sheet) chrome = `<div class="sa-pshade"></div><div class="sa-psheet"><i></i><div>${I('desk', 22)}${t.openOnDesk}</div></div>`;
+        } else if (screen === 'pair') {
+          body = `<header class="sa-phd"><b>${t.linkTab}</b></header><div class="sa-pscroll">`
+            + `<img class="sa-pil" data-pose="security" alt=""><div class="sa-pqr">${I('scan', 20)}${t.scanQr}</div>`
+            + `<div class="sa-pact pair"><span>${I('radar', 16)}${t.scanLan}</span><span>${I('paste', 16)}${t.pasteUri}</span></div>`
+            + `<h6>${t.manual}</h6><div class="sa-pman"><div><span>${t.hostIp}</span><span>${t.port}</span></div><span>${t.code}</span><b>${t.pair}</b></div></div>`;
         } else {
           const chips = [['pin', 'web-01'], ['pin', 'db-primary'], ['bolt', 'staging']].map(([icon, name]) => `<span class="sa-pqc">${I(icon, 14)}${name}</span>`).join('');
           const groups = [t.all, ...GROUPS.map(([name]) => name)].map((name, i) => `<span class="sa-pg${i ? '' : ' on'}">${name}</span>`).join('');
@@ -308,10 +332,10 @@
             + `<div class="sa-pse">${I('search', 18)}${t.search}</div>`
             + `<h6>${I('desk', 15)}${t.desktopTerms}</h6><div class="sa-pro">${['web-01', 'db-primary', 'PowerShell'].map((name) => `<span class="sa-pdt">${I('term', 15)}${name}</span>`).join('')}</div>`
             + `<h6>${t.quick}</h6><div class="sa-pro">${chips}</div><div class="sa-pro">${groups}</div>${cards}</div>`;
-          chrome = `<div class="sa-ppl"><i></i><b>web-01</b>${tag(t.mirror)}<span class="sp"></span><small>${t.sessions}</small>${I('x', 15)}</div>`;
+          if (o.pill !== false) chrome = `<div class="sa-ppl"><i></i><b>web-01</b>${tag(t.mirror)}<span class="sp"></span><small>${t.sessions}</small>${I('x', 15)}</div>`;
         }
         const tabs = [['server', t.hosts], ['spark', 'Airy'], ['link', t.linkTab], ['user', t.me]];
-        chrome += `<nav class="sa-pnav">${tabs.map(([icon, label], i) => `<div class="${i === (screen === 'link' ? 2 : 0) ? 'on' : ''}"><i>${I(icon, 22)}${i === 2 && o.banner ? '<em>1</em>' : ''}</i><span>${label}</span></div>`).join('')}</nav>`;
+        chrome += `<nav class="sa-pnav">${tabs.map(([icon, label], i) => `<div class="${i === (screen === 'hosts' ? 0 : 2) ? 'on' : ''}"><i>${I(icon, 22)}${i === 2 && o.banner ? '<em>1</em>' : ''}</i><span>${label}</span></div>`).join('')}</nav>`;
       }
       return `<div class="sa-phone" data-mode="${o.mode || 'light'}"><div class="sa-psc"><div class="sa-sb"><b>9:41</b>${bars}</div>${body}${chrome}${o.banner ? approval('banner') : ''}</div></div>`;
     },
@@ -319,6 +343,12 @@
     mcp(lang) {
       const [title, ask, cancel, allow] = T[lang].mcp;
       return `<div class="sa-mcp"><h6>${I('shield', 18)}${title}</h6><p>${ask}</p><footer><span class="sa-btn ghost">${cancel}</span><span class="sa-btn">${allow}</span></footer></div>`;
+    },
+    // The desktop asks before a linked phone receives saved server passwords.
+    pwsync(lang) {
+      const t = T[lang], [title, body, skip, allow] = t.pw, names = HOSTS.slice(0, 6).map(([name]) => name);
+      return `<div class="sa-mcp sa-pw"><h6>${title}</h6><p>${body.replace('{d}', t.phoneName).replace('{n}', names.length)}</p><ul>${names.map((name) => `<li>${I('key', 14)}${name}</li>`).join('')}</ul>`
+        + `<footer><span class="sa-btn ghost">${skip}</span><span class="sa-btn">${allow}</span></footer></div>`;
     },
     // A failed command, then the fix task it started from the error-colored icon.
     fix(lang, o = {}) {
