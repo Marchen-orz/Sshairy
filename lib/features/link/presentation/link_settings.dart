@@ -152,6 +152,13 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
     }
   }
 
+  Future<void> _offerUpdate(LinkPeer peer) async {
+    final sent = await ref.read(linkHostControllerProvider).offerUpdate(peer.deviceId);
+    if (!mounted) return;
+    final l = AppLocalizations.of(context);
+    _showNotice(sent ? l.linkUpdateOffered : l.linkUpdateOfferFailed);
+  }
+
   Future<void> _pushCredentials(LinkPeer peer) async {
     final catalog = ref.read(linkCredentialCatalogProvider)();
     final selectedHosts = <String>{};
@@ -516,6 +523,9 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                             online: host.connectedDeviceIds.contains(peer.deviceId),
                             onUpdatePermissions: (perms) => unawaited(host.updatePermissions(peer.deviceId, perms)),
                             onPushCredentials: () => unawaited(_pushCredentials(peer)),
+                            onOfferUpdate: host.canOfferUpdate(peer.deviceId)
+                                ? () => unawaited(_offerUpdate(peer))
+                                : null,
                             onDisconnect: () => host.disconnectPeer(peer.deviceId),
                             onRevoke: () => unawaited(host.revokePeer(peer.deviceId)),
                           ),
@@ -569,6 +579,7 @@ class _PeerCard extends StatelessWidget {
     required this.online,
     required this.onUpdatePermissions,
     required this.onPushCredentials,
+    this.onOfferUpdate,
     required this.onDisconnect,
     required this.onRevoke,
   });
@@ -577,6 +588,7 @@ class _PeerCard extends StatelessWidget {
   final bool online;
   final ValueChanged<LinkPeerPermissions> onUpdatePermissions;
   final VoidCallback onPushCredentials;
+  final VoidCallback? onOfferUpdate;
   final VoidCallback onDisconnect;
   final VoidCallback onRevoke;
 
@@ -670,6 +682,7 @@ class _PeerCard extends StatelessWidget {
                   icon: const Icon(Icons.key_outlined, size: 16),
                   label: Text(l.linkPushCredentials),
                 ),
+              if (onOfferUpdate != null) TextButton(onPressed: onOfferUpdate, child: Text(l.linkOfferUpdate)),
               if (online) TextButton(onPressed: onDisconnect, child: Text(l.linkDisconnect)),
               TextButton(
                 onPressed: onRevoke,

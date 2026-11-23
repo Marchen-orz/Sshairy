@@ -21,6 +21,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterFragmentActivity() {
     private var pendingNotifResult: MethodChannel.Result? = null
     private var pendingStorageResult: MethodChannel.Result? = null
+    private val updater by lazy { AndroidUpdater(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,6 +32,12 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "updateAbis" -> result.success(Build.SUPPORTED_ABIS.toList())
+                "installUpdate" -> {
+                    val path = call.argument<String>("path")
+                    val version = call.argument<String>("version")
+                    if (path == null || version == null) result.success("failed") else updater.install(path, version, result)
+                }
                 "setKeepScreenOn" -> {
                     val on = call.argument<Boolean>("on") ?: false
                     runOnUiThread {

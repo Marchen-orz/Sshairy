@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/app_info.dart';
+import '../../../foundation/file_system.dart';
 
 /// One file attached to a published release.
 class ReleaseAsset {
@@ -40,7 +41,22 @@ class ReleaseNote {
   }
 }
 
-const _releasesUrl = 'https://api.github.com/repos/Marchen-orz/Sshairy/releases?per_page=20';
+const releaseFeedUrl = 'https://api.github.com/repos/Marchen-orz/Sshairy/releases?per_page=20';
+const releaseFeedPath = '/releases.json';
+const maxUpdateApkBytes = 256 * 1024 * 1024;
+const androidReleaseAbis = {'arm64-v8a', 'armeabi-v7a', 'x86_64'};
+
+typedef OpenUpdateRelay = Future<FileSystem> Function();
+
+/// A phone that started an SSH session through this desktop, and the app version it reported.
+typedef PeerUpdate = ({String deviceId, String name, String version});
+typedef PushPeerUpdate = Future<bool> Function(String deviceId);
+
+final updateRelayProvider = Provider<OpenUpdateRelay?>((_) => null);
+final updateOffersProvider = Provider<Stream<void>?>((_) => null);
+final updatePushesProvider = Provider<Stream<void>?>((_) => null);
+final updateSuggestionsProvider = Provider<Stream<PeerUpdate>?>((_) => null);
+final updatePushProvider = Provider<PushPeerUpdate?>((_) => null);
 
 /// Published, non-prerelease entries in the order the API returned them; anything malformed is skipped.
 List<ReleaseNote> parseReleases(Object? json) {
@@ -88,9 +104,14 @@ List<ReleaseAsset> _assets(Object? json) {
 
 /// How this copy of the app reached the machine; the download follows the same habit.
 class UpdateDelivery {
-  const UpdateDelivery({required this.operatingSystem, this.installed = false, this.portableAppImage = false});
+  const UpdateDelivery({
+    required this.operatingSystem,
+    this.installed = false,
+    this.portableAppImage = false,
+    this.androidAbis = const [],
+  });
 
-  factory UpdateDelivery.current() {
+  factory UpdateDelivery.current({List<String> androidAbis = const []}) {
     final operatingSystem = Platform.operatingSystem;
     return UpdateDelivery(
       operatingSystem: operatingSystem,
@@ -99,18 +120,21 @@ class UpdateDelivery {
           operatingSystem == 'linux' &&
           ((Platform.environment['APPIMAGE']?.isNotEmpty ?? false) ||
               Platform.resolvedExecutable.toLowerCase().endsWith('.appimage')),
+      androidAbis: androidAbis,
     );
   }
 
   final String operatingSystem;
   final bool installed;
   final bool portableAppImage;
+  final List<String> androidAbis;
 
   ReleaseAsset? assetFor(List<ReleaseAsset> assets) => selectUpdateAsset(
     assets,
     operatingSystem: operatingSystem,
     installed: installed,
     portableAppImage: portableAppImage,
+    androidAbis: androidAbis,
   );
 }
 
@@ -120,6 +144,7 @@ ReleaseAsset? selectUpdateAsset(
   required String operatingSystem,
   bool installed = false,
   bool portableAppImage = false,
+  List<String> androidAbis = const [],
 }) {
   ReleaseAsset? ending(String suffix) {
     for (final asset in assets) {
@@ -128,6 +153,12 @@ ReleaseAsset? selectUpdateAsset(
     return null;
   }
 
+  if (operatingSystem == 'android') {
+    for (final abi in androidAbis.where(androidReleaseAbis.contains)) {
+      if (ending('-android-$abi.apk') case final asset?) return asset;
+    }
+    return null;
+  }
   return switch (operatingSystem) {
     'windows' =>
       installed ? ending('-setup.exe') ?? ending('-portable.exe') : ending('-portable.exe') ?? ending('-setup.exe'),
@@ -207,6 +238,19 @@ String _alternatingNotes(String notes, String languageCode) {
   return text.isEmpty ? notes.trim() : text;
 }
 
+bool _isAndroidApk(ReleaseAsset asset) {
+  final name = asset.name.toLowerCase();
+  return name.endsWith('.apk') && name.contains('-android-');
+}
+
+/// The newest published release that ships an Android package, in feed order.
+ReleaseNote? latestAndroidRelease(Iterable<ReleaseNote> releases) {
+  for (final release in releases) {
+    if (release.assets.any(_isAndroidApk)) return release;
+  }
+  return null;
+}
+
 /// Whether [candidate] is a later dotted number than [current]; anything unreadable counts as not newer.
 bool isNewerVersion(String candidate, String current) {
   final a = _numbers(candidate), b = _numbers(current);
@@ -246,7 +290,7 @@ class GithubReleaseSource implements ReleaseSource {
     final client = _clientFactory();
     client.connectionTimeout = timeout;
     try {
-      final request = await client.getUrl(Uri.parse(_releasesUrl)).timeout(timeout);
+      final request = await client.getUrl(Uri.parse(releaseFeedUrl)).timeout(timeout);
       request.headers
         ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
         ..set(HttpHeaders.userAgentHeader, 'Sshairy/$appVersion');
@@ -254,17 +298,30 @@ class GithubReleaseSource implements ReleaseSource {
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException('HTTP ${response.statusCode}');
       }
-      final body = await response
-          .fold<List<int>>(<int>[], (all, chunk) {
-            if (all.length + chunk.length > maxResponseBytes) throw const HttpException('release list too large');
-            all.addAll(chunk);
-            return all;
-          })
-          .timeout(timeout);
-      return parseReleases(jsonDecode(utf8.decode(body, allowMalformed: true)));
+      return await _decodeReleaseFeed(response).timeout(timeout);
     } finally {
       client.close(force: true);
     }
+  }
+}
+
+Future<List<ReleaseNote>> _decodeReleaseFeed(Stream<List<int>> chunks) async {
+  final body = <int>[];
+  await for (final chunk in chunks) {
+    if (body.length + chunk.length > GithubReleaseSource.maxResponseBytes) {
+      throw const HttpException('release list too large');
+    }
+    body.addAll(chunk);
+  }
+  return parseReleases(jsonDecode(utf8.decode(body, allowMalformed: true)));
+}
+
+Future<List<ReleaseNote>> _relayedReleaseFeed(OpenUpdateRelay open) async {
+  final fs = await open();
+  try {
+    return await _decodeReleaseFeed(fs.read(releaseFeedPath));
+  } finally {
+    await fs.close();
   }
 }
 
@@ -286,22 +343,40 @@ class UpdateState {
 }
 
 class UpdateCheck extends Notifier<UpdateState> {
+  var _checking = false;
+
   @override
   UpdateState build() => const UpdateState(UpdateStatus.idle);
 
   /// A [silent] check runs behind the user's back: it shows no checking or failed state and keeps
   /// whatever the last visible answer was, so the title-bar reminder does not flicker or lie.
-  Future<void> check({bool silent = false}) async {
-    if (state.status == UpdateStatus.checking) return;
+  Future<void> check({bool silent = false, bool preferRelay = false}) async {
+    if (_checking) return;
+    _checking = true;
     if (!silent) state = const UpdateState(UpdateStatus.checking);
     try {
-      final releases = await ref.read(releaseSourceProvider).fetch();
+      final releases = await _fetchReleases(preferRelay: preferRelay);
+      if (!ref.mounted) return;
       state = UpdateState(
         releases.any(UpdateState._isUpdate) ? UpdateStatus.available : UpdateStatus.upToDate,
         releases: releases,
       );
     } on Object {
-      if (!silent) state = const UpdateState(UpdateStatus.failed);
+      if (!silent && ref.mounted) state = const UpdateState(UpdateStatus.failed);
+    } finally {
+      _checking = false;
+    }
+  }
+
+  Future<List<ReleaseNote>> _fetchReleases({required bool preferRelay}) async {
+    final relay = ref.read(updateRelayProvider);
+    if (preferRelay && relay != null) return _relayedReleaseFeed(relay);
+    try {
+      return await ref.read(releaseSourceProvider).fetch();
+    } on Object {
+      final fallback = ref.mounted ? ref.read(updateRelayProvider) : null;
+      if (fallback == null) rethrow;
+      return _relayedReleaseFeed(fallback);
     }
   }
 }

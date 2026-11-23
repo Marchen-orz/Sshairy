@@ -119,6 +119,28 @@ List<Override> appOverrides() => [
     return bridge;
   }),
   linkMobileBridgeProvider.overrideWith((ref) => AppLinkMobileBridge(ref)),
+  updateOffersProvider.overrideWith(
+    (ref) => isAndroidPlatform ? ref.watch(linkClientControllerProvider).updateOffers : null,
+  ),
+  updatePushesProvider.overrideWith(
+    (ref) => isAndroidPlatform ? ref.watch(linkClientControllerProvider).updatePushes : null,
+  ),
+  updateSuggestionsProvider.overrideWith(
+    (ref) => isDesktopPlatform ? ref.watch(linkHostControllerProvider).updateSuggestions : null,
+  ),
+  updatePushProvider.overrideWith((ref) => isDesktopPlatform ? ref.watch(linkHostControllerProvider).pushUpdate : null),
+  updateRelayProvider.overrideWith((ref) {
+    if (!isAndroidPlatform) return null;
+    final link = ref.watch(linkClientControllerProvider);
+    final binding = link.updateRelayBinding;
+    void changed() {
+      if (!identical(link.updateRelayBinding, binding)) ref.invalidateSelf();
+    }
+
+    link.addListener(changed);
+    ref.onDispose(() => link.removeListener(changed));
+    return binding == null ? null : () => link.openUpdateRelay(binding);
+  }),
   fileLocationsProvider.overrideWith(linkFileLocations),
   linkCredentialCatalogProvider.overrideWith(
     (ref) => () {

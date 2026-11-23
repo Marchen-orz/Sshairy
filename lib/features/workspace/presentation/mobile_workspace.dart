@@ -1119,6 +1119,7 @@ class _MobileMeTab extends ConsumerWidget {
                         ),
                       ],
                     ),
+                    if (isAndroidPlatform) const UpdateCheckControl(),
                     const SizedBox(height: Space.sm),
                     LayoutBuilder(
                       builder: (context, constraints) {

@@ -819,6 +819,44 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not open the update package. Open it from Downloads.';
 
   @override
+  String get updateViaComputer => 'Download via computer';
+
+  @override
+  String get updateInstallApk => 'Install update';
+
+  @override
+  String get updateAllowInstall =>
+      'Allow Sshairy to install apps, then return and tap Install update again.';
+
+  @override
+  String get updateApkFailed =>
+      'Could not install this APK. Check that it matches this device and the installed Sshairy app.';
+
+  @override
+  String get linkOfferUpdate => 'Send update to phone';
+
+  @override
+  String get linkUpdateOffered =>
+      'Update notification sent. Confirm the download on your phone.';
+
+  @override
+  String get linkUpdateOfferFailed =>
+      'Could not send the update notification. Check that your phone is connected.';
+
+  @override
+  String updatePhoneAvailable(String version) {
+    return 'Phone update $version available';
+  }
+
+  @override
+  String updatePhonePrompt(String name, String current, String latest) {
+    return '$name runs Sshairy $current; the latest is $latest.';
+  }
+
+  @override
+  String get updatePush => 'Download and push';
+
+  @override
   String get updateDownloadFailed =>
       'Download failed. Check your connection and try again.';
 

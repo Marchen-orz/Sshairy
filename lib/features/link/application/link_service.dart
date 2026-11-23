@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../foundation/app_info.dart';
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/data_dir.dart';
 import '../../../foundation/file_system.dart';
@@ -187,6 +188,9 @@ class _NullMobileBridge implements LinkMobileBridge {
 final linkDesktopBridgeProvider = Provider<LinkDesktopBridge>((_) => const _NullDesktopBridge());
 final linkMobileBridgeProvider = Provider<LinkMobileBridge>((_) => const _NullMobileBridge());
 
+/// A phone that connected to the desktop, with the version it reported.
+typedef LinkPeerUpdate = ({String deviceId, String name, String version});
+
 /// A desktop-side active connection from one paired mobile peer.
 class _ConnectedPeer {
   _ConnectedPeer(this.deviceId, this.name, this.session, this.files);
@@ -196,6 +200,9 @@ class _ConnectedPeer {
   final LinkCipherSession session;
   final LinkFiles files;
   Object? sharedFilesBinding;
+  var acceptsUpdates = false;
+  String? version;
+  CancellationToken? updateMount;
   final mirrors = <String, MirrorAttachment>{};
   final proxyChannels =
       <String, ({ShellChannel channel, StreamSubscription<Uint8List> outSub, StreamSubscription<Uint8List> errSub})>{};
@@ -252,6 +259,7 @@ class LinkHostController extends ChangeNotifier {
     required this.bridge,
     this.listenerFactory,
     this.enableDiscovery = true,
+    this.openUpdateFiles,
   }) {
     _peers = store.load();
     _sessionsSub = bridge.sessionsChanged.listen((_) => _broadcastSessions());
@@ -264,6 +272,7 @@ class LinkHostController extends ChangeNotifier {
   final LinkDesktopBridge bridge;
   final Future<LinkListener> Function(int port)? listenerFactory;
   final bool enableDiscovery;
+  final FileSystem Function(CancellationToken lifetime)? openUpdateFiles;
 
   LinkIdentity? _identity;
   LinkListener? _listener;
@@ -277,6 +286,7 @@ class LinkHostController extends ChangeNotifier {
   List<LinkPeer> _peers = const [];
   final _connected = <String, _ConnectedPeer>{};
   final _passwordSyncQueue = <LinkPasswordSyncRequest>[];
+  final _updateSuggestions = StreamController<LinkPeerUpdate>.broadcast();
   _ActivePairing? _pairing;
   List<String> _addresses = const [];
   String? _pairingHost;
@@ -303,6 +313,33 @@ class LinkHostController extends ChangeNotifier {
   Object? phoneFilesBinding(String id) {
     final peer = _connected[id];
     return peer != null && peer.files.current ? peer.sharedFilesBinding : null;
+  }
+
+  bool canOfferUpdate(String id) => openUpdateFiles != null && _connected[id]?.acceptsUpdates == true;
+
+  /// Phones that connected to this desktop, for the app-version reminder.
+  Stream<LinkPeerUpdate> get updateSuggestions => _updateSuggestions.stream;
+
+  Future<bool> offerUpdate(String id) async => _sendUpdate(id, 'update.offer');
+
+  /// Asks the phone to fetch the latest package through this desktop without another prompt there.
+  Future<bool> pushUpdate(String id) async => _sendUpdate(id, 'update.push');
+
+  Future<bool> _sendUpdate(String id, String type) async {
+    final peer = _connected[id];
+    if (peer == null || peer.session.isClosed || !canOfferUpdate(id)) return false;
+    try {
+      await peer.session.sendMessage({'type': type});
+      return true;
+    } on Object {
+      return false;
+    }
+  }
+
+  void _suggestPeerUpdate(_ConnectedPeer peer) {
+    final version = peer.version;
+    if (version == null || _updateSuggestions.isClosed || !canOfferUpdate(peer.deviceId)) return;
+    _updateSuggestions.add((deviceId: peer.deviceId, name: peer.name, version: version));
   }
 
   int get connectedCount => _connected.length;
@@ -676,12 +713,29 @@ class LinkHostController extends ChangeNotifier {
         send: session.sendMessage,
         isConnected: () => !session.isClosed,
         canOpen: (target) {
+          if (target == linkUpdateTarget) {
+            return identical(_connected[peerId], active) && _findPeer(peerId) != null && active.acceptsUpdates;
+          }
           if (target.startsWith('terminal:')) return terminalResources(target)?.current() == true;
           final permissions = _findPeer(peerId)?.permissions;
           return permissions?.allowFiles == true &&
               (target == 'local' || (target.startsWith('host:') && permissions!.allowProxy));
         },
         openTarget: (target, cancel) {
+          if (target == linkUpdateTarget) {
+            final open = openUpdateFiles;
+            if (open == null || active.updateMount?.isCancelled == false) {
+              throw const FsError(FsFailure.unsupported);
+            }
+            final fs = open(cancel);
+            active.updateMount = cancel;
+            return Future.value(
+              LinkFsHandle(fs, () async {
+                if (identical(active.updateMount, cancel)) active.updateMount = null;
+                await fs.close();
+              }),
+            );
+          }
           if (!target.startsWith('terminal:')) return bridge.openFiles(target, cancel);
           final resources = terminalResources(target);
           if (resources == null || !resources.current()) throw const FsError(FsFailure.lost);
@@ -726,6 +780,16 @@ class LinkHostController extends ChangeNotifier {
     final perms = record.permissions;
 
     switch (type) {
+      case 'update.ready':
+        if (msg['version'] case final String version when version.isNotEmpty && version.length <= 32) {
+          peer.version = version;
+        }
+        if (openUpdateFiles != null && !peer.acceptsUpdates) {
+          peer.acceptsUpdates = true;
+          await peer.session.sendMessage({'type': 'update.relay'});
+          _notify();
+        }
+        _suggestPeerUpdate(peer);
       case 'sessions.list':
         _pushSessionsTo(peer);
       case 'hosts.list':
@@ -1077,6 +1141,7 @@ class LinkHostController extends ChangeNotifier {
     unawaited(_sessionsSub?.cancel());
     unawaited(_hostsSub?.cancel());
     unawaited(_approvalsSub?.cancel());
+    unawaited(_updateSuggestions.close());
     unawaited(_stopServer());
     super.dispose();
   }
@@ -1156,7 +1221,13 @@ class _LinkShellChannel implements ShellChannel {
 
 /// Mobile-side Sshairy Link client controller (docs/MOBILE.md §4).
 class LinkClientController extends ChangeNotifier {
-  LinkClientController({required this.credentials, required this.store, required this.bridge, this.transportFactory}) {
+  LinkClientController({
+    required this.credentials,
+    required this.store,
+    required this.bridge,
+    this.transportFactory,
+    bool? acceptAndroidUpdates,
+  }) : _acceptAndroidUpdates = acceptAndroidUpdates ?? Platform.isAndroid {
     _peers = store.load();
   }
 
@@ -1164,6 +1235,10 @@ class LinkClientController extends ChangeNotifier {
   final LinkPeerStore store;
   final LinkMobileBridge bridge;
   final Future<LinkTransport> Function(String host, int port)? transportFactory;
+  final bool _acceptAndroidUpdates;
+  final _updateOffers = StreamController<void>.broadcast();
+  final _updatePushes = StreamController<void>.broadcast();
+  var _updateRelay = false;
 
   LinkIdentity? _identity;
   LinkCipherSession? _session;
@@ -1218,6 +1293,17 @@ class LinkClientController extends ChangeNotifier {
   bool get desktopSharesFiles => desktopFilesBinding() != null;
   bool get desktopProxiesFiles => desktopFilesBinding(proxy: true) != null;
   Object? get filesBinding => connected ? _files : null;
+  Object? get updateRelayBinding => _updateRelay ? filesBinding : null;
+  Stream<void> get updateOffers => _updateOffers.stream;
+
+  /// A desktop-confirmed push: fetch the latest package through the relay without another prompt.
+  Stream<void> get updatePushes => _updatePushes.stream;
+
+  Future<FileSystem> openUpdateRelay(Object binding) async {
+    if (!identical(updateRelayBinding, binding)) throw const FsError(FsFailure.lost);
+    return _files!.open(linkUpdateTarget);
+  }
+
   Object? desktopFilesBinding({bool proxy = false}) =>
       connected ? (proxy ? _proxyFilesBinding : _desktopFilesBinding) : null;
 
@@ -1455,6 +1541,9 @@ class LinkClientController extends ChangeNotifier {
         onError: (Object _) => disconnected(),
         onDone: disconnected,
       );
+      if (_acceptAndroidUpdates) {
+        unawaited(session.sendMessage({'type': 'update.ready', 'version': appVersion}).catchError((Object _) {}));
+      }
       _notify();
       return true;
     } on LinkException catch (e) {
@@ -1488,6 +1577,7 @@ class LinkClientController extends ChangeNotifier {
     _session = null;
     _files?.close();
     _files = null;
+    _updateRelay = false;
     _sharesPhoneFiles = false;
     _desktopFilesBinding = _proxyFilesBinding = null;
     for (final ch in _channels.values.toList()) {
@@ -1961,6 +2051,15 @@ class LinkClientController extends ChangeNotifier {
           _passwordSyncStatus = LinkPasswordSyncStatus.declined;
           _notify();
         }
+      case 'update.relay':
+        if (_acceptAndroidUpdates) {
+          _updateRelay = true;
+          _notify();
+        }
+      case 'update.offer':
+        if (updateRelayBinding != null && !_updateOffers.isClosed) _updateOffers.add(null);
+      case 'update.push':
+        if (updateRelayBinding != null && !_updatePushes.isClosed) _updatePushes.add(null);
       case 'fs.access':
         _desktopFilesBinding = msg['local'] == true ? _desktopFilesBinding ?? Object() : null;
         _proxyFilesBinding = msg['proxy'] == true ? _proxyFilesBinding ?? Object() : null;
@@ -1974,6 +2073,8 @@ class LinkClientController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     unawaited(disconnect());
+    unawaited(_updateOffers.close());
+    unawaited(_updatePushes.close());
     super.dispose();
   }
 }
@@ -1983,6 +2084,7 @@ final linkHostControllerProvider = Provider<LinkHostController>((ref) {
     credentials: ref.read(linkCredentialsProvider),
     store: LinkPeerStore(ref.read(dataDirProvider)),
     bridge: ref.read(linkDesktopBridgeProvider),
+    openUpdateFiles: GithubUpdateFiles.new,
   );
   ref.listen(settingsProvider, (_, settings) {
     unawaited(

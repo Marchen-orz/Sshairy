@@ -1550,6 +1550,66 @@ abstract class AppLocalizations {
   /// **'Could not open the update package. Open it from Downloads.'**
   String get updateLaunchFailed;
 
+  /// No description provided for @updateViaComputer.
+  ///
+  /// In en, this message translates to:
+  /// **'Download via computer'**
+  String get updateViaComputer;
+
+  /// No description provided for @updateInstallApk.
+  ///
+  /// In en, this message translates to:
+  /// **'Install update'**
+  String get updateInstallApk;
+
+  /// No description provided for @updateAllowInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow Sshairy to install apps, then return and tap Install update again.'**
+  String get updateAllowInstall;
+
+  /// No description provided for @updateApkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not install this APK. Check that it matches this device and the installed Sshairy app.'**
+  String get updateApkFailed;
+
+  /// No description provided for @linkOfferUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Send update to phone'**
+  String get linkOfferUpdate;
+
+  /// No description provided for @linkUpdateOffered.
+  ///
+  /// In en, this message translates to:
+  /// **'Update notification sent. Confirm the download on your phone.'**
+  String get linkUpdateOffered;
+
+  /// No description provided for @linkUpdateOfferFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not send the update notification. Check that your phone is connected.'**
+  String get linkUpdateOfferFailed;
+
+  /// No description provided for @updatePhoneAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone update {version} available'**
+  String updatePhoneAvailable(String version);
+
+  /// No description provided for @updatePhonePrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} runs Sshairy {current}; the latest is {latest}.'**
+  String updatePhonePrompt(String name, String current, String latest);
+
+  /// No description provided for @updatePush.
+  ///
+  /// In en, this message translates to:
+  /// **'Download and push'**
+  String get updatePush;
+
   /// No description provided for @updateDownloadFailed.
   ///
   /// In en, this message translates to:

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../foundation/app_info.dart';
+import '../../../foundation/file_system.dart';
 import '../adapters/file_digest.dart';
 import 'updates.dart';
 
@@ -32,7 +33,9 @@ class UpdateDownloadFailure implements Exception {
   const UpdateDownloadFailure();
 }
 
-/// Downloads one release asset to the user's Downloads folder, checking it against the release's SHA256SUMS.
+typedef _OpenAsset = Future<({Stream<List<int>> chunks, int size})> Function(ReleaseAsset asset);
+
+/// Saves one release asset, checking it against the release's SHA256SUMS.
 class UpdateDownloader {
   UpdateDownloader({
     HttpClient Function()? clientFactory,
@@ -49,39 +52,45 @@ class UpdateDownloader {
   final String userAgent;
 
   HttpClient? _client;
+  FileSystem? _relay;
   var _cancelled = false;
 
   void cancel() {
     _cancelled = true;
     _client?.close(force: true);
+    unawaited(_relay?.close());
   }
 
-  /// Streams [asset] into a `.part` file and renames it only after the size and checksum agree.
+  /// Streams [asset] into a private staging file, then moves the verified download into place.
   Future<UpdateDownloadState> download(
     ReleaseNote release, {
     required ReleaseAsset asset,
     required void Function(UpdateDownloadState state) onProgress,
+    OpenUpdateRelay? openRelay,
   }) async {
     _cancelled = false;
-    final client = _client = _clientFactory()..connectionTimeout = const Duration(seconds: 15);
-    File? part;
+    Directory? staging;
     try {
+      final open = await _assetSource(release.version, openRelay);
       final folder = await _downloadsDirectory();
+      if (_cancelled) throw const UpdateDownloadCancelled();
       await folder.create(recursive: true);
       final name = _safeName(asset.name);
+      final apk = name.toLowerCase().endsWith('.apk');
+      final download = await open(asset);
+      if (_cancelled) throw const UpdateDownloadCancelled();
+      if (apk && download.size > maxUpdateApkBytes) throw const UpdateDownloadFailure();
       final target = File('${folder.path}${Platform.pathSeparator}$name');
-      part = File('${target.path}.part');
-      final response = await _open(client, Uri.parse(asset.url));
-      if (response.statusCode != HttpStatus.ok) {
-        throw const UpdateDownloadFailure();
-      }
-      final total = response.contentLength > 0 ? response.contentLength : asset.size;
+      staging = await folder.createTemp('.sshairy-update-');
+      final part = File('${staging.path}${Platform.pathSeparator}$name.part');
+      final total = download.size;
       var received = 0;
       final sink = part.openWrite();
       try {
-        await for (final chunk in response) {
+        await for (final chunk in download.chunks) {
           if (_cancelled) throw const UpdateDownloadCancelled();
           received += chunk.length;
+          if (apk && received > maxUpdateApkBytes) throw const UpdateDownloadFailure();
           sink.add(chunk);
           onProgress(UpdateDownloadState(UpdateDownloadStatus.downloading, received: received, total: total));
         }
@@ -90,14 +99,16 @@ class UpdateDownloader {
       }
       if (_cancelled) throw const UpdateDownloadCancelled();
       onProgress(UpdateDownloadState(UpdateDownloadStatus.verifying, received: received, total: total));
-      final expected = await _expectedDigest(client, release, name);
+      final expected = await _expectedDigest(open, release, name);
+      if (_cancelled) throw const UpdateDownloadCancelled();
+      if (apk && expected == null) throw const UpdateDownloadFailure();
       if (expected != null) {
         final actual = await fileSha256(part);
+        if (_cancelled) throw const UpdateDownloadCancelled();
         if (actual != expected) throw const UpdateDownloadFailure();
       }
-      if (await target.exists()) await target.delete();
       await part.rename(target.path);
-      part = null;
+      if (_cancelled) throw const UpdateDownloadCancelled();
       final ready = UpdateDownloadState(UpdateDownloadStatus.ready, path: target.path);
       onProgress(ready);
       return ready;
@@ -106,18 +117,38 @@ class UpdateDownloader {
     } on UpdateDownloadFailure {
       rethrow;
     } on Object {
+      if (_cancelled) throw const UpdateDownloadCancelled();
       throw const UpdateDownloadFailure();
     } finally {
-      if (part != null) {
+      if (staging != null) {
         try {
-          if (await part.exists()) await part.delete();
+          await staging.delete(recursive: true);
         } on FileSystemException {
-          // A leftover `.part` hides no correctness problem; the next attempt overwrites it.
+          // Each attempt owns its staging directory, so a leftover file cannot block a retry.
         }
       }
-      client.close(force: true);
-      if (identical(_client, client)) _client = null;
+      _client?.close(force: true);
+      _client = null;
+      await _relay?.close();
+      _relay = null;
     }
+  }
+
+  Future<_OpenAsset> _assetSource(String version, OpenUpdateRelay? openRelay) async {
+    if (openRelay != null) {
+      final relay = _relay = await openRelay();
+      return (ReleaseAsset asset) async => (chunks: relay.read('/$version/${asset.name}'), size: asset.size);
+    }
+    const timeout = Duration(seconds: 15);
+    final client = _client = _clientFactory()..connectionTimeout = timeout;
+    return (ReleaseAsset asset) async {
+      final response = await _open(client, Uri.parse(asset.url)).timeout(timeout);
+      if (response.statusCode != HttpStatus.ok) throw const UpdateDownloadFailure();
+      return (
+        chunks: response.timeout(timeout),
+        size: response.contentLength > 0 ? response.contentLength : asset.size,
+      );
+    };
   }
 
   Future<HttpClientResponse> _open(HttpClient client, Uri uri) async {
@@ -128,14 +159,13 @@ class UpdateDownloader {
   }
 
   /// The hash for [name] when the release ships a checksum file; a missing or unreadable file skips the check.
-  Future<String?> _expectedDigest(HttpClient client, ReleaseNote release, String name) async {
+  Future<String?> _expectedDigest(_OpenAsset open, ReleaseNote release, String name) async {
     final sums = release.checksums;
     if (sums == null) return null;
     try {
-      final response = await _open(client, Uri.parse(sums.url));
-      if (response.statusCode != HttpStatus.ok) return null;
+      final response = await open(sums);
       final bytes = <int>[];
-      await for (final chunk in response) {
+      await for (final chunk in response.chunks) {
         if (bytes.length + chunk.length > 64 * 1024) return null;
         bytes.addAll(chunk);
       }
@@ -168,6 +198,10 @@ bool _githubUrl(Uri uri) =>
     uri.scheme == 'https' && (uri.host == 'github.com' || uri.host.endsWith('.githubusercontent.com'));
 
 Future<Directory> _defaultDownloadsDirectory() async {
+  if (Platform.isAndroid) {
+    final cache = await getTemporaryDirectory();
+    return Directory('${cache.path}/updates');
+  }
   try {
     final directory = await getDownloadsDirectory();
     if (directory != null) return directory;

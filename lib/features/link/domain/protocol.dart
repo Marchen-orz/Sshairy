@@ -8,6 +8,7 @@ const int linkMaxFrameBytes = 256 * 1024;
 const int linkSnapshotMaxBytes = 64 * 1024;
 const int linkMonitorMaxBytes = 128 * 1024;
 const int linkMaxProxyChannelsPerPeer = 8;
+const linkUpdateTarget = 'app-update';
 
 /// Per-device capabilities granted on the desktop side.
 class LinkPeerPermissions {

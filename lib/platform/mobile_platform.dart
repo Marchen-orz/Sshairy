@@ -2,10 +2,35 @@ import 'package:flutter/services.dart';
 
 import 'device_form_factor.dart';
 
+enum MobileUpdateInstallResult { opened, permission, failed }
+
 /// Platform channel for mobile-only capabilities: keep-screen-on, Android background keep-alive foreground service,
 /// on-demand notification permission, and biometric unlock (docs/MOBILE.md §2).
 abstract final class MobilePlatform {
   static const _channel = MethodChannel('dev.sshairy.sshairy/mobile_platform');
+
+  static Future<List<String>> updateAbis() async {
+    if (!isAndroidPlatform) return const [];
+    try {
+      return await _channel.invokeListMethod<String>('updateAbis') ?? const [];
+    } on PlatformException {
+      return const [];
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
+  static Future<MobileUpdateInstallResult> installUpdate(String path, String version) async {
+    if (!isAndroidPlatform) return MobileUpdateInstallResult.failed;
+    try {
+      final result = await _channel.invokeMethod<String>('installUpdate', {'path': path, 'version': version});
+      return MobileUpdateInstallResult.values.asNameMap()[result] ?? MobileUpdateInstallResult.failed;
+    } on PlatformException {
+      return MobileUpdateInstallResult.failed;
+    } on MissingPluginException {
+      return MobileUpdateInstallResult.failed;
+    }
+  }
 
   static Future<void> setKeepScreenOn(bool on) async {
     if (!isMobilePlatform) return;

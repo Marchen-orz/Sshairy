@@ -777,6 +777,40 @@ class AppLocalizationsZh extends AppLocalizations {
   String get updateLaunchFailed => '无法打开安装包，请在下载目录手动打开。';
 
   @override
+  String get updateViaComputer => '通过电脑下载';
+
+  @override
+  String get updateInstallApk => '安装更新';
+
+  @override
+  String get updateAllowInstall => '允许 Sshairy 安装应用后，返回并再次点按「安装更新」。';
+
+  @override
+  String get updateApkFailed => '无法安装此 APK，请确认它适用于当前设备和已安装的 Sshairy。';
+
+  @override
+  String get linkOfferUpdate => '向手机发送更新';
+
+  @override
+  String get linkUpdateOffered => '已发送更新提醒，请在手机上确认下载。';
+
+  @override
+  String get linkUpdateOfferFailed => '无法发送更新提醒，请确认手机在线。';
+
+  @override
+  String updatePhoneAvailable(String version) {
+    return '手机端可更新到 $version';
+  }
+
+  @override
+  String updatePhonePrompt(String name, String current, String latest) {
+    return '$name 运行 Sshairy $current，最新为 $latest。';
+  }
+
+  @override
+  String get updatePush => '下载并推送';
+
+  @override
   String get updateDownloadFailed => '下载失败，请检查网络后重试。';
 
   @override
