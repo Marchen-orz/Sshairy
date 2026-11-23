@@ -6,6 +6,7 @@ import '../../../design/select.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/local_paths.dart';
 import '../../credentials/api.dart';
 import '../domain/host.dart';
 import '../domain/host_library.dart';
@@ -58,7 +59,7 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
           _AuthMode.keyPassword => const [AuthKind.key, AuthKind.password],
         },
         keyId: useKey ? _keyId : null,
-        keyPath: useKey && _keyId == null ? _keyPath.text.trim() : null,
+        keyPath: useKey && _keyId == null ? unquoteWindowsPath(_keyPath.text.trim()) : null,
         allowInteractive: _interactive,
       ),
     );
@@ -118,7 +119,7 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
             TextFormField(
               controller: _keyPath,
               enabled: enabled,
-              validator: enabled ? (v) => requiredField(l, v) : null,
+              validator: enabled ? (v) => requiredField(l, unquoteWindowsPath(v ?? '')) : null,
               decoration: InputDecoration(labelText: l.keyPath),
             ),
           ],

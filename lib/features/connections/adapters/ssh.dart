@@ -8,6 +8,7 @@ import 'package:dartssh2/dartssh2.dart';
 import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
 import '../../../foundation/secret.dart';
+import '../../../platform/local_paths.dart';
 import '../../credentials/api.dart';
 import '../../hosts/api.dart';
 import '../application/host_trust.dart';
@@ -354,7 +355,7 @@ class SshDialer {
       pem = stored.reveal();
       passphraseRef = key!.passphraseRef;
     } else {
-      var path = policy.keyPath ?? '';
+      var path = unquoteWindowsPath(policy.keyPath ?? '');
       if (path.startsWith('~')) {
         path = (Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '') + path.substring(1);
       }
