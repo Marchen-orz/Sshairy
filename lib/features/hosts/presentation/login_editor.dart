@@ -6,6 +6,7 @@ import '../../../design/select.dart';
 import '../../../design/side_drawer.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/file_drop.dart';
 import '../../../platform/local_paths.dart';
 import '../../credentials/api.dart';
 import '../domain/host.dart';
@@ -93,36 +94,49 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
         ),
         if (_mode != _AuthMode.password) ...[
           formGap,
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: AppSelect<String?>(
-                  value: _keyId,
-                  label: l.privateKey,
-                  options: [
-                    for (final k in keys) AppOption(k.id, '${k.label} · ${k.algorithm}'),
-                    AppOption(null, l.keyFile),
+          FileDropZone(
+            enabled: enabled,
+            preview: true,
+            onDrop: (paths, _) => setState(() {
+              _keyId = null;
+              _keyPath.text = paths.first;
+            }),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: AppSelect<String?>(
+                        value: _keyId,
+                        label: l.privateKey,
+                        options: [
+                          for (final k in keys) AppOption(k.id, '${k.label} · ${k.algorithm}'),
+                          AppOption(null, l.keyFile),
+                        ],
+                        onChanged: enabled ? (v) => setState(() => _keyId = v) : null,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: l.keys,
+                      onPressed: enabled ? () => showSideDrawer<void>(context, (_) => const KeysPanel()) : null,
+                      icon: const Icon(Icons.key_outlined, size: 18),
+                    ),
                   ],
-                  onChanged: enabled ? (v) => setState(() => _keyId = v) : null,
                 ),
-              ),
-              IconButton(
-                tooltip: l.keys,
-                onPressed: enabled ? () => showSideDrawer<void>(context, (_) => const KeysPanel()) : null,
-                icon: const Icon(Icons.key_outlined, size: 18),
-              ),
-            ],
-          ),
-          if (_keyId == null) ...[
-            formGap,
-            TextFormField(
-              controller: _keyPath,
-              enabled: enabled,
-              validator: enabled ? (v) => requiredField(l, unquoteWindowsPath(v ?? '')) : null,
-              decoration: InputDecoration(labelText: l.keyPath),
+                if (_keyId == null) ...[
+                  formGap,
+                  TextFormField(
+                    controller: _keyPath,
+                    enabled: enabled,
+                    validator: enabled ? (v) => requiredField(l, unquoteWindowsPath(v ?? '')) : null,
+                    decoration: InputDecoration(labelText: l.keyPath),
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
         ],
         const SizedBox(height: Space.sm),
         AppToggleRow(

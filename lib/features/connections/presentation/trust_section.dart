@@ -5,6 +5,7 @@ import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/file_drop.dart';
 import '../../settings/api.dart';
 import '../adapters/known_hosts_file.dart';
 import '../application/host_trust.dart';
@@ -29,11 +30,11 @@ class _TrustedKeys extends ConsumerStatefulWidget {
 }
 
 class _TrustedKeysState extends ConsumerState<_TrustedKeys> {
-  Future<void> _import() async {
+  Future<void> _import([String? path]) async {
     final l = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
     final importer = ref.read(knownHostsImportProvider);
-    final picked = await pickKnownHosts();
+    final picked = path == null ? await pickKnownHosts() : await readKnownHosts(path);
     if (picked == null || !mounted) return;
     switch (picked) {
       case Err(:final error):
@@ -65,55 +66,59 @@ class _TrustedKeysState extends ConsumerState<_TrustedKeys> {
       for (final MapEntry(key: endpoint, value: types) in trust.entries.entries)
         for (final MapEntry(key: type, value: fingerprint) in types.entries) (endpoint, type, fingerprint),
     ]..sort((a, b) => a.$1.compareTo(b.$1));
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text(l.trustedKeys)),
-            IconButton(
-              tooltip: l.importKnownHosts,
-              onPressed: _import,
-              icon: const Icon(Icons.file_upload_outlined, size: 16),
-            ),
-          ],
-        ),
-        const SizedBox(height: Space.sm),
-        if (keys.isEmpty) Text(l.none, style: muted),
-        for (final (endpoint, type, fingerprint) in keys)
-          Padding(
-            padding: const EdgeInsets.only(bottom: Space.sm),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(endpoint, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      Tooltip(
-                        message: fingerprint,
-                        child: Text(
-                          '$type  $fingerprint',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: mono(context, muted),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: l.remove,
-                  onPressed: () async {
-                    await trust.forget(endpoint, type);
-                    if (mounted) setState(() {});
-                  },
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                ),
-              ],
-            ),
+    return FileDropZone(
+      preview: true,
+      onDrop: (paths, _) => _import(paths.first),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(l.trustedKeys)),
+              IconButton(
+                tooltip: l.importKnownHosts,
+                onPressed: _import,
+                icon: const Icon(Icons.file_upload_outlined, size: 16),
+              ),
+            ],
           ),
-      ],
+          const SizedBox(height: Space.sm),
+          if (keys.isEmpty) Text(l.none, style: muted),
+          for (final (endpoint, type, fingerprint) in keys)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Space.sm),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(endpoint, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Tooltip(
+                          message: fingerprint,
+                          child: Text(
+                            '$type  $fingerprint',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: mono(context, muted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: l.remove,
+                    onPressed: () async {
+                      await trust.forget(endpoint, type);
+                      if (mounted) setState(() {});
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

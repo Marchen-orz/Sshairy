@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/data_dir.dart';
@@ -7,6 +8,7 @@ import '../../../foundation/ids.dart';
 import '../../../foundation/json_file.dart';
 import '../../../foundation/result.dart';
 import '../../../foundation/secret.dart';
+import '../../../platform/local_paths.dart';
 import '../adapters/key_codec.dart';
 import '../adapters/secure_store.dart';
 import '../domain/ssh_key.dart';
@@ -75,9 +77,9 @@ class KeysNotifier extends Notifier<List<SshKey>> {
         var pem = pemOrPath.trim();
         if (!pem.startsWith('-----')) {
           try {
-            pem = await File(_expandHome(pem)).readAsString();
+            pem = await File(_expandHome(unquoteWindowsPath(pem))).readAsString();
           } on Object catch (e) {
-            return Err(AppError('keyUnreadable', detail: '$e'));
+            return Err(AppError('keyUnreadable', detail: _describe(e)));
           }
         }
         final KeyInfo info;
@@ -95,9 +97,14 @@ class KeysNotifier extends Notifier<List<SshKey>> {
         final same = state.where((k) => k.fingerprint == info.fingerprint).firstOrNull;
         if (same != null) return Err(AppError('keyDuplicate', detail: same.label));
         final key = _key(label, info, KeySource.imported);
-        await _secrets.write(key.privateRef, Secret(pem.endsWith('\n') ? pem : '$pem\n'));
-        if (info.encrypted && remember && passphrase != null) await _secrets.write(key.passphraseRef, passphrase);
-        await _commit([...state, key]);
+        try {
+          await _secrets.write(key.privateRef, Secret(pem.endsWith('\n') ? pem : '$pem\n'));
+          if (info.encrypted && remember && passphrase != null) await _secrets.write(key.passphraseRef, passphrase);
+          await _commit([...state, key]);
+        } on Object catch (e) {
+          // A secret written before the failure has no metadata pointing at it (docs/SECURITY.md §2).
+          return Err(AppError('keyStoreFailed', detail: _describe(e)));
+        }
         return Ok(key);
       });
 
@@ -149,6 +156,14 @@ class KeysNotifier extends Notifier<List<SshKey>> {
     ref.read(credentialRevisionProvider).changed();
   }
 }
+
+/// The system's reason alone; the exception text around it adds nothing the user can act on.
+String _describe(Object error) => switch (error) {
+  FileSystemException(:final osError?) => osError.message,
+  FileSystemException(:final message) => message,
+  PlatformException(:final message?) => message,
+  _ => '$error',
+};
 
 String _expandHome(String path) => path.startsWith('~')
     ? (Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? '') + path.substring(1)

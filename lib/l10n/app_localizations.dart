@@ -1853,8 +1853,14 @@ abstract class AppLocalizations {
   /// No description provided for @errKeyUnreadable.
   ///
   /// In en, this message translates to:
-  /// **'Cannot read the file'**
-  String get errKeyUnreadable;
+  /// **'Cannot read the file: {detail}'**
+  String errKeyUnreadable(String detail);
+
+  /// No description provided for @errKeyStore.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the key: {detail}'**
+  String errKeyStore(String detail);
 
   /// No description provided for @group.
   ///
@@ -2257,6 +2263,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Upload'**
   String get upload;
+
+  /// No description provided for @uploadTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to {path}'**
+  String uploadTo(String path);
+
+  /// No description provided for @terminalDirectoryUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The shell\'s current directory is unknown; nothing was uploaded'**
+  String get terminalDirectoryUnknown;
 
   /// No description provided for @autoUpload.
   ///

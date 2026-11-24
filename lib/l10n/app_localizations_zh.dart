@@ -941,7 +941,14 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get errKeyUnreadable => '无法读取文件';
+  String errKeyUnreadable(String detail) {
+    return '无法读取文件：$detail';
+  }
+
+  @override
+  String errKeyStore(String detail) {
+    return '无法保存密钥：$detail';
+  }
 
   @override
   String get group => '分组';
@@ -1161,6 +1168,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get upload => '上传';
+
+  @override
+  String uploadTo(String path) {
+    return '上传到 $path';
+  }
+
+  @override
+  String get terminalDirectoryUnknown => '无法确定终端当前目录，未上传';
 
   @override
   String get autoUpload => '保存时自动上传';

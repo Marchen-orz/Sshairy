@@ -13,6 +13,7 @@ import '../../../design/popup.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/file_drop.dart';
 import '../../settings/api.dart';
 import '../application/composer.dart';
 import '../application/conversations.dart';
@@ -23,7 +24,6 @@ import '../application/target.dart';
 import '../application/permission_mode.dart';
 import '../adapters/markdown_view.dart';
 import '../adapters/attachments.dart';
-import '../adapters/attachment_drop.dart';
 import '../domain/attachment.dart';
 import '../domain/local_grant.dart';
 import 'model_picker.dart';
@@ -252,13 +252,13 @@ class _AgentPanelState extends ConsumerState<AgentPanel> {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
-            child: AgentAttachmentDropZone(
+            child: FileDropZone(
               key: const ValueKey('ai-agent-file-drop'),
               enabled: _attachmentEnabled && !_pickingAttachment,
               onHover: (value) {
                 if (mounted && _dropHover != value) setState(() => _dropHover = value);
               },
-              onDrop: (paths) => unawaited(_attach(paths: paths)),
+              onDrop: (paths, _) => unawaited(_attach(paths: paths)),
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   border: _dropHover && _attachmentEnabled && !_pickingAttachment

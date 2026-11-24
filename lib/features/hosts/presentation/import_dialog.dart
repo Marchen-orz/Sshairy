@@ -8,6 +8,7 @@ import '../../../design/theme.dart';
 import '../../../foundation/json_file.dart';
 import '../../credentials/api.dart' show CredentialImportFailure;
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/file_drop.dart';
 import '../adapters/import_source_icon.dart';
 import '../application/host_import.dart';
 import '../application/hosts.dart';
@@ -142,25 +143,30 @@ class _ImportDialogState extends ConsumerState<ImportDialog> {
       width: 560,
       icon: const Icon(Icons.input_rounded),
       title: Text(l.importHosts),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (preview != null)
-            ..._planned(l, theme, preview)
-          else
-            Flexible(child: SingleChildScrollView(child: _source == null ? _sources(l) : _guidance(l, _source!))),
-          if (_busy)
-            const Padding(
-              padding: EdgeInsets.only(top: Space.sm),
-              child: LinearProgressIndicator(),
-            ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: Space.sm),
-              child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            ),
-        ],
+      content: FileDropZone(
+        enabled: !_busy,
+        preview: true,
+        onDrop: (paths, _) => _open(() => _import.fromPath(paths.first, _source)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (preview != null)
+              ..._planned(l, theme, preview)
+            else
+              Flexible(child: SingleChildScrollView(child: _source == null ? _sources(l) : _guidance(l, _source!))),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.only(top: Space.sm),
+                child: LinearProgressIndicator(),
+              ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: Space.sm),
+                child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+              ),
+          ],
+        ),
       ),
       actions: [
         dismiss,

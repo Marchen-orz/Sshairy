@@ -15,6 +15,7 @@ import '../../../foundation/file_system.dart';
 import '../../../foundation/open_external.dart';
 import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/file_drop.dart';
 import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
@@ -367,10 +368,10 @@ class _FilePaneState extends ConsumerState<FilePane> {
     });
     return ListenableBuilder(
       listenable: b,
-      builder: (context, _) => OsDropZone(
+      builder: (context, _) => FileDropZone(
         enabled: b.ready,
         onHover: (on) => setState(() => _dropping = on),
-        onDrop: _upload,
+        onDrop: (paths, _) => _upload(paths),
         child: DragTarget<FileDrag>(
           onWillAcceptWithDetails: (d) => d.data.from != b && b.ready,
           onAcceptWithDetails: (d) => _report(FilePaneSend(d.data, b).run(_transfers)),

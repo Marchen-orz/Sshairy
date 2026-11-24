@@ -80,13 +80,14 @@ class BackgroundImages extends Notifier<Map<BackgroundSlot, double>> {
     });
   }
 
-  /// Imports a picked file into the gallery and selects it for [slot], or null when the picker was cancelled.
-  Future<Result<void>?> choose(BackgroundSlot slot) => _enqueue(() async {
+  /// Imports a picked or dropped file into the gallery and selects it for [slot], or null when the picker was
+  /// cancelled.
+  Future<Result<void>?> choose(BackgroundSlot slot, {String? path}) => _enqueue(() async {
     if (ref.read(backgroundGalleryProvider).length >= BackgroundImageLimits.galleryItems) {
       return const Err(AppError('backgroundGalleryFull'));
     }
     final store = ref.read(backgroundImageStoreProvider);
-    final picked = await store.choose(() => ref.read(backgroundGalleryProvider).toSet());
+    final picked = await store.choose(() => ref.read(backgroundGalleryProvider).toSet(), path: path);
     if (picked == null) return null;
     if (picked case Err(:final error)) return Err(error);
     final id = (picked as Ok<String>).value;

@@ -104,6 +104,10 @@ class HostImport {
     return read == null ? null : _prepare(read);
   }
 
+  /// A file or folder dropped in; without [format] it is recognized from its content.
+  Future<ImportPreview> fromPath(String path, [ImportFormat? format]) async =>
+      _prepare(await _files.read(format, path));
+
   Future<ImportPreview> _prepare(ImportRead read) async {
     final passwords = read.format == ImportFormat.finalshell
         ? (await _logins.load(read.path, read.config.hosts)).keys.toSet()

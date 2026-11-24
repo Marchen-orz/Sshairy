@@ -26,7 +26,7 @@ const adapters = {
     'lib/features/settings/adapters/release_notes_view.dart',
   ],
   'flutter_secure_storage': ['lib/features/credentials/adapters/'],
-  'desktop_drop': ['lib/features/files/adapters/', 'lib/features/ai/adapters/attachment_drop.dart'],
+  'desktop_drop': ['lib/platform/file_drop.dart'],
   'file_selector': [
     'lib/features/ai/adapters/attachments.dart',
     'lib/features/files/adapters/',

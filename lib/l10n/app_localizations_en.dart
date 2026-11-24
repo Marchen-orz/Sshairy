@@ -992,7 +992,14 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get errKeyUnreadable => 'Cannot read the file';
+  String errKeyUnreadable(String detail) {
+    return 'Cannot read the file: $detail';
+  }
+
+  @override
+  String errKeyStore(String detail) {
+    return 'Could not save the key: $detail';
+  }
 
   @override
   String get group => 'Group';
@@ -1212,6 +1219,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get upload => 'Upload';
+
+  @override
+  String uploadTo(String path) {
+    return 'Upload to $path';
+  }
+
+  @override
+  String get terminalDirectoryUnknown =>
+      'The shell\'s current directory is unknown; nothing was uploaded';
 
   @override
   String get autoUpload => 'Upload on save';

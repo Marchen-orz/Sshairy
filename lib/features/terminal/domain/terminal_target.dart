@@ -48,6 +48,16 @@ class LocalShell {
     _ => false,
   };
 
+  /// [path] as one word this shell takes literally. CMD has no escape inside quotes, but Windows paths cannot
+  /// contain `"`; PowerShell also closes single quotes on typographic ones.
+  String quote(String path) => switch (kind) {
+    LocalShellKind.cmd => '"$path"',
+    LocalShellKind.powershell ||
+    LocalShellKind.pwsh => "'${path.replaceAllMapped(RegExp("['‘-‛]"), (m) => '${m[0]}${m[0]}')}'",
+    LocalShellKind.fish => "'${path.replaceAll(r'\', r'\\').replaceAll("'", r"\'")}'",
+    _ => "'${path.replaceAll("'", r"'\''")}'",
+  };
+
   static bool validExecutable(String value) =>
       value.isNotEmpty &&
       value.length <= 4096 &&

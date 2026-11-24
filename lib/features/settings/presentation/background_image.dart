@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../platform/file_drop.dart';
 import '../application/background_images.dart';
 import '../domain/background.dart';
 import '../settings.dart';
@@ -91,35 +92,40 @@ class _BackgroundImageControlsState extends ConsumerState<BackgroundImageControl
       'backgroundGalleryFull' => l.backgroundGalleryFull,
       _ => l.errSave,
     };
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : () => _run(() => controller.choose(slot)),
-                icon: const Icon(Icons.image_outlined, size: 16),
-                label: Text(l.backgroundChooseImage),
+    return FileDropZone(
+      enabled: !_busy,
+      preview: true,
+      onDrop: (paths, _) => _run(() => controller.choose(slot, path: paths.first)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _run(() => controller.choose(slot)),
+                  icon: const Icon(Icons.image_outlined, size: 16),
+                  label: Text(l.backgroundChooseImage),
+                ),
               ),
-            ),
-            const SizedBox(width: Space.sm),
-            IconButton(
-              tooltip: l.backgroundRestoreDefault,
-              onPressed: _busy || !selected ? null : () => _run(() => controller.reset(slot)),
-              icon: const Icon(Icons.restore, size: 18),
-            ),
-          ],
-        ),
-        _Gallery(
-          slot: slot,
-          enabled: !_busy,
-          onSelect: (id) => _run(() => controller.select(slot, id)),
-          onRemove: (id) => _run(() => controller.remove(id)),
-        ),
-        _OpacityRow(slot: slot, enabled: !_busy, onSave: (value) => _run(() => controller.saveOpacity(slot, value))),
-        if (error != null) Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-      ],
+              const SizedBox(width: Space.sm),
+              IconButton(
+                tooltip: l.backgroundRestoreDefault,
+                onPressed: _busy || !selected ? null : () => _run(() => controller.reset(slot)),
+                icon: const Icon(Icons.restore, size: 18),
+              ),
+            ],
+          ),
+          _Gallery(
+            slot: slot,
+            enabled: !_busy,
+            onSelect: (id) => _run(() => controller.select(slot, id)),
+            onRemove: (id) => _run(() => controller.remove(id)),
+          ),
+          _OpacityRow(slot: slot, enabled: !_busy, onSave: (value) => _run(() => controller.saveOpacity(slot, value))),
+          if (error != null) Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
+      ),
     );
   }
 }

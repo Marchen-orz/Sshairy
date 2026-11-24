@@ -24,9 +24,11 @@ class BackgroundImageStore {
     ],
   );
 
-  /// [retained] is read once a file is picked: the dialog can stay open while the gallery changes.
-  Future<Result<String>?> choose(Set<String> Function() retained) async {
+  /// [retained] is read once a file is picked: the dialog can stay open while the gallery changes. A [path] that was
+  /// dropped in is imported without asking.
+  Future<Result<String>?> choose(Set<String> Function() retained, {String? path}) async {
     try {
+      if (path != null) return await importFile(path, retained());
       if (pick != null) {
         final path = await pick!();
         return path == null ? null : await importFile(path, retained());

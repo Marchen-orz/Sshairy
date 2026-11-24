@@ -20,10 +20,12 @@ import '../../../design/sidebar_frame.dart';
 import '../../../design/text_prompt.dart';
 import '../../../design/theme.dart';
 import '../../../design/window_chrome.dart';
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/shortcuts.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../platform/device_form_factor.dart';
+import '../../../platform/file_drop.dart';
 import '../../ai/api.dart';
 import '../../connections/api.dart';
 import '../../files/api.dart';
@@ -270,6 +272,37 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     run?.call();
   }
 
+  /// A local shell gets the dropped paths typed in, quoted for it; an SSH shell offers to upload the files to its
+  /// current directory instead, since a local path means nothing there (docs/UI.md §4).
+  Future<void> _dropOnTerminal(TerminalSession session, List<String> paths, Offset at) async {
+    final l = AppLocalizations.of(context);
+    void toast(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    if (session.localShell case final shell?) {
+      await session.insert(
+        paths.map(shell.quote).join(' '),
+        confirmMultiline: ref.read(settingsProvider).get(SettingKeys.confirmPaste),
+        confirm: (preview) => confirmTerminalInsert(context, preview),
+      );
+      return;
+    }
+    final host = session.sshHost;
+    if (host == null) return;
+    final dir = await session.readSshWorkingDirectory(CancellationToken());
+    if (!mounted) return;
+    if (dir == null) return toast(l.terminalDirectoryUnknown);
+    final upload = await showAppMenu<bool>(
+      context: context,
+      anchor: anchorAt(at),
+      items: [AppMenuItem(value: true, label: l.uploadTo(dir), icon: Icons.upload_outlined)],
+    );
+    if (upload != true || !mounted) return;
+    try {
+      ref.read(transfersProvider.notifier).enqueue(from: null, paths: paths, to: host, targetDir: dir);
+    } on OpFailure catch (e) {
+      toast(fileError(l, e));
+    }
+  }
+
   /// A mouse wheel only reports vertical deltas, so the strip would scroll sideways for trackpads alone.
   void _wheelTabs(PointerSignalEvent event) {
     if (event is! PointerScrollEvent || event.scrollDelta.dx != 0 || !_tabScroll.hasClients) return;
@@ -461,32 +494,37 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
                       enabled: (drag, side) => state.active == tab.id && _canDropPane(drag, tab, leaf, side),
                       fits: (drag, side) => _dropFits(drag, tab, leaf, side),
                       onDrop: (drag, side) => _dropPane(drag, tab, leaf, side),
-                      child: TerminalPane(
-                        session,
-                        active: state.active == tab.id && focused,
-                        visible: state.active == tab.id,
-                        onKeyEvent: _onKey,
-                        onAskAgent: (instruction) {
-                          final draft = ref.read(agentComposerProvider);
-                          final composer = ref.read(agentComposerProvider.notifier);
-                          composer.setGoal(draft.goal.isEmpty ? instruction : '${draft.goal}\n$instruction');
-                          setState(() => _agentOpen = true);
-                        },
-                        focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),
-                        actions: [
-                          PaneAction(
-                            l.splitRight,
-                            Icons.vertical_split_outlined,
-                            () => _splitAt(tab, leaf, SplitAxis.horizontal),
-                          ),
-                          PaneAction(
-                            l.splitDown,
-                            Icons.horizontal_split_outlined,
-                            () => _splitAt(tab, leaf, SplitAxis.vertical),
-                          ),
-                          PaneAction(l.duplicate, Icons.copy_all_outlined, () => _workspace.duplicate(tab.id)),
-                          PaneAction(l.closePane, Icons.close, () => _workspace.closePane(tab.id, leaf.pane)),
-                        ],
+                      child: FileDropZone(
+                        enabled: session.isLocal || session.sshHost != null,
+                        preview: true,
+                        onDrop: (paths, at) => unawaited(_dropOnTerminal(session, paths, at)),
+                        child: TerminalPane(
+                          session,
+                          active: state.active == tab.id && focused,
+                          visible: state.active == tab.id,
+                          onKeyEvent: _onKey,
+                          onAskAgent: (instruction) {
+                            final draft = ref.read(agentComposerProvider);
+                            final composer = ref.read(agentComposerProvider.notifier);
+                            composer.setGoal(draft.goal.isEmpty ? instruction : '${draft.goal}\n$instruction');
+                            setState(() => _agentOpen = true);
+                          },
+                          focusNode: _paneFocus.putIfAbsent(leaf.pane, FocusNode.new),
+                          actions: [
+                            PaneAction(
+                              l.splitRight,
+                              Icons.vertical_split_outlined,
+                              () => _splitAt(tab, leaf, SplitAxis.horizontal),
+                            ),
+                            PaneAction(
+                              l.splitDown,
+                              Icons.horizontal_split_outlined,
+                              () => _splitAt(tab, leaf, SplitAxis.vertical),
+                            ),
+                            PaneAction(l.duplicate, Icons.copy_all_outlined, () => _workspace.duplicate(tab.id)),
+                            PaneAction(l.closePane, Icons.close, () => _workspace.closePane(tab.id, leaf.pane)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
