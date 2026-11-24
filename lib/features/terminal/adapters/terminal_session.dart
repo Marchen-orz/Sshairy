@@ -139,12 +139,21 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
 
   void _configureTerminal() {
     _terminal.onSemanticPrompt = _semanticPrompt;
-    _terminal.onPrivateOSC = _historyOsc;
+    _terminal.onPrivateOSC = (code, arguments) {
+      if (code == '9' && arguments.isNotEmpty) {
+        final dir = parseOsc9Directory(arguments.join(';'));
+        if (dir != null) {
+          _reported = dir;
+          _directory.value = dir;
+        }
+      }
+      _historyOsc(code, arguments);
+    };
     // OSC 52 stays off (docs/MODULES.md §3): a remote program must not read or replace the local clipboard.
     _terminal.onClipboardStore = (_, _) {};
     _terminal.onClipboardQuery = (_) => null;
     _terminal.onCurrentDirectoryChange = (uri) {
-      _reported = parseOsc7(uri);
+      _reported = parseOsc7(uri, windows: _shellKind?.isWindowsShell == true);
       if (_reported != null) _directory.value = _reported;
       // The report comes with the prompt, so the command that changed directory has finished.
       if (_directory.followed) _lookSoon(const [Duration(milliseconds: 50)]);
@@ -181,16 +190,29 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     final buffer = _terminal.buffer;
     final total = buffer.lines.length;
     if (total == 0) return Uint8List(0);
+    final cursorRow = buffer.absoluteCursorY.clamp(0, total - 1);
     final end = total - 1;
     final start = max(0, end - 160);
     final lines = <String>[];
     for (var i = start; i <= end; i++) {
-      lines.add(buffer.lines[i].getText().replaceAll(RegExp(r'\s+$'), ''));
+      if (i == cursorRow) {
+        final before = _rowText(i, 0, buffer.cursorX);
+        final after = _rowText(i, buffer.cursorX, buffer.lines[i].length).replaceAll(RegExp(r'\s+$'), '');
+        lines.add('$before$after');
+      } else {
+        lines.add(buffer.lines[i].getText().replaceAll(RegExp(r'\s+$'), ''));
+      }
     }
-    while (lines.isNotEmpty && lines.last.isEmpty) {
+    final cursorOffset = cursorRow - start;
+    while (lines.length - 1 > cursorOffset && lines.last.isEmpty) {
       lines.removeLast();
     }
-    final joined = lines.isEmpty ? '' : '${lines.join('\r\n')}\r\n';
+    while (lines.isNotEmpty && lines.last.isEmpty && lines.length - 1 != cursorOffset) {
+      lines.removeLast();
+    }
+    if (lines.isEmpty || (lines.length == 1 && lines.single.isEmpty)) return Uint8List(0);
+    final onLastLine = lines.length - 1 == cursorOffset;
+    final joined = onLastLine ? lines.join('\r\n') : '${lines.join('\r\n')}\r\n';
     final bytes = utf8.encode(joined);
     if (bytes.length <= maxBytes) return Uint8List.fromList(bytes);
     // Keep the tail within budget without splitting a UTF-8 sequence.
@@ -209,6 +231,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       if (bytes.length == 1 && bytes.single == 13) _entered();
     } else if (_localPty != null) {
       _localPty!.write(bytes);
+      if (bytes.length == 1 && bytes.single == 13) _entered();
     }
   }
 
@@ -619,7 +642,9 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   int get pendingOutputBytes => _outputQueue?.pendingBytes ?? 0;
 
   bool get canReconnect =>
-      (isLocal || _prompts != null) && status != SessionStatus.connecting && status != SessionStatus.connected;
+      (isLocal || isRemote || _prompts != null) &&
+      status != SessionStatus.connecting &&
+      status != SessionStatus.connected;
 
   bool get canInsert =>
       !_closed &&
@@ -830,6 +855,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       _shellEnded = false;
       _cancelDirectoryLookup();
       _resetCommandDraft();
+      _ownedPaths = remotePaths == null ? LocalPathSource(localShell!, generation: _shellGeneration) : null;
       void ended() {
         if (!identical(_localPty, pty)) return;
         _shellEnded = true;
@@ -893,7 +919,9 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       _shell = shell;
       _shellEnded = false;
       _resetCommandDraft();
-      _ownedPaths = linkedFiles == null ? null : LinkedRemotePathSource(linkedFiles!, generation: _shellGeneration);
+      _ownedPaths = linkedFiles == null
+          ? null
+          : LinkedRemotePathSource(linkedFiles!, generation: _shellGeneration, style: _completionPathStyle);
       void ended() {
         if (!identical(_shell, shell)) return;
         _shellEnded = true;
@@ -971,7 +999,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       final text = _rowText(row, 0, buffer.cursorX);
       if (data.contains('\n') ||
           !identical(buffer.lines[row], _submittedLine) ||
-          (text != _submittedText && visibleShellCommand(text, '') != null)) {
+          (text != _submittedText && _visiblePromptCommand(text, '') != null)) {
         _submittedLine = null;
         _submittedText = null;
       }

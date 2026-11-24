@@ -1,7 +1,20 @@
 import '../../../foundation/ids.dart';
 
 /// A shell reference only; the inherited environment belongs to the running adapter, never the layout.
-enum LocalShellKind { cmd, powershell, pwsh, gitBash, bash, zsh, fish, sh, unix }
+enum LocalShellKind {
+  cmd,
+  powershell,
+  pwsh,
+  gitBash,
+  bash,
+  zsh,
+  fish,
+  sh,
+  unix;
+
+  /// Shells that use `\` as a path separator rather than a POSIX escape character.
+  bool get isWindowsShell => this == cmd || this == powershell || this == pwsh;
+}
 
 class LocalShell {
   const LocalShell({required this.kind, required this.executable});
@@ -73,7 +86,7 @@ final class LocalTerminalTarget extends TerminalTarget {
 enum LinkTerminalKind { mirror, proxy }
 
 /// A terminal routed through a paired desktop via Sshairy Link: either a live mirror of a desktop session or a
-/// desktop-proxied SSH connection whose private keys stay on the desktop.
+/// desktop-proxied SSH / local shell connection whose private keys stay on the desktop.
 final class LinkTerminalTarget extends TerminalTarget {
   const LinkTerminalTarget({
     required this.peerId,
@@ -82,6 +95,8 @@ final class LinkTerminalTarget extends TerminalTarget {
     required this.title,
     required this.targetLabel,
     required this.kind,
+    this.isLocal = false,
+    this.localShellKind,
   });
 
   final String peerId;
@@ -90,4 +105,6 @@ final class LinkTerminalTarget extends TerminalTarget {
   final String title;
   final String targetLabel;
   final LinkTerminalKind kind;
+  final bool isLocal;
+  final LocalShellKind? localShellKind;
 }

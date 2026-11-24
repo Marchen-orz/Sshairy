@@ -41,7 +41,7 @@ String? parseDirectoryQuery(String output) {
 }
 
 /// The path of an OSC 7 report (`file://host/path`, percent-encoded); null for anything else.
-String? parseOsc7(String uri) {
+String? parseOsc7(String uri, {bool windows = false}) {
   final parsed = Uri.tryParse(uri);
   if (parsed == null || parsed.scheme != 'file') return null;
   final String path;
@@ -50,5 +50,22 @@ String? parseOsc7(String uri) {
   } on Object {
     return null;
   }
+  if (windows && RegExp(r'^/[A-Za-z]:/').hasMatch(path)) {
+    return path.substring(1).replaceAll('/', r'\');
+  }
   return path.startsWith('/') ? path : null;
+}
+
+/// The path of a Windows Terminal / PowerShell / CMD OSC `9;9;<path>` working-directory report.
+String? parseOsc9Directory(String args) {
+  if (!args.startsWith('9;')) return null;
+  var path = args.substring(2).trim();
+  if (path.length >= 2 && path.startsWith('"') && path.endsWith('"')) {
+    path = path.substring(1, path.length - 1);
+  }
+  if (path.isEmpty) return null;
+  if (RegExp(r'^[A-Za-z]:[\\/]').hasMatch(path) || path.startsWith(r'\\') || path.startsWith('/')) {
+    return path;
+  }
+  return null;
 }

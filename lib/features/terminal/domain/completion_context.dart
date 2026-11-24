@@ -6,6 +6,15 @@ library;
 
 enum CompletionQuote { none, single, double }
 
+/// Shell quoting and escape rules for splitting and encoding completion words.
+enum CompletionSyntax {
+  posix,
+  powershell,
+  cmd;
+
+  bool get isWindows => this != posix;
+}
+
 enum CompletionIssue {
   /// A line break or another control character; completion is for one line.
   control,
@@ -46,19 +55,20 @@ class CommandToken {
 }
 
 class CompletionContext {
-  const CompletionContext._(this.draft, this.words, this.current, this.quote, this.issue);
+  const CompletionContext._(this.draft, this.words, this.current, this.quote, this.issue, this.syntax);
 
   /// Longer drafts are not read.
   static const maxLength = 4096;
 
   /// Splits [draft]; never throws. A draft that cannot be read has [issue] set and no words.
-  factory CompletionContext.parse(String draft) {
+  factory CompletionContext.parse(String draft, {CompletionSyntax syntax = CompletionSyntax.posix}) {
     CompletionContext fail(CompletionIssue issue) => CompletionContext._(
       draft,
       const [],
       CommandToken._('', '', draft.length, const [0]),
       CompletionQuote.none,
       issue,
+      syntax,
     );
     if (draft.length > maxLength) return fail(CompletionIssue.tooLong);
 
@@ -86,6 +96,11 @@ class CompletionContext {
 
       if (quote == CompletionQuote.single) {
         if (c == 0x27) {
+          if (syntax == CompletionSyntax.powershell && i + 1 < n && draft.codeUnitAt(i + 1) == 0x27) {
+            put(0x27, i + 2);
+            i += 2;
+            continue;
+          }
           quote = CompletionQuote.none;
         } else {
           put(c, i + 1);
@@ -98,11 +113,15 @@ class CompletionContext {
         if (c == 0x22) {
           quote = CompletionQuote.none;
           i++;
-        } else if (c == 0x24 || c == 0x60) {
+        } else if (syntax == CompletionSyntax.posix && (c == 0x24 || c == 0x60)) {
           return fail(CompletionIssue.substitution);
-        } else if (c == 0x21) {
+        } else if (syntax == CompletionSyntax.powershell && c == 0x24) {
+          return fail(CompletionIssue.substitution);
+        } else if (syntax == CompletionSyntax.cmd && c == 0x25) {
+          return fail(CompletionIssue.substitution);
+        } else if (syntax == CompletionSyntax.posix && c == 0x21) {
           return fail(CompletionIssue.expansion);
-        } else if (c == 0x5c) {
+        } else if (syntax == CompletionSyntax.posix && c == 0x5c) {
           if (i + 1 >= n) return fail(CompletionIssue.danglingEscape);
           final d = draft.codeUnitAt(i + 1);
           if (_control(d)) return fail(CompletionIssue.control);
@@ -113,6 +132,12 @@ class CompletionContext {
             put(c, i + 1); // the backslash stays; the next character is read on its own
             i++;
           }
+        } else if (syntax == CompletionSyntax.powershell && c == 0x60) {
+          if (i + 1 >= n) return fail(CompletionIssue.danglingEscape);
+          final d = draft.codeUnitAt(i + 1);
+          if (_control(d)) return fail(CompletionIssue.control);
+          put(d, i + 2);
+          i += 2;
         } else {
           put(c, i + 1);
           i++;
@@ -131,13 +156,21 @@ class CompletionContext {
         bounds = <int>[0];
       }
       switch (c) {
-        case 0x27:
+        case 0x27 when syntax != CompletionSyntax.cmd:
           quote = CompletionQuote.single;
           i++;
         case 0x22:
           quote = CompletionQuote.double;
           i++;
-        case 0x5c:
+        case 0x5c when syntax == CompletionSyntax.posix:
+          {
+            if (i + 1 >= n) return fail(CompletionIssue.danglingEscape);
+            final d = draft.codeUnitAt(i + 1);
+            if (_control(d)) return fail(CompletionIssue.control);
+            put(d, i + 2);
+            i += 2;
+          }
+        case 0x60 when syntax == CompletionSyntax.powershell:
           {
             if (i + 1 >= n) return fail(CompletionIssue.danglingEscape);
             final d = draft.codeUnitAt(i + 1);
@@ -147,11 +180,19 @@ class CompletionContext {
           }
         case 0x7c || 0x26 || 0x3b || 0x3c || 0x3e || 0x28 || 0x29:
           return fail(CompletionIssue.operator);
-        case 0x24 || 0x60:
+        case 0x24 || 0x60 when syntax == CompletionSyntax.posix:
           return fail(CompletionIssue.substitution);
-        case 0x2a || 0x3f || 0x5b || 0x5d || 0x7b || 0x7d || 0x21:
+        case 0x24 when syntax == CompletionSyntax.powershell:
+          return fail(CompletionIssue.substitution);
+        case 0x25 when syntax == CompletionSyntax.cmd:
+          return fail(CompletionIssue.substitution);
+        case 0x2a || 0x3f || 0x5b || 0x5d || 0x7b || 0x7d || 0x21 when syntax == CompletionSyntax.posix:
           return fail(CompletionIssue.expansion);
-        case 0x23 when i == start:
+        case 0x2a || 0x3f || 0x5b || 0x5d || 0x7b || 0x7d when syntax == CompletionSyntax.powershell:
+          return fail(CompletionIssue.expansion);
+        case 0x2a || 0x3f when syntax == CompletionSyntax.cmd:
+          return fail(CompletionIssue.expansion);
+        case 0x23 when i == start && syntax != CompletionSyntax.cmd:
           return fail(CompletionIssue.expansion);
         default:
           put(c, i + 1);
@@ -162,9 +203,9 @@ class CompletionContext {
     final frozen = List<CommandToken>.unmodifiable(words);
     if (start >= 0) {
       final token = CommandToken._(draft.substring(start), value.toString(), start, bounds);
-      return CompletionContext._(draft, frozen, token, quote, null);
+      return CompletionContext._(draft, frozen, token, quote, null, syntax);
     }
-    return CompletionContext._(draft, frozen, CommandToken._('', '', n, const [0]), CompletionQuote.none, null);
+    return CompletionContext._(draft, frozen, CommandToken._('', '', n, const [0]), CompletionQuote.none, null, syntax);
   }
 
   final String draft;
@@ -180,6 +221,8 @@ class CompletionContext {
 
   /// Why nothing can be suggested; null when the draft was read.
   final CompletionIssue? issue;
+
+  final CompletionSyntax syntax;
 
   bool get supported => issue == null;
 
@@ -197,6 +240,13 @@ bool _plain(int c) => switch (c) {
   _ => false,
 };
 
+bool _windowsPlain(int c, {required bool cmd}) => switch (c) {
+  0x5c => true, // `\` is the Windows path separator, not an escape.
+  0x25 when cmd => false, // `%VAR%` expands in CMD.
+  0x40 when !cmd => false, // `@` splats/arrays in PowerShell.
+  _ => _plain(c),
+};
+
 /// Whether [text] may become part of a word: one line, no control characters.
 bool completionValueValid(String text) {
   if (text.isEmpty || text.length > 1024) return false;
@@ -206,10 +256,43 @@ bool completionValueValid(String text) {
   return true;
 }
 
+/// Whether [added] can be safely appended to a word ending in [state] under [syntax].
+bool canEncodeShellSuffix(
+  String added,
+  CompletionQuote state, {
+  bool atWordStart = false,
+  CompletionSyntax syntax = CompletionSyntax.posix,
+}) {
+  if (syntax != CompletionSyntax.cmd) return true;
+  if (added.contains('"') || added.contains('%')) return false;
+  if (state == CompletionQuote.double) return true;
+  if (state == CompletionQuote.single) return !added.contains("'");
+  if (atWordStart) return true;
+  for (var i = 0; i < added.length; i++) {
+    if (!_windowsPlain(added.codeUnitAt(i), cmd: true)) return false;
+  }
+  return true;
+}
+
 /// The raw text that appends [added] to a word that ends in [state]. Characters the shell would read as syntax are
 /// escaped for that state; with [close] an open quote is closed. [atWordStart] also escapes a leading `~` or `#`.
 /// [added] must satisfy [completionValueValid].
-String encodeShellSuffix(String added, CompletionQuote state, {bool atWordStart = false, bool close = false}) {
+String encodeShellSuffix(
+  String added,
+  CompletionQuote state, {
+  bool atWordStart = false,
+  bool close = false,
+  CompletionSyntax syntax = CompletionSyntax.posix,
+}) {
+  if (syntax.isWindows) {
+    return _encodeWindowsSuffix(
+      added,
+      state,
+      atWordStart: atWordStart,
+      close: close,
+      cmd: syntax == CompletionSyntax.cmd,
+    );
+  }
   final out = StringBuffer();
   for (var i = 0; i < added.length; i++) {
     final ch = added[i];
@@ -242,13 +325,71 @@ String encodeShellSuffix(String added, CompletionQuote state, {bool atWordStart 
   return out.toString();
 }
 
+String _encodeWindowsSuffix(
+  String added,
+  CompletionQuote state, {
+  required bool atWordStart,
+  required bool close,
+  required bool cmd,
+}) {
+  final out = StringBuffer();
+  switch (state) {
+    case CompletionQuote.none:
+      var needsQuote = false;
+      for (var i = 0; i < added.length; i++) {
+        final c = added.codeUnitAt(i);
+        if (!_windowsPlain(c, cmd: cmd) || (i == 0 && atWordStart && !cmd && c == 0x23)) {
+          needsQuote = true;
+          break;
+        }
+      }
+      if (!needsQuote) {
+        out.write(added);
+      } else if (atWordStart &&
+          !added.contains('"') &&
+          (cmd ? !added.contains('%') : !added.contains(r'$') && !added.contains('`'))) {
+        out
+          ..write('"')
+          ..write(added);
+        if (close) out.write('"');
+      } else if (!cmd) {
+        for (var i = 0; i < added.length; i++) {
+          final c = added.codeUnitAt(i);
+          if (!_windowsPlain(c, cmd: false) || (i == 0 && atWordStart && c == 0x23)) out.write('`');
+          out.write(added[i]);
+        }
+      } else {
+        out.write(added);
+      }
+    case CompletionQuote.single:
+      for (var i = 0; i < added.length; i++) {
+        final ch = added[i];
+        out.write(!cmd && ch == "'" ? "''" : ch);
+      }
+      if (close) out.write("'");
+    case CompletionQuote.double:
+      for (var i = 0; i < added.length; i++) {
+        final ch = added[i];
+        if (!cmd && (ch == '"' || ch == r'$' || ch == '`')) out.write('`');
+        out.write(ch);
+      }
+      if (close) out.write('"');
+  }
+  return out.toString();
+}
+
 /// A whole word for [value], opened with the quote of [quote] if there is one. For replacing a word that [value]
 /// does not extend.
-String encodeShellWord(String value, CompletionQuote quote, {bool close = true}) {
+String encodeShellWord(
+  String value,
+  CompletionQuote quote, {
+  bool close = true,
+  CompletionSyntax syntax = CompletionSyntax.posix,
+}) {
   final opener = switch (quote) {
     CompletionQuote.none => '',
     CompletionQuote.single => "'",
     CompletionQuote.double => '"',
   };
-  return '$opener${encodeShellSuffix(value, quote, atWordStart: true, close: close)}';
+  return '$opener${encodeShellSuffix(value, quote, atWordStart: true, close: close, syntax: syntax)}';
 }

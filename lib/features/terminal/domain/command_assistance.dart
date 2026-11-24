@@ -1,4 +1,5 @@
 import '../../../foundation/cancellation.dart';
+import 'terminal_target.dart';
 
 enum CommandKind { line, command, subcommand, option, argument }
 
@@ -167,7 +168,7 @@ String? visibleLocalShellCommand(
               : powershell
               ? RegExp(
                   '^$envPrefix'
-                  r'PS (?:[A-Za-z]:\\|\\\\)[^\r\n>]*> ',
+                  r'PS (?:[A-Za-z]:\\|\\\\|/)[^\r\n>]*> ',
                 )
               : RegExp(
                   '^$envPrefix'
@@ -177,6 +178,58 @@ String? visibleLocalShellCommand(
   if (prompt == null) return null;
   final command = beforeCursor.substring(prompt.end);
   return _echoedDraftValid(command, allowMultiline: allowMultiline) ? command : null;
+}
+
+/// Extracts the working directory printed by a default shell prompt when no OSC 7/9;9 report arrived.
+String? visiblePromptDirectory(String beforeCursor, {LocalShellKind? localKind, String? previousLine}) {
+  const envPrefix = r'(?:\([^)\r\n]+\) )*';
+  if (localKind == LocalShellKind.powershell || localKind == LocalShellKind.pwsh) {
+    final m = RegExp(
+      '^$envPrefix'
+      r'PS ((?:[A-Za-z]:\\|\\\\|/)[^\r\n>]*)> ',
+    ).firstMatch(beforeCursor);
+    return m?.group(1);
+  }
+  if (localKind == LocalShellKind.cmd) {
+    final m = RegExp(
+      '^$envPrefix'
+      r'((?:[A-Za-z]:\\|\\\\)[^\r\n>]*)>',
+    ).firstMatch(beforeCursor);
+    return m?.group(1);
+  }
+  if (localKind == LocalShellKind.gitBash && previousLine != null) {
+    // Git Bash's default 2-line prompt prints `user@host MINGW64 /d/path (branch)` above `$ `.
+    final m = RegExp(
+      '^$envPrefix'
+      r'[\w.-]+@[\w.-]+\s+\S+\s+((?:/|~)[^\r\n]*)',
+    ).firstMatch(previousLine.trimRight());
+    final raw = m?.group(1)?.trimRight();
+    if (raw != null && raw.isNotEmpty) {
+      final branch = RegExp(r'\s+\([^)\r\n]+\)$').firstMatch(raw);
+      final dir = branch == null ? raw : raw.substring(0, branch.start).trimRight();
+      if (dir == '~' || dir.startsWith('~/') || dir.startsWith('/')) return dir;
+    }
+  }
+  if (localKind == LocalShellKind.fish) {
+    final m = RegExp(
+      '^$envPrefix'
+      r'[\w.-]+@[\w.-]+ ((?:/|~)[^\r\n>]*)> ',
+    ).firstMatch(beforeCursor);
+    return m?.group(1)?.trimRight();
+  }
+  final unix = RegExp(
+    '^$envPrefix'
+    r'[\w.-]+@[\w.-]+:((?:/|~)[^\r\n]*?)[#$] ',
+  ).firstMatch(beforeCursor);
+  if (unix != null) return unix.group(1);
+  if (localKind == LocalShellKind.zsh) {
+    final zsh = RegExp(
+      '^$envPrefix'
+      r'[\w.-]+@[\w.-]+ ((?:/|~)[^\r\n]*?)[%#] ',
+    ).firstMatch(beforeCursor);
+    return zsh?.group(1)?.trimRight();
+  }
+  return null;
 }
 
 const commandCandidateLimit = 200, commandHistoryCandidateLimit = 50;

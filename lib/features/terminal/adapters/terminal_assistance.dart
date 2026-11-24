@@ -102,6 +102,45 @@ extension _CommandAssistance on TerminalSession {
     return text.toString();
   }
 
+  LocalShellKind? get _shellKind => localShell?.kind ?? linkTarget?.localShellKind;
+
+  CompletionSyntax get _completionSyntax => switch (_shellKind) {
+    LocalShellKind.powershell || LocalShellKind.pwsh => CompletionSyntax.powershell,
+    LocalShellKind.cmd => CompletionSyntax.cmd,
+    _ => CompletionSyntax.posix,
+  };
+
+  PathStyle get _completionPathStyle => _shellKind?.isWindowsShell == true ? PathStyle.windows : PathStyle.posix;
+
+  String? _visiblePromptCommand(String before, String tail, {bool allowMultiline = false}) {
+    final kind = _shellKind;
+    if (kind != null) {
+      if (kind == LocalShellKind.unix && localShell?.usesPosixSyntax == false) return null;
+      if (kind == LocalShellKind.bash ||
+          kind == LocalShellKind.zsh ||
+          kind == LocalShellKind.sh ||
+          kind == LocalShellKind.fish ||
+          kind == LocalShellKind.unix) {
+        return visibleUnixShellCommand(
+          before,
+          tail,
+          percent: kind == LocalShellKind.zsh,
+          fish: kind == LocalShellKind.fish,
+          allowMultiline: allowMultiline,
+        );
+      }
+      return visibleLocalShellCommand(
+        before,
+        tail,
+        powershell: kind == LocalShellKind.powershell || kind == LocalShellKind.pwsh,
+        bash: kind == LocalShellKind.gitBash,
+        allowMultiline: allowMultiline,
+      );
+    }
+    // SSH also often prints a bare `$ ` or `# `; the same Bash prompt rule applies there.
+    return visibleUnixShellCommand(before, tail, allowMultiline: allowMultiline);
+  }
+
   /// Reads the echoed prompt command across soft-wrapped rows, and when [allowMultiline] is set also across hard
   /// newlines inside a verified semantic or bracketed-paste prompt.
   String? _echoedCommand({bool allowMultiline = false}) {
@@ -126,32 +165,25 @@ extension _CommandAssistance on TerminalSession {
     }
     final before = _joinPromptRows(start, 0, row, column, allowMultiline: allowMultiline);
     if (before == null) return null;
-    final local = localShell;
-    if (local != null) {
-      if (local.kind == LocalShellKind.unix && !local.usesPosixSyntax) return null;
-      if (local.kind == LocalShellKind.bash ||
-          local.kind == LocalShellKind.zsh ||
-          local.kind == LocalShellKind.sh ||
-          local.kind == LocalShellKind.fish ||
-          local.kind == LocalShellKind.unix) {
-        return visibleUnixShellCommand(
-          before,
-          tail,
-          percent: local.kind == LocalShellKind.zsh,
-          fish: local.kind == LocalShellKind.fish,
-          allowMultiline: allowMultiline,
-        );
-      }
-      return visibleLocalShellCommand(
-        before,
-        tail,
-        powershell: local.kind == LocalShellKind.powershell || local.kind == LocalShellKind.pwsh,
-        bash: local.kind == LocalShellKind.gitBash,
-        allowMultiline: allowMultiline,
-      );
+    return _visiblePromptCommand(before, tail, allowMultiline: allowMultiline);
+  }
+
+  void _syncPromptDirectory() {
+    if (!isLocal || _reported != null || _terminal.isUsingAltBuffer) return;
+    final buffer = _terminal.buffer;
+    final row = buffer.absoluteCursorY, column = buffer.cursorX;
+    if (row < 0 || row >= buffer.lines.length) return;
+    final start = _promptStartRow();
+    if (start == null) return;
+    final before = _joinPromptRows(start, 0, row, column, allowMultiline: false);
+    if (before == null) return;
+    String? previousLine;
+    if (_shellKind == LocalShellKind.gitBash && start > 0) {
+      final prevStart = _logicalStartRow(start - 1);
+      previousLine = _joinPromptRows(prevStart, 0, start - 1, _rowContentEnd(start - 1, 0), allowMultiline: false);
     }
-    // SSH also often prints a bare `$ ` or `# `; the same Bash prompt rule applies there.
-    return visibleUnixShellCommand(before, tail, allowMultiline: allowMultiline);
+    final dir = visiblePromptDirectory(before, localKind: _shellKind, previousLine: previousLine);
+    if (dir != null && dir != _directory.value) _directory.value = dir;
   }
 
   bool _requestCurrent(CommandCompletionRequest request) =>
@@ -171,6 +203,7 @@ extension _CommandAssistance on TerminalSession {
   void _syncCommandDraft() {
     if (_closed) return;
     final text = _echoedCommand();
+    if (text != null) _syncPromptDirectory();
     final previous = _assistance.value.request;
     if (previous?.text == text && previous?.generation == _shellGeneration) return;
     _cancelCompletion();
@@ -211,18 +244,7 @@ extension _CommandAssistance on TerminalSession {
       );
     }
 
-    final posix = !isLocal || localShell!.usesPosixSyntax;
-    if (!posix) {
-      for (final snippet in _snippets()) {
-        if (snippet.text.startsWith(request.text) && commandIsSingleLine(snippet.text)) {
-          local.add(CommandCandidate(snippet.text, source: CommandCandidateSource.snippet, detail: snippet.label));
-        }
-      }
-      loading = false;
-      publish();
-      if (identical(_completionCancel, cancel)) _completionCancel = null;
-      return;
-    }
+    final syntax = _completionSyntax;
     publish();
     Future<void> optionalProvider() async {
       final provider = completionProvider;
@@ -241,16 +263,23 @@ extension _CommandAssistance on TerminalSession {
 
     final extra = optionalProvider();
     try {
-      final context = CompletionContext.parse(draft);
+      final context = CompletionContext.parse(draft, syntax: syntax);
       if (!context.supported) return;
-      if (context.words.isEmpty && context.current.start == 0) {
+      if (context.words.isEmpty &&
+          context.current.start == 0 &&
+          !isExplicitCompletionPath(context.current.value, syntax: syntax)) {
         final names = await _completionSpecs.commandNames();
         if (!current()) return;
         final prefix = context.current.value;
+        final fold = syntax.isWindows;
+        final lowerPrefix = fold ? prefix.toLowerCase() : prefix;
         for (final name in names) {
-          if (!name.startsWith(prefix) || name == prefix) continue;
+          final matches = fold ? name.toLowerCase().startsWith(lowerPrefix) : name.startsWith(prefix);
+          if (!matches || (fold ? name.toLowerCase() == lowerPrefix : name == prefix)) continue;
+          final rest = name.substring(prefix.length);
+          if (!canEncodeShellSuffix(rest, context.quote, atWordStart: prefix.isEmpty, syntax: syntax)) continue;
           final text =
-              '$draft${encodeShellSuffix(name.substring(prefix.length), context.quote, atWordStart: prefix.isEmpty, close: true)} ';
+              '$draft${encodeShellSuffix(rest, context.quote, atWordStart: prefix.isEmpty, close: true, syntax: syntax)} ';
           final metadata = completionCommandMetadata(name);
           final candidate = CommandCandidate(
             text,
@@ -264,7 +293,7 @@ extension _CommandAssistance on TerminalSession {
           local.add(candidate);
         }
       } else {
-        final completed = await _completionSpecs.complete(draft);
+        final completed = await _completionSpecs.complete(draft, syntax: syntax);
         if (!current()) return;
         final result = completed.result;
         for (final item in result.suggestions) {
@@ -279,14 +308,15 @@ extension _CommandAssistance on TerminalSession {
           );
           publish();
           final source = remotePaths ?? _ownedPaths;
+          final pathStyle = source is RemotePathBrowser ? source.style : _completionPathStyle;
           var typedDirectory = path.directory;
           final rawPath = draft.substring(path.valueStart);
           // Quoted/escaped tildes, and option values after '=', name a literal directory.
           if (typedDirectory.startsWith('~') && (path.tokenPrefix.isNotEmpty || !rawPath.startsWith('~'))) {
-            typedDirectory = './$typedDirectory';
+            typedDirectory = pathStyle == PathStyle.windows ? '.\\$typedDirectory' : './$typedDirectory';
           }
           String? cwd = request.directory ?? _directory.value;
-          var directory = RemotePaths.absolute(typedDirectory);
+          var directory = RemotePaths.absolute(typedDirectory, style: pathStyle);
           if (directory == null && source != null) {
             if (source is LinkedRemotePathSource) {
               // The desktop may have run a command since the previous draft.
@@ -295,10 +325,10 @@ extension _CommandAssistance on TerminalSession {
               } on RemotePathException {
                 cwd = _reported;
               }
-            } else if (RemotePaths.absolute(typedDirectory, cwd: cwd) == null) {
+            } else if (RemotePaths.absolute(typedDirectory, cwd: cwd, style: pathStyle) == null) {
               cwd = await _look(force: true);
             }
-            directory = RemotePaths.absolute(typedDirectory, cwd: cwd);
+            directory = RemotePaths.absolute(typedDirectory, cwd: cwd, style: pathStyle);
           }
           if (!current()) return;
           if (source == null || directory == null) {

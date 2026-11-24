@@ -27,7 +27,7 @@ class AiTerminalService implements TerminalAiService {
   final String Function()? language;
 
   /// Packaged static specs: whether [word] is a known next word after [prefix]. Absent means nothing is known.
-  final Future<bool> Function(String prefix, String word)? specOffers;
+  final Future<bool> Function(String prefix, String word, {CompletionSyntax syntax})? specOffers;
   final DateTime Function() _now;
   final Duration generationTimeout, completionTimeout;
   final _changes = StreamController<void>.broadcast(sync: true);
@@ -57,6 +57,17 @@ class AiTerminalService implements TerminalAiService {
     return _enabled(config) && config.inlineEnabled && context.ready && _available(context, config, inline: true);
   }
 
+  static bool _isWindowsShell(TerminalAiContext context) => switch (context.target) {
+    LocalTerminalAiTarget(:final kind) => kind.isWindowsShell,
+    _ => false,
+  };
+
+  static CompletionSyntax _syntax(TerminalAiContext context) => switch (context.target) {
+    LocalTerminalAiTarget(kind: LocalShellKind.powershell || LocalShellKind.pwsh) => CompletionSyntax.powershell,
+    LocalTerminalAiTarget(kind: LocalShellKind.cmd) => CompletionSyntax.cmd,
+    _ => CompletionSyntax.posix,
+  };
+
   @override
   bool canComplete(TerminalAiContext context) {
     final config = configuration();
@@ -66,23 +77,86 @@ class AiTerminalService implements TerminalAiService {
         _available(context, config, inline: false) &&
         context.ready &&
         draft != null &&
-        (draft.isEmpty ? config.predictionEnabled && context.prompt == TerminalAiPrompt.semantic : _eligible(draft));
+        (draft.isEmpty
+            ? config.predictionEnabled && context.prompt == TerminalAiPrompt.semantic
+            : _eligible(draft, windows: _isWindowsShell(context)));
   }
 
   static final _plain = RegExp(r'''^[\p{L}\p{N}_./:@%+=,~'"\- ]+$''', unicode: true);
+  static final _plainWindows = RegExp(r'''^[\p{L}\p{N}_./\\:@%+=,~'"\- ]+$''', unicode: true);
   static final _sensitive = terminalAiSensitiveText;
 
-  static bool _eligible(String draft) {
-    if (!validTerminalAiCommand(draft) || draft.startsWith(' ') || !_plain.hasMatch(draft) || _sensitive(draft)) {
+  static const _windowsCommands = {
+    'dir',
+    'type',
+    'copy',
+    'xcopy',
+    'robocopy',
+    'move',
+    'del',
+    'erase',
+    'ren',
+    'rename',
+    'chdir',
+    'md',
+    'rd',
+    'rmdir',
+    'pushd',
+    'popd',
+    'cls',
+    'where',
+    'tasklist',
+    'taskkill',
+    'ipconfig',
+    'netstat',
+    'ping',
+    'tracert',
+    'nslookup',
+    'winget',
+    'powershell',
+    'pwsh',
+    'cmd',
+    'start',
+    'explorer',
+    'get-childitem',
+    'gci',
+    'set-location',
+    'sl',
+    'get-content',
+    'gc',
+    'copy-item',
+    'cpi',
+    'move-item',
+    'mi',
+    'remove-item',
+    'ri',
+    'rename-item',
+    'rni',
+    'invoke-item',
+    'ii',
+    'get-process',
+    'stop-process',
+    'get-service',
+    'restart-service',
+    'select-string',
+    'invoke-webrequest',
+    'invoke-restmethod',
+    'test-netconnection',
+  };
+
+  static bool _eligible(String draft, {bool windows = false}) {
+    final plain = windows ? _plainWindows : _plain;
+    if (!validTerminalAiCommand(draft) || draft.startsWith(' ') || !plain.hasMatch(draft) || _sensitive(draft)) {
       return false;
     }
     var words = draft.trim().split(RegExp(r' +'));
     if (words.first == 'sudo') words = words.sublist(1);
+    final head = windows ? words.first.toLowerCase() : words.first;
     return words.length >= 2 &&
         words.first.length >= 2 &&
         !words.first.startsWith('-') &&
         (words.length >= 3 || words[1].length >= 2) &&
-        !const {'sudo', 'su', 'ssh', 'tmux', 'screen', 'env', 'export', 'read'}.contains(words.first);
+        !const {'sudo', 'su', 'ssh', 'tmux', 'screen', 'env', 'export', 'read'}.contains(head);
   }
 
   /// The command word, looking through a leading `sudo`.
@@ -229,9 +303,16 @@ class AiTerminalService implements TerminalAiService {
     ]);
     if (key == _lastCompletion) return null;
     final first = _command(context.draft!);
+    final windows = _isWindowsShell(context);
+    final firstLower = first.toLowerCase();
+    final knownCommand =
+        completionCommandMetadata(first) != null ||
+        (windows && (completionCommandMetadata(firstLower) != null || _windowsCommands.contains(firstLower)));
     if (!predict &&
-        completionCommandMetadata(first) == null &&
-        !selected.any((entry) => _command(entry.text) == first)) {
+        !knownCommand &&
+        !selected.any(
+          (entry) => windows ? _command(entry.text).toLowerCase() == firstLower : _command(entry.text) == first,
+        )) {
       return null;
     }
     if (_lastAttempt != null) {
@@ -266,7 +347,7 @@ class AiTerminalService implements TerminalAiService {
           !command.startsWith(context.draft!) ||
           command.length <= context.draft!.length ||
           utf8.encode(command.substring(context.draft!.length)).length > 2048 ||
-          !await _grounded(command, context.draft!, selected) ||
+          !await _grounded(command, context.draft!, selected, context) ||
           !canComplete(context) ||
           cancel.isCancelled) {
         return null;
@@ -290,7 +371,8 @@ class AiTerminalService implements TerminalAiService {
     List<TerminalAiHistoryEntry> history, {
     bool matchingCommand = true,
   }) {
-    final command = _command(context.draft!);
+    final windows = _isWindowsShell(context);
+    final command = windows ? _command(context.draft!).toLowerCase() : _command(context.draft!);
     final recent =
         history
             .where(
@@ -300,7 +382,8 @@ class AiTerminalService implements TerminalAiService {
                   validTerminalAiCommand(entry.text) &&
                   !entry.text.startsWith(' ') &&
                   !_sensitive(entry.text) &&
-                  (!matchingCommand || _command(entry.text) == command),
+                  (!matchingCommand ||
+                      (windows ? _command(entry.text).toLowerCase() == command : _command(entry.text) == command)),
             )
             .toList()
           ..sort((a, b) => b.at.compareTo(a.at));
@@ -327,9 +410,9 @@ class AiTerminalService implements TerminalAiService {
     return value.length > 80 ? value.substring(0, 80) : value;
   }
 
-  Future<bool> _offers(String prefix, String word) async {
+  Future<bool> _offers(String prefix, String word, CompletionSyntax syntax) async {
     try {
-      return await specOffers?.call(prefix, word) ?? false;
+      return await specOffers?.call(prefix, word, syntax: syntax) ?? false;
     } on Object {
       return false;
     }
@@ -337,8 +420,15 @@ class AiTerminalService implements TerminalAiService {
 
   /// Concrete entity names must already be in the user's input or authorized history. New static words
   /// are accepted only when the packaged specs offer them at this exact command position.
-  Future<bool> _grounded(String command, String draft, List<TerminalAiHistoryEntry> history) async {
-    if (!_plain.hasMatch(command) || _sensitive(command)) return false;
+  Future<bool> _grounded(
+    String command,
+    String draft,
+    List<TerminalAiHistoryEntry> history,
+    TerminalAiContext context,
+  ) async {
+    final windows = _isWindowsShell(context);
+    final syntax = _syntax(context);
+    if (!(windows ? _plainWindows : _plain).hasMatch(command) || _sensitive(command)) return false;
     if (history.any((entry) => entry.text == command)) return true;
     final known = {
       for (final text in [draft, ...history.map((entry) => entry.text)]) ...text.split(' '),
@@ -351,7 +441,7 @@ class AiTerminalService implements TerminalAiService {
         continue;
       }
       final next = '$prefix$word';
-      if (next.length > draft.length && !known.contains(word) && !await _offers(prefix, word)) return false;
+      if (next.length > draft.length && !known.contains(word) && !await _offers(prefix, word, syntax)) return false;
       prefix = '$next ';
     }
     return true;

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import '../../../foundation/cancellation.dart';
@@ -7,6 +8,7 @@ import '../../../foundation/file_system.dart';
 import '../../connections/api.dart' show TransportLease;
 import '../domain/directory.dart';
 import '../domain/terminal_paths.dart';
+import '../domain/terminal_target.dart';
 
 /// Queries the working directory of one marked SSH shell over its existing lease.
 class SshShellDirectory {
@@ -39,14 +41,17 @@ class LinkedRemotePathSource extends RemotePathBrowser {
   LinkedRemotePathSource(
     Future<FileSystem> Function() open, {
     required int generation,
+    PathStyle style = PathStyle.posix,
     Duration timeout = const Duration(seconds: 5),
   }) : this._(
-         SftpDirectoryReader(open, limit: timeout),
+         SftpDirectoryReader(open, style: style, limit: timeout),
          generation: generation,
+         style: style,
          timeout: timeout,
        );
 
-  LinkedRemotePathSource._(this._reader, {required super.generation, required super.timeout}) : super(_reader);
+  LinkedRemotePathSource._(this._reader, {required super.generation, required super.style, required super.timeout})
+    : super(_reader);
 
   final SftpDirectoryReader _reader;
 
@@ -54,6 +59,127 @@ class LinkedRemotePathSource extends RemotePathBrowser {
     cancel,
     (fs, _) async => fs is ShellWorkingDirectory ? (fs as ShellWorkingDirectory).workingDirectory() : null,
   );
+}
+
+/// Path completion over the local machine's filesystem for a local terminal session.
+class LocalPathSource extends RemotePathBrowser {
+  LocalPathSource(LocalShell shell, {required super.generation, super.timeout = const Duration(seconds: 3)})
+    : super(
+        LocalDirectoryReader(windows: shell.kind.isWindowsShell, msys: shell.kind == LocalShellKind.gitBash),
+        style: shell.kind.isWindowsShell ? PathStyle.windows : PathStyle.posix,
+      );
+}
+
+/// [RemoteDirectoryReader] over the local machine's filesystem using `dart:io`.
+class LocalDirectoryReader implements RemoteDirectoryReader {
+  const LocalDirectoryReader({required this.windows, required this.msys});
+
+  final bool windows;
+  final bool msys;
+
+  static final _msysPath = RegExp(r'^/([A-Za-z])(?:/(.*))?$');
+  static final _winDrive = RegExp(r'^([A-Za-z]):[\\/]?(.*)$');
+
+  static String? toMsysPath(String native) {
+    final m = _winDrive.firstMatch(native);
+    if (m == null) return native.startsWith('/') ? native : null;
+    final drive = m.group(1)!.toLowerCase();
+    final rest = m.group(2)!.replaceAll(r'\', '/');
+    return rest.isEmpty ? '/$drive' : '/$drive/$rest';
+  }
+
+  static String? fromMsysPath(String msysPath) {
+    final m = _msysPath.firstMatch(msysPath);
+    if (m == null) return null;
+    final drive = m.group(1)!.toUpperCase();
+    final rest = (m.group(2) ?? '').replaceAll('/', r'\');
+    return rest.isEmpty ? '$drive:\\' : '$drive:\\$rest';
+  }
+
+  @override
+  Future<String> home(CancellationToken cancel) async {
+    if (cancel.isCancelled) throw const RemotePathException(RemotePathFailure.cancelled);
+    if (windows) {
+      final dir = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Directory.current.path;
+      return dir.replaceAll('/', r'\');
+    }
+    if (msys) {
+      final raw = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? Directory.current.path;
+      final converted = toMsysPath(raw);
+      if (converted == null) throw const RemotePathException(RemotePathFailure.unavailable);
+      return converted;
+    }
+    return Platform.environment['HOME'] ?? Directory.current.path;
+  }
+
+  @override
+  Future<RemoteDirectoryListing> list(String directory, CancellationToken cancel) async {
+    if (cancel.isCancelled) throw const RemotePathException(RemotePathFailure.cancelled);
+    if (msys && directory == '/') {
+      final drives = <RemoteDirectoryItem>[];
+      for (var code = 65; code <= 90; code++) {
+        if (cancel.isCancelled) throw const RemotePathException(RemotePathFailure.cancelled);
+        final letter = String.fromCharCode(code);
+        if (await Directory('$letter:\\').exists()) {
+          drives.add(RemoteDirectoryItem(letter.toLowerCase(), RemotePathKind.directory));
+        }
+      }
+      return RemoteDirectoryListing(drives, complete: true);
+    }
+    final native = msys ? fromMsysPath(directory) : directory;
+    if (native == null) throw const RemotePathException(RemotePathFailure.notFound);
+    final style = windows ? PathStyle.windows : PathStyle.posix;
+    final items = <RemoteDirectoryItem>[];
+    var scanned = 0;
+    try {
+      await for (final entity in Directory(native).list(followLinks: false)) {
+        if (cancel.isCancelled) throw const RemotePathException(RemotePathFailure.cancelled);
+        if (scanned == RemotePaths.maxScanned) {
+          return RemoteDirectoryListing(items, complete: false);
+        }
+        scanned++;
+        final path = entity.path;
+        final sep = path.lastIndexOf(Platform.pathSeparator);
+        final name = sep < 0 ? path : path.substring(sep + 1);
+        if (!RemotePaths.validName(name, style: style)) continue;
+        if (entity is Link) {
+          var linkToDir = false;
+          try {
+            linkToDir = await FileSystemEntity.isDirectory(path);
+          } on Object {
+            linkToDir = false;
+          }
+          items.add(RemoteDirectoryItem(name, RemotePathKind.symlink, linkToDirectory: linkToDir));
+        } else if (entity is Directory) {
+          items.add(RemoteDirectoryItem(name, RemotePathKind.directory));
+        } else {
+          items.add(RemoteDirectoryItem(name, RemotePathKind.file));
+        }
+      }
+    } on RemotePathException {
+      rethrow;
+    } on FileSystemException catch (e) {
+      throw _mapFsError(e);
+    } on Object {
+      throw const RemotePathException(RemotePathFailure.failed);
+    }
+    return RemoteDirectoryListing(items, complete: true);
+  }
+
+  @override
+  void close() {}
+
+  static RemotePathException _mapFsError(FileSystemException e) {
+    final code = e.osError?.errorCode;
+    if (Platform.isWindows) {
+      if (code == 2 || code == 3) return const RemotePathException(RemotePathFailure.notFound);
+      if (code == 5) return const RemotePathException(RemotePathFailure.denied);
+    } else {
+      if (code == 2 || code == 20) return const RemotePathException(RemotePathFailure.notFound);
+      if (code == 13 || code == 1) return const RemotePathException(RemotePathFailure.denied);
+    }
+    return const RemotePathException(RemotePathFailure.failed);
+  }
 }
 
 /// [RemoteDirectoryReader] over an SFTP channel that [_open] provides on demand. The channel is opened by the first
@@ -68,12 +194,14 @@ class SftpDirectoryReader implements RemoteDirectoryReader {
   SftpDirectoryReader(
     this._open, {
     bool Function()? isLost,
+    this.style = PathStyle.posix,
     this.idle = const Duration(seconds: 10),
     this.limit = const Duration(seconds: 3),
   }) : _isLost = isLost ?? (() => false);
 
   final Future<FileSystem> Function() _open;
   final bool Function() _isLost;
+  final PathStyle style;
   final Duration idle;
 
   /// Longest wait for one request, which closes the channel and fails with [RemotePathFailure.timeout].
@@ -93,7 +221,7 @@ class SftpDirectoryReader implements RemoteDirectoryReader {
         final listing = await bounded.listBounded(
           directory,
           maxScanned: RemotePaths.maxScanned,
-          accept: RemotePaths.validName,
+          accept: (name) => RemotePaths.validName(name, style: style),
           cancel: cancel,
         );
         if (!listing.complete) retire();

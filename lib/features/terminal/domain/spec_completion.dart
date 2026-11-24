@@ -76,6 +76,7 @@ class PathCompletionRequest {
     required this.quote,
     required this.tokenValue,
     required this.tokenRaw,
+    this.syntax = CompletionSyntax.posix,
   });
 
   /// The path text typed so far, unquoted and unescaped: `~/pro`, `src/ma`, `My Do`.
@@ -95,26 +96,33 @@ class PathCompletionRequest {
   /// The logical value and raw text of the whole last word, `--file=` and all.
   final String tokenValue, tokenRaw;
 
+  final CompletionSyntax syntax;
+
+  bool get _windows => syntax.isWindows;
+
+  String get _separator => _windows && !(typedPrefix.contains('/') && !typedPrefix.contains(r'\')) ? r'\' : '/';
+
   /// What comes before [typedPrefix] in the word (`--file=`).
   String get tokenPrefix => tokenValue.substring(0, tokenValue.length - typedPrefix.length);
 
-  /// The directory to list, logical, with a trailing `/`: `~/`, `/etc/`, `src/`, `../`; empty for the working
-  /// directory. `~` expands to the login user's home on the caller's side.
+  /// The directory to list, logical, with a trailing separator: `~/`, `/etc/`, `src/`, `..\`, `C:\Users\`; empty for
+  /// the working directory. `~` expands to the login user's home on the caller's side.
   String get directory {
-    if (typedPrefix == '~') return '~/';
-    final slash = typedPrefix.lastIndexOf('/');
+    if (typedPrefix == '~') return '~$_separator';
+    final slash = _windows ? typedPrefix.lastIndexOf(RegExp(r'[/\\]')) : typedPrefix.lastIndexOf('/');
     return slash < 0 ? '' : typedPrefix.substring(0, slash + 1);
   }
 
-  /// The part after the last `/`: what the listed names must start with.
+  /// The part after the last separator: what the listed names must start with.
   String get namePrefix => typedPrefix == '~' ? '' : typedPrefix.substring(directory.length);
 
   /// Suggestions for [entries] of [directory], in the order given (the lister sorts) and at most [limit]. Names that
-  /// cannot be a word (control characters, `/`), dotfiles unless [namePrefix] starts with `.`, and files for
-  /// [foldersOnly] are dropped. A folder ends in `/` and does not append a space, so the next request goes one
-  /// level deeper.
+  /// cannot be a word (control characters, separators), dotfiles unless [namePrefix] starts with `.`, and files for
+  /// [foldersOnly] are dropped. A folder ends in its separator and does not append a space, so the next request goes
+  /// one level deeper.
   List<SpecSuggestion> resolve(Iterable<CompletionPathEntry> entries, {int limit = 200}) {
-    final dir = directory, prefix = namePrefix, head = tokenPrefix;
+    final dir = directory, prefix = namePrefix, head = tokenPrefix, sep = _separator;
+    final lowerPrefix = _windows ? prefix.toLowerCase() : prefix;
     final hideDots = !prefix.startsWith('.');
     final named = <CompletionPathEntry>[
       if (prefix.isNotEmpty && '..'.startsWith(prefix)) const CompletionPathEntry('..', isDirectory: true),
@@ -122,19 +130,28 @@ class PathCompletionRequest {
     final seen = <String>{if (named.isNotEmpty) '..'};
     for (final e in entries) {
       final name = e.name;
-      if (name == '.' || name == '..' || name.contains('/') || !completionValueValid(name)) continue;
+      if (name == '.' ||
+          name == '..' ||
+          name.contains('/') ||
+          (_windows && name.contains(r'\')) ||
+          !completionValueValid(name)) {
+        continue;
+      }
       if (hideDots && name.startsWith('.')) continue;
-      if (!name.startsWith(prefix) || (foldersOnly && !e.isDirectory) || !seen.add(name)) continue;
+      final matches = _windows ? name.toLowerCase().startsWith(lowerPrefix) : name.startsWith(prefix);
+      if (!matches || (foldersOnly && !e.isDirectory) || !seen.add(_windows ? name.toLowerCase() : name)) continue;
       named.add(e);
     }
     final out = <SpecSuggestion>[];
     for (final e in named) {
       if (out.length >= limit) break;
       // A name that starts with `-` would be read as an option when nothing precedes it.
-      final lead = dir.isEmpty && prefix.isEmpty && e.name.startsWith('-') ? './' : dir;
-      final slash = e.isDirectory ? '/' : '';
+      final lead = dir.isEmpty && prefix.isEmpty && e.name.startsWith('-') ? '.$sep' : dir;
+      final slash = e.isDirectory ? sep : '';
+      // On case-insensitive Windows paths, keep the typed prefix casing so insertion stays append-only.
+      final inserted = _windows && prefix.isNotEmpty ? '$prefix${e.name.substring(prefix.length)}' : e.name;
       final s = _suggestion(
-        value: '$head$lead${e.name}$slash',
+        value: '$head$lead$inserted$slash',
         display: '${e.name}$slash',
         kind: e.isDirectory ? SpecSuggestionKind.folder : SpecSuggestionKind.file,
         currentValue: tokenValue,
@@ -142,6 +159,7 @@ class PathCompletionRequest {
         start: tokenStart,
         end: tokenEnd,
         quote: quote,
+        syntax: syntax,
         appendSpace: !e.isDirectory,
         canBrowse: e.isDirectory,
       );
@@ -213,7 +231,8 @@ SpecCompletionResult completeSpec(
   CompletionSpec? spec,
   String draft, {
   SpecCompletionConfig config = const SpecCompletionConfig(),
-}) => completeSpecInContext(spec, CompletionContext.parse(draft), config: config);
+  CompletionSyntax syntax = CompletionSyntax.posix,
+}) => completeSpecInContext(spec, CompletionContext.parse(draft, syntax: syntax), config: config);
 
 /// Like [completeSpec] for a draft that is already parsed.
 SpecCompletionResult completeSpecInContext(
@@ -224,7 +243,13 @@ SpecCompletionResult completeSpecInContext(
   if (!context.supported) return SpecCompletionResult(context);
   final words = context.words;
   final needs = _Needs();
-  if (spec == null || words.isEmpty || !spec.names.contains(words.first.value)) {
+  final commandMatches =
+      spec != null &&
+      words.isNotEmpty &&
+      (spec.names.contains(words.first.value) ||
+          (context.syntax.isWindows &&
+              spec.names.any((n) => n.toLowerCase() == normalizeWindowsCommandName(words.first.value))));
+  if (!commandMatches) {
     return _fallback(
       context,
       needs,
@@ -245,16 +270,36 @@ SpecCompletionResult completeSpecInContext(
 
 bool _dashed(String text) => text.length > 1 && text.startsWith('-');
 
-final _digits = RegExp(r'^-\d+$');
+String normalizeWindowsCommandName(String command) {
+  final lower = command.toLowerCase();
+  for (final suffix in const ['.exe', '.cmd', '.bat', '.com']) {
+    if (lower.length > suffix.length && lower.endsWith(suffix)) {
+      return lower.substring(0, lower.length - suffix.length);
+    }
+  }
+  return lower;
+}
 
-bool _explicitPath(String text) =>
+final _digits = RegExp(r'^-\d+$');
+final _windowsDrive = RegExp(r'^[A-Za-z]:[\\/]');
+
+bool isExplicitCompletionPath(String text, {CompletionSyntax syntax = CompletionSyntax.posix}) =>
     text.startsWith('/') ||
     text.startsWith('./') ||
     text.startsWith('../') ||
     text.startsWith('~/') ||
     text == '.' ||
     text == '..' ||
-    text == '~';
+    text == '~' ||
+    (syntax.isWindows &&
+        (text.startsWith(r'\') ||
+            text.startsWith(r'.\') ||
+            text.startsWith(r'..\') ||
+            text.startsWith(r'~\') ||
+            _windowsDrive.hasMatch(text)));
+
+bool _explicitPath(String text, {CompletionSyntax syntax = CompletionSyntax.posix}) =>
+    isExplicitCompletionPath(text, syntax: syntax);
 
 /// Specs that were asked for and not there; the first of each kind is reported.
 class _Needs {
@@ -275,8 +320,11 @@ CompletionSpec? _loaded(CompletionSpec node, SpecCompletionConfig config, _Needs
 PathCompletionRequest? _pathRequest(CompletionContext ctx, int prefixLen, {required bool foldersOnly}) {
   final cur = ctx.current;
   final typed = cur.value.substring(prefixLen);
+  final windows = ctx.syntax.isWindows;
   // `~name` is another user's home, which cannot be listed.
-  if (typed.startsWith('~') && typed != '~' && !typed.contains('/')) return null;
+  if (typed.startsWith('~') && typed != '~' && !typed.contains('/') && (!windows || !typed.contains(r'\'))) {
+    return null;
+  }
   return PathCompletionRequest(
     typedPrefix: typed,
     foldersOnly: foldersOnly,
@@ -286,6 +334,7 @@ PathCompletionRequest? _pathRequest(CompletionContext ctx, int prefixLen, {requi
     quote: ctx.quote,
     tokenValue: cur.value,
     tokenRaw: cur.raw,
+    syntax: ctx.syntax,
   );
 }
 
@@ -299,7 +348,7 @@ SpecCompletionResult _fallback(
   final generic = atArgument && !sawOption && text.isNotEmpty && !text.startsWith('-');
   return SpecCompletionResult(
     ctx,
-    path: _explicitPath(text) || generic ? _pathRequest(ctx, 0, foldersOnly: false) : null,
+    path: _explicitPath(text, syntax: ctx.syntax) || generic ? _pathRequest(ctx, 0, foldersOnly: false) : null,
     missingNested: needs.nested,
     missingCommand: needs.command,
   );
@@ -316,6 +365,7 @@ SpecSuggestion? _suggestion({
   required int start,
   required int end,
   required CompletionQuote quote,
+  CompletionSyntax syntax = CompletionSyntax.posix,
   required bool appendSpace,
   bool canBrowse = false,
   String? description,
@@ -324,16 +374,17 @@ SpecSuggestion? _suggestion({
   final String replacement;
   final String? suffix;
   if (value.startsWith(currentValue)) {
-    suffix = encodeShellSuffix(
-      value.substring(currentValue.length),
-      quote,
-      atWordStart: currentValue.isEmpty,
-      close: appendSpace,
-    );
-    replacement = currentRaw + suffix;
+    final added = value.substring(currentValue.length);
+    if (!canEncodeShellSuffix(added, quote, atWordStart: currentValue.isEmpty, syntax: syntax)) {
+      suffix = null;
+      replacement = encodeShellWord(value, quote, close: appendSpace, syntax: syntax);
+    } else {
+      suffix = encodeShellSuffix(added, quote, atWordStart: currentValue.isEmpty, close: appendSpace, syntax: syntax);
+      replacement = currentRaw + suffix;
+    }
   } else {
     suffix = null;
-    replacement = encodeShellWord(value, quote, close: appendSpace);
+    replacement = encodeShellWord(value, quote, close: appendSpace, syntax: syntax);
   }
   return SpecSuggestion(
     value: value,
@@ -854,7 +905,7 @@ class _Collect {
   }
 
   void _path(int prefixLen, {required bool foldersOnly, bool explicitOnly = false}) {
-    if (explicitOnly && !_explicitPath(ctx.current.value.substring(prefixLen))) return;
+    if (explicitOnly && !_explicitPath(ctx.current.value.substring(prefixLen), syntax: ctx.syntax)) return;
     _foldersOnly = (_foldersOnly ?? true) && foldersOnly;
     _pathPrefix = prefixLen;
   }
@@ -885,6 +936,7 @@ class _Collect {
         start: cur.start,
         end: ctx.draft.length,
         quote: ctx.quote,
+        syntax: ctx.syntax,
         appendSpace: c.appendSpace,
         canBrowse: c.canBrowse,
       );

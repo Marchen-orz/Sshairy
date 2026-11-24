@@ -119,19 +119,83 @@ class CompletionSpecs {
     return json;
   }
 
-  /// Whether the packaged specs offer [word] as the next whole word after [prefix] (empty or ending in a space).
-  Future<bool> offers(String prefix, String word) async => prefix.isEmpty
-      ? completionCommandMetadata(word) != null
-      : (await complete(prefix)).result.suggestions.any((suggestion) => suggestion.value == word);
+  static const _windowsFolderBuiltins = {'chdir', 'md', 'rd', 'rmdir', 'pushd', 'set-location', 'sl'};
+  static const _windowsFileBuiltins = {
+    'dir',
+    'type',
+    'copy',
+    'xcopy',
+    'robocopy',
+    'move',
+    'del',
+    'erase',
+    'ren',
+    'rename',
+    'start',
+    'explorer',
+    'get-childitem',
+    'gci',
+    'get-content',
+    'gc',
+    'copy-item',
+    'cpi',
+    'move-item',
+    'mi',
+    'remove-item',
+    'ri',
+    'rename-item',
+    'rni',
+    'invoke-item',
+    'ii',
+  };
 
-  Future<({SpecCompletionResult result, bool available})> complete(String draft) async {
-    final context = CompletionContext.parse(draft);
+  static CompletionSpec? _windowsBuiltinSpec(String command) {
+    final lower = command.toLowerCase();
+    if (_windowsFolderBuiltins.contains(lower)) {
+      return CompletionSpec.tryParse({
+        'name': lower,
+        'args': {'name': 'directory', 'template': 'folders', 'isVariadic': true},
+      });
+    }
+    if (_windowsFileBuiltins.contains(lower)) {
+      return CompletionSpec.tryParse({
+        'name': lower,
+        'args': {'name': 'path', 'template': 'filepaths', 'isVariadic': true},
+      });
+    }
+    return null;
+  }
+
+  /// Whether the packaged specs offer [word] as the next whole word after [prefix] (empty or ending in a space).
+  Future<bool> offers(String prefix, String word, {CompletionSyntax syntax = CompletionSyntax.posix}) async {
+    if (prefix.isEmpty) {
+      final normalized = syntax.isWindows ? normalizeWindowsCommandName(word) : word;
+      return completionCommandMetadata(word) != null ||
+          (syntax.isWindows &&
+              (completionCommandMetadata(normalized) != null || _windowsBuiltinSpec(normalized) != null));
+    }
+    final suggestions = (await complete(prefix, syntax: syntax)).result.suggestions;
+    return suggestions.any(
+      (suggestion) =>
+          suggestion.value == word || (syntax.isWindows && suggestion.value.toLowerCase() == word.toLowerCase()),
+    );
+  }
+
+  Future<({SpecCompletionResult result, bool available})> complete(
+    String draft, {
+    CompletionSyntax syntax = CompletionSyntax.posix,
+  }) async {
+    final context = CompletionContext.parse(draft, syntax: syntax);
     final names = await commandNames();
     final choices = [
       for (final name in names) CompletionChoice(name, description: completionCommandMetadata(name)?.description),
     ];
     final command = context.words.isEmpty ? context.current.value : context.words.first.value;
-    final spec = await load(command);
+    var spec = await load(command);
+    if (spec == null && syntax.isWindows) {
+      final normalized = normalizeWindowsCommandName(command);
+      spec = await load(normalized) ?? _windowsBuiltinSpec(normalized);
+    }
     final resolved = <String, CompletionSpec?>{};
     SpecCompletionResult result;
     // The pure interpreter requests only references on the active command branch.
