@@ -27,8 +27,60 @@ class McpSettings extends ConsumerStatefulWidget {
 
 class _McpSettingsState extends ConsumerState<McpSettings> {
   final _pending = <McpClient>{};
+  final _portController = TextEditingController();
+  final _portFocus = FocusNode();
+  Timer? _portTimer;
+  int? _lastSyncedPort;
   String? _error;
-  String? _portDraft;
+
+  @override
+  void initState() {
+    super.initState();
+    _portFocus.addListener(_onPortFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _portTimer?.cancel();
+    _portFocus
+      ..removeListener(_onPortFocusChange)
+      ..dispose();
+    _portController.dispose();
+    super.dispose();
+  }
+
+  void _onPortFocusChange() {
+    if (_portFocus.hasFocus || !mounted) return;
+    _portTimer?.cancel();
+    final saved = ref.read(settingsProvider).get(SettingKeys.mcpPort);
+    final parsed = _parseValidPort(_portController.text);
+    if (parsed == null) {
+      _portController.text = '$saved';
+      return;
+    }
+    if (parsed != saved) {
+      unawaited(_savePort(ref.read(settingsProvider.notifier), parsed));
+    }
+  }
+
+  int? _parseValidPort(String text) {
+    final value = int.tryParse(text.trim());
+    if (value == null || value < SettingKeys.mcpPort.min || value > SettingKeys.mcpPort.max) return null;
+    return value;
+  }
+
+  void _schedulePortSave(SettingsNotifier write, String text) {
+    _portTimer?.cancel();
+    final parsed = _parseValidPort(text);
+    if (parsed == null || parsed == ref.read(settingsProvider).get(SettingKeys.mcpPort)) return;
+    _portTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      final latest = _parseValidPort(_portController.text);
+      if (latest != null && latest != ref.read(settingsProvider).get(SettingKeys.mcpPort)) {
+        unawaited(_savePort(write, latest));
+      }
+    });
+  }
 
   // Controls stay as they are while a change runs, so quick settings never flash a disabled state.
   Future<void> _change(FutureOr<void> Function() action) async {
@@ -222,9 +274,12 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
         ? ref.watch(hostsProvider).where((host) => !host.transient && hosts.containsKey(host.id.value)).toList()
         : const <Host>[];
     final port = settings.get(SettingKeys.mcpPort);
+    if (_lastSyncedPort != port && !_portFocus.hasFocus) {
+      _lastSyncedPort = port;
+      _portController.text = '$port';
+    }
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
-    final fieldHeight = AppFormField.height(context);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) => Column(
@@ -243,40 +298,27 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Flexible(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 160),
-                        child: AppFormField(
-                          label: l.port,
-                          child: TextFormField(
-                            key: ValueKey(port),
-                            initialValue: '$port',
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(5),
-                            ],
-                            decoration: AppFormField.decoration(context),
-                            onChanged: (text) => setState(() => _portDraft = text),
-                            onFieldSubmitted: (text) => _savePort(write, text),
-                          ),
-                        ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: AppFormField(
+                      label: l.port,
+                      child: TextFormField(
+                        controller: _portController,
+                        focusNode: _portFocus,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(5)],
+                        decoration: AppFormField.decoration(context),
+                        onChanged: (text) => _schedulePortSave(write, text),
+                        onFieldSubmitted: (text) {
+                          _portTimer?.cancel();
+                          final parsed = _parseValidPort(text);
+                          if (parsed != null && parsed != port) unawaited(_savePort(write, parsed));
+                        },
                       ),
                     ),
-                    const SizedBox(width: Space.sm),
-                    SizedBox(
-                      height: fieldHeight,
-                      child: TextButton(
-                        onPressed: _portDraft == null || _portDraft == '$port'
-                            ? null
-                            : () => _savePort(write, _portDraft!),
-                        child: Text(l.mcpPortSave),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: Space.md),
                 LayoutBuilder(
@@ -351,9 +393,9 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
     );
   }
 
-  void _savePort(SettingsNotifier write, String text) => _change(() async {
-    await write.set(SettingKeys.mcpPort, int.parse(text));
-    _portDraft = null;
+  Future<void> _savePort(SettingsNotifier write, int port) => _change(() async {
+    await write.set(SettingKeys.mcpPort, port);
+    _lastSyncedPort = port;
   });
 
   Widget _client(McpController controller, McpClient client, AppLocalizations l) {

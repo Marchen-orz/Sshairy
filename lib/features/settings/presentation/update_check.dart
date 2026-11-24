@@ -165,7 +165,10 @@ class UpdateAvailableButton extends ConsumerWidget {
 
 /// Checks the project's published releases on demand; nothing is fetched until the user asks.
 class UpdateCheckControl extends ConsumerWidget {
-  const UpdateCheckControl({super.key});
+  const UpdateCheckControl({super.key, this.alignment = WrapAlignment.start, this.compact = false});
+
+  final WrapAlignment alignment;
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -179,7 +182,67 @@ class UpdateCheckControl extends ConsumerWidget {
       UpdateStatus.available => l.updateAvailable(state.latest!.version),
       UpdateStatus.failed => l.updateFailed,
     };
+    final textButtonStyle = compact
+        ? TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          )
+        : null;
+    final filledButtonStyle = compact
+        ? FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          )
+        : null;
+    final actions = <Widget>[
+      if (state.status == UpdateStatus.available)
+        FilledButton(
+          style: filledButtonStyle,
+          onPressed: () => showReleaseNotes(context, state),
+          child: Text(l.updateDownload),
+        )
+      else ...[
+        TextButton(
+          style: textButtonStyle,
+          onPressed: state.status == UpdateStatus.checking
+              ? null
+              : () => ref.read(updateCheckProvider.notifier).check(),
+          child: Text(l.checkForUpdates),
+        ),
+        TextButton(style: textButtonStyle, onPressed: () => _showNotes(context, ref), child: Text(l.releaseNotes)),
+      ],
+    ];
+    if (compact) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: alignment == WrapAlignment.end ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            alignment: alignment,
+            spacing: Space.xs,
+            runSpacing: Space.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: actions,
+          ),
+          if (status != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: Space.sm, right: Space.sm),
+              child: Text(
+                status,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: state.status == UpdateStatus.failed
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      );
+    }
     return Wrap(
+      alignment: alignment,
       spacing: Space.sm,
       runSpacing: Space.sm,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -191,17 +254,7 @@ class UpdateCheckControl extends ConsumerWidget {
               color: state.status == UpdateStatus.failed ? theme.colorScheme.error : null,
             ),
           ),
-        if (state.status == UpdateStatus.available)
-          FilledButton(onPressed: () => showReleaseNotes(context, state), child: Text(l.updateDownload))
-        else ...[
-          TextButton(
-            onPressed: state.status == UpdateStatus.checking
-                ? null
-                : () => ref.read(updateCheckProvider.notifier).check(),
-            child: Text(l.checkForUpdates),
-          ),
-          TextButton(onPressed: () => _showNotes(context, ref), child: Text(l.releaseNotes)),
-        ],
+        ...actions,
       ],
     );
   }

@@ -40,16 +40,23 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   final _inlineExcludedHosts = <HostId>{}, _completionExcludedHosts = <HostId>{};
   late ModelProtocol _protocol;
   late ReasoningEffort _reasoningEffort;
-  Timer? _checkTimer;
+  Timer? _checkTimer, _autoSaveTimer;
   var _generation = 0;
-  var _working = false, _checking = false, _hasKey = false, _keyError = false, _removeKey = false, _conflict = false;
+  var _working = false,
+      _autoSavePending = false,
+      _checking = false,
+      _hasKey = false,
+      _keyError = false,
+      _removeKey = false,
+      _conflict = false;
   String? _identity, _error;
   FormSaveController? _saveController;
   late final _saveEntry = FormSaveEntry(
     dirty: () => _dirty,
     canSave: () => !_working && !_initial.loadFailed && !_credentialBlocked && !_conflict,
     save: () async {
-      await _save();
+      _autoSaveTimer?.cancel();
+      await _save(auto: true);
       return mounted && !_dirty && _error == null && !_conflict;
     },
     reset: _reset,
@@ -122,6 +129,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       }
       _error = null;
     });
+    _scheduleAutoSave(immediate: true);
   }
 
   bool get _emptyProfile => _endpoint.text.trim().isEmpty && _model.text.trim().isEmpty;
@@ -185,6 +193,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
   void dispose() {
     _saveController?.unregister(_saveEntry);
     _checkTimer?.cancel();
+    _autoSaveTimer?.cancel();
     _generation++;
     for (final controller in [_endpoint, _model, _key, _contextWindow, _maxOutput]) {
       controller.dispose();
@@ -192,7 +201,23 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     super.dispose();
   }
 
-  void _changed({bool identity = false}) {
+  void _scheduleAutoSave({bool immediate = false}) {
+    _autoSaveTimer?.cancel();
+    if (!mounted || _initial.loadFailed || _conflict) return;
+    if (_working) {
+      _autoSavePending = true;
+      return;
+    }
+    if (immediate) {
+      unawaited(_save(auto: true));
+      return;
+    }
+    _autoSaveTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) unawaited(_save(auto: true));
+    });
+  }
+
+  void _changed({bool identity = false, bool immediate = false}) {
     final nextProvider = _draftProvider;
     if (identity && nextProvider != _providerIdentity) {
       _checkTimer?.cancel();
@@ -206,6 +231,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
       }
     }
     setState(() => _error = null);
+    _scheduleAutoSave(immediate: immediate);
   }
 
   Future<void> _checkKey() async {
@@ -226,6 +252,7 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         _hasKey = exists;
         _checking = false;
       });
+      if (_dirty) _scheduleAutoSave(immediate: true);
     } on Object {
       if (!mounted || generation != _generation) return;
       setState(() {
@@ -253,17 +280,31 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     }
   }
 
-  Future<void> _save() async {
-    if (_working || _credentialBlocked || _conflict || _initial.loadFailed || !_form.currentState!.validate()) {
+  Future<void> _save({bool auto = false}) async {
+    if (_working || _credentialBlocked || _conflict || _initial.loadFailed || !_dirty) {
+      return;
+    }
+    final profile = _profile;
+    if (profile == null && (_enabled || !_emptyProfile)) {
+      if (!auto) {
+        _form.currentState?.validate();
+        setState(() => _error = AppLocalizations.of(context).aiConfigInvalid);
+      }
+      return;
+    }
+    if (!auto && !(_form.currentState?.validate() ?? true)) {
       return;
     }
     final l = AppLocalizations.of(context);
-    final profile = _profile;
-    if (profile == null && (_enabled || !_emptyProfile)) {
-      setState(() => _error = l.aiConfigInvalid);
-      return;
-    }
     final enabled = _enabled, remove = _removeKey, key = _key.text, identity = profile?.identity;
+    final inlineEnabled = _inlineEnabled;
+    final completionEnabled = _completionEnabled;
+    final predictionEnabled = _predictionEnabled;
+    final inlineExcluded = {..._inlineExcludedHosts};
+    final completionExcluded = {..._completionExcludedHosts};
+    final inlineModel = _inlineModel.isEmpty ? profile?.model : _inlineModel;
+    final completionModel = _completionModel.isEmpty ? profile?.model : _completionModel;
+    final reviewModel = _reviewModel.isEmpty ? null : _reviewModel;
     final revision = _initial.revision;
     final notifier = ref.read(aiConfigurationProvider.notifier);
     var credentialChanged = false;
@@ -288,9 +329,9 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         }
         _identity = identity;
         if (mounted) {
-          _key.clear();
+          if (_key.text == key) _key.clear();
           _hasKey = !remove;
-          _removeKey = false;
+          if (_removeKey == remove) _removeKey = false;
         }
       }
       if (profile != null &&
@@ -308,18 +349,22 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         enabled: enabled,
         profile: profile,
         expectedRevision: revision,
-        inlineEnabled: _inlineEnabled,
-        completionEnabled: _completionEnabled,
-        predictionEnabled: _predictionEnabled,
-        inlineExcludedHosts: _inlineExcludedHosts,
-        completionExcludedHosts: _completionExcludedHosts,
-        inlineModel: _inlineModel.isEmpty ? profile?.model : _inlineModel,
-        completionModel: _completionModel.isEmpty ? profile?.model : _completionModel,
-        reviewModel: _reviewModel.isEmpty ? null : _reviewModel,
+        inlineEnabled: inlineEnabled,
+        completionEnabled: completionEnabled,
+        predictionEnabled: predictionEnabled,
+        inlineExcludedHosts: inlineExcluded,
+        completionExcludedHosts: completionExcluded,
+        inlineModel: inlineModel,
+        completionModel: completionModel,
+        reviewModel: reviewModel,
       );
       if (!mounted) return;
-      setState(() => _load(ref.read(aiConfigurationProvider)));
-      _checkKey();
+      final saved = ref.read(aiConfigurationProvider);
+      setState(() {
+        _initial = saved;
+        _identity = identity ?? _draftIdentity;
+        _providerIdentity = _draftProvider;
+      });
     } on Object {
       if (!mounted) return;
       setState(() {
@@ -327,7 +372,14 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
         _conflict = ref.read(aiConfigurationProvider).revision != revision;
       });
     } finally {
-      if (mounted) setState(() => _working = false);
+      if (mounted) {
+        final rerun = _autoSavePending;
+        _autoSavePending = false;
+        setState(() => _working = false);
+        if (rerun && _dirty && _error == null && !_conflict) {
+          _scheduleAutoSave();
+        }
+      }
     }
   }
 
@@ -365,13 +417,16 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
               checkbox: true,
               onChanged: blocked
                   ? null
-                  : (selected) => setState(() {
-                      if (selected) {
-                        excluded.remove(host.id);
-                      } else {
-                        excluded.add(host.id);
-                      }
-                    }),
+                  : (selected) {
+                      setState(() {
+                        if (selected) {
+                          excluded.remove(host.id);
+                        } else {
+                          excluded.add(host.id);
+                        }
+                      });
+                      _scheduleAutoSave(immediate: true);
+                    },
             ),
           if (hosts.isEmpty) Text(l.aiConfigFeatureNoHosts, style: Theme.of(context).textTheme.bodySmall),
         ],
@@ -391,332 +446,360 @@ class _AiSettingsState extends ConsumerState<AiSettings> {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     _saveController?.changed();
-    final blocked = _working || config.loadFailed || (_saveController?.busy ?? false);
+    final blocked = config.loadFailed;
     final locked = blocked || !_enabled;
     // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
     final activeRuntime = ref.exists(agentRuntimeProvider) ? ref.watch(agentRuntimeProvider) : null;
     const gap = SizedBox(height: Space.md);
-    return Form(
-      key: _form,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (config.loadFailed) ...[
-            Text(l.aiConfigLoadFailed, style: TextStyle(color: theme.colorScheme.error)),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: _working
-                    ? null
-                    : () {
-                        ref.read(aiConfigurationProvider.notifier).reload();
-                        _reset();
-                      },
-                child: Text(l.retryAction),
+    return Focus(
+      canRequestFocus: false,
+      onFocusChange: (hasFocus) {
+        if (!hasFocus && _dirty) _scheduleAutoSave(immediate: true);
+      },
+      child: Form(
+        key: _form,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (config.loadFailed) ...[
+              Text(l.aiConfigLoadFailed, style: TextStyle(color: theme.colorScheme.error)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _working
+                      ? null
+                      : () {
+                          ref.read(aiConfigurationProvider.notifier).reload();
+                          _reset();
+                        },
+                  child: Text(l.retryAction),
+                ),
+              ),
+              gap,
+            ],
+            AppToggleRow(
+              title: l.aiConfigEnabled,
+              value: _enabled,
+              onChanged: blocked
+                  ? null
+                  : (v) {
+                      setState(() => _enabled = v);
+                      _scheduleAutoSave(immediate: true);
+                    },
+            ),
+            gap,
+            AppSelect<ModelProtocol>(
+              value: _protocol,
+              options: [
+                AppOption(ModelProtocol.anthropic, l.aiConfigAnthropic),
+                AppOption(ModelProtocol.openai, l.aiConfigOpenAi),
+                AppOption(ModelProtocol.responses, l.aiConfigResponses),
+              ],
+              onChanged: locked
+                  ? null
+                  : (v) {
+                      _protocol = v;
+                      _changed(identity: true, immediate: true);
+                    },
+            ),
+            gap,
+            AppFormField(
+              label: l.aiConfigEndpoint,
+              helperText: l.aiConfigEndpointHint,
+              child: TextFormField(
+                key: const ValueKey('ai-config-endpoint'),
+                controller: _endpoint,
+                enabled: !locked,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                decoration: AppFormField.decoration(context),
+                validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
+                onChanged: (_) => _changed(identity: true),
+                onFieldSubmitted: (_) => _scheduleAutoSave(immediate: true),
               ),
             ),
             gap,
-          ],
-          AppToggleRow(
-            title: l.aiConfigEnabled,
-            value: _enabled,
-            onChanged: blocked ? null : (v) => setState(() => _enabled = v),
-          ),
-          gap,
-          AppSelect<ModelProtocol>(
-            value: _protocol,
-            options: [
-              AppOption(ModelProtocol.anthropic, l.aiConfigAnthropic),
-              AppOption(ModelProtocol.openai, l.aiConfigOpenAi),
-              AppOption(ModelProtocol.responses, l.aiConfigResponses),
-            ],
-            onChanged: locked
-                ? null
-                : (v) {
-                    _protocol = v;
-                    _changed(identity: true);
-                  },
-          ),
-          gap,
-          AppFormField(
-            label: l.aiConfigEndpoint,
-            helperText: l.aiConfigEndpointHint,
-            child: TextFormField(
-              key: const ValueKey('ai-config-endpoint'),
-              controller: _endpoint,
-              enabled: !locked,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              decoration: AppFormField.decoration(context),
-              validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
-              onChanged: (_) => _changed(identity: true),
-            ),
-          ),
-          gap,
-          AppFormField(
-            label: l.aiConfigApiKeyOptional,
-            child: TextField(
-              key: const ValueKey('ai-config-key'),
-              controller: _key,
-              enabled: !locked && !_checking && !_keyError && _draftProvider != null,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: AppFormField.decoration(context),
-              onChanged: (_) => setState(() {
-                _removeKey = false;
-                _error = null;
-              }),
-            ),
-          ),
-          const SizedBox(height: Space.xs),
-          Text(
-            _checking
-                ? l.aiConfigKeyLoading
-                : _keyError
-                ? l.aiConfigKeyLoadFailed
-                : _removeKey
-                ? l.aiConfigKeyRemoved
-                : _hasKey
-                ? l.aiConfigKeySaved
-                : l.aiConfigKeyMissing,
-            style: theme.textTheme.bodySmall?.copyWith(color: _keyError ? theme.colorScheme.error : null),
-          ),
-          if (_keyError)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(onPressed: locked ? null : _checkKey, child: Text(l.retryAction)),
-            ),
-          if (_hasKey && !_removeKey)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: locked
-                    ? null
-                    : () => setState(() {
-                        _removeKey = true;
-                        _key.clear();
-                        _error = null;
-                      }),
-                child: Text(l.aiConfigRemoveKey),
+            AppFormField(
+              label: l.aiConfigApiKeyOptional,
+              child: TextField(
+                key: const ValueKey('ai-config-key'),
+                controller: _key,
+                enabled: !locked && !_checking && !_keyError && _draftProvider != null,
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: AppFormField.decoration(context),
+                onChanged: (_) {
+                  setState(() {
+                    _removeKey = false;
+                    _error = null;
+                  });
+                  _scheduleAutoSave();
+                },
+                onSubmitted: (_) => _scheduleAutoSave(immediate: true),
               ),
             ),
-          gap,
-          AiModelPicker(
-            key: const ValueKey('ai-config-model'),
-            value: _model.text,
-            label: l.aiConfigAgentModel,
-            protocol: _protocol,
-            endpoint: _endpoint.text.trim(),
-            credentialIdentity: _catalogCredential,
-            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: locked || _draftProvider == null ? null : _selectModel,
-          ),
-          gap,
-          AiModelPicker(
-            key: const ValueKey('ai-config-review-model'),
-            value: _reviewModel.isEmpty ? reviewDefault : _reviewModel,
-            label: l.aiConfigReviewModel,
-            protocol: _protocol,
-            endpoint: _endpoint.text.trim(),
-            credentialIdentity: _catalogCredential,
-            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, review: true),
-          ),
-          gap,
-          AppFormField(
-            label: l.aiReasoningEffort,
-            child: ListenableBuilder(
-              listenable: Listenable.merge([activeRuntime]),
-              builder: (context, _) => AppSelect<ReasoningEffort>(
-                key: const ValueKey('ai-config-reasoning'),
-                value: _reasoningEffort,
-                options: [
-                  AppOption(ReasoningEffort.modelDefault, l.aiReasoningDefault),
-                  AppOption(ReasoningEffort.off, l.aiReasoningOff),
-                  AppOption(ReasoningEffort.low, l.aiReasoningLow),
-                  AppOption(ReasoningEffort.medium, l.aiReasoningMedium),
-                  AppOption(ReasoningEffort.high, l.aiReasoningHigh),
-                ],
-                onChanged: locked || (activeRuntime?.busy ?? false)
-                    ? null
-                    : (value) => setState(() => _reasoningEffort = value),
+            const SizedBox(height: Space.xs),
+            Text(
+              _checking
+                  ? l.aiConfigKeyLoading
+                  : _keyError
+                  ? l.aiConfigKeyLoadFailed
+                  : _removeKey
+                  ? l.aiConfigKeyRemoved
+                  : _hasKey
+                  ? l.aiConfigKeySaved
+                  : l.aiConfigKeyMissing,
+              style: theme.textTheme.bodySmall?.copyWith(color: _keyError ? theme.colorScheme.error : null),
+            ),
+            if (_keyError)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(onPressed: locked ? null : _checkKey, child: Text(l.retryAction)),
+              ),
+            if (_hasKey && !_removeKey)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: locked
+                      ? null
+                      : () {
+                          setState(() {
+                            _removeKey = true;
+                            _key.clear();
+                            _error = null;
+                          });
+                          _scheduleAutoSave(immediate: true);
+                        },
+                  child: Text(l.aiConfigRemoveKey),
+                ),
+              ),
+            gap,
+            AiModelPicker(
+              key: const ValueKey('ai-config-model'),
+              value: _model.text,
+              label: l.aiConfigAgentModel,
+              protocol: _protocol,
+              endpoint: _endpoint.text.trim(),
+              credentialIdentity: _catalogCredential,
+              draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+              onChanged: locked || _draftProvider == null ? null : _selectModel,
+            ),
+            gap,
+            AiModelPicker(
+              key: const ValueKey('ai-config-review-model'),
+              value: _reviewModel.isEmpty ? reviewDefault : _reviewModel,
+              label: l.aiConfigReviewModel,
+              protocol: _protocol,
+              endpoint: _endpoint.text.trim(),
+              credentialIdentity: _catalogCredential,
+              draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+              onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, review: true),
+            ),
+            gap,
+            AppFormField(
+              label: l.aiReasoningEffort,
+              child: ListenableBuilder(
+                listenable: Listenable.merge([activeRuntime]),
+                builder: (context, _) => AppSelect<ReasoningEffort>(
+                  key: const ValueKey('ai-config-reasoning'),
+                  value: _reasoningEffort,
+                  options: [
+                    AppOption(ReasoningEffort.modelDefault, l.aiReasoningDefault),
+                    AppOption(ReasoningEffort.off, l.aiReasoningOff),
+                    AppOption(ReasoningEffort.low, l.aiReasoningLow),
+                    AppOption(ReasoningEffort.medium, l.aiReasoningMedium),
+                    AppOption(ReasoningEffort.high, l.aiReasoningHigh),
+                  ],
+                  onChanged: locked || (activeRuntime?.busy ?? false)
+                      ? null
+                      : (value) {
+                          setState(() => _reasoningEffort = value);
+                          _scheduleAutoSave(immediate: true);
+                        },
+                ),
               ),
             ),
-          ),
-          gap,
-          Text(l.aiConfigAdvanced, style: theme.textTheme.titleSmall),
-          const SizedBox(height: Space.sm),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = ((constraints.maxWidth + Space.md) / (210 + Space.md)).floor().clamp(
-                1,
-                _customContext ? 3 : 2,
-              );
-              final width = (constraints.maxWidth - Space.md * (columns - 1)) / columns;
-              return Wrap(
-                spacing: Space.md,
-                runSpacing: Space.md,
-                children: [
-                  SizedBox(
-                    width: width,
-                    child: AppFormField(
-                      label: l.aiConfigContextWindow,
-                      child: AppSelect<int>(
-                        key: const ValueKey('ai-config-context-preset'),
-                        value: _customContext ? -1 : int.parse(_contextWindow.text),
-                        options: [
-                          const AppOption(1000000, '1M'),
-                          const AppOption(256000, '256K'),
-                          AppOption(-1, l.aiConfigContextCustom),
-                        ],
-                        onChanged: locked
-                            ? null
-                            : (value) => setState(() {
-                                _customContext = value == -1;
-                                if (!_customContext) {
-                                  _contextWindow.text = '$value';
-                                }
-                                _error = null;
-                              }),
-                      ),
-                    ),
-                  ),
-                  if (_customContext)
+            gap,
+            Text(l.aiConfigAdvanced, style: theme.textTheme.titleSmall),
+            const SizedBox(height: Space.sm),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = ((constraints.maxWidth + Space.md) / (210 + Space.md)).floor().clamp(
+                  1,
+                  _customContext ? 3 : 2,
+                );
+                final width = (constraints.maxWidth - Space.md * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: Space.md,
+                  runSpacing: Space.md,
+                  children: [
                     SizedBox(
                       width: width,
                       child: AppFormField(
                         label: l.aiConfigContextWindow,
-                        child: TextFormField(
-                          key: const ValueKey('ai-config-context-custom'),
-                          controller: _contextWindow,
-                          enabled: !locked,
-                          keyboardType: TextInputType.number,
-                          decoration: AppFormField.decoration(context),
-                          validator: (_) => _profile == null ? l.aiConfigInvalid : null,
-                          onChanged: (_) => _changed(),
+                        child: AppSelect<int>(
+                          key: const ValueKey('ai-config-context-preset'),
+                          value: _customContext ? -1 : int.parse(_contextWindow.text),
+                          options: [
+                            const AppOption(1000000, '1M'),
+                            const AppOption(256000, '256K'),
+                            AppOption(-1, l.aiConfigContextCustom),
+                          ],
+                          onChanged: locked
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _customContext = value == -1;
+                                    if (!_customContext) {
+                                      _contextWindow.text = '$value';
+                                    }
+                                    _error = null;
+                                  });
+                                  if (!_customContext) _scheduleAutoSave(immediate: true);
+                                },
                         ),
                       ),
                     ),
-                  SizedBox(
-                    width: width,
-                    child: AppFormField(
-                      label: l.aiConfigMaxOutput,
-                      child: TextFormField(
-                        key: const ValueKey('ai-config-max-output'),
-                        controller: _maxOutput,
-                        enabled: !locked,
-                        keyboardType: TextInputType.number,
-                        decoration: AppFormField.decoration(context),
-                        validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
-                        onChanged: (_) => _changed(),
+                    if (_customContext)
+                      SizedBox(
+                        width: width,
+                        child: AppFormField(
+                          label: l.aiConfigContextWindow,
+                          child: TextFormField(
+                            key: const ValueKey('ai-config-context-custom'),
+                            controller: _contextWindow,
+                            enabled: !locked,
+                            keyboardType: TextInputType.number,
+                            decoration: AppFormField.decoration(context),
+                            validator: (_) => _profile == null ? l.aiConfigInvalid : null,
+                            onChanged: (_) => _changed(),
+                            onFieldSubmitted: (_) => _scheduleAutoSave(immediate: true),
+                          ),
+                        ),
+                      ),
+                    SizedBox(
+                      width: width,
+                      child: AppFormField(
+                        label: l.aiConfigMaxOutput,
+                        child: TextFormField(
+                          key: const ValueKey('ai-config-max-output'),
+                          controller: _maxOutput,
+                          enabled: !locked,
+                          keyboardType: TextInputType.number,
+                          decoration: AppFormField.decoration(context),
+                          validator: (_) => _emptyProfile && !_enabled || _profile != null ? null : l.aiConfigInvalid,
+                          onChanged: (_) => _changed(),
+                          onFieldSubmitted: (_) => _scheduleAutoSave(immediate: true),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
-          ),
-          gap,
-          const Divider(),
-          gap,
-          AppToggleRow(
-            key: const ValueKey('ai-config-inline'),
-            title: l.aiConfigInline,
-            value: _inlineEnabled,
-            onChanged: locked || _profile == null ? null : (v) => setState(() => _inlineEnabled = v),
-          ),
-          const SizedBox(height: Space.xs),
-          Text(
-            l.aiConfigInlineHint,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          gap,
-          AiModelPicker(
-            key: const ValueKey('ai-config-inline-model'),
-            value: _inlineModel,
-            label: l.aiConfigInlineModel,
-            protocol: _protocol,
-            endpoint: _endpoint.text.trim(),
-            credentialIdentity: _catalogCredential,
-            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, inline: true),
-          ),
-          if (_inlineEnabled) ...[
-            const SizedBox(height: Space.xs),
-            _hostFilter(
-              feature: 'inline',
-              expanded: _inlineAdvanced,
-              excluded: _inlineExcludedHosts,
-              blocked: locked,
-              onExpanded: (value) => setState(() => _inlineAdvanced = value),
+                  ],
+                );
+              },
             ),
-          ],
-          gap,
-          AppToggleRow(
-            key: const ValueKey('ai-config-completion'),
-            title: l.aiConfigCompletion,
-            value: _completionEnabled,
-            onChanged: locked || _profile == null ? null : (v) => setState(() => _completionEnabled = v),
-          ),
-          const SizedBox(height: Space.xs),
-          Text(
-            l.aiConfigCompletionHint,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: Space.sm),
-          AiModelPicker(
-            key: const ValueKey('ai-config-completion-model'),
-            value: _completionModel,
-            label: l.aiConfigCompletionModel,
-            protocol: _protocol,
-            endpoint: _endpoint.text.trim(),
-            credentialIdentity: _catalogCredential,
-            draftKey: _key.text.isEmpty ? null : Secret(_key.text),
-            onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, completion: true),
-          ),
-          if (_completionEnabled) ...[
-            const SizedBox(height: Space.xs),
+            gap,
+            const Divider(),
+            gap,
             AppToggleRow(
-              key: const ValueKey('ai-config-prediction'),
-              title: l.aiConfigPrediction,
-              value: _predictionEnabled,
-              onChanged: locked ? null : (v) => setState(() => _predictionEnabled = v),
+              key: const ValueKey('ai-config-inline'),
+              title: l.aiConfigInline,
+              value: _inlineEnabled,
+              onChanged: locked || _profile == null
+                  ? null
+                  : (v) {
+                      setState(() => _inlineEnabled = v);
+                      _scheduleAutoSave(immediate: true);
+                    },
             ),
             const SizedBox(height: Space.xs),
             Text(
-              l.aiConfigPredictionHint,
+              l.aiConfigInlineHint,
               style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
+            gap,
+            AiModelPicker(
+              key: const ValueKey('ai-config-inline-model'),
+              value: _inlineModel,
+              label: l.aiConfigInlineModel,
+              protocol: _protocol,
+              endpoint: _endpoint.text.trim(),
+              credentialIdentity: _catalogCredential,
+              draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+              onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, inline: true),
+            ),
+            if (_inlineEnabled) ...[
+              const SizedBox(height: Space.xs),
+              _hostFilter(
+                feature: 'inline',
+                expanded: _inlineAdvanced,
+                excluded: _inlineExcludedHosts,
+                blocked: locked,
+                onExpanded: (value) => setState(() => _inlineAdvanced = value),
+              ),
+            ],
+            gap,
+            AppToggleRow(
+              key: const ValueKey('ai-config-completion'),
+              title: l.aiConfigCompletion,
+              value: _completionEnabled,
+              onChanged: locked || _profile == null
+                  ? null
+                  : (v) {
+                      setState(() => _completionEnabled = v);
+                      _scheduleAutoSave(immediate: true);
+                    },
+            ),
             const SizedBox(height: Space.xs),
-            _hostFilter(
-              feature: 'completion',
-              expanded: _completionAdvanced,
-              excluded: _completionExcludedHosts,
-              blocked: locked,
-              onExpanded: (value) => setState(() => _completionAdvanced = value),
+            Text(
+              l.aiConfigCompletionHint,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
-          ],
-          if (_error != null || _conflict) ...[
             const SizedBox(height: Space.sm),
-            Text(_error ?? l.aiConfigConflict, style: TextStyle(color: theme.colorScheme.error)),
-          ],
-          if (_saveController == null) ...[
-            const SizedBox(height: Space.sm),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
-                const SizedBox(width: Space.sm),
-                FilledButton(
-                  key: const ValueKey('ai-config-save'),
-                  onPressed: blocked || _credentialBlocked || _conflict || !_dirty ? null : _save,
-                  child: Text(l.save),
-                ),
-              ],
+            AiModelPicker(
+              key: const ValueKey('ai-config-completion-model'),
+              value: _completionModel,
+              label: l.aiConfigCompletionModel,
+              protocol: _protocol,
+              endpoint: _endpoint.text.trim(),
+              credentialIdentity: _catalogCredential,
+              draftKey: _key.text.isEmpty ? null : Secret(_key.text),
+              onChanged: locked || _draftProvider == null ? null : (value) => _selectModel(value, completion: true),
             ),
+            if (_completionEnabled) ...[
+              const SizedBox(height: Space.xs),
+              AppToggleRow(
+                key: const ValueKey('ai-config-prediction'),
+                title: l.aiConfigPrediction,
+                value: _predictionEnabled,
+                onChanged: locked
+                    ? null
+                    : (v) {
+                        setState(() => _predictionEnabled = v);
+                        _scheduleAutoSave(immediate: true);
+                      },
+              ),
+              const SizedBox(height: Space.xs),
+              Text(
+                l.aiConfigPredictionHint,
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: Space.xs),
+              _hostFilter(
+                feature: 'completion',
+                expanded: _completionAdvanced,
+                excluded: _completionExcludedHosts,
+                blocked: locked,
+                onExpanded: (value) => setState(() => _completionAdvanced = value),
+              ),
+            ],
+            if (_error != null || _conflict) ...[
+              const SizedBox(height: Space.sm),
+              Text(_error ?? l.aiConfigConflict, style: TextStyle(color: theme.colorScheme.error)),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

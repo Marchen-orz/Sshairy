@@ -105,11 +105,16 @@ class _SettingsDialog extends StatefulWidget {
 class _SettingsDialogState extends State<_SettingsDialog> {
   bool _saving = false;
 
+  Future<void> _close() async {
+    await widget.handle.panel.currentState?.flush();
+    if (mounted) await Navigator.maybePop(context);
+  }
+
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !_saving,
     child: CallbackShortcuts(
-      bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.maybePop(context)},
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): () => unawaited(_close())},
       child: Focus(
         autofocus: true,
         child: AppDialog(
@@ -119,7 +124,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
               Expanded(child: Text(AppLocalizations.of(context).settings)),
               IconButton(
                 tooltip: AppLocalizations.of(context).close,
-                onPressed: _saving ? null : () => Navigator.maybePop(context),
+                onPressed: _saving ? null : () => unawaited(_close()),
                 icon: const Icon(Icons.close),
               ),
             ],
@@ -264,22 +269,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     _syncSelection();
   }
 
-  Future<void> _save() async {
-    final failed = await _saves.save();
-    if (!mounted || failed == null || !failed.mounted) return;
-    for (var index = 0; index < _anchors.length; index++) {
-      final section = _anchors[index].currentContext;
-      if (section == null) continue;
-      var inside = false;
-      failed.visitAncestorElements((element) {
-        if (identical(element, section)) inside = true;
-        return !inside;
-      });
-      if (inside) {
-        await _goTo(index);
-        break;
-      }
-    }
+  Future<void> flush() async {
+    if (_saves.dirty && _saves.canSave) await _saves.save();
   }
 
   @override
@@ -671,34 +662,28 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                       ),
                       const VerticalDivider(width: Space.lg),
                       Expanded(
-                        child: AbsorbPointer(
-                          absorbing: _saves.busy,
-                          child: ExcludeFocus(
-                            excluding: _saves.busy,
-                            child: NotificationListener<ScrollMetricsNotification>(
-                              onNotification: (_) {
-                                _scheduleSync();
-                                return false;
-                              },
-                              child: SingleChildScrollView(
-                                key: const ValueKey('settings-content'),
-                                controller: _scroll,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: Space.sm, top: Space.sm, bottom: Space.lg),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    children: [
-                                      for (var index = 0; index < sections.length; index++) ...[
-                                        if (index > 0)
-                                          const Padding(
-                                            padding: EdgeInsets.symmetric(vertical: Space.xl),
-                                            child: Divider(height: WorkspaceSize.divider),
-                                          ),
-                                        KeyedSubtree(key: _anchors[index], child: sections[index]),
-                                      ],
-                                    ],
-                                  ),
-                                ),
+                        child: NotificationListener<ScrollMetricsNotification>(
+                          onNotification: (_) {
+                            _scheduleSync();
+                            return false;
+                          },
+                          child: SingleChildScrollView(
+                            key: const ValueKey('settings-content'),
+                            controller: _scroll,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: Space.sm, top: Space.sm, bottom: Space.lg),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (var index = 0; index < sections.length; index++) ...[
+                                    if (index > 0)
+                                      const Padding(
+                                        padding: EdgeInsets.symmetric(vertical: Space.xl),
+                                        child: Divider(height: WorkspaceSize.divider),
+                                      ),
+                                    KeyedSubtree(key: _anchors[index], child: sections[index]),
+                                  ],
+                                ],
                               ),
                             ),
                           ),
@@ -707,26 +692,6 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                     ],
                   ),
                 ),
-                if (_saves.dirty || _saves.busy) ...[
-                  const Divider(height: Space.xl),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(onPressed: _saves.busy ? null : _saves.reset, child: Text(l.cancel)),
-                      const SizedBox(width: Space.sm),
-                      FilledButton(
-                        key: const ValueKey('settings-save'),
-                        onPressed: _saves.canSave ? _save : null,
-                        child: _saves.busy
-                            ? const SizedBox.square(
-                                dimension: Space.lg,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(l.save),
-                      ),
-                    ],
-                  ),
-                ],
               ],
             ),
           );

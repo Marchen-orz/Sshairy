@@ -43,9 +43,9 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
   final _email = TextEditingController();
   final _key = TextEditingController();
   final _form = GlobalKey<FormState>();
-  Timer? _checkTimer;
+  Timer? _checkTimer, _autoSaveTimer;
   var _checkGeneration = 0;
-  var _busy = false, _saving = false, _saveFailed = false, _conflict = false;
+  var _busy = false, _saving = false, _autoSavePending = false, _saveFailed = false, _conflict = false;
   var _checking = false, _hasKey = false, _keyError = false, _removeKey = false;
   String? _checkedIdentity, _error;
   (int, String)? _ownWrite;
@@ -54,7 +54,8 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
     dirty: () => _dirty,
     canSave: () => !_busy && !_saving && !_checking && !_keyError && !_conflict,
     save: () async {
-      await _save();
+      _autoSaveTimer?.cancel();
+      await _save(auto: true);
       return mounted && !_dirty && _error == null && !_conflict;
     },
     reset: _reset,
@@ -104,6 +105,7 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
   void dispose() {
     _saveController?.unregister(_saveEntry);
     _checkTimer?.cancel();
+    _autoSaveTimer?.cancel();
     for (final controller in [_endpoint, _model, _region, _email, _key]) {
       controller.dispose();
     }
@@ -161,7 +163,26 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
     _checkCredential();
   }
 
-  void _changed() => setState(() => _error = null);
+  void _scheduleAutoSave({bool immediate = false}) {
+    _autoSaveTimer?.cancel();
+    if (!mounted || _conflict) return;
+    if (_working) {
+      _autoSavePending = true;
+      return;
+    }
+    if (immediate) {
+      unawaited(_save(auto: true));
+      return;
+    }
+    _autoSaveTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) unawaited(_save(auto: true));
+    });
+  }
+
+  void _changed({bool immediate = false}) {
+    setState(() => _error = null);
+    _scheduleAutoSave(immediate: immediate);
+  }
 
   Future<void> _saveSetting<T>(SettingDef<T> setting, T value) async {
     if (_working) return;
@@ -179,14 +200,22 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
       if (mounted) setState(() => _saveFailed = true);
     } finally {
       _ownWrite = null;
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        final rerun = _autoSavePending;
+        _autoSavePending = false;
+        setState(() => _saving = false);
+        if (rerun && _dirty && _error == null && !_conflict) _scheduleAutoSave(immediate: true);
+      }
     }
   }
 
   void _identityChanged({bool debounce = false}) {
     _checkTimer?.cancel();
     final identity = _identity;
-    if (identity != null && identity == _checkedIdentity) return;
+    if (identity != null && identity == _checkedIdentity) {
+      if (_dirty && _draft.isValid) _scheduleAutoSave(immediate: !debounce);
+      return;
+    }
     _checkGeneration++;
     setState(() {
       _checkedIdentity = null;
@@ -206,7 +235,10 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
     final generation = ++_checkGeneration;
     _checkedIdentity = identity;
     if (identity == null) {
-      if (mounted) setState(() => _checking = false);
+      if (mounted) {
+        setState(() => _checking = false);
+        if (_dirty && _draft.isValid) _scheduleAutoSave(immediate: true);
+      }
       return;
     }
     setState(() {
@@ -220,6 +252,7 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
         _hasKey = hasKey;
         _checking = false;
       });
+      if (_dirty && _draft.isValid) _scheduleAutoSave(immediate: true);
     } catch (_) {
       if (!mounted || generation != _checkGeneration) return;
       setState(() {
@@ -229,12 +262,18 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
     }
   }
 
-  Future<void> _save() async {
-    if (_working || _checking || _keyError || !_dirty || !_form.currentState!.validate()) return;
-    final l = AppLocalizations.of(context);
+  Future<void> _save({bool auto = false}) async {
+    if (_working || _checking || _keyError || _conflict || !_dirty) return;
     final config = _draft;
-    if (!config.isValid) return;
+    if (!config.isValid) {
+      if (!auto) _form.currentState?.validate();
+      return;
+    }
+    if (!auto && !(_form.currentState?.validate() ?? true)) return;
+    final l = AppLocalizations.of(context);
     final identity = _identity;
+    final key = _key.text;
+    final removing = _removeKey;
     final revision = _revision;
     final notifier = ref.read(settingsProvider.notifier);
     setState(() {
@@ -251,17 +290,16 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
         });
         return;
       }
-      if (identity != null && (_key.text.isNotEmpty || _removeKey)) {
-        final removing = _removeKey;
+      if (identity != null && (key.isNotEmpty || removing)) {
         if (removing) {
           await widget.credentials.clear(identity);
         } else {
-          await widget.credentials.save(identity, Secret(_key.text));
+          await widget.credentials.save(identity, Secret(key));
         }
         if (mounted) {
-          _key.clear();
+          if (_key.text == key) _key.clear();
           _hasKey = !removing;
-          _removeKey = false;
+          if (_removeKey == removing) _removeKey = false;
         }
         widget.onCredentialsChanged?.call();
       }
@@ -277,13 +315,20 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
         setState(() => _error = l.translationSaveFailed);
         return;
       }
-      setState(() => _load(ref.read(settingsProvider).get(SettingKeys.completionTranslationConfig)));
-      _checkCredential();
+      setState(() {
+        _initial = config;
+        _revision = notifier.revision;
+      });
     } catch (_) {
       if (mounted) setState(() => _error = l.translationSaveFailed);
     } finally {
       _ownWrite = null;
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        final rerun = _autoSavePending;
+        _autoSavePending = false;
+        setState(() => _busy = false);
+        if (rerun && _dirty && _error == null && !_conflict) _scheduleAutoSave();
+      }
     }
   }
 
@@ -297,191 +342,183 @@ class _TranslationSettingsState extends ConsumerState<TranslationSettings> {
     final hasCredentials = _provider != TranslationProvider.myMemory;
     final error = _error ?? (_conflict ? l.translationConflict : null);
     _saveController?.changed();
-    return Form(
-      key: _form,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AppToggleRow(
-            title: l.completionTranslation,
-            subtitle: l.completionTranslationHint,
-            value: settings.get(SettingKeys.completionTranslation),
-            onChanged: _working ? null : (value) => _saveSetting(SettingKeys.completionTranslation, value),
-          ),
-          const SizedBox(height: Space.sm),
-          AppSelect<TranslationProvider>(
-            value: _provider,
-            options: [
-              for (final provider in TranslationProvider.values) AppOption(provider, _providerLabel(provider, l)),
-            ],
-            onChanged: _working
-                ? null
-                : (value) {
-                    setState(() {
-                      _provider = value;
-                      _error = null;
-                    });
-                    _identityChanged();
-                  },
-          ),
-          if (_provider == TranslationProvider.myMemory) ...[
-            const SizedBox(height: Space.sm),
-            Text(l.translationMyMemoryHint, style: theme.textTheme.bodySmall),
-            gap,
-            TextFormField(
-              controller: _email,
-              enabled: !_working,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              decoration: InputDecoration(
-                labelText: l.translationEmail,
-                helperText: l.translationEmailHint,
-                helperMaxLines: 3,
-              ),
-              validator: (value) =>
-                  TranslationConfig.validMyMemoryEmail(value!.trim()) ? null : l.translationEmailInvalid,
-              onChanged: (_) => _changed(),
-            ),
-          ],
-          if (_provider == TranslationProvider.deepL) ...[
-            gap,
+    return Focus(
+      canRequestFocus: false,
+      onFocusChange: (hasFocus) {
+        if (!hasFocus && _dirty) _scheduleAutoSave(immediate: true);
+      },
+      child: Form(
+        key: _form,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             AppToggleRow(
-              title: l.translationDeepLFree,
-              value: _deepLFree,
-              onChanged: _working
-                  ? null
-                  : (value) {
+              title: l.completionTranslation,
+              subtitle: l.completionTranslationHint,
+              value: settings.get(SettingKeys.completionTranslation),
+              onChanged: (value) => _saveSetting(SettingKeys.completionTranslation, value),
+            ),
+            const SizedBox(height: Space.sm),
+            AppSelect<TranslationProvider>(
+              value: _provider,
+              options: [
+                for (final provider in TranslationProvider.values) AppOption(provider, _providerLabel(provider, l)),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _provider = value;
+                  _error = null;
+                });
+                _identityChanged();
+              },
+            ),
+            if (_provider == TranslationProvider.myMemory) ...[
+              const SizedBox(height: Space.sm),
+              Text(l.translationMyMemoryHint, style: theme.textTheme.bodySmall),
+              gap,
+              TextFormField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: l.translationEmail,
+                  helperText: l.translationEmailHint,
+                  helperMaxLines: 3,
+                ),
+                validator: (value) =>
+                    TranslationConfig.validMyMemoryEmail(value!.trim()) ? null : l.translationEmailInvalid,
+                onChanged: (_) => _changed(),
+                onFieldSubmitted: (_) => _scheduleAutoSave(immediate: true),
+              ),
+            ],
+            if (_provider == TranslationProvider.deepL) ...[
+              gap,
+              AppToggleRow(
+                title: l.translationDeepLFree,
+                value: _deepLFree,
+                onChanged: (value) {
+                  setState(() {
+                    _deepLFree = value;
+                    _error = null;
+                  });
+                  _identityChanged();
+                },
+              ),
+            ],
+            if (_provider == TranslationProvider.microsoft) ...[
+              gap,
+              TextFormField(
+                controller: _region,
+                decoration: InputDecoration(labelText: l.translationRegion),
+                validator: (value) => TranslationConfig.validRegion(value!.trim()) ? null : l.translationRegionInvalid,
+                onChanged: (_) {
+                  _changed();
+                  _identityChanged(debounce: true);
+                },
+                onFieldSubmitted: (_) => _scheduleAutoSave(immediate: true),
+              ),
+            ],
+            if (_provider == TranslationProvider.openAi) ...[
+              gap,
+              TextFormField(
+                controller: _endpoint,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: l.translationEndpoint,
+                  helperText: l.translationEndpointHint,
+                  helperMaxLines: 2,
+                ),
+                validator: (value) =>
+                    TranslationConfig.validEndpoint(value!.trim()) ? null : l.translationEndpointInvalid,
+                onChanged: (_) {
+                  _changed();
+                  _identityChanged(debounce: true);
+                },
+                onFieldSubmitted: (_) => _scheduleAutoSave(immediate: true),
+              ),
+              gap,
+              TextFormField(
+                controller: _model,
+                autocorrect: false,
+                decoration: InputDecoration(labelText: l.translationModel),
+                validator: (value) => TranslationConfig.validModel(value!.trim()) ? null : l.translationModelInvalid,
+                onChanged: (_) => _changed(),
+                onFieldSubmitted: (_) => _scheduleAutoSave(immediate: true),
+              ),
+            ],
+            if (hasCredentials) ...[
+              gap,
+              TextField(
+                controller: _key,
+                enabled: !_checking && !_keyError && _identity != null,
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(labelText: l.translationApiKey),
+                onChanged: (_) {
+                  setState(() {
+                    _removeKey = false;
+                    _error = null;
+                  });
+                  _scheduleAutoSave();
+                },
+                onSubmitted: (_) => _scheduleAutoSave(immediate: true),
+              ),
+              const SizedBox(height: Space.xs),
+              Text(
+                _checking
+                    ? l.translationKeyLoading
+                    : _keyError
+                    ? l.translationKeyLoadFailed
+                    : _removeKey
+                    ? l.translationKeyRemoved
+                    : _hasKey
+                    ? l.translationKeySaved
+                    : l.translationKeyMissing,
+                style: theme.textTheme.bodySmall?.copyWith(color: _keyError ? theme.colorScheme.error : null),
+              ),
+              if (_hasKey && !_removeKey)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () {
                       setState(() {
-                        _deepLFree = value;
+                        _removeKey = true;
+                        _key.clear();
                         _error = null;
                       });
-                      _identityChanged();
+                      _scheduleAutoSave(immediate: true);
                     },
-            ),
-          ],
-          if (_provider == TranslationProvider.microsoft) ...[
-            gap,
-            TextFormField(
-              controller: _region,
-              enabled: !_working,
-              decoration: InputDecoration(labelText: l.translationRegion),
-              validator: (value) => TranslationConfig.validRegion(value!.trim()) ? null : l.translationRegionInvalid,
-              onChanged: (_) {
-                _changed();
-                _identityChanged(debounce: true);
-              },
-            ),
-          ],
-          if (_provider == TranslationProvider.openAi) ...[
-            gap,
-            TextFormField(
-              controller: _endpoint,
-              enabled: !_working,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              decoration: InputDecoration(
-                labelText: l.translationEndpoint,
-                helperText: l.translationEndpointHint,
-                helperMaxLines: 2,
-              ),
-              validator: (value) =>
-                  TranslationConfig.validEndpoint(value!.trim()) ? null : l.translationEndpointInvalid,
-              onChanged: (_) {
-                _changed();
-                _identityChanged(debounce: true);
-              },
-            ),
-            gap,
-            TextFormField(
-              controller: _model,
-              enabled: !_working,
-              autocorrect: false,
-              decoration: InputDecoration(labelText: l.translationModel),
-              validator: (value) => TranslationConfig.validModel(value!.trim()) ? null : l.translationModelInvalid,
-              onChanged: (_) => _changed(),
-            ),
-          ],
-          if (hasCredentials) ...[
-            gap,
-            TextField(
-              controller: _key,
-              enabled: !_working && !_checking && !_keyError && _identity != null,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(labelText: l.translationApiKey),
-              onChanged: (_) => setState(() {
-                _removeKey = false;
-                _error = null;
-              }),
-            ),
-            const SizedBox(height: Space.xs),
-            Text(
-              _checking
-                  ? l.translationKeyLoading
-                  : _keyError
-                  ? l.translationKeyLoadFailed
-                  : _removeKey
-                  ? l.translationKeyRemoved
-                  : _hasKey
-                  ? l.translationKeySaved
-                  : l.translationKeyMissing,
-              style: theme.textTheme.bodySmall?.copyWith(color: _keyError ? theme.colorScheme.error : null),
-            ),
-            if (_hasKey && !_removeKey)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed: _working
-                      ? null
-                      : () => setState(() {
-                          _removeKey = true;
-                          _key.clear();
-                          _error = null;
-                        }),
-                  child: Text(l.translationRemoveKey),
+                    child: Text(l.translationRemoveKey),
+                  ),
                 ),
-              ),
-          ],
-          if (error != null) ...[
-            const SizedBox(height: Space.sm),
-            Text(error, style: TextStyle(color: theme.colorScheme.error)),
-          ],
-          if (_saveController == null) ...[
-            const SizedBox(height: Space.sm),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: Space.sm),
+              Text(error, style: TextStyle(color: theme.colorScheme.error)),
+            ],
+            gap,
             Row(
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(onPressed: _working ? null : _reset, child: Text(l.cancel)),
-                const SizedBox(width: Space.sm),
-                FilledButton(
-                  onPressed: _working || _checking || _keyError || _conflict || !_dirty ? null : _save,
-                  child: Text(l.save),
+                Expanded(child: Text(l.translationConcurrency)),
+                const SizedBox(width: Space.md),
+                AppSelect<int>(
+                  width: 208,
+                  value: settings.get(SettingKeys.completionTranslationConcurrency),
+                  options: [
+                    AppOption(0, l.translationConcurrencyAuto),
+                    for (var value = 1; value <= SettingKeys.completionTranslationConcurrency.max; value++)
+                      AppOption(value, '$value'),
+                  ],
+                  onChanged: (value) => _saveSetting(SettingKeys.completionTranslationConcurrency, value),
                 ),
               ],
             ),
+            if (_saveFailed) Text(l.errSave, style: TextStyle(color: theme.colorScheme.error)),
           ],
-          gap,
-          Row(
-            children: [
-              Expanded(child: Text(l.translationConcurrency)),
-              const SizedBox(width: Space.md),
-              AppSelect<int>(
-                width: 208,
-                value: settings.get(SettingKeys.completionTranslationConcurrency),
-                options: [
-                  AppOption(0, l.translationConcurrencyAuto),
-                  for (var value = 1; value <= SettingKeys.completionTranslationConcurrency.max; value++)
-                    AppOption(value, '$value'),
-                ],
-                onChanged: _working
-                    ? null
-                    : (value) => _saveSetting(SettingKeys.completionTranslationConcurrency, value),
-              ),
-            ],
-          ),
-          if (_saveFailed) Text(l.errSave, style: TextStyle(color: theme.colorScheme.error)),
-        ],
+        ),
       ),
     );
   }
