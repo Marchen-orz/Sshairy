@@ -51,7 +51,7 @@
       macP: 'Universal DMG for Apple silicon and Intel. Early build.', linuxP: 'AppImage and .deb for x64. Early build.', androidP: 'APK for Android 8.0 and later on arm64-v8a, armeabi-v7a or x86_64. Preview.', osB: 'Download →', getB: 'Download',
       copy: 'Copy', copied: 'Copied', or: '# or macos, linux',
       docsH: 'Docs.', read: 'Read', soon: 'Coming soon',
-      docs: [['Getting started', 'Install, add your first host and open a session.'], ['Build from source', 'Toolchain, commands and Windows packaging.'], ['Guides', 'Airy, permissions, themes and shortcuts.']],
+      docs: [['Getting started', 'Install, add your first host and open a session.'], ['Build from source', 'Toolchain, commands and Windows packaging.'], ['Use cases', 'Five interactive walkthroughs of Airy and Device Link.'], ['Guides', 'Airy, permissions, themes and shortcuts.']],
       foot: 'Lightweight SSH. Powered by AI.', scheme: 'Dark mode', rel: 'Releases', issues: 'Issues', buddy: 'Next theme',
     },
     zh: {
@@ -100,11 +100,11 @@
       macP: '通用 DMG，支持 Apple 芯片与 Intel，早期构建', linuxP: 'x64 的 AppImage 与 .deb，早期构建', androidP: '适用于 Android 8.0 及以上的 APK，提供 arm64-v8a、armeabi-v7a 与 x86_64，预览版', osB: '下载 →', getB: '下载',
       copy: '复制', copied: '已复制', or: '# 或 macos、linux',
       docsH: '文档', read: '阅读', soon: '即将补充',
-      docs: [['快速开始', '安装、添加第一台主机、打开会话'], ['从源码构建', '工具链、命令与 Windows 打包'], ['使用指南', 'Airy、权限、主题与快捷键']],
+      docs: [['快速开始', '安装、添加第一台主机、打开会话'], ['从源码构建', '工具链、命令与 Windows 打包'], ['使用案例', 'Airy 与手机互联的五个交互演示'], ['使用指南', 'Airy、权限、主题与快捷键']],
       foot: '轻量 SSH，AI 加持', scheme: '深色模式', rel: '发布', issues: '问题反馈', buddy: '换个主题',
     },
   };
-  const DOC_LINKS = ['#readme', 'blob/main/README.md#get-sshairy', null];
+  const DOC_LINKS = ['#readme', 'blob/main/README.md#get-sshairy', 'cases.html', null];
 
   const root = document.documentElement;
   const $ = (sel, el = document) => el.querySelector(sel), $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -253,9 +253,12 @@
       const size = find(d.download, name);
       return `<tr class="${name === 'Sshairy' ? 'me' : ''}"><td>${name}</td><td>${s.toFixed(2)} ${t.sec}</td><td>${find(d.memory, name).toFixed(1)} MiB</td><td>${size ? size.toFixed(1) + ' MiB' : '–'}</td></tr>`;
     }).join('')}</table>`;
-    $('#docCards').innerHTML = t.docs.map(([title, text], i) => DOC_LINKS[i]
-      ? `<a class="doc" style="--i:${i}" href="${link(DOC_LINKS[i])}"><b>${title}</b><span>${text}</span><em>${t.read} →</em></a>`
-      : `<div class="doc" style="--i:${i}"><b>${title}</b><span>${text}</span><em>${t.soon}</em></div>`).join('');
+    $('#docCards').innerHTML = t.docs.map(([title, text], i) => {
+      const to = DOC_LINKS[i];
+      if (!to) return `<div class="doc" style="--i:${i}"><b>${title}</b><span>${text}</span><em>${t.soon}</em></div>`;
+      const local = to.endsWith('.html');
+      return `<a class="doc" style="--i:${i}" href="${local ? to : link(to)}"><b>${title}</b><span>${text}</span><em>${local ? t.watch : t.read} →</em></a>`;
+    }).join('');
     // The visitor's platform leads the download cards.
     const latest = link('releases/latest');
     $('#osCards').innerHTML = [['win', 'Windows', t.winP], ['mac', 'macOS', t.macP], ['linux', 'Linux', t.linuxP], ['android', 'Android', t.androidP]]
