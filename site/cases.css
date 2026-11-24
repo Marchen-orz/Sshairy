@@ -1,0 +1,60 @@
+/* Dedicated use-cases showcase page. Inherits theme/mode tokens and nav/footer layout from site.css. */
+.cases-hero{position:relative;isolation:isolate;padding:134px 0 42px;overflow:hidden}
+.cases-hero h1{font-size:clamp(42px,6vw,78px)}
+.cases-hero .lede{margin-top:18px;max-width:640px}
+
+.jump{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
+.jump a{display:inline-flex;align-items:center;height:38px;padding:0 16px;border-radius:99px;background:rgb(var(--card) / .72);color:var(--muted);font:500 14.5px var(--sans);text-decoration:none;white-space:nowrap;box-shadow:inset 0 0 0 1px rgb(var(--edge) / .08);transition:color .2s,background .2s,transform .2s}
+.jump a:hover{color:var(--ink);background:rgb(var(--card));transform:translateY(-1px)}
+.jump a[aria-current="true"]{background:var(--ink);color:var(--on-ink);box-shadow:none}
+
+.case-band{padding:clamp(48px,6vw,84px) 0}
+.case-head{max-width:740px}
+.case-head h2{font-size:clamp(28px,3.8vw,48px)}
+.case-head .lede{margin-top:12px;max-width:680px}
+
+.case-player{margin-top:28px}
+.case-frame{position:relative;width:100%;aspect-ratio:16 / 9;border-radius:26px;overflow:hidden;cursor:pointer;user-select:none;background:var(--b-surface);box-shadow:0 0 0 1px rgb(var(--edge) / .08),0 40px 80px -36px color-mix(in srgb,var(--b-primary) 40%,rgb(var(--shade) / .6))}
+.case-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;
+  background:radial-gradient(1400px 820px at 88% -8%,color-mix(in srgb,var(--b-ice) calc(46% * var(--glow)),transparent),transparent 70%),radial-gradient(1200px 820px at -4% 104%,color-mix(in srgb,var(--b-accent) calc(42% * var(--glow)),transparent),transparent 70%),var(--b-surface)}
+.case-stage *{transition:none!important;animation:none!important}
+.case-ui>*{position:absolute}
+.case-key{position:absolute;right:112px;bottom:34px;display:flex;align-items:center;gap:10px;height:62px;padding:0 22px;border-radius:16px;background:rgb(var(--card));font:600 26px var(--sans);color:var(--ink);box-shadow:inset 0 -4px 0 rgb(var(--edge) / .14),0 0 0 1.5px rgb(var(--edge) / .14),0 20px 40px -16px rgb(var(--shade) / .45);opacity:0;z-index:20;pointer-events:none}
+.case-ptr{position:absolute;left:0;top:0;z-index:30;filter:drop-shadow(0 4px 6px rgba(15,35,70,.35));opacity:0;pointer-events:none}
+.case-ptr path{fill:#1F3A5F;stroke:#fff;stroke-width:1.8;stroke-linejoin:round}
+[data-scheme="dark"] .case-ptr path{fill:#0B0E13;stroke:#E8EDF4}
+.case-tap{position:absolute;left:0;top:0;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:rgb(var(--edge) / .28);box-shadow:0 0 0 3px rgb(var(--card) / .88);z-index:30;opacity:0;pointer-events:none}
+
+/* CSS zoom also scales an element's own left/top, so each window's position is divided by its zoom. */
+.c-task .win{--z:1.8;left:calc(132px / 1.8);top:calc(162px / 1.8)}
+.c-fix .win{--z:1.8;left:calc(186px / 1.8);top:calc(180px / 1.8)}
+.c-link .win,.c-pair .win,.c-handoff .win{--z:1.45;left:calc(96px / 1.45);top:calc(134px / 1.45)}
+.c-link .ph{left:1262px;top:124px;filter:drop-shadow(0 34px 44px rgba(31,58,95,.3))}
+.c-link .ph .sa-phone{zoom:1.5}
+.c-pair .ph,.c-handoff .ph{left:1300px;top:28px;filter:drop-shadow(0 30px 40px rgba(31,58,95,.3))}
+.c-pair .ph>div,.c-handoff .ph>div{position:absolute;left:0;top:0}
+.c-pair .ph .sa-phone,.c-handoff .ph .sa-phone{zoom:1.25}
+.c-pair .sa-dim{z-index:4}
+.c-pair .sa-pw{position:absolute;left:50%;top:50%;z-index:5;box-shadow:0 0 0 1px var(--border-subtle),0 24px 60px -12px rgba(15,35,70,.35)}
+.c-pair .lkn{margin:0 14px;font-size:12px;color:var(--text-secondary)}
+.c-handoff .sa-tab.off svg{display:none}
+.c-handoff .sa-prow.held{background:color-mix(in srgb,var(--primary) 10%,var(--surface))}
+.spin{flex:none;color:var(--primary)}
+
+.case-bar{display:flex;align-items:center;gap:12px;margin-top:14px;padding:8px 12px;border-radius:99px;background:rgb(var(--card) / .76);box-shadow:inset 0 0 0 1px rgb(var(--card) / .9),0 0 0 1px rgb(var(--edge) / .07)}
+.case-ctl{display:grid;place-items:center;flex:none;width:34px;height:34px;padding:0;border:0;border-radius:50%;background:rgb(var(--edge) / .06);color:var(--ink);cursor:pointer;transition:background .2s,transform .2s}
+.case-ctl:hover{background:rgb(var(--edge) / .12);transform:scale(1.05)}
+.case-ctl[data-act="toggle"] .ic-play{display:none}
+.case-player.paused .case-ctl[data-act="toggle"] .ic-pause{display:none}
+.case-player.paused .case-ctl[data-act="toggle"] .ic-play{display:block}
+.case-scrub{flex:1;min-width:0;height:6px;margin:0;border-radius:99px;appearance:none;-webkit-appearance:none;background:linear-gradient(90deg,var(--b-primary) var(--p,0%),rgb(var(--edge) / .14) var(--p,0%));cursor:pointer}
+.case-scrub::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--ink);border:2px solid rgb(var(--card));box-shadow:0 2px 6px rgb(var(--shade) / .35);cursor:pointer}
+.case-scrub::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ink);border:2px solid rgb(var(--card));box-shadow:0 2px 6px rgb(var(--shade) / .35);cursor:pointer}
+.case-time{flex:none;min-width:74px;text-align:right;font:500 13px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+
+@media (max-width:620px){
+  .cases-hero{padding:112px 0 32px}
+  .case-frame{border-radius:16px}
+  .case-bar{gap:8px;padding:6px 10px}
+  .case-time{min-width:64px;font-size:12px}
+}

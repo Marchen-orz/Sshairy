@@ -7,7 +7,7 @@
   const T = {
     en: {
       title: 'Sshairy · Lightweight SSH. Powered by AI.',
-      nTour: 'Tour', nLink: 'Link', nPerf: 'Performance', nDocs: 'Docs', nGet: 'Download',
+      nTour: 'Tour', nLink: 'Link', nCases: 'Use cases', nPerf: 'Performance', nDocs: 'Docs', nGet: 'Download',
       h1a: 'Lightweight SSH.', h1b: 'Powered by AI.',
       lede: 'Terminals, SFTP, tunnels and server monitoring in one modern native window. Airy works right in your terminal, and your phone links in to mirror sessions and approve actions.',
       dl: { win: 'Download for Windows', mac: 'Download for macOS', linux: 'Download for Linux', android: 'Download for Android' }, dlAlt: 'Android', src: 'View source',
@@ -30,6 +30,14 @@
       hints: ['Read-only tools, and you approve each read.', 'You approve every read and every command. The default.', 'A separate model reviews each action and asks you when unsure.', 'Reads, runs and shares results without asking.'],
       linkH: 'Your servers, <span class="k-serif">in your</span> pocket.',
       linkP: 'Mirror desktop sessions, connect through the desktop, swap files and approve Airy from your phone. Pairing takes one scan, and the link is end-to-end encrypted.',
+      casesH: 'See it <span class="k-serif">in</span> action.', casesAll: 'Watch all 5 →', watch: 'Watch',
+      cases: [
+        ['task', 'spark', 'Ask at the prompt', 'Plain language turns into ✦ steps and commands, run one Enter at a time.'],
+        ['fix', 'term', 'Fix it, finish it', 'One click fixes a failed command; ghost text completes the next line.'],
+        ['link', 'shield', 'Approve from your phone', 'Mirror the desktop session and answer Airy’s approval with one tap.'],
+        ['pair', 'phone', 'Scan once, bring your setup', 'Pair by QR and sync hosts, snippets, keys and approved passwords.'],
+        ['handoff', 'link', 'Desktop to phone, and back', 'Open or connect desktop tabs from your phone and type on both screens.'],
+      ],
       replay: 'Replay', themesH: 'Six ways to feel at home.', light: 'Light', dark: 'Dark', theme: 'Theme',
       names: ['Ice Blue / Mint', 'Mint Green', 'Violet', 'Sunset Orange', 'Deep Sea Blue', 'Sakura Pink'],
       perfH: 'Less waiting. More working.',
@@ -48,7 +56,7 @@
     },
     zh: {
       title: 'Sshairy · 轻量 SSH，AI 加持',
-      nTour: '导览', nLink: '互联', nPerf: '性能', nDocs: '文档', nGet: '下载',
+      nTour: '导览', nLink: '互联', nCases: '使用案例', nPerf: '性能', nDocs: '文档', nGet: '下载',
       h1a: '轻量 SSH', h1b: 'AI 加持',
       lede: '终端、SFTP、端口转发和服务器监控收进同一个现代原生窗口；Airy 直接在终端里干活，手机扫码互联，随时镜像会话、批准操作',
       dl: { win: '下载 Windows 版', mac: '下载 macOS 版', linux: '下载 Linux 版', android: '下载 Android 版' }, dlAlt: 'Android 版', src: '查看源码',
@@ -71,6 +79,14 @@
       hints: ['只用只读工具，每次读取由你批准', '读取和命令都由你批准，默认模式', '由另一个模型审核每个操作，拿不准时再问你', '读取、执行、使用结果，全程不再询问'],
       linkH: '服务器，装进口袋',
       linkP: '在手机上镜像电脑会话、经电脑连接主机、互传文件、批准 Airy 的操作；扫码即可配对，通道端到端加密',
+      casesH: '看看怎么用', casesAll: '查看全部 5 个 →', watch: '查看演示',
+      cases: [
+        ['task', 'spark', '一句话，终端自己查', '提示符里写需求，Airy 拆成 ✦ 步骤并填好命令，逐条回车'],
+        ['fix', 'term', '打错了一键修，没打完帮你补', '失败命令一键修复，停顿片刻 AI 灰字把后半句接在光标后'],
+        ['link', 'shield', '不在电脑前，手机上批', '手机实时镜像电脑终端，Airy 的操作请求一点就批'],
+        ['pair', 'phone', '扫一下，配置全带走', '扫码配对，主机、片段、信任密钥一键同步，密码需在电脑确认'],
+        ['handoff', 'link', '电脑上的会话，手机接着用', '点开待连接标签或长按主机，电脑连接，手机镜像并直接输入'],
+      ],
       replay: '重播', themesH: '六种配色，换个心情', light: '浅色', dark: '深色', theme: '主题',
       names: ['冰蓝薄荷', '薄荷绿', '紫罗兰', '落日橙', '深海蓝', '樱花粉'],
       perfH: '打开就用',
@@ -222,6 +238,7 @@
     $('#stats').innerHTML = t.stats.map(([n, unit, label]) => `<div class="stat"><b><span data-n="${n}">${n}</span><small>${unit}</small></b><span>${label}</span></div>`).join('');
     $('#tabs').innerHTML = t.tabs.map((label, i) => `<button type="button" role="tab" aria-selected="${i === tour}">${label}</button>`).join('');
     $('#feats').innerHTML = t.feats.map(([icon, title, text], i) => `<div class="feat" style="--i:${i}"><i>${SshairyMock.icon(icon, 20)}</i><h3>${title}</h3><p>${text}</p></div>`).join('');
+    $('#caseCards').innerHTML = t.cases.map(([id, icon, title, text], i) => `<a class="case-card" style="--i:${i}" href="cases.html#${id}"><i>${SshairyMock.icon(icon, 20)}</i><b>${title}</b><span>${text}</span><em>${t.watch} →</em></a>`).join('');
     $('#ways').innerHTML = t.ways.map(([title, text]) => `<li><b>${title}</b><span>${text}</span></li>`).join('');
     $('#modes').innerHTML = t.modes.map((label, i) => `<button type="button" aria-pressed="${i === mode}">${label}</button>`).join('');
     $('#modeHint').textContent = t.hints[mode];
