@@ -38,53 +38,57 @@ class LinkSettings extends ConsumerStatefulWidget {
 class _LinkSettingsState extends ConsumerState<LinkSettings> {
   final _portController = TextEditingController();
   final _nameController = TextEditingController();
-  late bool _enabled;
-  late bool _discovery;
-  late bool _syncedEnabled;
-  late bool _syncedDiscovery;
+  final _portFocus = FocusNode();
+  final _nameFocus = FocusNode();
+  Timer? _portTimer;
+  Timer? _nameTimer;
+  Timer? _noticeTimer;
   late String _syncedPort;
   late String _syncedName;
-  bool _saving = false;
   String? _notice;
+  bool _noticeError = false;
 
   @override
   void initState() {
     super.initState();
     final settings = ref.read(settingsProvider);
-    _enabled = _syncedEnabled = settings.get(SettingKeys.linkEnabled);
-    _discovery = _syncedDiscovery = settings.get(SettingKeys.linkDiscovery);
     _syncedPort = '${settings.get(SettingKeys.linkPort)}';
     _syncedName = settings.get(SettingKeys.linkDeviceName) ?? '';
     _portController.text = _syncedPort;
     _nameController.text = _syncedName;
+    _portFocus.addListener(_onPortFocusChange);
+    _nameFocus.addListener(_onNameFocusChange);
   }
 
   @override
   void dispose() {
+    _portTimer?.cancel();
+    _nameTimer?.cancel();
+    _noticeTimer?.cancel();
+    _portFocus
+      ..removeListener(_onPortFocusChange)
+      ..dispose();
+    _nameFocus
+      ..removeListener(_onNameFocusChange)
+      ..dispose();
     _portController.dispose();
     _nameController.dispose();
     super.dispose();
   }
 
   void _syncExternal(Settings settings) {
-    final enabled = settings.get(SettingKeys.linkEnabled);
-    final discovery = settings.get(SettingKeys.linkDiscovery);
     final port = '${settings.get(SettingKeys.linkPort)}';
     final name = settings.get(SettingKeys.linkDeviceName) ?? '';
-    if (enabled != _syncedEnabled) {
-      if (_enabled == _syncedEnabled) _enabled = enabled;
-      _syncedEnabled = enabled;
-    }
-    if (discovery != _syncedDiscovery) {
-      if (_discovery == _syncedDiscovery) _discovery = discovery;
-      _syncedDiscovery = discovery;
-    }
     if (port != _syncedPort) {
-      if (_portController.text.trim() == _syncedPort) _portController.text = port;
+      if (!_portFocus.hasFocus || _portController.text.trim() == _syncedPort) {
+        _portController.text = port;
+      }
       _syncedPort = port;
     }
     if (name != _syncedName) {
-      if (_nameController.text.trim() == _syncedName) _nameController.text = name;
+      if (!_nameFocus.hasFocus || _nameController.text.trim() == _syncedName) {
+        _nameController.text = name;
+      }
       _syncedName = name;
     }
   }
@@ -98,58 +102,143 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
 
   bool get _nameValid => SettingKeys.linkDeviceName.accepts(_trimmedName.isEmpty ? null : _trimmedName);
 
-  bool _isDirty(Settings settings) =>
-      _enabled != settings.get(SettingKeys.linkEnabled) ||
-      _discovery != settings.get(SettingKeys.linkDiscovery) ||
-      _portController.text.trim() != '${settings.get(SettingKeys.linkPort)}' ||
-      _trimmedName != (settings.get(SettingKeys.linkDeviceName) ?? '');
-
-  bool _canSave(Settings settings) => !_saving && _isDirty(settings) && _parsedPort != null && _nameValid;
-
-  void _reset(Settings settings) {
-    setState(() {
-      _enabled = _syncedEnabled = settings.get(SettingKeys.linkEnabled);
-      _discovery = _syncedDiscovery = settings.get(SettingKeys.linkDiscovery);
-      _syncedPort = '${settings.get(SettingKeys.linkPort)}';
-      _syncedName = settings.get(SettingKeys.linkDeviceName) ?? '';
-      _portController.text = _syncedPort;
-      _nameController.text = _syncedName;
-    });
-  }
-
-  void _showNotice(String text) {
+  void _showNotice(String text, {bool error = false}) {
     if (!mounted) return;
-    setState(() => _notice = text);
-    Future<void>.delayed(const Duration(seconds: 3), () {
-      if (mounted && _notice == text) setState(() => _notice = null);
+    _noticeTimer?.cancel();
+    setState(() {
+      _notice = text;
+      _noticeError = error;
+    });
+    _noticeTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _notice == text) {
+        setState(() {
+          _notice = null;
+          _noticeError = false;
+        });
+      }
     });
   }
 
-  Future<void> _save() async {
+  Map<String, Object?> _pendingTextUpdates() {
     final settings = ref.read(settingsProvider);
-    if (!_canSave(settings)) return;
-    final port = _parsedPort!;
+    final updates = <String, Object?>{};
+    final port = _parsedPort;
+    if (port != null && port != settings.get(SettingKeys.linkPort)) {
+      updates[SettingKeys.linkPort.key] = port;
+    }
     final name = _trimmedName;
-    setState(() => _saving = true);
+    if (_nameValid && name != (settings.get(SettingKeys.linkDeviceName) ?? '')) {
+      updates[SettingKeys.linkDeviceName.key] = name.isEmpty ? null : name;
+    }
+    return updates;
+  }
+
+  Future<void> _applyPatch(Map<String, Object?> updates) async {
+    if (updates.isEmpty) return;
+    final notifier = ref.read(settingsProvider.notifier);
     try {
-      final result = await ref.read(settingsProvider.notifier).patch({
-        SettingKeys.linkEnabled.key: _enabled,
-        SettingKeys.linkPort.key: port,
-        SettingKeys.linkDiscovery.key: _discovery,
-        SettingKeys.linkDeviceName.key: name.isEmpty ? null : name,
-      });
+      final result = await notifier.patch(updates);
       if (!mounted) return;
       if (result is Ok<void>) {
-        _syncedEnabled = _enabled;
-        _syncedDiscovery = _discovery;
-        _syncedPort = '$port';
-        _syncedName = name;
-        _portController.text = _syncedPort;
-        _nameController.text = _syncedName;
+        if (updates.containsKey(SettingKeys.linkPort.key)) {
+          _syncedPort = '${updates[SettingKeys.linkPort.key]}';
+        }
+        if (updates.containsKey(SettingKeys.linkDeviceName.key)) {
+          _syncedName = (updates[SettingKeys.linkDeviceName.key] as String?) ?? '';
+        }
+      } else {
+        _showNotice(AppLocalizations.of(context).errSave, error: true);
       }
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    } on Object {
+      if (mounted) _showNotice(AppLocalizations.of(context).errSave, error: true);
     }
+  }
+
+  Future<void> _saveBool(SettingDef<bool> setting, bool value) {
+    _portTimer?.cancel();
+    _nameTimer?.cancel();
+    final updates = _pendingTextUpdates()..[setting.key] = value;
+    return _applyPatch(updates);
+  }
+
+  void _schedulePortSave() {
+    _portTimer?.cancel();
+    final parsed = _parsedPort;
+    if (parsed == null || parsed == ref.read(settingsProvider).get(SettingKeys.linkPort)) return;
+    _portTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) unawaited(_commitPort());
+    });
+  }
+
+  void _scheduleNameSave() {
+    _nameTimer?.cancel();
+    final name = _trimmedName;
+    if (!_nameValid || name == (ref.read(settingsProvider).get(SettingKeys.linkDeviceName) ?? '')) return;
+    _nameTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) unawaited(_commitName());
+    });
+  }
+
+  Future<void> _commitPort() {
+    _portTimer?.cancel();
+    final parsed = _parsedPort;
+    if (parsed == null || parsed == ref.read(settingsProvider).get(SettingKeys.linkPort)) return Future.value();
+    return _applyPatch({SettingKeys.linkPort.key: parsed});
+  }
+
+  Future<void> _commitName() {
+    _nameTimer?.cancel();
+    final name = _trimmedName;
+    if (!_nameValid || name == (ref.read(settingsProvider).get(SettingKeys.linkDeviceName) ?? '')) {
+      return Future.value();
+    }
+    return _applyPatch({SettingKeys.linkDeviceName.key: name.isEmpty ? null : name});
+  }
+
+  void _onPortFocusChange() {
+    if (_portFocus.hasFocus || !mounted) return;
+    _portTimer?.cancel();
+    final parsed = _parsedPort;
+    if (parsed == null) {
+      final saved = '${ref.read(settingsProvider).get(SettingKeys.linkPort)}';
+      setState(() {
+        _syncedPort = saved;
+        _portController.text = saved;
+      });
+      return;
+    }
+    if (parsed != ref.read(settingsProvider).get(SettingKeys.linkPort)) {
+      unawaited(_commitPort());
+    }
+  }
+
+  void _onNameFocusChange() {
+    if (_nameFocus.hasFocus || !mounted) return;
+    _nameTimer?.cancel();
+    if (!_nameValid) {
+      final saved = ref.read(settingsProvider).get(SettingKeys.linkDeviceName) ?? '';
+      setState(() {
+        _syncedName = saved;
+        _nameController.text = saved;
+      });
+      return;
+    }
+    final name = _trimmedName;
+    if (_nameController.text != name) _nameController.text = name;
+    if (name != (ref.read(settingsProvider).get(SettingKeys.linkDeviceName) ?? '')) {
+      unawaited(_commitName());
+    }
+  }
+
+  Future<void> _flushPending() {
+    _portTimer?.cancel();
+    _nameTimer?.cancel();
+    return _applyPatch(_pendingTextUpdates());
+  }
+
+  Future<void> _close() async {
+    await _flushPending();
+    if (mounted) await Navigator.maybePop(context);
   }
 
   Future<void> _offerUpdate(LinkPeer peer) async {
@@ -245,13 +334,15 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
     final settings = ref.watch(settingsProvider);
     _syncExternal(settings);
     final host = ref.watch(linkHostControllerProvider);
+    final enabled = settings.get(SettingKeys.linkEnabled);
+    final discovery = settings.get(SettingKeys.linkDiscovery);
     final savedName = settings.get(SettingKeys.linkDeviceName) ?? '';
-    final dirty = _isDirty(settings);
-    final canSave = _canSave(settings);
     final portError = _parsedPort == null ? '1024–65535' : null;
 
     return PopScope(
-      canPop: !_saving,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) unawaited(_flushPending());
+      },
       child: ListenableBuilder(
         listenable: host,
         builder: (context, _) {
@@ -262,11 +353,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
               Row(
                 children: [
                   Expanded(child: Text(l.linkTitle, style: theme.textTheme.titleMedium)),
-                  IconButton(
-                    tooltip: l.close,
-                    onPressed: _saving ? null : () => Navigator.maybePop(context),
-                    icon: const Icon(Icons.close),
-                  ),
+                  IconButton(tooltip: l.close, onPressed: () => unawaited(_close()), icon: const Icon(Icons.close)),
                 ],
               ),
               const SizedBox(height: Space.sm),
@@ -287,7 +374,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                           children: [
                             InkWell(
                               borderRadius: BorderRadius.circular(Radii.control),
-                              onTap: _saving ? null : () => setState(() => _enabled = !_enabled),
+                              onTap: () => unawaited(_saveBool(SettingKeys.linkEnabled, !enabled)),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(vertical: Space.xs),
                                 child: Row(
@@ -318,8 +405,8 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                                     const SizedBox(width: Space.md),
                                     AppSwitch(
                                       key: const ValueKey('link-enabled-switch'),
-                                      value: _enabled,
-                                      onChanged: _saving ? null : (v) => setState(() => _enabled = v),
+                                      value: enabled,
+                                      onChanged: (v) => unawaited(_saveBool(SettingKeys.linkEnabled, v)),
                                     ),
                                   ],
                                 ),
@@ -335,13 +422,12 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                                     child: TextField(
                                       key: const ValueKey('link-name-field'),
                                       controller: _nameController,
-                                      enabled: !_saving,
+                                      focusNode: _nameFocus,
                                       inputFormatters: [LengthLimitingTextInputFormatter(64)],
-                                      decoration: AppFormField.decoration(
-                                        context,
-                                      ).copyWith(hintText: savedName.isEmpty ? host.deviceName : null),
-                                      onChanged: (_) => setState(() {}),
-                                      onSubmitted: (_) => unawaited(_save()),
+                                      decoration: AppFormField.decoration(context)
+                                          .copyWith(hintText: savedName.isEmpty ? host.deviceName : null),
+                                      onChanged: (_) => _scheduleNameSave(),
+                                      onSubmitted: (_) => unawaited(_commitName()),
                                     ),
                                   ),
                                 ),
@@ -353,15 +439,18 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                                     child: TextField(
                                       key: const ValueKey('link-port-field'),
                                       controller: _portController,
-                                      enabled: !_saving,
+                                      focusNode: _portFocus,
                                       keyboardType: TextInputType.number,
                                       inputFormatters: [
                                         FilteringTextInputFormatter.digitsOnly,
                                         LengthLimitingTextInputFormatter(5),
                                       ],
                                       decoration: AppFormField.decoration(context).copyWith(errorText: portError),
-                                      onChanged: (_) => setState(() {}),
-                                      onSubmitted: (_) => unawaited(_save()),
+                                      onChanged: (_) {
+                                        setState(() {});
+                                        _schedulePortSave();
+                                      },
+                                      onSubmitted: (_) => unawaited(_commitPort()),
                                     ),
                                   ),
                                 ),
@@ -370,7 +459,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                             const SizedBox(height: Space.md),
                             InkWell(
                               borderRadius: BorderRadius.circular(Radii.control),
-                              onTap: _saving ? null : () => setState(() => _discovery = !_discovery),
+                              onTap: () => unawaited(_saveBool(SettingKeys.linkDiscovery, !discovery)),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(vertical: Space.xs),
                                 child: Row(
@@ -379,8 +468,8 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                                     const SizedBox(width: Space.md),
                                     AppSwitch(
                                       key: const ValueKey('link-discovery-switch'),
-                                      value: _discovery,
-                                      onChanged: _saving ? null : (v) => setState(() => _discovery = v),
+                                      value: discovery,
+                                      onChanged: (v) => unawaited(_saveBool(SettingKeys.linkDiscovery, v)),
                                     ),
                                   ],
                                 ),
@@ -401,7 +490,10 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                                     ActionChip(
                                       visualDensity: VisualDensity.compact,
                                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      label: Text('$addr:${host.port}', style: mono(context, theme.textTheme.labelSmall)),
+                                      label: Text(
+                                        '$addr:${host.port}',
+                                        style: mono(context, theme.textTheme.labelSmall),
+                                      ),
                                       onPressed: () {
                                         unawaited(Clipboard.setData(ClipboardData(text: '$addr:${host.port}')));
                                         _showNotice(l.linkCopied);
@@ -512,10 +604,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                       Text(l.linkPairedDevices, style: theme.textTheme.titleSmall),
                       const SizedBox(height: Space.sm),
                       if (host.peers.isEmpty)
-                        Text(
-                          l.linkNoPeers,
-                          style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                        )
+                        Text(l.linkNoPeers, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))
                       else
                         for (final peer in host.peers)
                           _PeerCard(
@@ -533,38 +622,14 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                   ),
                 ),
               ),
-              const Divider(height: Space.lg),
-              Row(
-                children: [
-                  Expanded(
-                    child: _notice == null
-                        ? const SizedBox.shrink()
-                        : Text(
-                            _notice!,
-                            style: theme.textTheme.bodySmall?.copyWith(color: scheme.primary),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                  ),
-                  if (dirty) ...[
-                    TextButton(
-                      key: const ValueKey('link-reset'),
-                      onPressed: _saving ? null : () => _reset(settings),
-                      child: Text(l.cancel),
-                    ),
-                    const SizedBox(width: Space.sm),
-                  ],
-                  FilledButton(
-                    key: const ValueKey('link-save'),
-                    onPressed: canSave ? () => unawaited(_save()) : null,
-                    child: _saving
-                        ? const SizedBox.square(
-                            dimension: Space.lg,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(l.save),
-                  ),
-                ],
-              ),
+              if (_notice != null) ...[
+                const Divider(height: Space.lg),
+                Text(
+                  _notice!,
+                  style: theme.textTheme.bodySmall?.copyWith(color: _noticeError ? scheme.error : scheme.primary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ],
           );
         },

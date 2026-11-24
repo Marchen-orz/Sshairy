@@ -93,6 +93,7 @@ extension _InputOverlays on _TerminalPaneState {
                     if (!_historyPinned) _closeHistory();
                     _focus.requestFocus();
                   },
+                  onCopy: (text) => unawaited(_copyText(text)),
                 ),
               ),
             ),
@@ -138,12 +139,14 @@ class _CommandHistoryPopup extends StatefulWidget {
     required this.onResizeStart,
     required this.onResize,
     required this.onInserted,
+    required this.onCopy,
   });
 
   final TerminalSession session;
   final bool active, pinned;
   final VoidCallback onClose, onOutside, onPin, onDragStart, onResizeStart, onInserted;
   final ValueChanged<Offset> onDrag, onResize;
+  final ValueChanged<String> onCopy;
 
   @override
   State<_CommandHistoryPopup> createState() => _CommandHistoryPopupState();
@@ -352,7 +355,7 @@ class _CommandHistoryPopupState extends State<_CommandHistoryPopup> {
                                     tooltip: l.copy,
                                     icon: const Icon(Icons.copy_outlined, size: 14),
                                     visualDensity: VisualDensity.compact,
-                                    onPressed: () => Clipboard.setData(ClipboardData(text: text)),
+                                    onPressed: () => widget.onCopy(text),
                                   ),
                                   IconButton(
                                     tooltip: l.commandHistoryInsert,

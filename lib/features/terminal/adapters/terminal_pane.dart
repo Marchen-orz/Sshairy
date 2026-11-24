@@ -84,6 +84,8 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   var _touchAlt = TouchModifierState.off;
   double? _pinchBaseFontSize;
   double? _liveFontSize;
+  Timer? _copyNoticeTimer;
+  var _copyNoticeVisible = false;
 
   TerminalSession get _session => widget.session;
   Terminal get _terminal => _session._terminal;
@@ -232,6 +234,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     _session.removeListener(_focusWhenConnected);
     _session.viewed = false;
     _cancelCandidateTranslations();
+    _copyNoticeTimer?.cancel();
     _candidateScroll.removeListener(_scheduleCandidateTranslations);
     _candidateScroll.dispose();
     _controller.dispose();
@@ -364,10 +367,28 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     return range == null ? null : _terminal.buffer.getText(range);
   }
 
+  Future<void> _copyText(String text) async {
+    if (text.isEmpty) return;
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+    } on Object {
+      return;
+    }
+    if (mounted) _showCopyNotice();
+  }
+
+  void _showCopyNotice() {
+    _copyNoticeTimer?.cancel();
+    if (!_copyNoticeVisible) setState(() => _copyNoticeVisible = true);
+    _copyNoticeTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _copyNoticeVisible = false);
+    });
+  }
+
   Future<void> _copy() async {
     final text = _selectedText;
     if (text != null && text.isNotEmpty) {
-      await Clipboard.setData(ClipboardData(text: text));
+      await _copyText(text);
     }
   }
 
@@ -442,7 +463,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
       items: [
         if (link != null) ...[
           item(l.openLink, Icons.open_in_new, () => openExternal(link)),
-          item(l.copyLink, Icons.link, () => Clipboard.setData(ClipboardData(text: link))),
+          item(l.copyLink, Icons.link, () => unawaited(_copyText(link))),
           const AppMenuDivider(),
         ],
         item(l.copy, Icons.copy_outlined, _copy, enabled: hasSelection),
@@ -651,6 +672,22 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
               if ((widget.active || _historyPinned) && _historyOpen) _historyOverlay(),
               if (widget.active && _composerOpen) _composerOverlay(),
               if (widget.active && _inlineAiOpen) _inlineAiOverlay(),
+              if (_copyNoticeVisible)
+                Positioned(
+                  top: Space.md,
+                  left: Space.md,
+                  right: Space.md,
+                  child: IgnorePointer(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Entrance(
+                        offset: const Offset(0, -4),
+                        duration: Motion.quick,
+                        child: _CopyNotice(label: l.linkCopied),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ],
         );
@@ -779,4 +816,39 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
 
   String _message(AppLocalizations l, TerminalSession s) =>
       s.error == null ? l.disconnected : connectErrorText(l, s.error);
+}
+
+class _CopyNotice extends StatelessWidget {
+  const _CopyNotice({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      liveRegion: true,
+      child: DecoratedBox(
+        key: const ValueKey('terminal-copy-notice'),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHigh.withValues(alpha: .94),
+          borderRadius: BorderRadius.circular(Radii.pill),
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: .7)),
+          boxShadow: overlayShadow(theme.brightness),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.xs),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_rounded, size: 14, color: scheme.primary),
+              const SizedBox(width: Space.xs),
+              Text(label, style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurface)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
