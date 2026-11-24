@@ -34,8 +34,11 @@ abstract final class WorkspaceSize {
 abstract final class MobileSize {
   static const touchTarget = 48.0;
   static const contentMaxWidth = 720.0;
-  static const wideContentMaxWidth = 960.0;
+  static const wideContentMaxWidth = 1120.0;
   static const gridBreakpoint = 680.0;
+  static const railBreakpoint = 840.0;
+  static const twoColumnBreakpoint = 840.0;
+  static const threeColumnBreakpoint = 1040.0;
 
   /// Horizontal padding that keeps scroll surfaces full-width while centering content on tablets.
   static double contentInset(double availableWidth, {double maxWidth = contentMaxWidth}) =>

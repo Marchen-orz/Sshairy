@@ -12,6 +12,7 @@ import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
+import 'package:sshairy/features/link/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/workspace/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
@@ -54,6 +55,33 @@ class _TestShellChannel implements ShellChannel {
   @override
   void close() {
     if (!_done.isCompleted) _done.complete();
+  }
+}
+
+class _FakeDiscoveredLinkClient extends LinkClientController {
+  _FakeDiscoveredLinkClient({
+    required super.credentials,
+    required super.store,
+    required super.bridge,
+    required List<DiscoveredDesktop> discovered,
+  }) : _fakeDiscovered = discovered;
+
+  final List<DiscoveredDesktop> _fakeDiscovered;
+  ({String host, int port, String code})? lastPairCall;
+
+  @override
+  List<DiscoveredDesktop> get discoveredDesktops => _fakeDiscovered;
+
+  @override
+  Future<bool> pair({
+    required String host,
+    required int port,
+    required String pairingCode,
+    String? expectedPublicKey,
+    String? deviceName,
+  }) async {
+    lastPairCall = (host: host, port: port, code: pairingCode);
+    return true;
   }
 }
 
@@ -121,6 +149,9 @@ void main() {
         await env.container
             .read(hostsProvider.notifier)
             .save(const Host(id: HostId('h2'), label: 'Beta Node', address: '10.0.0.2', username: 'root'));
+        await env.container
+            .read(hostsProvider.notifier)
+            .save(const Host(id: HostId('h3'), label: 'Gamma Node', address: '10.0.0.3', username: 'root'));
       });
 
       await tester.pumpWidget(_wrapApp(WorkspacePage(openPalette: (_) async {}), container: env.container));
@@ -128,7 +159,9 @@ void main() {
 
       final workspaceFinder = find.byKey(const ValueKey('mobile-workspace'));
       expect(workspaceFinder, findsOneWidget);
-      expect(find.byKey(const ValueKey('mobile-bottom-nav')), findsOneWidget);
+      final useRail = size.width >= MobileSize.railBreakpoint;
+      final navFinder = find.byKey(ValueKey(useRail ? 'mobile-nav-rail' : 'mobile-bottom-nav'));
+      expect(navFinder, findsOneWidget);
 
       final wsContext = tester.element(workspaceFinder);
       expect(isCompactWorkspace(wsContext), isTrue);
@@ -139,42 +172,39 @@ void main() {
       final hostsTabRect = tester.getRect(find.byKey(const ValueKey('mobile-hosts-tab')));
       expect(hostsTabRect.top, greaterThanOrEqualTo(32));
 
-      // Hosts render in a 2-column grid on tablets.
+      // Hosts render in a 3-column grid on landscape tablets and 2-column grid on portrait tablets.
       final firstHost = tester.getRect(find.byKey(const ValueKey('mobile-host-h1')));
       final secondHost = tester.getRect(find.byKey(const ValueKey('mobile-host-h2')));
+      final thirdHost = tester.getRect(find.byKey(const ValueKey('mobile-host-h3')));
       expect(firstHost.top, closeTo(secondHost.top, 0.5));
       expect(secondHost.left, greaterThan(firstHost.right));
+      if (useRail) {
+        expect(firstHost.top, closeTo(thirdHost.top, 0.5));
+        expect(thirdHost.left, greaterThan(secondHost.right));
+      } else {
+        expect(thirdHost.top, greaterThan(firstHost.bottom));
+      }
 
-      // Link tab shows mobile-style Link client centered for tablet width.
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const ValueKey('mobile-bottom-nav')),
-          matching: find.byIcon(Icons.phonelink_outlined),
-        ),
-      );
+      // Link tab shows desktop-like 2-column layout on landscape tablets and centered 1-column on portrait tablets.
+      await tester.tap(find.descendant(of: navFinder, matching: find.byIcon(Icons.phonelink_outlined)));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('mobile-link-disconnected')), findsOneWidget);
       expect(find.byKey(const ValueKey('link-scan-qr-button')), findsOneWidget);
       expect(find.byKey(const ValueKey('link-pair-submit')), findsOneWidget);
       final qrRect = tester.getRect(find.byKey(const ValueKey('link-scan-qr-button')));
-      expect(qrRect.width, lessThanOrEqualTo(MobileSize.contentMaxWidth + 0.5));
+      final manualHostRect = tester.getRect(find.byKey(const ValueKey('link-manual-host')));
+      if (useRail) {
+        expect(manualHostRect.left, greaterThan(qrRect.right));
+      } else {
+        expect(qrRect.width, lessThanOrEqualTo(MobileSize.contentMaxWidth + 0.5));
+      }
 
       // Airy and Me tabs switch cleanly on tablet without overflow.
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const ValueKey('mobile-bottom-nav')),
-          matching: find.byIcon(Icons.auto_awesome_outlined),
-        ),
-      );
+      await tester.tap(find.descendant(of: navFinder, matching: find.byIcon(Icons.auto_awesome_outlined)));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('mobile-airy-tab')), findsOneWidget);
 
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const ValueKey('mobile-bottom-nav')),
-          matching: find.byIcon(Icons.person_outline_rounded),
-        ),
-      );
+      await tester.tap(find.descendant(of: navFinder, matching: find.byIcon(Icons.person_outline_rounded)));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('mobile-me-tab')), findsOneWidget);
 
@@ -197,7 +227,7 @@ void main() {
 
       final capsule = find.byKey(const ValueKey('mobile-session-capsule'));
       expect(capsule, findsOneWidget);
-      expect(tester.getRect(capsule).width, lessThanOrEqualTo(MobileSize.contentMaxWidth + 0.5));
+      expect(tester.getRect(capsule).width, lessThanOrEqualTo(MobileSize.wideContentMaxWidth + 0.5));
 
       await tester.tap(capsule);
       await tester.pumpAndSettle();
@@ -207,6 +237,52 @@ void main() {
       expect(backRect.top, greaterThanOrEqualTo(32));
       expect(find.byKey(const ValueKey('touch-key-ctrl')), findsOneWidget);
       expect(find.byKey(const ValueKey('mobile-draft-toggle')), findsOneWidget);
+
+      if (useRail) {
+        expect(find.byKey(const ValueKey('tablet-terminal-tab-strip')), findsOneWidget);
+        expect(find.byKey(const ValueKey('tablet-terminal-add-tab')), findsOneWidget);
+
+        // Open a second session and verify both tabs appear in the top tab bar and can be switched.
+        final secondShell = _TestShellChannel();
+        env.container
+            .read(workspaceProvider.notifier)
+            .openRemote(
+              const LinkTerminalTarget(
+                peerId: 'desktop',
+                peerName: 'PC',
+                remoteId: 'server-2',
+                title: 'Beta Node',
+                targetLabel: 'PC / Beta Node',
+                kind: LinkTerminalKind.proxy,
+              ),
+              (_, _) async => secondShell,
+            );
+        await tester.pumpAndSettle();
+        final tabs = env.container.read(workspaceProvider).tabs;
+        expect(tabs.length, 2);
+        expect(find.byKey(ValueKey('tablet-tab-${tabs[0].id.value}')), findsOneWidget);
+        expect(find.byKey(ValueKey('tablet-tab-${tabs[1].id.value}')), findsOneWidget);
+
+        await tester.tap(find.byKey(ValueKey('tablet-tab-${tabs[0].id.value}')));
+        await tester.pumpAndSettle();
+        expect(env.container.read(workspaceProvider).active, tabs[0].id);
+
+        // Dock Airy and Snippets side panels on landscape tablet.
+        await tester.tap(find.byKey(const ValueKey('mobile-terminal-airy')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tablet-side-airy')), findsOneWidget);
+
+        await tester.tap(find.byKey(const ValueKey('tablet-terminal-snippets')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tablet-side-snippets')), findsOneWidget);
+        expect(find.byKey(const ValueKey('tablet-side-airy')), findsNothing);
+
+        await tester.tap(find.byKey(const ValueKey('tablet-terminal-snippets')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('tablet-side-snippets')), findsNothing);
+      } else {
+        expect(find.byKey(const ValueKey('tablet-terminal-tab-strip')), findsNothing);
+      }
 
       expect(tester.takeException(), isNull);
     }, variant: TargetPlatformVariant.only(TargetPlatform.android));
@@ -235,4 +311,70 @@ void main() {
     expect(find.byKey(const ValueKey('mobile-workspace')), findsNothing);
     expect(tester.takeException(), isNull);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('Tapping an unpaired discovered LAN desktop prompts for pairing code and pairs', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final dir = Directory.systemTemp.createTempSync('sshairy_link_discovered_test_');
+    final creds = _TestLinkCredentials();
+    final store = LinkPeerStore('${dir.path}/peers.json');
+    final baseContainer = ProviderContainer(
+      overrides: [
+        ...appOverrides(),
+        dataDirProvider.overrideWithValue(dir.path),
+        linkCredentialsProvider.overrideWithValue(creds),
+      ],
+    );
+    final fakeClient = _FakeDiscoveredLinkClient(
+      credentials: creds,
+      store: store,
+      bridge: baseContainer.read(linkMobileBridgeProvider),
+      discovered: [
+        DiscoveredDesktop(
+          deviceId: 'pc-1',
+          name: 'Office PC',
+          address: '192.168.31.10',
+          port: 44871,
+          discoveredAt: DateTime(2026),
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [
+        ...appOverrides(),
+        dataDirProvider.overrideWithValue(dir.path),
+        linkCredentialsProvider.overrideWithValue(creds),
+        linkClientControllerProvider.overrideWithValue(fakeClient),
+      ],
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      baseContainer.dispose();
+      await tester.runAsync(() async {
+        try {
+          if (dir.existsSync()) dir.deleteSync(recursive: true);
+        } on FileSystemException {
+          // Windows may briefly hold a file handle during async teardown.
+        }
+      });
+    });
+
+    await tester.pumpWidget(_wrapApp(const Scaffold(body: MobileLinkPage()), container: container));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('link-discovered-pc-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('link-discovered-code-input')), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('link-discovered-code-input')), '123456');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('link-discovered-pair-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(fakeClient.lastPairCall, (host: '192.168.31.10', port: 44871, code: '123456'));
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 }

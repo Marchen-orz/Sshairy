@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -135,8 +136,11 @@ class _MobileApprovalBannerState extends ConsumerState<MobileApprovalBanner> {
   }
 }
 
+enum _TabletSidePanel { airy, snippets }
+
 /// Full-screen immersive terminal route pushed from the mobile shell (docs/MOBILE.md §3.1-3.2).
-/// Keeps sessions alive in the background when popped; collapses header to a floating pill in landscape.
+/// Keeps sessions alive in the background when popped; collapses header to a floating pill on short landscape phones
+/// and switches to a desktop-style tab bar with dockable side panels on wide tablets.
 class MobileTerminalScreen extends ConsumerStatefulWidget {
   const MobileTerminalScreen({super.key});
 
@@ -146,7 +150,10 @@ class MobileTerminalScreen extends ConsumerStatefulWidget {
 
 class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
   final _paneFocus = <PaneId, FocusNode>{};
+  final _tabScroll = ScrollController();
   var _landscapeBarExpanded = false;
+  var _monitorOpen = false;
+  _TabletSidePanel? _rightPanel;
 
   Workspace get _workspace => ref.read(workspaceProvider.notifier);
 
@@ -159,6 +166,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
   @override
   void dispose() {
     unawaited(MobilePlatform.setKeepScreenOn(false));
+    _tabScroll.dispose();
     for (final node in _paneFocus.values) {
       node.dispose();
     }
@@ -184,12 +192,16 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     ),
   );
 
-  void _openAirySheet({String? seed}) {
+  void _seedAiry(String? seed) {
     if (seed != null && seed.trim().isNotEmpty) {
       final draft = ref.read(agentComposerProvider);
       final composer = ref.read(agentComposerProvider.notifier);
       composer.setGoal(draft.goal.isEmpty ? seed : '${draft.goal}\n$seed');
     }
+  }
+
+  void _openAirySheet({String? seed}) {
+    _seedAiry(seed);
     unawaited(_showSheet(heightFactor: 0.72, AgentPanel(onClose: () => Navigator.of(context).pop())));
   }
 
@@ -197,6 +209,80 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
 
   void _openMonitorSheet(Host host) =>
       unawaited(_showSheet(heightFactor: 0.72, MonitorPanel(host: host, active: true)));
+
+  void _closeTab(TabId id) {
+    _workspace.closeTab(id);
+    if (ref.read(workspaceProvider).tabs.isEmpty && mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _openQuickConnectSheet() {
+    final l = AppLocalizations.of(context);
+    final hosts = ref.read(hostsProvider).where((h) => !h.transient).toList();
+    final link = ref.read(linkClientControllerProvider);
+    final desktopSessions = link.connected ? link.desktopSessions : const <LinkSessionSummary>[];
+    unawaited(
+      _showSheet(
+        heightFactor: 0.62,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.sm),
+              child: Text(l.newConnection, style: Theme.of(context).textTheme.titleMedium),
+            ),
+            Expanded(
+              child: ListView(
+                children: [
+                  if (desktopSessions.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, Space.xs),
+                      child: Text(l.linkDesktopTerminals, style: Theme.of(context).textTheme.labelMedium),
+                    ),
+                    for (final entry in desktopSessions)
+                      ListTile(
+                        leading: Icon(entry.isLocal ? Icons.computer_rounded : Icons.desktop_windows_outlined),
+                        title: Text(entry.title, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                          entry.targetLabel,
+                          style: mono(context, Theme.of(context).textTheme.bodySmall),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          link.openMirroredSessionInWorkspace(entry);
+                        },
+                      ),
+                    if (hosts.isNotEmpty) const Divider(),
+                  ],
+                  for (final host in hosts)
+                    ListTile(
+                      leading: const Icon(Icons.dns_outlined),
+                      title: Text(host.title, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        '${host.username}@${host.address}',
+                        style: mono(context, Theme.of(context).textTheme.bodySmall),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _workspace.openHost(host);
+                      },
+                    ),
+                  if (hosts.isEmpty && desktopSessions.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(Space.xl),
+                      child: Center(child: Text(l.noHosts)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _openFilesPage(TerminalSession session, {Host? host, FileLocation? location}) {
     unawaited(
@@ -222,67 +308,77 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     );
   }
 
-  Widget _terminalTools(TerminalSession session, LinkClientController link) => ListenableBuilder(
-    listenable: Listenable.merge([session, link]),
-    builder: (context, _) {
-      final l = AppLocalizations.of(context);
-      final host = session.sshHost, channel = session.linkShellChannel;
-      final remoteMonitor = link.terminalMonitor(channel);
-      final remoteFiles = channel != null && link.terminalFilesAvailable(channel);
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (host != null || remoteFiles)
-            IconButton(
-              key: const ValueKey('mobile-terminal-files'),
-              visualDensity: VisualDensity.compact,
-              tooltip: l.files,
-              icon: const Icon(Icons.folder_outlined, size: 19),
-              onPressed: () {
-                if (host != null) {
-                  _openFilesPage(session, host: host);
-                  return;
-                }
-                final target = session.linkTarget!;
-                final local =
-                    target.kind == LinkTerminalKind.mirror &&
-                    link.desktopSessions.any((entry) => entry.sessionId == target.remoteId && entry.isLocal);
-                _openFilesPage(
-                  session,
-                  location: FileLocation(
-                    id: 'link:terminal:${session.id.value}:${session.shellGeneration}',
-                    label: local ? target.peerName : session.title,
-                    kind: local ? FileLocationKind.computer : FileLocationKind.server,
-                    open: () => link.openTerminalFiles(channel!),
-                    isCurrent: () =>
-                        identical(session.linkShellChannel, channel) && link.terminalFilesAvailable(channel),
-                  ),
-                );
-              },
-            ),
-          if (host != null || remoteMonitor != null)
-            IconButton(
-              key: const ValueKey('mobile-terminal-monitor'),
-              visualDensity: VisualDensity.compact,
-              tooltip: l.monitor,
-              icon: const Icon(Icons.monitor_heart_outlined, size: 19),
-              onPressed: () {
-                if (host != null) {
-                  _openMonitorSheet(host);
-                  return;
-                }
-                unawaited(
-                  _showSheet(
-                    heightFactor: .72,
-                    MonitorPanel.remote(remote: remoteMonitor!, remoteName: session.title, active: true),
-                  ),
-                );
-              },
-            ),
-        ],
+  Widget _terminalTools(TerminalSession session, LinkClientController link, {bool dockMonitor = false}) =>
+      ListenableBuilder(
+        listenable: Listenable.merge([session, link]),
+        builder: (context, _) {
+          final l = AppLocalizations.of(context);
+          final palette = BrandPalette.of(context);
+          final host = session.sshHost, channel = session.linkShellChannel;
+          final remoteMonitor = link.terminalMonitor(channel);
+          final remoteFiles = channel != null && link.terminalFilesAvailable(channel);
+          final monitorActive = dockMonitor && _monitorOpen;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (host != null || remoteFiles)
+                IconButton(
+                  key: const ValueKey('mobile-terminal-files'),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: l.files,
+                  icon: const Icon(Icons.folder_outlined, size: 19),
+                  onPressed: () {
+                    if (host != null) {
+                      _openFilesPage(session, host: host);
+                      return;
+                    }
+                    final target = session.linkTarget!;
+                    final local =
+                        target.kind == LinkTerminalKind.mirror &&
+                        link.desktopSessions.any((entry) => entry.sessionId == target.remoteId && entry.isLocal);
+                    _openFilesPage(
+                      session,
+                      location: FileLocation(
+                        id: 'link:terminal:${session.id.value}:${session.shellGeneration}',
+                        label: local ? target.peerName : session.title,
+                        kind: local ? FileLocationKind.computer : FileLocationKind.server,
+                        open: () => link.openTerminalFiles(channel!),
+                        isCurrent: () =>
+                            identical(session.linkShellChannel, channel) && link.terminalFilesAvailable(channel),
+                      ),
+                    );
+                  },
+                ),
+              if (host != null || remoteMonitor != null)
+                IconButton(
+                  key: const ValueKey('mobile-terminal-monitor'),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: l.monitor,
+                  style: monitorActive
+                      ? IconButton.styleFrom(backgroundColor: palette.primary.withValues(alpha: .14))
+                      : null,
+                  icon: Icon(Icons.monitor_heart_outlined, size: 19, color: monitorActive ? palette.primary : null),
+                  onPressed: () {
+                    if (dockMonitor) {
+                      setState(() => _monitorOpen = !_monitorOpen);
+                      return;
+                    }
+                    if (host != null) {
+                      _openMonitorSheet(host);
+                      return;
+                    }
+                    unawaited(
+                      _showSheet(
+                        heightFactor: .72,
+                        MonitorPanel.remote(remote: remoteMonitor!, remoteName: session.title, active: true),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          );
+        },
       );
-    },
-  );
 
   Future<void> _handoffHost(Host host) async {
     final l = AppLocalizations.of(context);
@@ -294,10 +390,12 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
   }
 
   /// Closes from the sessions sheet, leaving the terminal screen once nothing is open.
-  void _closeFromSheet(BuildContext sheet, VoidCallback close) {
+  void _closeFromSheet(BuildContext sheet, VoidCallback close, {bool popParent = true}) {
     close();
-    Navigator.of(sheet).pop();
-    if (ref.read(workspaceProvider).tabs.isEmpty && mounted) Navigator.of(context).pop();
+    if (popParent) Navigator.of(sheet).pop();
+    if (ref.read(workspaceProvider).tabs.isEmpty && mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _mirrorProxySessionOnDesktop(String hostId) async {
@@ -312,51 +410,53 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     link.openMirroredSessionInWorkspace(summary);
   }
 
-  void _openSessionActions(BuildContext sheet, WorkspaceState state, WorkspaceTab tab) {
+  void _openSessionActions(BuildContext sheet, WorkspaceState state, WorkspaceTab tab, {bool popParent = true}) {
     final l = AppLocalizations.of(context);
     final target = ref.read(terminalSessionsProvider)[tab.layout.focusedLeaf.session]?.linkTarget;
-    Widget closing(TabCloseScope scope, String label, IconData icon) => ListTile(
-      leading: Icon(icon),
-      title: Text(label),
-      enabled: state.tabsToClose(tab.id, scope).isNotEmpty,
-      onTap: () {
-        Navigator.of(sheet).pop();
-        _closeFromSheet(sheet, () => _workspace.closeTabs(tab.id, scope));
-      },
-    );
     unawaited(
       showModalBottomSheet<void>(
         context: sheet,
         useSafeArea: true,
         showDragHandle: true,
-        builder: (actions) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (target != null && target.kind == LinkTerminalKind.proxy)
+        builder: (actions) {
+          Widget closing(TabCloseScope scope, String label, IconData icon) => ListTile(
+            leading: Icon(icon),
+            title: Text(label),
+            enabled: state.tabsToClose(tab.id, scope).isNotEmpty,
+            onTap: () {
+              Navigator.of(actions).pop();
+              _closeFromSheet(sheet, () => _workspace.closeTabs(tab.id, scope), popParent: popParent);
+            },
+          );
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (target != null && target.kind == LinkTerminalKind.proxy)
+                  ListTile(
+                    key: const ValueKey('mobile-session-desktop-mirror'),
+                    leading: const Icon(Icons.desktop_windows_outlined),
+                    title: Text(l.linkOpenOnDesktopMirrored),
+                    onTap: () {
+                      Navigator.of(actions).pop();
+                      if (popParent) Navigator.of(sheet).pop();
+                      unawaited(_mirrorProxySessionOnDesktop(target.remoteId));
+                    },
+                  ),
                 ListTile(
-                  key: const ValueKey('mobile-session-desktop-mirror'),
-                  leading: const Icon(Icons.desktop_windows_outlined),
-                  title: Text(l.linkOpenOnDesktopMirrored),
+                  leading: const Icon(Icons.close),
+                  title: Text(l.close),
                   onTap: () {
                     Navigator.of(actions).pop();
-                    Navigator.of(sheet).pop();
-                    unawaited(_mirrorProxySessionOnDesktop(target.remoteId));
+                    _closeFromSheet(sheet, () => _workspace.closeTab(tab.id), popParent: popParent);
                   },
                 ),
-              ListTile(
-                leading: const Icon(Icons.close),
-                title: Text(l.close),
-                onTap: () {
-                  Navigator.of(actions).pop();
-                  _closeFromSheet(sheet, () => _workspace.closeTab(tab.id));
-                },
-              ),
-              closing(TabCloseScope.left, l.closeAbove, Icons.vertical_align_top),
-              closing(TabCloseScope.right, l.closeBelow, Icons.vertical_align_bottom),
-            ],
-          ),
-        ),
+                closing(TabCloseScope.left, popParent ? l.closeAbove : l.closeTabsLeft, Icons.vertical_align_top),
+                closing(TabCloseScope.right, popParent ? l.closeBelow : l.closeTabsRight, Icons.vertical_align_bottom),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -432,6 +532,146 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     );
   }
 
+  Widget _moreMenu(WorkspaceTab activeTab, TerminalSession activeSession, LinkClientController link) {
+    final l = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final host = activeSession.sshHost;
+    return PopupMenuButton<String>(
+      key: const ValueKey('mobile-terminal-more'),
+      icon: const Icon(Icons.more_vert_rounded, size: 19),
+      padding: EdgeInsets.zero,
+      onSelected: (action) {
+        switch (action) {
+          case 'handoff':
+            if (host != null) unawaited(_handoffHost(host));
+          case 'reconnect':
+            unawaited(activeSession.connect(DialogPrompts(context)));
+          case 'close':
+            _closeTab(activeTab.id);
+        }
+      },
+      itemBuilder: (_) => [
+        if (link.connected && host != null && !host.transient)
+          PopupMenuItem(
+            value: 'handoff',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.desktop_windows_outlined, size: 18),
+              title: Text(l.mobileHandoffToDesktop),
+            ),
+          ),
+        PopupMenuItem(
+          value: 'reconnect',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.refresh_rounded, size: 18),
+            title: Text(l.retry),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'close',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.close_rounded, size: 18, color: scheme.error),
+            title: Text(l.close, style: TextStyle(color: scheme.error)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tabletTabBar({
+    required BuildContext context,
+    required WorkspaceState state,
+    required Map<SessionId, TerminalSession> sessions,
+    required WorkspaceTab activeTab,
+    required TerminalSession activeSession,
+  }) {
+    final l = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final palette = BrandPalette.of(context);
+    final link = ref.watch(linkClientControllerProvider);
+    final airyOpen = _rightPanel == _TabletSidePanel.airy;
+    final snippetsOpen = _rightPanel == _TabletSidePanel.snippets;
+
+    return Container(
+      height: WorkspaceSize.titleBar,
+      padding: const EdgeInsets.symmetric(horizontal: Space.xs),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .35))),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            key: const ValueKey('mobile-terminal-back'),
+            visualDensity: VisualDensity.compact,
+            tooltip: l.close,
+            icon: const Icon(Icons.arrow_back_rounded, size: 20),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(width: Space.xs),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: SingleChildScrollView(
+                    key: const ValueKey('tablet-terminal-tab-strip'),
+                    controller: _tabScroll,
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final tab in state.tabs)
+                          if (sessions[tab.layout.focusedLeaf.session] case final session?)
+                            _TabletTabChip(
+                              key: ValueKey('tablet-tab-${tab.id.value}'),
+                              tab: tab,
+                              session: session,
+                              selected: tab.id == activeTab.id,
+                              onTap: () => _workspace.activate(tab.id),
+                              onLongPress: () => _openSessionActions(context, state, tab, popParent: false),
+                              onClose: () => _closeTab(tab.id),
+                            ),
+                      ],
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('tablet-terminal-add-tab'),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: l.newConnection,
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  onPressed: _openQuickConnectSheet,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('mobile-terminal-airy'),
+            visualDensity: VisualDensity.compact,
+            tooltip: l.mobileAskAiry,
+            style: airyOpen ? IconButton.styleFrom(backgroundColor: palette.primary.withValues(alpha: .14)) : null,
+            icon: Icon(Icons.auto_awesome_rounded, size: 19, color: palette.primary),
+            onPressed: () => setState(() => _rightPanel = airyOpen ? null : _TabletSidePanel.airy),
+          ),
+          IconButton(
+            key: const ValueKey('tablet-terminal-snippets'),
+            visualDensity: VisualDensity.compact,
+            tooltip: l.snippets,
+            style: snippetsOpen ? IconButton.styleFrom(backgroundColor: palette.primary.withValues(alpha: .14)) : null,
+            icon: Icon(Icons.code_rounded, size: 19, color: snippetsOpen ? palette.primary : null),
+            onPressed: () => setState(() => _rightPanel = snippetsOpen ? null : _TabletSidePanel.snippets),
+          ),
+          _terminalTools(activeSession, link, dockMonitor: true),
+          _moreMenu(activeTab, activeSession, link),
+        ],
+      ),
+    );
+  }
+
   Widget _sessionHeader({
     required BuildContext context,
     required WorkspaceState state,
@@ -443,7 +683,6 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     final l = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final palette = BrandPalette.of(context);
-    final host = activeSession.sshHost;
     final link = ref.watch(linkClientControllerProvider);
     final tag = activeSession.linkTarget == null
         ? l.mobileDirectTag
@@ -544,54 +783,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
           onPressed: _openAirySheet,
         ),
         _terminalTools(activeSession, link),
-        PopupMenuButton<String>(
-          key: const ValueKey('mobile-terminal-more'),
-          icon: const Icon(Icons.more_vert_rounded, size: 19),
-          padding: EdgeInsets.zero,
-          onSelected: (action) {
-            switch (action) {
-              case 'handoff':
-                if (host != null) unawaited(_handoffHost(host));
-              case 'reconnect':
-                unawaited(activeSession.connect(DialogPrompts(context)));
-              case 'close':
-                _workspace.closeTab(activeTab.id);
-                if (ref.read(workspaceProvider).tabs.isEmpty && mounted) {
-                  Navigator.of(context).pop();
-                }
-            }
-          },
-          itemBuilder: (_) => [
-            if (link.connected && host != null && !host.transient)
-              PopupMenuItem(
-                value: 'handoff',
-                child: ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.desktop_windows_outlined, size: 18),
-                  title: Text(l.mobileHandoffToDesktop),
-                ),
-              ),
-            PopupMenuItem(
-              value: 'reconnect',
-              child: ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.refresh_rounded, size: 18),
-                title: Text(l.retry),
-              ),
-            ),
-            PopupMenuItem(
-              value: 'close',
-              child: ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.close_rounded, size: 18, color: scheme.error),
-                title: Text(l.close, style: TextStyle(color: scheme.error)),
-              ),
-            ),
-          ],
-        ),
+        _moreMenu(activeTab, activeSession, link),
         if (compactPill)
           IconButton(
             visualDensity: VisualDensity.compact,
@@ -652,6 +844,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
 
     final size = MediaQuery.sizeOf(context);
     final isLandscape = size.width > size.height && size.height < 520;
+    final isTabletWide = !isLandscape && size.width >= MobileSize.railBreakpoint;
 
     final pane = ColoredBox(
       color: scheme.surfaceContainerLowest,
@@ -662,8 +855,17 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
         visible: true,
         compact: true,
         focusNode: _paneFocus.putIfAbsent(activeLeaf.pane, FocusNode.new),
-        onOpenSnippets: _openSnippetsSheet,
-        onAskAgent: (excerpt) => _openAirySheet(seed: excerpt),
+        onOpenSnippets: isTabletWide
+            ? () => setState(
+                () => _rightPanel = _rightPanel == _TabletSidePanel.snippets ? null : _TabletSidePanel.snippets,
+              )
+            : _openSnippetsSheet,
+        onAskAgent: isTabletWide
+            ? (excerpt) {
+                _seedAiry(excerpt);
+                setState(() => _rightPanel = _TabletSidePanel.airy);
+              }
+            : (excerpt) => _openAirySheet(seed: excerpt),
       ),
     );
 
@@ -724,6 +926,101 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
       );
     }
 
+    if (isTabletWide) {
+      final l = AppLocalizations.of(context);
+      final link = ref.watch(linkClientControllerProvider);
+      final host = activeSession.sshHost;
+      final remoteMonitor = link.terminalMonitor(activeSession.linkShellChannel);
+      final showMonitor = _monitorOpen && (host != null || remoteMonitor != null);
+      final rightWidth = math.min(380.0, size.width * 0.4);
+
+      return Scaffold(
+        key: const ValueKey('mobile-terminal-screen'),
+        backgroundColor: scheme.surfaceContainerLowest,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _tabletTabBar(
+                context: context,
+                state: state,
+                sessions: sessions,
+                activeTab: activeTab,
+                activeSession: activeSession,
+              ),
+              const MobileApprovalBanner(),
+              Expanded(
+                child: Row(
+                  children: [
+                    if (showMonitor) ...[
+                      SizedBox(
+                        key: const ValueKey('tablet-side-monitor'),
+                        width: WorkspaceSize.monitor,
+                        child: ColoredBox(
+                          color: palette.surface,
+                          child: host != null
+                              ? MonitorPanel(
+                                  key: ValueKey('tablet-monitor-${activeTab.id.value}'),
+                                  host: host,
+                                  active: true,
+                                )
+                              : MonitorPanel.remote(
+                                  key: ValueKey('tablet-monitor-${activeTab.id.value}'),
+                                  remote: remoteMonitor!,
+                                  remoteName: activeSession.title,
+                                  active: true,
+                                ),
+                        ),
+                      ),
+                      VerticalDivider(width: 1, thickness: 1, color: scheme.outlineVariant.withValues(alpha: .35)),
+                    ],
+                    Expanded(child: pane),
+                    if (_rightPanel != null) ...[
+                      VerticalDivider(width: 1, thickness: 1, color: scheme.outlineVariant.withValues(alpha: .35)),
+                      SizedBox(
+                        key: ValueKey('tablet-side-${_rightPanel!.name}'),
+                        width: rightWidth,
+                        child: ColoredBox(
+                          color: palette.surface,
+                          child: switch (_rightPanel!) {
+                            _TabletSidePanel.airy => AgentPanel(onClose: () => setState(() => _rightPanel = null)),
+                            _TabletSidePanel.snippets => Column(
+                              children: [
+                                Container(
+                                  height: 40,
+                                  padding: const EdgeInsets.only(left: Space.md, right: Space.xs),
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .3)),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(child: Text(l.snippets, style: Theme.of(context).textTheme.titleSmall)),
+                                      IconButton(
+                                        tooltip: l.close,
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.close_rounded, size: 18),
+                                        onPressed: () => setState(() => _rightPanel = null),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Expanded(child: SnippetsPanel()),
+                              ],
+                            ),
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       key: const ValueKey('mobile-terminal-screen'),
       backgroundColor: scheme.surfaceContainerLowest,
@@ -741,6 +1038,104 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
             const MobileApprovalBanner(),
             Expanded(child: pane),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Desktop-style rounded session tab rendered in the tablet landscape terminal top bar.
+class _TabletTabChip extends StatelessWidget {
+  const _TabletTabChip({
+    super.key,
+    required this.tab,
+    required this.session,
+    required this.selected,
+    required this.onTap,
+    required this.onLongPress,
+    required this.onClose,
+  });
+
+  final WorkspaceTab tab;
+  final TerminalSession session;
+  final bool selected;
+  final VoidCallback onTap, onLongPress, onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final title = tab.title ?? session.title;
+    return Padding(
+      padding: const EdgeInsets.only(right: Space.xs),
+      child: Center(
+        child: AnimatedContainer(
+          duration: Motion.of(context, Motion.quick),
+          decoration: BoxDecoration(
+            color: selected ? scheme.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(Radii.control),
+            border: Border.all(color: selected ? scheme.outlineVariant : Colors.transparent),
+            boxShadow: selected
+                ? [BoxShadow(color: scheme.shadow.withValues(alpha: .06), blurRadius: 4, offset: const Offset(0, 1))]
+                : null,
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(Radii.control),
+              onTap: onTap,
+              onLongPress: onLongPress,
+              child: IntrinsicWidth(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: WorkspaceSize.tabMin, maxWidth: WorkspaceSize.tabMax),
+                  child: SizedBox(
+                    height: 32,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: Space.sm, right: Space.xs),
+                      child: Row(
+                        children: [
+                          SizedBox.square(
+                            dimension: 14,
+                            child: Center(
+                              child: ListenableBuilder(
+                                listenable: session,
+                                builder: (_, _) => SessionStatusIcon(session.status, unread: session.unread),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: Space.sm),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+                                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: Space.xs),
+                          SizedBox.square(
+                            dimension: 24,
+                            child: IconButton(
+                              key: ValueKey('tablet-tab-close-${tab.id.value}'),
+                              tooltip: l.close,
+                              padding: EdgeInsets.zero,
+                              iconSize: 14,
+                              color: scheme.onSurfaceVariant,
+                              onPressed: onClose,
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -178,6 +178,50 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
 
     final hasAppBg = ref.watch(settingsProvider.select((s) => s.get(imageSetting(BackgroundSlot.app)) != null));
 
+    final useRail = MediaQuery.sizeOf(context).width >= MobileSize.railBreakpoint;
+    final contentColumn = Column(
+      children: [
+        const MobileApprovalBanner(),
+        Expanded(
+          child: IndexedStack(
+            index: _tab.index,
+            children: [
+              _MobileHostsTab(
+                active: _tab == _MobileNavTab.hosts,
+                onOpenHost: _openHost,
+                onOpenedTerminal: _openTerminalScreen,
+                onGoLink: () => setState(() => _tab = _MobileNavTab.link),
+                onAskAiry: _askAiry,
+              ),
+              if (_airyBuilt)
+                _MobileAiryTab(onGoLink: () => setState(() => _tab = _MobileNavTab.link))
+              else
+                const SizedBox.shrink(),
+              Column(
+                children: [
+                  _MobileTabHeader(title: l.linkTitle),
+                  Expanded(
+                    child: MobileLinkPage(onOpenedTerminal: _openTerminalScreen, onOpenFiles: _openFiles),
+                  ),
+                ],
+              ),
+              const _MobileMeTab(),
+            ],
+          ),
+        ),
+        if (activeTab != null && activeSession != null)
+          _ActiveSessionCapsule(
+            tab: activeTab,
+            session: activeSession,
+            totalCount: state.tabs.length,
+            onTap: _openTerminalScreen,
+            onCycle: _workspace.cycle,
+            onClose: () => _workspace.closeTab(activeTab.id),
+          ),
+      ],
+    );
+
+    final navSurface = hasAppBg ? palette.surface.withValues(alpha: .88) : palette.surface;
     final shell = Stack(
       children: [
         Positioned.fill(
@@ -186,107 +230,141 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
         Scaffold(
           key: const ValueKey('mobile-workspace'),
           backgroundColor: Colors.transparent,
-          body: SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                const MobileApprovalBanner(),
-                Expanded(
-                  child: IndexedStack(
-                    index: _tab.index,
-                    children: [
-                      _MobileHostsTab(
-                        active: _tab == _MobileNavTab.hosts,
-                        onOpenHost: _openHost,
-                        onOpenedTerminal: _openTerminalScreen,
-                        onGoLink: () => setState(() => _tab = _MobileNavTab.link),
-                        onAskAiry: _askAiry,
-                      ),
-                      if (_airyBuilt)
-                        _MobileAiryTab(onGoLink: () => setState(() => _tab = _MobileNavTab.link))
-                      else
-                        const SizedBox.shrink(),
-                      Column(
-                        children: [
-                          _MobileTabHeader(title: l.linkTitle),
-                          Expanded(
-                            child: MobileLinkPage(onOpenedTerminal: _openTerminalScreen, onOpenFiles: _openFiles),
+          body: useRail
+              ? Row(
+                  children: [
+                    ListenableBuilder(
+                      listenable: Listenable.merge([linkClient, ?agentRuntime]),
+                      builder: (context, _) {
+                        final approvals = linkClient.pendingApprovals.length;
+                        final airyAlert =
+                            agentRuntime != null &&
+                            (agentRuntime.busy || agentRuntime.approval != null || agentRuntime.hostApproval != null);
+                        return Material(
+                          color: navSurface,
+                          child: SafeArea(
+                            right: false,
+                            child: NavigationRail(
+                              key: const ValueKey('mobile-nav-rail'),
+                              minWidth: 76,
+                              backgroundColor: Colors.transparent,
+                              indicatorColor: palette.primary.withValues(alpha: .16),
+                              labelType: NavigationRailLabelType.all,
+                              leading: const Padding(
+                                padding: EdgeInsets.only(top: Space.sm, bottom: Space.md),
+                                child: BrandMark(size: 32),
+                              ),
+                              selectedIndex: _tab.index,
+                              onDestinationSelected: (index) => setState(() => _tab = _MobileNavTab.values[index]),
+                              destinations: [
+                                NavigationRailDestination(
+                                  icon: const Icon(Icons.dns_outlined),
+                                  selectedIcon: Icon(Icons.dns, color: palette.primary),
+                                  label: Text(l.hosts),
+                                ),
+                                NavigationRailDestination(
+                                  icon: Badge(
+                                    isLabelVisible: airyAlert,
+                                    backgroundColor: palette.primary,
+                                    child: const Icon(Icons.auto_awesome_outlined),
+                                  ),
+                                  selectedIcon: Badge(
+                                    isLabelVisible: airyAlert,
+                                    backgroundColor: palette.primary,
+                                    child: Icon(Icons.auto_awesome_rounded, color: palette.primary),
+                                  ),
+                                  label: Text(l.mobileTabAiry),
+                                ),
+                                NavigationRailDestination(
+                                  icon: Badge(
+                                    isLabelVisible: approvals > 0 || linkClient.connected,
+                                    backgroundColor: approvals > 0 ? scheme.error : palette.primary,
+                                    label: approvals > 0 ? Text('$approvals') : null,
+                                    child: const Icon(Icons.phonelink_outlined),
+                                  ),
+                                  selectedIcon: Badge(
+                                    isLabelVisible: approvals > 0 || linkClient.connected,
+                                    backgroundColor: approvals > 0 ? scheme.error : palette.primary,
+                                    label: approvals > 0 ? Text('$approvals') : null,
+                                    child: Icon(Icons.phonelink, color: palette.primary),
+                                  ),
+                                  label: Text(l.linkTab),
+                                ),
+                                NavigationRailDestination(
+                                  icon: const Icon(Icons.person_outline_rounded),
+                                  selectedIcon: Icon(Icons.person_rounded, color: palette.primary),
+                                  label: Text(l.mobileTabMe),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                      const _MobileMeTab(),
-                    ],
-                  ),
+                        );
+                      },
+                    ),
+                    VerticalDivider(width: 1, thickness: 1, color: scheme.outlineVariant.withValues(alpha: .35)),
+                    Expanded(child: SafeArea(left: false, child: contentColumn)),
+                  ],
+                )
+              : SafeArea(bottom: false, child: contentColumn),
+          bottomNavigationBar: useRail
+              ? null
+              : ListenableBuilder(
+                  listenable: Listenable.merge([linkClient, ?agentRuntime]),
+                  builder: (context, _) {
+                    final approvals = linkClient.pendingApprovals.length;
+                    final airyAlert =
+                        agentRuntime != null &&
+                        (agentRuntime.busy || agentRuntime.approval != null || agentRuntime.hostApproval != null);
+                    return NavigationBar(
+                      key: const ValueKey('mobile-bottom-nav'),
+                      height: 64,
+                      backgroundColor: navSurface,
+                      indicatorColor: palette.primary.withValues(alpha: .16),
+                      selectedIndex: _tab.index,
+                      onDestinationSelected: (index) => setState(() => _tab = _MobileNavTab.values[index]),
+                      destinations: [
+                        NavigationDestination(
+                          icon: const Icon(Icons.dns_outlined),
+                          selectedIcon: Icon(Icons.dns, color: palette.primary),
+                          label: l.hosts,
+                        ),
+                        NavigationDestination(
+                          icon: Badge(
+                            isLabelVisible: airyAlert,
+                            backgroundColor: palette.primary,
+                            child: const Icon(Icons.auto_awesome_outlined),
+                          ),
+                          selectedIcon: Badge(
+                            isLabelVisible: airyAlert,
+                            backgroundColor: palette.primary,
+                            child: Icon(Icons.auto_awesome_rounded, color: palette.primary),
+                          ),
+                          label: l.mobileTabAiry,
+                        ),
+                        NavigationDestination(
+                          icon: Badge(
+                            isLabelVisible: approvals > 0 || linkClient.connected,
+                            backgroundColor: approvals > 0 ? scheme.error : palette.primary,
+                            label: approvals > 0 ? Text('$approvals') : null,
+                            child: const Icon(Icons.phonelink_outlined),
+                          ),
+                          selectedIcon: Badge(
+                            isLabelVisible: approvals > 0 || linkClient.connected,
+                            backgroundColor: approvals > 0 ? scheme.error : palette.primary,
+                            label: approvals > 0 ? Text('$approvals') : null,
+                            child: Icon(Icons.phonelink, color: palette.primary),
+                          ),
+                          label: l.linkTab,
+                        ),
+                        NavigationDestination(
+                          icon: const Icon(Icons.person_outline_rounded),
+                          selectedIcon: Icon(Icons.person_rounded, color: palette.primary),
+                          label: l.mobileTabMe,
+                        ),
+                      ],
+                    );
+                  },
                 ),
-                if (activeTab != null && activeSession != null)
-                  _ActiveSessionCapsule(
-                    tab: activeTab,
-                    session: activeSession,
-                    totalCount: state.tabs.length,
-                    onTap: _openTerminalScreen,
-                    onCycle: _workspace.cycle,
-                    onClose: () => _workspace.closeTab(activeTab.id),
-                  ),
-              ],
-            ),
-          ),
-          bottomNavigationBar: ListenableBuilder(
-            listenable: Listenable.merge([linkClient, ?agentRuntime]),
-            builder: (context, _) {
-              final approvals = linkClient.pendingApprovals.length;
-              final airyAlert =
-                  agentRuntime != null &&
-                  (agentRuntime.busy || agentRuntime.approval != null || agentRuntime.hostApproval != null);
-              return NavigationBar(
-                key: const ValueKey('mobile-bottom-nav'),
-                height: 64,
-                backgroundColor: hasAppBg ? palette.surface.withValues(alpha: .88) : palette.surface,
-                indicatorColor: palette.primary.withValues(alpha: .16),
-                selectedIndex: _tab.index,
-                onDestinationSelected: (index) => setState(() => _tab = _MobileNavTab.values[index]),
-                destinations: [
-                  NavigationDestination(
-                    icon: const Icon(Icons.dns_outlined),
-                    selectedIcon: Icon(Icons.dns, color: palette.primary),
-                    label: l.hosts,
-                  ),
-                  NavigationDestination(
-                    icon: Badge(
-                      isLabelVisible: airyAlert,
-                      backgroundColor: palette.primary,
-                      child: const Icon(Icons.auto_awesome_outlined),
-                    ),
-                    selectedIcon: Badge(
-                      isLabelVisible: airyAlert,
-                      backgroundColor: palette.primary,
-                      child: Icon(Icons.auto_awesome_rounded, color: palette.primary),
-                    ),
-                    label: l.mobileTabAiry,
-                  ),
-                  NavigationDestination(
-                    icon: Badge(
-                      isLabelVisible: approvals > 0 || linkClient.connected,
-                      backgroundColor: approvals > 0 ? scheme.error : palette.primary,
-                      label: approvals > 0 ? Text('$approvals') : null,
-                      child: const Icon(Icons.phonelink_outlined),
-                    ),
-                    selectedIcon: Badge(
-                      isLabelVisible: approvals > 0 || linkClient.connected,
-                      backgroundColor: approvals > 0 ? scheme.error : palette.primary,
-                      label: approvals > 0 ? Text('$approvals') : null,
-                      child: Icon(Icons.phonelink, color: palette.primary),
-                    ),
-                    label: l.linkTab,
-                  ),
-                  NavigationDestination(
-                    icon: const Icon(Icons.person_outline_rounded),
-                    selectedIcon: Icon(Icons.person_rounded, color: palette.primary),
-                    label: l.mobileTabMe,
-                  ),
-                ],
-              );
-            },
-          ),
         ),
       ],
     );
@@ -729,7 +807,11 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
               return LayoutBuilder(
                 builder: (context, constraints) {
                   final inset = MobileSize.contentInset(constraints.maxWidth, maxWidth: MobileSize.wideContentMaxWidth);
-                  final twoColumns = constraints.maxWidth >= MobileSize.gridBreakpoint;
+                  final columns = constraints.maxWidth >= MobileSize.threeColumnBreakpoint
+                      ? 3
+                      : constraints.maxWidth >= MobileSize.gridBreakpoint
+                      ? 2
+                      : 1;
                   return ListView(
                     padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
                     children: [
@@ -879,20 +961,21 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                             ),
                           ),
                         )
-                      else if (twoColumns)
-                        for (var i = 0; i < filtered.length; i += 2)
+                      else if (columns > 1)
+                        for (var i = 0; i < filtered.length; i += columns)
                           Padding(
                             padding: const EdgeInsets.only(bottom: Space.sm),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(child: _hostCard(context, filtered[i])),
-                                const SizedBox(width: Space.sm),
-                                Expanded(
-                                  child: i + 1 < filtered.length
-                                      ? _hostCard(context, filtered[i + 1])
-                                      : const SizedBox.shrink(),
-                                ),
+                                for (var col = 0; col < columns; col++) ...[
+                                  if (col > 0) const SizedBox(width: Space.sm),
+                                  Expanded(
+                                    child: i + col < filtered.length
+                                        ? _hostCard(context, filtered[i + col])
+                                        : const SizedBox.shrink(),
+                                  ),
+                                ],
                               ],
                             ),
                           )
@@ -1144,6 +1227,258 @@ class _MobileMeTab extends ConsumerWidget {
 
     final scales = {.8, .9, 1.0, 1.1, 1.25, 1.5, settings.uiScale}.toList()..sort();
 
+    final brandCard = _SettingsGroupCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Space.sm,
+            runSpacing: Space.xs,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const BrandMark(size: 36),
+                  const SizedBox(width: Space.sm),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Sshairy', style: Theme.of(context).textTheme.titleMedium),
+                      Text('v$appVersion', style: mono(context, Theme.of(context).textTheme.bodySmall)),
+                    ],
+                  ),
+                ],
+              ),
+              if (isAndroidPlatform) const UpdateCheckControl(alignment: WrapAlignment.end, compact: true),
+            ],
+          ),
+          const SizedBox(height: Space.sm),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const accents = Accent.values;
+              final columns = constraints.maxWidth >= accents.length * MobileSize.touchTarget ? accents.length : 3;
+              return Column(
+                children: [
+                  for (var start = 0; start < accents.length; start += columns)
+                    Row(
+                      children: [
+                        for (final accent in accents.skip(start).take(columns))
+                          Expanded(
+                            child: Tooltip(
+                              message: accent.label(l),
+                              child: Semantics(
+                                selected: settings.accent == accent,
+                                child: InkWell(
+                                  key: ValueKey('mobile-accent-${accent.name}'),
+                                  borderRadius: BorderRadius.circular(Radii.pill),
+                                  onTap: () => unawaited(writer.set(SettingKeys.accent, accent)),
+                                  child: SizedBox(
+                                    height: MobileSize.touchTarget,
+                                    child: Center(
+                                      child: Container(
+                                        width: Space.xxl,
+                                        height: Space.xxl,
+                                        decoration: BoxDecoration(
+                                          color: accent.of(brightness),
+                                          shape: BoxShape.circle,
+                                          border: settings.accent == accent
+                                              ? Border.all(color: scheme.onSurface, width: 2)
+                                              : null,
+                                        ),
+                                        child: settings.accent == accent
+                                            ? Icon(Icons.check_rounded, size: 16, color: onColor(accent.of(brightness)))
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: Space.sm),
+          choice(l.theme, settings.themeMode, [
+            AppOption(ThemeMode.system, l.themeSystem),
+            AppOption(ThemeMode.light, l.themeLight),
+            AppOption(ThemeMode.dark, l.themeDark),
+          ], (v) => unawaited(writer.set(SettingKeys.themeMode, v))),
+          const SizedBox(height: Space.xs),
+          choice(l.uiScale, settings.uiScale, [
+            for (final scale in scales) AppOption(scale, '${(scale * 100).round()}%'),
+          ], (v) => unawaited(writer.set(SettingKeys.uiScale, v))),
+          const SizedBox(height: Space.xs),
+          choice<String?>(l.language, settings.locale, [
+            AppOption(null, l.themeSystem),
+            AppOption('zh', l.langZh),
+            AppOption('en', l.langEn),
+          ], (v) => unawaited(writer.set(SettingKeys.locale, v))),
+        ],
+      ),
+    );
+
+    final backgroundCard = _SettingsGroupCard(
+      key: const ValueKey('mobile-background-settings'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(l.appBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: Space.sm),
+          const BackgroundImageControls(slot: BackgroundSlot.app),
+          const Divider(height: Space.lg),
+          Text(l.terminalBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: Space.sm),
+          const BackgroundImageControls(slot: BackgroundSlot.terminal),
+        ],
+      ),
+    );
+
+    final terminalSection = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        section(l.mobileTerminalSection),
+        group([
+          Padding(
+            padding: const EdgeInsets.all(Space.md),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text(l.fontSize)),
+                    Text('${fontSize.round()} pt', style: mono(context, Theme.of(context).textTheme.labelMedium)),
+                  ],
+                ),
+                Slider(
+                  min: 8,
+                  max: 32,
+                  divisions: 24,
+                  value: fontSize.clamp(8.0, 32.0),
+                  onChanged: (v) => unawaited(writer.set(SettingKeys.fontSize, v.roundToDouble())),
+                ),
+                choice(l.cursorShape, settings.get(SettingKeys.cursorShape), [
+                  AppOption(CursorShape.block, l.cursorBlock),
+                  AppOption(CursorShape.underline, l.cursorUnderline),
+                  AppOption(CursorShape.bar, l.cursorBar),
+                ], (v) => unawaited(writer.set(SettingKeys.cursorShape, v))),
+              ],
+            ),
+          ),
+          SwitchListTile.adaptive(
+            title: Text(l.mobileHaptics),
+            value: haptics,
+            onChanged: (v) => unawaited(writer.set(SettingKeys.mobileHaptics, v)),
+          ),
+          SwitchListTile.adaptive(
+            title: Text(l.mobileKeepScreenOn),
+            value: keepAwake,
+            onChanged: (v) => unawaited(writer.set(SettingKeys.mobileKeepScreenOn, v)),
+          ),
+          SwitchListTile.adaptive(
+            title: Text(l.completionTranslation),
+            value: settings.get(SettingKeys.completionTranslation),
+            onChanged: (v) => unawaited(writer.set(SettingKeys.completionTranslation, v)),
+          ),
+        ]),
+      ],
+    );
+
+    final securityAndToolsSection = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        section(l.mobileSecuritySection),
+        group([
+          SwitchListTile.adaptive(
+            title: Text(l.mobileKeepAlive),
+            value: keepAlive,
+            onChanged: (v) async {
+              if (v) await MobilePlatform.requestNotificationPermission();
+              await writer.set(SettingKeys.mobileKeepAlive, v);
+            },
+          ),
+          SwitchListTile.adaptive(
+            title: Text(l.mobileBiometricLock),
+            value: biometricLock,
+            onChanged: (v) async {
+              if (v && isMobilePlatform) {
+                final can = await MobilePlatform.canAuthenticateBiometric();
+                if (!can) return;
+                final ok = await MobilePlatform.authenticateBiometric(title: l.mobileUnlockPrompt);
+                if (!ok) return;
+              }
+              await writer.set(SettingKeys.mobileBiometricLock, v);
+            },
+          ),
+        ]),
+        const SizedBox(height: Space.md),
+        group([
+          ListTile(
+            leading: const Icon(Icons.key_outlined),
+            title: Text(l.keys),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pushTool(context, l.keys, const KeysPanel(), padding: const EdgeInsets.all(Space.md)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.verified_user_outlined),
+            title: Text(l.trustedKeys),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pushTool(
+              context,
+              l.trustedKeys,
+              SingleChildScrollView(
+                padding: const EdgeInsets.all(Space.lg),
+                child: trustSettingsSection.build(context),
+              ),
+              padding: EdgeInsets.zero,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.alt_route_rounded),
+            title: Text(l.proxies),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pushTool(context, l.proxies, const ProxyPanel()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.swap_horiz_rounded),
+            title: Text(l.portForwarding),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pushTool(context, l.portForwarding, const ForwardingPanel()),
+          ),
+        ]),
+        const SizedBox(height: Space.md),
+        group([
+          ListTile(
+            leading: Icon(Icons.auto_awesome_outlined, color: palette.primary),
+            title: Text(l.aiConfigTitle),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pushTool(
+              context,
+              l.aiConfigTitle,
+              const SingleChildScrollView(padding: EdgeInsets.all(Space.lg), child: AiSettings()),
+              padding: EdgeInsets.zero,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.code_rounded),
+            title: Text(l.snippets),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pushTool(context, l.snippets, const SnippetsPanel()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.receipt_long_outlined),
+            title: Text(l.logs),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => _pushTool(context, l.logs, const LogsPanel()),
+          ),
+        ]),
+      ],
+    );
+
     return Column(
       key: const ValueKey('mobile-me-tab'),
       children: [
@@ -1151,256 +1486,41 @@ class _MobileMeTab extends ConsumerWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final inset = MobileSize.contentInset(constraints.maxWidth);
+              final twoColumns = constraints.maxWidth >= MobileSize.twoColumnBreakpoint;
+              final inset = MobileSize.contentInset(
+                constraints.maxWidth,
+                maxWidth: twoColumns ? MobileSize.wideContentMaxWidth : MobileSize.contentMaxWidth,
+              );
               return ListView(
                 padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
                 children: [
-                  // Brand + Accent + ThemeMode card
-                  _SettingsGroupCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            const BrandMark(size: 36),
-                            const SizedBox(width: Space.md),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Sshairy', style: Theme.of(context).textTheme.titleMedium),
-                                  Text('v$appVersion', style: mono(context, Theme.of(context).textTheme.bodySmall)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (isAndroidPlatform) const UpdateCheckControl(),
-                        const SizedBox(height: Space.sm),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            const accents = Accent.values;
-                            final columns = constraints.maxWidth >= accents.length * MobileSize.touchTarget
-                                ? accents.length
-                                : 3;
-                            return Column(
-                              children: [
-                                for (var start = 0; start < accents.length; start += columns)
-                                  Row(
-                                    children: [
-                                      for (final accent in accents.skip(start).take(columns))
-                                        Expanded(
-                                          child: Tooltip(
-                                            message: accent.label(l),
-                                            child: Semantics(
-                                              selected: settings.accent == accent,
-                                              child: InkWell(
-                                                key: ValueKey('mobile-accent-${accent.name}'),
-                                                borderRadius: BorderRadius.circular(Radii.pill),
-                                                onTap: () => unawaited(writer.set(SettingKeys.accent, accent)),
-                                                child: SizedBox(
-                                                  height: MobileSize.touchTarget,
-                                                  child: Center(
-                                                    child: Container(
-                                                      width: Space.xxl,
-                                                      height: Space.xxl,
-                                                      decoration: BoxDecoration(
-                                                        color: accent.of(brightness),
-                                                        shape: BoxShape.circle,
-                                                        border: settings.accent == accent
-                                                            ? Border.all(color: scheme.onSurface, width: 2)
-                                                            : null,
-                                                      ),
-                                                      child: settings.accent == accent
-                                                          ? Icon(
-                                                              Icons.check_rounded,
-                                                              size: 16,
-                                                              color: onColor(accent.of(brightness)),
-                                                            )
-                                                          : null,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
-                        const SizedBox(height: Space.sm),
-                        choice(l.theme, settings.themeMode, [
-                          AppOption(ThemeMode.system, l.themeSystem),
-                          AppOption(ThemeMode.light, l.themeLight),
-                          AppOption(ThemeMode.dark, l.themeDark),
-                        ], (v) => unawaited(writer.set(SettingKeys.themeMode, v))),
-                        const SizedBox(height: Space.xs),
-                        choice(l.uiScale, settings.uiScale, [
-                          for (final scale in scales) AppOption(scale, '${(scale * 100).round()}%'),
-                        ], (v) => unawaited(writer.set(SettingKeys.uiScale, v))),
-                        const SizedBox(height: Space.xs),
-                        choice<String?>(l.language, settings.locale, [
-                          AppOption(null, l.themeSystem),
-                          AppOption('zh', l.langZh),
-                          AppOption('en', l.langEn),
-                        ], (v) => unawaited(writer.set(SettingKeys.locale, v))),
-                      ],
-                    ),
-                  ),
+                  brandCard,
                   const SizedBox(height: Space.md),
-                  // Custom background images (app + terminal)
-                  _SettingsGroupCard(
-                    key: const ValueKey('mobile-background-settings'),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                  if (twoColumns)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(l.appBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
-                        const SizedBox(height: Space.sm),
-                        const BackgroundImageControls(slot: BackgroundSlot.app),
-                        const Divider(height: Space.lg),
-                        Text(l.terminalBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
-                        const SizedBox(height: Space.sm),
-                        const BackgroundImageControls(slot: BackgroundSlot.terminal),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: Space.md),
-                  section(l.mobileTerminalSection),
-                  group([
-                    Padding(
-                      padding: const EdgeInsets.all(Space.md),
-                      child: Column(
-                        children: [
-                          Row(
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(child: Text(l.fontSize)),
-                              Text(
-                                '${fontSize.round()} pt',
-                                style: mono(context, Theme.of(context).textTheme.labelMedium),
-                              ),
+                              backgroundCard,
+                              const SizedBox(height: Space.md),
+                              terminalSection,
                             ],
                           ),
-                          Slider(
-                            min: 8,
-                            max: 32,
-                            divisions: 24,
-                            value: fontSize.clamp(8.0, 32.0),
-                            onChanged: (v) => unawaited(writer.set(SettingKeys.fontSize, v.roundToDouble())),
-                          ),
-                          choice(l.cursorShape, settings.get(SettingKeys.cursorShape), [
-                            AppOption(CursorShape.block, l.cursorBlock),
-                            AppOption(CursorShape.underline, l.cursorUnderline),
-                            AppOption(CursorShape.bar, l.cursorBar),
-                          ], (v) => unawaited(writer.set(SettingKeys.cursorShape, v))),
-                        ],
-                      ),
-                    ),
-                    SwitchListTile.adaptive(
-                      title: Text(l.mobileHaptics),
-                      value: haptics,
-                      onChanged: (v) => unawaited(writer.set(SettingKeys.mobileHaptics, v)),
-                    ),
-                    SwitchListTile.adaptive(
-                      title: Text(l.mobileKeepScreenOn),
-                      value: keepAwake,
-                      onChanged: (v) => unawaited(writer.set(SettingKeys.mobileKeepScreenOn, v)),
-                    ),
-                    SwitchListTile.adaptive(
-                      title: Text(l.completionTranslation),
-                      value: settings.get(SettingKeys.completionTranslation),
-                      onChanged: (v) => unawaited(writer.set(SettingKeys.completionTranslation, v)),
-                    ),
-                  ]),
-                  const SizedBox(height: Space.md),
-                  section(l.mobileSecuritySection),
-                  group([
-                    SwitchListTile.adaptive(
-                      title: Text(l.mobileKeepAlive),
-                      value: keepAlive,
-                      onChanged: (v) async {
-                        if (v) await MobilePlatform.requestNotificationPermission();
-                        await writer.set(SettingKeys.mobileKeepAlive, v);
-                      },
-                    ),
-                    SwitchListTile.adaptive(
-                      title: Text(l.mobileBiometricLock),
-                      value: biometricLock,
-                      onChanged: (v) async {
-                        if (v && isMobilePlatform) {
-                          final can = await MobilePlatform.canAuthenticateBiometric();
-                          if (!can) return;
-                          final ok = await MobilePlatform.authenticateBiometric(title: l.mobileUnlockPrompt);
-                          if (!ok) return;
-                        }
-                        await writer.set(SettingKeys.mobileBiometricLock, v);
-                      },
-                    ),
-                  ]),
-                  const SizedBox(height: Space.md),
-                  group([
-                    ListTile(
-                      leading: const Icon(Icons.key_outlined),
-                      title: Text(l.keys),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () =>
-                          _pushTool(context, l.keys, const KeysPanel(), padding: const EdgeInsets.all(Space.md)),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.verified_user_outlined),
-                      title: Text(l.trustedKeys),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(
-                        context,
-                        l.trustedKeys,
-                        SingleChildScrollView(
-                          padding: const EdgeInsets.all(Space.lg),
-                          child: trustSettingsSection.build(context),
                         ),
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.alt_route_rounded),
-                      title: Text(l.proxies),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.proxies, const ProxyPanel()),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.swap_horiz_rounded),
-                      title: Text(l.portForwarding),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.portForwarding, const ForwardingPanel()),
-                    ),
-                  ]),
-                  const SizedBox(height: Space.md),
-                  group([
-                    ListTile(
-                      leading: Icon(Icons.auto_awesome_outlined, color: palette.primary),
-                      title: Text(l.aiConfigTitle),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(
-                        context,
-                        l.aiConfigTitle,
-                        const SingleChildScrollView(padding: EdgeInsets.all(Space.lg), child: AiSettings()),
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.code_rounded),
-                      title: Text(l.snippets),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.snippets, const SnippetsPanel()),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.receipt_long_outlined),
-                      title: Text(l.logs),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => _pushTool(context, l.logs, const LogsPanel()),
-                    ),
-                  ]),
+                        const SizedBox(width: Space.lg),
+                        Expanded(child: securityAndToolsSection),
+                      ],
+                    )
+                  else ...[
+                    backgroundCard,
+                    const SizedBox(height: Space.md),
+                    terminalSection,
+                    const SizedBox(height: Space.md),
+                    securityAndToolsSection,
+                  ],
                 ],
               );
             },

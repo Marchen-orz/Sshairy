@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
+import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../platform/device_form_factor.dart';
@@ -37,6 +38,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   String? _notice;
   String? _connectingSessionId;
   String? _connectingHostId;
+  String? _connectingDiscoveredId;
 
   @override
   void dispose() {
@@ -160,6 +162,34 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     await ref.read(linkClientControllerProvider).pair(host: host, port: port, pairingCode: code);
   }
 
+  Future<void> _openDiscoveredDesktop(LinkClientController client, DiscoveredDesktop desktop) async {
+    final saved = client.savedDesktops.where((p) => p.deviceId == desktop.deviceId).firstOrNull;
+    if (saved != null) {
+      setState(() => _connectingDiscoveredId = desktop.deviceId);
+      try {
+        await client.connectToPeer(saved, hostOverride: desktop.address, portOverride: desktop.port);
+      } finally {
+        if (mounted) setState(() => _connectingDiscoveredId = null);
+      }
+      return;
+    }
+
+    _hostController.text = desktop.address;
+    _portController.text = '${desktop.port}';
+    final code = await showAppDialog<String>(
+      context: context,
+      builder: (_) => _DiscoveredPairDialog(desktop: desktop),
+    );
+    if (code == null || code.length < 6 || !mounted) return;
+    _codeController.text = code;
+    setState(() => _connectingDiscoveredId = desktop.deviceId);
+    try {
+      await client.pair(host: desktop.address, port: desktop.port, pairingCode: code);
+    } finally {
+      if (mounted) setState(() => _connectingDiscoveredId = null);
+    }
+  }
+
   Future<void> _scanQr() async {
     final l = AppLocalizations.of(context);
     final raw = await Navigator.of(context).push<String>(
@@ -242,9 +272,182 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     const pairingActionStyle = ButtonStyle(
       padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs)),
     );
+
+    final discoveryWidgets = <Widget>[
+      if (isMobilePlatform) ...[
+        FilledButton.icon(
+          key: const ValueKey('link-scan-qr-button'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(MobileSize.touchTarget),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.panel)),
+          ),
+          onPressed: connecting ? null : _scanQr,
+          icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+          label: Text(l.mobileScanQr),
+        ),
+        const SizedBox(height: Space.sm),
+      ],
+      IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: FilledButton.tonalIcon(
+                key: const ValueKey('link-scan-button'),
+                style: pairingActionStyle,
+                onPressed: client.discovering ? null : () => unawaited(client.discoverLan()),
+                icon: client.discovering
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.radar_outlined, size: 18),
+                label: Text(client.discovering ? l.linkScanning : l.linkScanLan, textAlign: TextAlign.center),
+              ),
+            ),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: OutlinedButton.icon(
+                key: const ValueKey('link-paste-uri-button'),
+                style: pairingActionStyle,
+                onPressed: connecting ? null : _pasteUri,
+                icon: const Icon(Icons.content_paste_outlined, size: 18),
+                label: Text(l.linkPasteUri, textAlign: TextAlign.center),
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (client.lastError != null) ...[
+        const SizedBox(height: Space.md),
+        Container(
+          padding: const EdgeInsets.all(Space.sm),
+          decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(Radii.card)),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text(
+                  _errorText(l, client.lastError!),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onErrorContainer),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      if (client.discoveredDesktops.isNotEmpty) ...[
+        const SizedBox(height: Space.lg),
+        Text(l.linkDiscoveredDesktops, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: Space.sm),
+        for (final d in client.discoveredDesktops)
+          _SurfaceCard(
+            child: ListTile(
+              key: ValueKey('link-discovered-${d.deviceId}'),
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.desktop_windows_outlined, color: scheme.primary),
+              title: Text(d.name, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${d.address}:${d.port}', style: mono(context, Theme.of(context).textTheme.bodySmall)),
+              trailing: _connectingDiscoveredId == d.deviceId
+                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+              onTap: connecting ? null : () => unawaited(_openDiscoveredDesktop(client, d)),
+            ),
+          ),
+      ],
+      if (client.savedDesktops.isNotEmpty) ...[
+        const SizedBox(height: Space.lg),
+        Text(l.linkSavedDesktops, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: Space.sm),
+        for (final peer in client.savedDesktops)
+          _SurfaceCard(
+            child: Row(
+              children: [
+                Icon(Icons.computer_outlined, color: scheme.primary, size: 20),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(peer.name, style: Theme.of(context).textTheme.titleSmall, overflow: TextOverflow.ellipsis),
+                      if (peer.lastAddress != null)
+                        Text(
+                          '${peer.lastAddress}:${peer.lastPort ?? linkDefaultPort}',
+                          style: mono(context, Theme.of(context).textTheme.bodySmall),
+                        ),
+                    ],
+                  ),
+                ),
+                FilledButton.tonal(
+                  onPressed: connecting ? null : () => unawaited(client.connectToPeer(peer)),
+                  child: Text(l.linkReconnect),
+                ),
+                IconButton(
+                  tooltip: l.linkRevoke,
+                  icon: Icon(Icons.delete_outline, size: 18, color: scheme.error),
+                  onPressed: () => unawaited(client.forgetDesktop(peer.deviceId)),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ];
+
+    final manualConnectWidgets = <Widget>[
+      Text(l.linkManualConnect, style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: Space.sm),
+      _SurfaceCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    key: const ValueKey('link-manual-host'),
+                    controller: _hostController,
+                    decoration: InputDecoration(labelText: l.linkHostOrIp, isDense: true),
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  flex: 1,
+                  child: TextField(
+                    key: const ValueKey('link-manual-port'),
+                    controller: _portController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(labelText: l.linkPort, isDense: true),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Space.sm),
+            TextField(
+              key: const ValueKey('link-manual-code'),
+              controller: _codeController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: l.linkPairingCode, isDense: true),
+              onSubmitted: (_) => _pairManual(),
+            ),
+            const SizedBox(height: Space.md),
+            FilledButton(
+              key: const ValueKey('link-pair-submit'),
+              onPressed: connecting ? null : _pairManual,
+              child: connecting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(l.linkPairNow),
+            ),
+          ],
+        ),
+      ),
+    ];
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final inset = MobileSize.contentInset(constraints.maxWidth);
+        final twoColumns = constraints.maxWidth >= MobileSize.twoColumnBreakpoint;
+        final inset = MobileSize.contentInset(
+          constraints.maxWidth,
+          maxWidth: twoColumns ? MobileSize.wideContentMaxWidth : MobileSize.contentMaxWidth,
+        );
         return ListView(
           key: const ValueKey('mobile-link-disconnected'),
           padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
@@ -253,184 +456,24 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
               const Center(child: BrandIllustration(pose: BrandPose.security, size: 112)),
               const SizedBox(height: Space.md),
             ],
-            if (isMobilePlatform) ...[
-              FilledButton.icon(
-                key: const ValueKey('link-scan-qr-button'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(MobileSize.touchTarget),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.panel)),
-                ),
-                onPressed: connecting ? null : _scanQr,
-                icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
-                label: Text(l.mobileScanQr),
-              ),
-              const SizedBox(height: Space.sm),
-            ],
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            if (twoColumns)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: FilledButton.tonalIcon(
-                      key: const ValueKey('link-scan-button'),
-                      style: pairingActionStyle,
-                      onPressed: client.discovering ? null : () => unawaited(client.discoverLan()),
-                      icon: client.discovering
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.radar_outlined, size: 18),
-                      label: Text(client.discovering ? l.linkScanning : l.linkScanLan, textAlign: TextAlign.center),
-                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: discoveryWidgets),
                   ),
-                  const SizedBox(width: Space.sm),
+                  const SizedBox(width: Space.lg),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      key: const ValueKey('link-paste-uri-button'),
-                      style: pairingActionStyle,
-                      onPressed: connecting ? null : _pasteUri,
-                      icon: const Icon(Icons.content_paste_outlined, size: 18),
-                      label: Text(l.linkPasteUri, textAlign: TextAlign.center),
-                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: manualConnectWidgets),
                   ),
                 ],
-              ),
-            ),
-            if (client.lastError != null) ...[
-              const SizedBox(height: Space.md),
-              Container(
-                padding: const EdgeInsets.all(Space.sm),
-                decoration: BoxDecoration(
-                  color: scheme.errorContainer,
-                  borderRadius: BorderRadius.circular(Radii.card),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
-                    const SizedBox(width: Space.sm),
-                    Expanded(
-                      child: Text(
-                        _errorText(l, client.lastError!),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onErrorContainer),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (client.discoveredDesktops.isNotEmpty) ...[
+              )
+            else ...[
+              ...discoveryWidgets,
               const SizedBox(height: Space.lg),
-              Text(l.linkDiscoveredDesktops, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: Space.sm),
-              for (final d in client.discoveredDesktops)
-                _SurfaceCard(
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.desktop_windows_outlined, color: scheme.primary),
-                    title: Text(d.name, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(
-                      '${d.address}:${d.port}',
-                      style: mono(context, Theme.of(context).textTheme.bodySmall),
-                    ),
-                    trailing: Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-                    onTap: () {
-                      final saved = client.savedDesktops.where((p) => p.deviceId == d.deviceId).firstOrNull;
-                      if (saved != null) {
-                        unawaited(client.connectToPeer(saved, hostOverride: d.address, portOverride: d.port));
-                      } else {
-                        _hostController.text = d.address;
-                        _portController.text = '${d.port}';
-                      }
-                    },
-                  ),
-                ),
+              ...manualConnectWidgets,
             ],
-            if (client.savedDesktops.isNotEmpty) ...[
-              const SizedBox(height: Space.lg),
-              Text(l.linkSavedDesktops, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: Space.sm),
-              for (final peer in client.savedDesktops)
-                _SurfaceCard(
-                  child: Row(
-                    children: [
-                      Icon(Icons.computer_outlined, color: scheme.primary, size: 20),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              peer.name,
-                              style: Theme.of(context).textTheme.titleSmall,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (peer.lastAddress != null)
-                              Text(
-                                '${peer.lastAddress}:${peer.lastPort ?? linkDefaultPort}',
-                                style: mono(context, Theme.of(context).textTheme.bodySmall),
-                              ),
-                          ],
-                        ),
-                      ),
-                      FilledButton.tonal(
-                        onPressed: connecting ? null : () => unawaited(client.connectToPeer(peer)),
-                        child: Text(l.linkReconnect),
-                      ),
-                      IconButton(
-                        tooltip: l.linkRevoke,
-                        icon: Icon(Icons.delete_outline, size: 18, color: scheme.error),
-                        onPressed: () => unawaited(client.forgetDesktop(peer.deviceId)),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-            const SizedBox(height: Space.lg),
-            Text(l.linkManualConnect, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: Space.sm),
-            _SurfaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          key: const ValueKey('link-manual-host'),
-                          controller: _hostController,
-                          decoration: InputDecoration(labelText: l.linkHostOrIp, isDense: true),
-                        ),
-                      ),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        flex: 1,
-                        child: TextField(
-                          key: const ValueKey('link-manual-port'),
-                          controller: _portController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(labelText: l.linkPort, isDense: true),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: Space.sm),
-                  TextField(
-                    key: const ValueKey('link-manual-code'),
-                    controller: _codeController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(labelText: l.linkPairingCode, isDense: true),
-                    onSubmitted: (_) => _pairManual(),
-                  ),
-                  const SizedBox(height: Space.md),
-                  FilledButton(
-                    key: const ValueKey('link-pair-submit'),
-                    onPressed: connecting ? null : _pairManual,
-                    child: connecting
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : Text(l.linkPairNow),
-                  ),
-                ],
-              ),
-            ),
           ],
         );
       },
@@ -451,9 +494,185 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
               )
               .toList();
 
+    final approvalsAndSessions = <Widget>[
+      if (client.pendingApprovals.isNotEmpty) ...[
+        Row(
+          children: [
+            Icon(Icons.shield_outlined, size: 18, color: scheme.error),
+            const SizedBox(width: Space.xs),
+            Text(
+              '${l.linkPendingApprovals} (${client.pendingApprovals.length})',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ],
+        ),
+        const SizedBox(height: Space.sm),
+        for (final item in client.pendingApprovals)
+          _SurfaceCard(
+            key: ValueKey('link-approval-${item.approvalId}'),
+            borderColor: scheme.error.withValues(alpha: .35),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title, style: Theme.of(context).textTheme.titleSmall),
+                if (item.target.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(item.target, style: mono(context, Theme.of(context).textTheme.bodySmall)),
+                ],
+                if (item.command.isNotEmpty) ...[
+                  const SizedBox(height: Space.xs),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(Space.sm),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(Radii.control),
+                    ),
+                    child: Text(item.command, style: mono(context, Theme.of(context).textTheme.bodySmall)),
+                  ),
+                ],
+                if (item.detail.isNotEmpty) ...[
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    item.detail,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ],
+                const SizedBox(height: Space.sm),
+                if (item.actionable)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        key: ValueKey('link-deny-${item.approvalId}'),
+                        onPressed: () => unawaited(client.decideApproval(item.approvalId, false)),
+                        child: Text(l.linkDeny),
+                      ),
+                      const SizedBox(width: Space.sm),
+                      FilledButton(
+                        key: ValueKey('link-allow-${item.approvalId}'),
+                        onPressed: () => unawaited(client.decideApproval(item.approvalId, true)),
+                        child: Text(l.linkAllow),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    l.linkDesktopOnlyAction,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+              ],
+            ),
+          ),
+        const SizedBox(height: Space.lg),
+      ],
+      Text(l.linkDesktopTerminals, style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: Space.sm),
+      if (client.desktopSessions.isEmpty)
+        Text(
+          l.linkNoDesktopTerminals,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        )
+      else
+        for (final s in client.desktopSessions)
+          _SurfaceCard(
+            key: ValueKey('link-mirror-${s.sessionId}'),
+            onTap: () => unawaited(_openDesktopTerminal(client, s)),
+            child: Row(
+              children: [
+                Icon(s.isLocal ? Icons.terminal : Icons.dns_outlined, size: 18, color: scheme.primary),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.title, style: Theme.of(context).textTheme.titleSmall, overflow: TextOverflow.ellipsis),
+                      Text(
+                        s.targetLabel,
+                        style: mono(context, Theme.of(context).textTheme.bodySmall),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_connectingSessionId == s.sessionId)
+                  const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  _Tag(
+                    label: s.status == 'connected' ? l.linkMirrorTag : l.linkSessionPending,
+                    color: s.status == 'connected' ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+              ],
+            ),
+          ),
+    ];
+
+    final desktopHostsSection = <Widget>[
+      Text(l.linkDesktopHosts, style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: Space.sm),
+      if (client.desktopHosts.length > 5) ...[
+        TextField(
+          controller: _hostSearchController,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search, size: 18),
+            hintText: l.searchHint,
+            isDense: true,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: Space.sm),
+      ],
+      if (filteredHosts.isEmpty)
+        Text(
+          l.linkNoDesktopHosts,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        )
+      else
+        for (final h in filteredHosts)
+          _SurfaceCard(
+            key: ValueKey('link-proxy-${h.hostId}'),
+            onTap: () {
+              client.openProxiedHostInWorkspace(h);
+              widget.onOpenedTerminal?.call();
+            },
+            onLongPress: () => _showHostActions(client, h),
+            child: Row(
+              children: [
+                Icon(Icons.hub_outlined, size: 18, color: scheme.secondary),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        h.label.isEmpty ? h.targetLabel : h.label,
+                        style: Theme.of(context).textTheme.titleSmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        h.group.isEmpty ? h.targetLabel : '${h.group} · ${h.targetLabel}',
+                        style: mono(context, Theme.of(context).textTheme.bodySmall),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_connectingHostId == h.hostId)
+                  const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  _Tag(label: l.linkProxyTag, color: scheme.secondary),
+              ],
+            ),
+          ),
+    ];
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final inset = MobileSize.contentInset(constraints.maxWidth);
+        final twoColumns = constraints.maxWidth >= MobileSize.twoColumnBreakpoint;
+        final inset = MobileSize.contentInset(
+          constraints.maxWidth,
+          maxWidth: twoColumns ? MobileSize.wideContentMaxWidth : MobileSize.contentMaxWidth,
+        );
         return ListView(
           key: const ValueKey('mobile-link-connected'),
           padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
@@ -600,178 +819,25 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                 ),
               ),
             ],
-            if (client.pendingApprovals.isNotEmpty) ...[
-              const SizedBox(height: Space.lg),
+            const SizedBox(height: Space.lg),
+            if (twoColumns)
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.shield_outlined, size: 18, color: scheme.error),
-                  const SizedBox(width: Space.xs),
-                  Text(
-                    '${l.linkPendingApprovals} (${client.pendingApprovals.length})',
-                    style: Theme.of(context).textTheme.titleSmall,
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: approvalsAndSessions),
+                  ),
+                  const SizedBox(width: Space.lg),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: desktopHostsSection),
                   ),
                 ],
-              ),
-              const SizedBox(height: Space.sm),
-              for (final item in client.pendingApprovals)
-                _SurfaceCard(
-                  key: ValueKey('link-approval-${item.approvalId}'),
-                  borderColor: scheme.error.withValues(alpha: .35),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.title, style: Theme.of(context).textTheme.titleSmall),
-                      if (item.target.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(item.target, style: mono(context, Theme.of(context).textTheme.bodySmall)),
-                      ],
-                      if (item.command.isNotEmpty) ...[
-                        const SizedBox(height: Space.xs),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(Space.sm),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(Radii.control),
-                          ),
-                          child: Text(item.command, style: mono(context, Theme.of(context).textTheme.bodySmall)),
-                        ),
-                      ],
-                      if (item.detail.isNotEmpty) ...[
-                        const SizedBox(height: Space.xs),
-                        Text(
-                          item.detail,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                        ),
-                      ],
-                      const SizedBox(height: Space.sm),
-                      if (item.actionable)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            OutlinedButton(
-                              key: ValueKey('link-deny-${item.approvalId}'),
-                              onPressed: () => unawaited(client.decideApproval(item.approvalId, false)),
-                              child: Text(l.linkDeny),
-                            ),
-                            const SizedBox(width: Space.sm),
-                            FilledButton(
-                              key: ValueKey('link-allow-${item.approvalId}'),
-                              onPressed: () => unawaited(client.decideApproval(item.approvalId, true)),
-                              child: Text(l.linkAllow),
-                            ),
-                          ],
-                        )
-                      else
-                        Text(
-                          l.linkDesktopOnlyAction,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-                        ),
-                    ],
-                  ),
-                ),
-            ],
-            const SizedBox(height: Space.lg),
-            Text(l.linkDesktopTerminals, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: Space.sm),
-            if (client.desktopSessions.isEmpty)
-              Text(
-                l.linkNoDesktopTerminals,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               )
-            else
-              for (final s in client.desktopSessions)
-                _SurfaceCard(
-                  key: ValueKey('link-mirror-${s.sessionId}'),
-                  onTap: () => unawaited(_openDesktopTerminal(client, s)),
-                  child: Row(
-                    children: [
-                      Icon(s.isLocal ? Icons.terminal : Icons.dns_outlined, size: 18, color: scheme.primary),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.title,
-                              style: Theme.of(context).textTheme.titleSmall,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              s.targetLabel,
-                              style: mono(context, Theme.of(context).textTheme.bodySmall),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_connectingSessionId == s.sessionId)
-                        const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                      else
-                        _Tag(
-                          label: s.status == 'connected' ? l.linkMirrorTag : l.linkSessionPending,
-                          color: s.status == 'connected' ? scheme.primary : scheme.onSurfaceVariant,
-                        ),
-                    ],
-                  ),
-                ),
-            const SizedBox(height: Space.lg),
-            Text(l.linkDesktopHosts, style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: Space.sm),
-            if (client.desktopHosts.length > 5) ...[
-              TextField(
-                controller: _hostSearchController,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  hintText: l.searchHint,
-                  isDense: true,
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: Space.sm),
+            else ...[
+              ...approvalsAndSessions,
+              const SizedBox(height: Space.lg),
+              ...desktopHostsSection,
             ],
-            if (filteredHosts.isEmpty)
-              Text(
-                l.linkNoDesktopHosts,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              )
-            else
-              for (final h in filteredHosts)
-                _SurfaceCard(
-                  key: ValueKey('link-proxy-${h.hostId}'),
-                  onTap: () {
-                    client.openProxiedHostInWorkspace(h);
-                    widget.onOpenedTerminal?.call();
-                  },
-                  onLongPress: () => _showHostActions(client, h),
-                  child: Row(
-                    children: [
-                      Icon(Icons.hub_outlined, size: 18, color: scheme.secondary),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              h.label.isEmpty ? h.targetLabel : h.label,
-                              style: Theme.of(context).textTheme.titleSmall,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              h.group.isEmpty ? h.targetLabel : '${h.group} · ${h.targetLabel}',
-                              style: mono(context, Theme.of(context).textTheme.bodySmall),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_connectingHostId == h.hostId)
-                        const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                      else
-                        _Tag(label: l.linkProxyTag, color: scheme.secondary),
-                    ],
-                  ),
-                ),
           ],
         );
       },
@@ -820,4 +886,75 @@ class _Tag extends StatelessWidget {
     decoration: BoxDecoration(color: color.withValues(alpha: .14), borderRadius: BorderRadius.circular(Radii.pill)),
     child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color)),
   );
+}
+
+class _DiscoveredPairDialog extends StatefulWidget {
+  const _DiscoveredPairDialog({required this.desktop});
+
+  final DiscoveredDesktop desktop;
+
+  @override
+  State<_DiscoveredPairDialog> createState() => _DiscoveredPairDialogState();
+}
+
+class _DiscoveredPairDialogState extends State<_DiscoveredPairDialog> {
+  final _code = TextEditingController();
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  String get _normalized => _code.text.replaceAll(RegExp(r'\s+'), '');
+
+  void _submit() {
+    final code = _normalized;
+    if (code.length < 6) return;
+    Navigator.of(context).pop(code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final canSubmit = _normalized.length >= 6;
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      duration: Motion.overlay(context, Motion.quick),
+      child: AppDialog(
+        icon: Icon(Icons.desktop_windows_outlined, color: scheme.primary),
+        title: Text(widget.desktop.name, overflow: TextOverflow.ellipsis),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${widget.desktop.address}:${widget.desktop.port}',
+              style: mono(context, Theme.of(context).textTheme.bodySmall),
+            ),
+            const SizedBox(height: Space.md),
+            TextField(
+              key: const ValueKey('link-discovered-code-input'),
+              controller: _code,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(labelText: l.linkPairingCode, isDense: true),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(l.cancel)),
+          FilledButton(
+            key: const ValueKey('link-discovered-pair-confirm'),
+            onPressed: canSubmit ? _submit : null,
+            child: Text(l.linkPairNow),
+          ),
+        ],
+      ),
+    );
+  }
 }
