@@ -54,6 +54,7 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
   final _hostsChanged = StreamController<void>.broadcast();
   final _approvalsChanged = StreamController<void>.broadcast();
   final _watchedSessions = <SessionId, TerminalSession>{};
+  String _lastSessionsSignature = '';
 
   /// Prompts supplied by the top-level lifecycle so mobile-requested connects can ask for host keys/passwords.
   ConnectPrompts? prompts;
@@ -93,7 +94,14 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
   }
 
   void _emitSessionsChanged() {
-    if (!_sessionsChanged.isClosed) _sessionsChanged.add(null);
+    if (_sessionsChanged.isClosed) return;
+    final signature = [
+      for (final s in listSessions())
+        '${s.sessionId}\u0000${s.title}\u0000${s.targetLabel}\u0000${s.isLocal}\u0000${s.status}\u0000${s.cols}x${s.rows}\u0000${s.hostId ?? ''}\u0000${s.shellKind ?? ''}',
+    ].join('\n');
+    if (signature == _lastSessionsSignature) return;
+    _lastSessionsSignature = signature;
+    _sessionsChanged.add(null);
   }
 
   void _onApprovalsChanged() {
@@ -124,25 +132,50 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
             cols: entry.value.cols,
             rows: entry.value.rows,
             hostId: entry.value.sshHost?.id.value,
+            shellKind: entry.value.localShell?.kind.name,
           ),
     ];
   }
 
   @override
-  MirrorAttachment? attachMirror(String sessionId, void Function(Uint8List chunk) onOutput) {
+  MirrorAttachment? attachMirror(String sessionId, void Function(Uint8List chunk) onOutput, {VoidCallback? onClosed}) {
     final session = _ref.read(terminalSessionsProvider)[SessionId(sessionId)];
     if (session == null || session.isRemote) return null;
     final snapshot = session.captureMirrorSnapshot(maxBytes: linkSnapshotMaxBytes);
     final sub = session.mirrorOutput.listen(onOutput, onError: (Object _) {});
+    var detached = false;
     bool current() =>
+        !detached &&
         identical(_watchedSessions[session.id], session) &&
         session.canInsert &&
         (session.isLocal || session.liveSshLease != null);
+    StreamSubscription<void>? sessionsWatch;
+    void checkClosed() {
+      if (detached) return;
+      final stillOpen = identical(_watchedSessions[session.id], session);
+      final ended = session.status == SessionStatus.disconnected || session.status == SessionStatus.failed;
+      if (!stillOpen || ended) {
+        detached = true;
+        session.removeListener(checkClosed);
+        unawaited(sessionsWatch?.cancel());
+        unawaited(sub.cancel());
+        onClosed?.call();
+      }
+    }
+
+    session.addListener(checkClosed);
+    sessionsWatch = _sessionsChanged.stream.listen((_) => checkClosed());
     return MirrorAttachment(
       snapshot: snapshot,
       write: session.sendRemoteInput,
       resize: session.resizeFromRemote,
-      detach: () => unawaited(sub.cancel()),
+      detach: () {
+        if (detached) return;
+        detached = true;
+        session.removeListener(checkClosed);
+        unawaited(sessionsWatch?.cancel());
+        unawaited(sub.cancel());
+      },
       resources: LinkTerminalResources(
         current: current,
         sample: session.isLocal && !LocalMonitorExec.supported
@@ -169,6 +202,44 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
         },
       ),
     );
+  }
+
+  List<({String id, LocalShell shell})> _indexedLocalShells() {
+    final shells = _ref.read(localShellsProvider);
+    final counts = <LocalShellKind, int>{};
+    for (final s in shells) {
+      counts[s.kind] = (counts[s.kind] ?? 0) + 1;
+    }
+    final seen = <LocalShellKind, int>{};
+    return [
+      for (final s in shells)
+        (id: counts[s.kind]! > 1 ? '${s.kind.name}:${seen[s.kind] = (seen[s.kind] ?? 0) + 1}' : s.kind.name, shell: s),
+    ];
+  }
+
+  LocalShell? _resolveLocalShell(String shellId) {
+    final indexed = _indexedLocalShells();
+    if (indexed.isEmpty) return null;
+    if (shellId.isEmpty || shellId == 'default') return indexed.first.shell;
+    return indexed.where((e) => e.id == shellId).firstOrNull?.shell;
+  }
+
+  @override
+  List<LinkLocalShellSummary> listLocalShells() => [
+    for (final entry in _indexedLocalShells())
+      LinkLocalShellSummary(shellId: entry.id, name: entry.shell.name, kind: entry.shell.kind.name),
+  ];
+
+  @override
+  Future<ShellChannel> openProxyLocalShell(String shellId, {required int cols, required int rows}) async {
+    final shell = _resolveLocalShell(shellId);
+    if (shell == null) throw const LinkException(LinkErrorKind.hostUnavailable);
+    try {
+      final pty = await _ref.read(localPtyProvider).start(shell, cols: cols, rows: rows);
+      return _LocalProxyShellChannel(pty);
+    } on Object {
+      throw const LinkException(LinkErrorKind.hostUnavailable);
+    }
   }
 
   @override
@@ -487,6 +558,27 @@ class AppLinkDesktopBridge implements LinkDesktopBridge {
   }
 
   @override
+  Future<LinkSessionSummary?> handoffLocalForMirror(String shellId) async {
+    final shell = _resolveLocalShell(shellId);
+    if (shell == null) return null;
+    final tabId = _ref.read(workspaceProvider.notifier).openLocal(shell);
+    final tab = _ref.read(workspaceProvider).tabs.where((t) => t.id == tabId).firstOrNull;
+    final session = tab == null ? null : _sessionById(tab.layout.focusedLeaf.session.value);
+    if (session == null) return null;
+    if (!await _awaitConnected(session)) return null;
+    return LinkSessionSummary(
+      sessionId: session.id.value,
+      title: session.title,
+      targetLabel: session.targetLabel,
+      isLocal: true,
+      status: session.status.name,
+      cols: session.cols,
+      rows: session.rows,
+      shellKind: shell.kind.name,
+    );
+  }
+
+  @override
   Future<void> receiveClipboard(String text) => Clipboard.setData(ClipboardData(text: text));
 
   void dispose() {
@@ -603,6 +695,8 @@ class AppLinkMobileBridge implements LinkMobileBridge {
     required String title,
     required String targetLabel,
     required bool isMirror,
+    bool isLocal = false,
+    String? localShellKind,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
     Future<FileSystem> Function()? files,
   }) {
@@ -616,10 +710,67 @@ class AppLinkMobileBridge implements LinkMobileBridge {
             title: title,
             targetLabel: targetLabel,
             kind: isMirror ? LinkTerminalKind.mirror : LinkTerminalKind.proxy,
+            isLocal: isLocal,
+            localShellKind: localShellKind == null ? null : LocalShellKind.values.asNameMap()[localShellKind],
           ),
           openChannel,
           files: files,
         );
+  }
+}
+
+class _LocalProxyShellChannel implements LinkProxyShell {
+  _LocalProxyShellChannel(this._pty) {
+    unawaited(
+      _pty.exitCode.whenComplete(() {
+        _closed = true;
+        if (!_done.isCompleted) _done.complete();
+      }),
+    );
+  }
+
+  final LocalPty _pty;
+  final _done = Completer<void>();
+  var _closed = false;
+
+  @override
+  late final resources = LinkTerminalResources(
+    current: () => !_closed,
+    sample: LocalMonitorExec.supported
+        ? ({required processes, required gpu, required cancel}) =>
+              _sampleLinkedTerminal(null, local: true, processes: processes, gpu: gpu, cancel: cancel)
+        : null,
+    openFiles: (cancel) async {
+      if (cancel.isCancelled || _closed) throw const FsError(FsFailure.lost);
+      return LinkFsHandle(localFiles, localFiles.close, isCurrent: () => !_closed);
+    },
+  );
+
+  @override
+  Stream<Uint8List> get stdout => _pty.output;
+
+  @override
+  Stream<Uint8List> get stderr => const Stream.empty();
+
+  @override
+  Future<void> get done => _done.future;
+
+  @override
+  void write(Uint8List data) {
+    if (!_closed) _pty.write(data);
+  }
+
+  @override
+  void resize(int cols, int rows) {
+    if (!_closed) _pty.resize(cols, rows);
+  }
+
+  @override
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    _pty.close();
+    if (!_done.isCompleted) _done.complete();
   }
 }
 

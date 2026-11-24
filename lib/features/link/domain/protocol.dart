@@ -214,6 +214,7 @@ class LinkSessionSummary {
     required this.cols,
     required this.rows,
     this.hostId,
+    this.shellKind,
   });
 
   final String sessionId;
@@ -224,6 +225,7 @@ class LinkSessionSummary {
   final int cols;
   final int rows;
   final String? hostId;
+  final String? shellKind;
 
   Map<String, Object?> toJson() => {
     'sessionId': sessionId,
@@ -234,6 +236,7 @@ class LinkSessionSummary {
     'cols': cols,
     'rows': rows,
     if (hostId != null) 'hostId': hostId,
+    if (shellKind != null) 'shellKind': shellKind,
   };
 
   factory LinkSessionSummary.fromJson(Map<String, dynamic> j) => LinkSessionSummary(
@@ -245,6 +248,26 @@ class LinkSessionSummary {
     cols: (j['cols'] as num?)?.toInt() ?? 80,
     rows: (j['rows'] as num?)?.toInt() ?? 24,
     hostId: j['hostId'] as String?,
+    shellKind: j['shellKind'] as String?,
+  );
+}
+
+/// Sanitized desktop local shell choice exposed over Link (never includes host executable paths).
+class LinkLocalShellSummary {
+  const LinkLocalShellSummary({required this.shellId, required this.name, required this.kind});
+
+  final String shellId;
+  final String name;
+  final String kind;
+
+  bool get isWindowsShell => kind == 'cmd' || kind == 'powershell' || kind == 'pwsh';
+
+  Map<String, Object?> toJson() => {'shellId': shellId, 'name': name, 'kind': kind};
+
+  factory LinkLocalShellSummary.fromJson(Map<String, dynamic> j) => LinkLocalShellSummary(
+    shellId: j['shellId'] as String,
+    name: j['name'] as String? ?? '',
+    kind: j['kind'] as String? ?? 'unix',
   );
 }
 

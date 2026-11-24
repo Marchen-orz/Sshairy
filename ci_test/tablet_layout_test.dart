@@ -58,6 +58,13 @@ class _TestShellChannel implements ShellChannel {
   }
 }
 
+class _NoLanScanLinkClient extends LinkClientController {
+  _NoLanScanLinkClient({required super.credentials, required super.store, required super.bridge});
+
+  @override
+  Future<void> discoverLan() async {}
+}
+
 class _FakeDiscoveredLinkClient extends LinkClientController {
   _FakeDiscoveredLinkClient({
     required super.credentials,
@@ -98,6 +105,15 @@ class _FakeDiscoveredLinkClient extends LinkClientController {
       ...appOverrides(),
       dataDirProvider.overrideWithValue(dir.path),
       linkCredentialsProvider.overrideWithValue(_TestLinkCredentials()),
+      linkClientControllerProvider.overrideWith((ref) {
+        final controller = _NoLanScanLinkClient(
+          credentials: ref.read(linkCredentialsProvider),
+          store: LinkPeerStore('${ref.read(dataDirProvider)}/link_client'),
+          bridge: ref.read(linkMobileBridgeProvider),
+        );
+        ref.onDispose(controller.dispose);
+        return controller;
+      }),
     ],
   );
   return (dir: dir, container: container);

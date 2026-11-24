@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,12 +59,18 @@ abstract interface class LinkDesktopBridge {
   List<LinkSessionSummary> listSessions();
   Stream<void> get sessionsChanged;
 
-  MirrorAttachment? attachMirror(String sessionId, void Function(Uint8List chunk) onOutput);
+  MirrorAttachment? attachMirror(String sessionId, void Function(Uint8List chunk) onOutput, {VoidCallback? onClosed});
 
   List<LinkHostSummary> listHosts();
   Stream<void> get hostsChanged;
 
+  /// Sanitized local shells available on this desktop (no host executable paths).
+  List<LinkLocalShellSummary> listLocalShells();
+
   Future<ShellChannel> openProxyShell(String hostId, {required int cols, required int rows});
+
+  /// Opens a dedicated desktop local PTY sized for mobile over Link.
+  Future<ShellChannel> openProxyLocalShell(String shellId, {required int cols, required int rows});
 
   LinkSyncBundle exportSyncBundle();
 
@@ -89,6 +96,9 @@ abstract interface class LinkDesktopBridge {
   /// Opens a saved host on the desktop, waits for its shell, and returns its session summary for mirroring.
   Future<LinkSessionSummary?> handoffHostForMirror(String hostId);
 
+  /// Opens a desktop local shell tab on the desktop, waits for its PTY, and returns its session summary for mirroring.
+  Future<LinkSessionSummary?> handoffLocalForMirror(String shellId);
+
   /// Writes text pushed over E2EE Link from a paired mobile peer to the desktop clipboard.
   Future<void> receiveClipboard(String text);
 
@@ -106,6 +116,8 @@ abstract interface class LinkMobileBridge {
     required String title,
     required String targetLabel,
     required bool isMirror,
+    bool isLocal = false,
+    String? localShellKind,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
     Future<FileSystem> Function()? files,
   });
@@ -120,13 +132,19 @@ class _NullDesktopBridge implements LinkDesktopBridge {
   @override
   Stream<void> get sessionsChanged => const Stream.empty();
   @override
-  MirrorAttachment? attachMirror(String sessionId, void Function(Uint8List chunk) onOutput) => null;
+  MirrorAttachment? attachMirror(String sessionId, void Function(Uint8List chunk) onOutput, {VoidCallback? onClosed}) =>
+      null;
   @override
   List<LinkHostSummary> listHosts() => const [];
   @override
   Stream<void> get hostsChanged => const Stream.empty();
   @override
+  List<LinkLocalShellSummary> listLocalShells() => const [];
+  @override
   Future<ShellChannel> openProxyShell(String hostId, {required int cols, required int rows}) async =>
+      throw const LinkException(LinkErrorKind.hostUnavailable);
+  @override
+  Future<ShellChannel> openProxyLocalShell(String shellId, {required int cols, required int rows}) async =>
       throw const LinkException(LinkErrorKind.hostUnavailable);
   @override
   LinkSyncBundle exportSyncBundle() => LinkSyncBundle(
@@ -157,6 +175,8 @@ class _NullDesktopBridge implements LinkDesktopBridge {
   @override
   Future<LinkSessionSummary?> handoffHostForMirror(String hostId) async => null;
   @override
+  Future<LinkSessionSummary?> handoffLocalForMirror(String shellId) async => null;
+  @override
   Future<void> receiveClipboard(String text) async {}
   @override
   Future<LinkFsHandle> openFiles(String target, CancellationToken cancel) async =>
@@ -178,6 +198,8 @@ class _NullMobileBridge implements LinkMobileBridge {
     required String title,
     required String targetLabel,
     required bool isMirror,
+    bool isLocal = false,
+    String? localShellKind,
     required Future<ShellChannel> Function(int cols, int rows) openChannel,
     Future<FileSystem> Function()? files,
   }) {}
@@ -191,6 +213,77 @@ final linkMobileBridgeProvider = Provider<LinkMobileBridge>((_) => const _NullMo
 /// A phone that connected to the desktop, with the version it reported.
 typedef LinkPeerUpdate = ({String deviceId, String name, String version});
 
+/// Leading-edge micro-batcher for terminal output over E2EE Link: flushes the first chunk
+/// immediately for zero added interactive echo latency, then coalesces rapid bursts for [window]
+/// (up to [maxBytes]) into single encrypted frames.
+class _OutputCoalescer {
+  _OutputCoalescer(this._send);
+
+  static const _window = Duration(milliseconds: 12);
+  static const _maxBytes = 16384;
+
+  final void Function(Uint8List chunk) _send;
+  final _buffer = BytesBuilder(copy: false);
+  Timer? _timer;
+  var _cooling = false;
+  var _closed = false;
+
+  void add(Uint8List chunk) {
+    if (_closed || chunk.isEmpty) return;
+    if (!_cooling && _buffer.isEmpty && chunk.length <= _maxBytes) {
+      _send(chunk);
+      _cooling = true;
+      _timer = Timer(_window, _onTimer);
+      return;
+    }
+    _buffer.add(chunk);
+    if (_buffer.length >= _maxBytes) {
+      _flush();
+      _timer?.cancel();
+      _cooling = true;
+      _timer = Timer(_window, _onTimer);
+    } else if (_timer == null) {
+      _cooling = true;
+      _timer = Timer(_window, _onTimer);
+    }
+  }
+
+  void _onTimer() {
+    _timer = null;
+    if (_closed) return;
+    if (_buffer.isNotEmpty) {
+      _flush();
+      _cooling = true;
+      _timer = Timer(_window, _onTimer);
+    } else {
+      _cooling = false;
+    }
+  }
+
+  void _flush() {
+    if (_buffer.isEmpty) return;
+    final bytes = _buffer.takeBytes();
+    if (!_closed && bytes.isNotEmpty) _send(bytes);
+  }
+
+  void flushAndClose() {
+    if (_closed) return;
+    _timer?.cancel();
+    _timer = null;
+    _cooling = false;
+    _flush();
+    _closed = true;
+  }
+
+  void cancel() {
+    _closed = true;
+    _timer?.cancel();
+    _timer = null;
+    _cooling = false;
+    _buffer.clear();
+  }
+}
+
 /// A desktop-side active connection from one paired mobile peer.
 class _ConnectedPeer {
   _ConnectedPeer(this.deviceId, this.name, this.session, this.files);
@@ -203,14 +296,22 @@ class _ConnectedPeer {
   var acceptsUpdates = false;
   String? version;
   CancellationToken? updateMount;
-  final mirrors = <String, MirrorAttachment>{};
+  final mirrors = <String, ({MirrorAttachment attachment, _OutputCoalescer coalescer})>{};
   final proxyChannels =
-      <String, ({ShellChannel channel, StreamSubscription<Uint8List> outSub, StreamSubscription<Uint8List> errSub})>{};
+      <
+        String,
+        ({
+          ShellChannel channel,
+          StreamSubscription<Uint8List> outSub,
+          StreamSubscription<Uint8List> errSub,
+          _OutputCoalescer coalescer,
+        })
+      >{};
 
   final monitorRequests = <String, ({String channelId, CancellationToken cancel})>{};
 
   LinkTerminalResources? resources(String channelId, LinkPeerPermissions permissions) {
-    if (mirrors[channelId]?.resources case final resources? when permissions.allowMirror) return resources;
+    if (mirrors[channelId]?.attachment.resources case final resources? when permissions.allowMirror) return resources;
     final channel = proxyChannels[channelId]?.channel;
     return permissions.allowProxy && channel is LinkProxyShell ? channel.resources : null;
   }
@@ -228,10 +329,12 @@ class _ConnectedPeer {
     }
     files.close();
     for (final m in mirrors.values) {
-      m.detach();
+      m.coalescer.cancel();
+      m.attachment.detach();
     }
     mirrors.clear();
     for (final p in proxyChannels.values) {
+      p.coalescer.cancel();
       unawaited(p.outSub.cancel());
       unawaited(p.errSub.cancel());
       p.channel.close();
@@ -502,7 +605,8 @@ class LinkHostController extends ChangeNotifier {
     if (active != null) {
       if (!permissions.allowMirror) {
         for (final entry in active.mirrors.entries) {
-          entry.value.detach();
+          entry.value.coalescer.cancel();
+          entry.value.attachment.detach();
           _notifyClosedChannel(active, 'mirror.closed', entry.key);
         }
         active.mirrors.clear();
@@ -510,6 +614,7 @@ class LinkHostController extends ChangeNotifier {
       if (!permissions.allowProxy) {
         for (final entry in active.proxyChannels.entries) {
           final channel = entry.value;
+          channel.coalescer.cancel();
           unawaited(channel.outSub.cancel());
           unawaited(channel.errSub.cancel());
           channel.channel.close();
@@ -522,6 +627,21 @@ class LinkHostController extends ChangeNotifier {
       }
       active.files.revoke();
       _pushFileAccess(active);
+      if (permissions.allowMirror) {
+        _pushSessionsTo(active);
+      } else {
+        unawaited(active.session.sendMessage({'type': 'sessions.list', 'items': const <Object?>[]}));
+      }
+      if (permissions.allowProxy) {
+        _pushHostsTo(active);
+      } else {
+        unawaited(active.session.sendMessage({'type': 'hosts.list', 'items': const <Object?>[]}));
+      }
+      if (permissions.allowProxy || permissions.allowMirror) {
+        _pushLocalShellsTo(active);
+      } else {
+        unawaited(active.session.sendMessage({'type': 'localShells.list', 'items': const <Object?>[]}));
+      }
       if (permissions.allowApproval) {
         _pushApprovalsTo(active);
       } else {
@@ -750,6 +870,7 @@ class LinkHostController extends ChangeNotifier {
       // Push initial state snapshot according to permissions
       _pushSessionsTo(active);
       _pushHostsTo(active);
+      _pushLocalShellsTo(active);
       _pushApprovalsTo(active);
       _pushFileAccess(active);
 
@@ -794,6 +915,8 @@ class LinkHostController extends ChangeNotifier {
         _pushSessionsTo(peer);
       case 'hosts.list':
         _pushHostsTo(peer);
+      case 'localShells.list':
+        _pushLocalShellsTo(peer);
       case 'approvals.list':
         _pushApprovalsTo(peer);
 
@@ -811,9 +934,13 @@ class LinkHostController extends ChangeNotifier {
           });
           return;
         }
-        peer.mirrors.remove(channelId)?.detach();
+        final existingMirror = peer.mirrors.remove(channelId);
+        if (existingMirror != null) {
+          existingMirror.coalescer.cancel();
+          existingMirror.attachment.detach();
+        }
         peer.revokeTerminalResources(channelId: channelId);
-        final attachment = bridge.attachMirror(sessionId, (chunk) {
+        final coalescer = _OutputCoalescer((chunk) {
           if (peer.session.isClosed || !peer.mirrors.containsKey(channelId)) return;
           unawaited(
             peer.session
@@ -821,7 +948,21 @@ class LinkHostController extends ChangeNotifier {
                 .catchError((Object _) {}),
           );
         });
+        MirrorAttachment? attachment;
+        attachment = bridge.attachMirror(
+          sessionId,
+          coalescer.add,
+          onClosed: () {
+            final current = peer.mirrors[channelId];
+            if (current == null || !identical(current.attachment, attachment)) return;
+            peer.mirrors.remove(channelId);
+            current.coalescer.flushAndClose();
+            peer.revokeTerminalResources(channelId: channelId);
+            _notifyClosedChannel(peer, 'mirror.closed', channelId);
+          },
+        );
         if (attachment == null) {
+          coalescer.cancel();
           await peer.session.sendMessage({
             'type': 'mirror.error',
             'channelId': channelId,
@@ -829,7 +970,7 @@ class LinkHostController extends ChangeNotifier {
           });
           return;
         }
-        peer.mirrors[channelId] = attachment;
+        peer.mirrors[channelId] = (attachment: attachment, coalescer: coalescer);
         await peer.session.sendMessage({
           'type': 'mirror.snapshot',
           'channelId': channelId,
@@ -840,14 +981,18 @@ class LinkHostController extends ChangeNotifier {
 
       case 'mirror.detach':
         final channelId = msg['channelId'] as String? ?? '';
-        peer.mirrors.remove(channelId)?.detach();
+        final existing = peer.mirrors.remove(channelId);
+        if (existing != null) {
+          existing.coalescer.cancel();
+          existing.attachment.detach();
+        }
         peer.revokeTerminalResources(channelId: channelId);
 
       case 'mirror.input':
         if (!perms.allowMirror) return;
         final channelId = msg['channelId'] as String? ?? '';
         final data = msg['data'] as String?;
-        if (data != null) peer.mirrors[channelId]?.write(base64Decode(data));
+        if (data != null) peer.mirrors[channelId]?.attachment.write(base64Decode(data));
 
       case 'terminal.monitor':
         unawaited(_sampleTerminal(peer, msg, perms));
@@ -860,12 +1005,14 @@ class LinkHostController extends ChangeNotifier {
         final cols = (msg['cols'] as num?)?.toInt();
         final rows = (msg['rows'] as num?)?.toInt();
         if (cols != null && rows != null && cols > 0 && rows > 0) {
-          peer.mirrors[channelId]?.resize(cols, rows);
+          peer.mirrors[channelId]?.attachment.resize(cols, rows);
         }
 
       case 'proxy.open':
+      case 'proxy.openLocal':
         final channelId = msg['channelId'] as String? ?? '';
-        final hostId = msg['hostId'] as String? ?? '';
+        final isLocal = type == 'proxy.openLocal';
+        final targetId = (isLocal ? msg['shellId'] : msg['hostId']) as String? ?? '';
         final cols = ((msg['cols'] as num?)?.toInt() ?? 80).clamp(10, 500);
         final rows = ((msg['rows'] as num?)?.toInt() ?? 24).clamp(4, 200);
         if (!perms.allowProxy) {
@@ -889,23 +1036,25 @@ class LinkHostController extends ChangeNotifier {
           return;
         }
         try {
-          final shell = await bridge.openProxyShell(hostId, cols: cols, rows: rows);
+          final shell = isLocal
+              ? await bridge.openProxyLocalShell(targetId, cols: cols, rows: rows)
+              : await bridge.openProxyShell(targetId, cols: cols, rows: rows);
           if (peer.session.isClosed) {
             shell.close();
             return;
           }
-          void sendBytes(Uint8List bytes) {
+          final coalescer = _OutputCoalescer((bytes) {
             if (peer.session.isClosed || bytes.isEmpty) return;
             unawaited(
               peer.session
                   .sendMessage({'type': 'proxy.output', 'channelId': channelId, 'data': base64Encode(bytes)})
                   .catchError((Object _) {}),
             );
-          }
+          });
 
-          final outSub = shell.stdout.listen(sendBytes, onError: (Object _) {});
-          final errSub = shell.stderr.listen(sendBytes, onError: (Object _) {});
-          peer.proxyChannels[channelId] = (channel: shell, outSub: outSub, errSub: errSub);
+          final outSub = shell.stdout.listen(coalescer.add, onError: (Object _) {});
+          final errSub = shell.stderr.listen(coalescer.add, onError: (Object _) {});
+          peer.proxyChannels[channelId] = (channel: shell, outSub: outSub, errSub: errSub, coalescer: coalescer);
           await peer.session.sendMessage({
             'type': 'proxy.opened',
             'channelId': channelId,
@@ -917,6 +1066,7 @@ class LinkHostController extends ChangeNotifier {
               final entry = peer.proxyChannels.remove(channelId);
               peer.revokeTerminalResources(channelId: channelId);
               if (entry != null) {
+                entry.coalescer.flushAndClose();
                 unawaited(entry.outSub.cancel());
                 unawaited(entry.errSub.cancel());
               }
@@ -952,6 +1102,7 @@ class LinkHostController extends ChangeNotifier {
         final entry = peer.proxyChannels.remove(channelId);
         peer.revokeTerminalResources(channelId: channelId);
         if (entry != null) {
+          entry.coalescer.cancel();
           unawaited(entry.outSub.cancel());
           unawaited(entry.errSub.cancel());
           entry.channel.close();
@@ -1007,6 +1158,21 @@ class LinkHostController extends ChangeNotifier {
         final reqId = msg['reqId'] as String? ?? '';
         final hostId = msg['hostId'] as String? ?? '';
         final summary = hostId.isEmpty ? null : await bridge.handoffHostForMirror(hostId);
+        if (!peer.session.isClosed) {
+          await peer.session
+              .sendMessage({
+                'type': 'handoff.mirror.result',
+                'reqId': reqId,
+                if (summary != null) 'session': summary.toJson(),
+              })
+              .catchError((Object _) {});
+        }
+
+      case 'handoff.local.mirror':
+        if (!perms.allowMirror) return;
+        final reqId = msg['reqId'] as String? ?? '';
+        final shellId = msg['shellId'] as String? ?? '';
+        final summary = await bridge.handoffLocalForMirror(shellId);
         if (!peer.session.isClosed) {
           await peer.session
               .sendMessage({
@@ -1108,6 +1274,17 @@ class LinkHostController extends ChangeNotifier {
     if (record == null || !record.permissions.allowProxy || peer.session.isClosed) return;
     final items = [for (final h in bridge.listHosts()) h.toJson()];
     unawaited(peer.session.sendMessage({'type': 'hosts.list', 'items': items}).catchError((Object _) {}));
+  }
+
+  void _pushLocalShellsTo(_ConnectedPeer peer) {
+    final record = _findPeer(peer.deviceId);
+    if (record == null ||
+        (!record.permissions.allowProxy && !record.permissions.allowMirror) ||
+        peer.session.isClosed) {
+      return;
+    }
+    final items = [for (final s in bridge.listLocalShells()) s.toJson()];
+    unawaited(peer.session.sendMessage({'type': 'localShells.list', 'items': items}).catchError((Object _) {}));
   }
 
   void _pushApprovalsTo(_ConnectedPeer peer) {
@@ -1227,6 +1404,7 @@ class LinkClientController extends ChangeNotifier {
     required this.bridge,
     this.transportFactory,
     bool? acceptAndroidUpdates,
+    this.autoReconnect = true,
   }) : _acceptAndroidUpdates = acceptAndroidUpdates ?? Platform.isAndroid {
     _peers = store.load();
   }
@@ -1236,8 +1414,10 @@ class LinkClientController extends ChangeNotifier {
   final LinkMobileBridge bridge;
   final Future<LinkTransport> Function(String host, int port)? transportFactory;
   final bool _acceptAndroidUpdates;
+  final bool autoReconnect;
   final _updateOffers = StreamController<void>.broadcast();
   final _updatePushes = StreamController<void>.broadcast();
+  final _reconnected = StreamController<void>.broadcast();
   var _updateRelay = false;
 
   LinkIdentity? _identity;
@@ -1255,6 +1435,7 @@ class LinkClientController extends ChangeNotifier {
 
   List<LinkSessionSummary> _desktopSessions = const [];
   List<LinkHostSummary> _desktopHosts = const [];
+  List<LinkLocalShellSummary> _desktopLocalShells = const [];
   List<LinkApprovalItem> _approvals = const [];
   LinkSyncSummary? _lastSync;
   LinkCredentialBundle? _pendingCredentialOffer;
@@ -1264,6 +1445,21 @@ class LinkClientController extends ChangeNotifier {
   Object? _desktopFilesBinding, _proxyFilesBinding;
   int _attempt = 0;
   bool _disposed = false;
+  bool _manualDisconnect = false;
+  bool _hadConnectedBefore = false;
+  bool _reconnecting = false;
+  int _reconnectAttempts = 0;
+  String? _reconnectPeerId;
+  Timer? _reconnectTimer;
+
+  static const _reconnectDelays = [
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 4),
+    Duration(seconds: 8),
+    Duration(seconds: 15),
+    Duration(seconds: 15),
+  ];
 
   final _channels = <String, _LinkShellChannel>{};
   final _openWaiters = <String, Completer<void>>{};
@@ -1276,6 +1472,9 @@ class LinkClientController extends ChangeNotifier {
 
   LinkConnectionStatus get status => _status;
   bool get connected => _status == LinkConnectionStatus.connected && _session != null && !_session!.isClosed;
+  bool get reconnecting => _reconnecting;
+  String? get reconnectingDesktopName =>
+      _reconnectPeerId == null ? null : _peers.where((p) => p.deviceId == _reconnectPeerId).firstOrNull?.name;
   LinkErrorKind? get lastError => _lastError;
   String? get connectedDesktopId => _connectedDesktopId;
   String? get connectedDesktopName => _connectedDesktopName;
@@ -1284,6 +1483,7 @@ class LinkClientController extends ChangeNotifier {
   bool get discovering => _discovering;
   List<LinkSessionSummary> get desktopSessions => List.unmodifiable(_desktopSessions);
   List<LinkHostSummary> get desktopHosts => List.unmodifiable(_desktopHosts);
+  List<LinkLocalShellSummary> get desktopLocalShells => List.unmodifiable(_desktopLocalShells);
   List<LinkApprovalItem> get pendingApprovals => List.unmodifiable(_approvals);
   LinkSyncSummary? get lastSync => _lastSync;
   LinkCredentialBundle? get pendingCredentialOffer => _pendingCredentialOffer;
@@ -1298,6 +1498,9 @@ class LinkClientController extends ChangeNotifier {
 
   /// A desktop-confirmed push: fetch the latest package through the relay without another prompt.
   Stream<void> get updatePushes => _updatePushes.stream;
+
+  /// Fires whenever Link transitions back to connected after a prior connection.
+  Stream<void> get reconnected => _reconnected.stream;
 
   Future<FileSystem> openUpdateRelay(Object binding) async {
     if (!identical(updateRelayBinding, binding)) throw const FsError(FsFailure.lost);
@@ -1457,14 +1660,126 @@ class LinkClientController extends ChangeNotifier {
     );
   }
 
-  Future<bool> connectToPeer(LinkPeer peer, {String? hostOverride, int? portOverride, String? deviceName}) =>
-      _establish(
-        host: hostOverride ?? peer.lastAddress ?? '',
-        port: portOverride ?? peer.lastPort ?? linkDefaultPort,
-        pairing: false,
-        expectedPublicKey: peer.publicKey,
-        deviceName: deviceName,
-      );
+  Future<bool> connectToPeer(LinkPeer peer, {String? hostOverride, int? portOverride, String? deviceName}) async {
+    _manualDisconnect = false;
+    _cancelReconnect(notify: false);
+    final host = hostOverride ?? peer.lastAddress ?? '';
+    final port = portOverride ?? peer.lastPort ?? linkDefaultPort;
+    final ok = await _establish(
+      host: host,
+      port: port,
+      pairing: false,
+      expectedPublicKey: peer.publicKey,
+      deviceName: deviceName,
+    );
+    if (ok || _disposed || hostOverride != null || _lastError != LinkErrorKind.network || transportFactory != null) {
+      return ok;
+    }
+    // Saved address failed over the network (e.g. desktop DHCP IP changed): probe LAN once for the same deviceId.
+    final found = await discoverLanDesktops(wait: const Duration(milliseconds: 650));
+    if (_disposed || connected || _manualDisconnect) return false;
+    _discovered = found;
+    final match = found.where((d) => d.deviceId == peer.deviceId).firstOrNull;
+    if (match == null || (match.address == host.trim() && match.port == port)) {
+      _notify();
+      return false;
+    }
+    return _establish(
+      host: match.address,
+      port: match.port,
+      pairing: false,
+      expectedPublicKey: peer.publicKey,
+      deviceName: deviceName,
+    );
+  }
+
+  /// Auto-connects to the most recently used saved desktop when not manually disconnected (e.g. on startup/resume).
+  Future<bool> ensureConnected() async {
+    if (_disposed || connected || _status == LinkConnectionStatus.connecting || _manualDisconnect || _peers.isEmpty) {
+      return connected;
+    }
+    final target = _mostRecentPeer();
+    if (target == null) return false;
+    _reconnectAttempts = 0;
+    return connectToPeer(target);
+  }
+
+  LinkPeer? _mostRecentPeer() {
+    if (_peers.isEmpty) return null;
+    if (_reconnectPeerId != null) {
+      final preferred = _peers.where((p) => p.deviceId == _reconnectPeerId).firstOrNull;
+      if (preferred != null) return preferred;
+    }
+    final sorted = [..._peers]..sort((a, b) => (b.lastSeen ?? b.pairedAt).compareTo(a.lastSeen ?? a.pairedAt));
+    return sorted.first;
+  }
+
+  void cancelReconnect() {
+    _manualDisconnect = true;
+    _cancelReconnect(notify: true);
+  }
+
+  void _cancelReconnect({required bool notify}) {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    final was = _reconnecting;
+    _reconnecting = false;
+    _reconnectAttempts = 0;
+    if (notify && was) _notify();
+  }
+
+  void _scheduleReconnect() {
+    if (_disposed || !autoReconnect || _manualDisconnect || connected || _reconnectPeerId == null) return;
+    if (_reconnectAttempts >= _reconnectDelays.length) {
+      _cancelReconnect(notify: true);
+      return;
+    }
+    final peer = _peers.where((p) => p.deviceId == _reconnectPeerId).firstOrNull;
+    if (peer == null) {
+      _cancelReconnect(notify: true);
+      return;
+    }
+    final delay = _reconnectDelays[_reconnectAttempts++];
+    _reconnecting = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () => unawaited(_runScheduledReconnect(peer)));
+    _notify();
+  }
+
+  Future<void> _runScheduledReconnect(LinkPeer peer) async {
+    _reconnectTimer = null;
+    if (_disposed || !_reconnecting || _manualDisconnect || connected) return;
+    final ok = await _establish(
+      host: peer.lastAddress ?? '',
+      port: peer.lastPort ?? linkDefaultPort,
+      pairing: false,
+      expectedPublicKey: peer.publicKey,
+      fromAutoReconnect: true,
+    );
+    if (ok || _disposed || _manualDisconnect || connected) return;
+    if (_lastError == LinkErrorKind.peerRevoked || _lastError == LinkErrorKind.authFailed) {
+      _manualDisconnect = true;
+      _cancelReconnect(notify: true);
+      return;
+    }
+    if (_lastError == LinkErrorKind.network && transportFactory == null && _reconnectAttempts == 2) {
+      final found = await discoverLanDesktops(wait: const Duration(milliseconds: 650));
+      if (_disposed || _manualDisconnect || connected) return;
+      _discovered = found;
+      final match = found.where((d) => d.deviceId == peer.deviceId).firstOrNull;
+      if (match != null && (match.address != peer.lastAddress || match.port != peer.lastPort)) {
+        final okLan = await _establish(
+          host: match.address,
+          port: match.port,
+          pairing: false,
+          expectedPublicKey: peer.publicKey,
+          fromAutoReconnect: true,
+        );
+        if (okLan || _disposed || _manualDisconnect || connected) return;
+      }
+    }
+    _scheduleReconnect();
+  }
 
   Future<bool> _establish({
     required String host,
@@ -1473,8 +1788,13 @@ class LinkClientController extends ChangeNotifier {
     String? pairingCode,
     String? expectedPublicKey,
     String? deviceName,
+    bool fromAutoReconnect = false,
   }) async {
     final attempt = ++_attempt;
+    if (!fromAutoReconnect) {
+      _manualDisconnect = false;
+      _cancelReconnect(notify: false);
+    }
     await _disconnect();
     if (_disposed || attempt != _attempt) return false;
     if (host.trim().isEmpty) {
@@ -1504,6 +1824,10 @@ class LinkClientController extends ChangeNotifier {
         await session.close();
         return false;
       }
+      final wasConnectedBefore = _hadConnectedBefore;
+      _hadConnectedBefore = true;
+      _cancelReconnect(notify: false);
+      _reconnectPeerId = result.session.peerDeviceId;
       _session = session;
       _files = LinkFiles(
         send: session.sendMessage,
@@ -1533,7 +1857,8 @@ class LinkClientController extends ChangeNotifier {
       if (!identical(_session, session)) return false;
 
       void disconnected() {
-        if (identical(_session, session)) unawaited(disconnect());
+        if (!identical(_session, session)) return;
+        unawaited(_handleUnexpectedDrop());
       }
 
       _incomingSub = result.incoming.listen(
@@ -1545,6 +1870,7 @@ class LinkClientController extends ChangeNotifier {
         unawaited(session.sendMessage({'type': 'update.ready', 'version': appVersion}).catchError((Object _) {}));
       }
       _notify();
+      if (wasConnectedBefore && !_reconnected.isClosed) _reconnected.add(null);
       return true;
     } on LinkException catch (e) {
       if (_disposed || attempt != _attempt) return false;
@@ -1565,7 +1891,17 @@ class LinkClientController extends ChangeNotifier {
     }
   }
 
+  Future<void> _handleUnexpectedDrop() async {
+    _attempt++;
+    await _disconnect();
+    if (!_disposed && autoReconnect && !_manualDisconnect && _reconnectPeerId != null) {
+      _scheduleReconnect();
+    }
+  }
+
   Future<void> disconnect() {
+    _manualDisconnect = true;
+    _cancelReconnect(notify: false);
     _attempt++;
     return _disconnect();
   }
@@ -1610,6 +1946,7 @@ class LinkClientController extends ChangeNotifier {
     _connectedDesktopName = null;
     _desktopSessions = const [];
     _desktopHosts = const [];
+    _desktopLocalShells = const [];
     _approvals = const [];
     _pendingCredentialOffer = null;
     _passwordSyncStatus = LinkPasswordSyncStatus.idle;
@@ -1623,10 +1960,26 @@ class LinkClientController extends ChangeNotifier {
   }
 
   Future<void> forgetDesktop(String deviceId) async {
+    if (_reconnectPeerId == deviceId) {
+      _reconnectPeerId = null;
+      _cancelReconnect(notify: false);
+    }
     if (_connectedDesktopId == deviceId) await disconnect();
     _peers = _peers.where((p) => p.deviceId != deviceId).toList();
     await store.save(_peers);
     _notify();
+  }
+
+  /// Requests fresh sessions, hosts, local shells, and approvals from the connected desktop.
+  Future<void> refreshRemoteState() async {
+    final session = _session;
+    if (!connected || session == null) return;
+    await Future.wait([
+      session.sendMessage({'type': 'sessions.list'}).catchError((Object _) {}),
+      session.sendMessage({'type': 'hosts.list'}).catchError((Object _) {}),
+      session.sendMessage({'type': 'localShells.list'}).catchError((Object _) {}),
+      session.sendMessage({'type': 'approvals.list'}).catchError((Object _) {}),
+    ]);
   }
 
   /// Opens a live mirrored [ShellChannel] attached to a running desktop terminal session.
@@ -1678,7 +2031,20 @@ class LinkClientController extends ChangeNotifier {
   }
 
   /// Opens a desktop-proxied SSH [ShellChannel] (desktop dials with its own keys/proxies/trust store).
-  Future<ShellChannel> openProxyChannel(String desktopHostId, {required int cols, required int rows}) async {
+  Future<ShellChannel> openProxyChannel(String desktopHostId, {required int cols, required int rows}) =>
+      _openProxyChannel(type: 'proxy.open', key: 'hostId', targetId: desktopHostId, cols: cols, rows: rows);
+
+  /// Opens a desktop-proxied local shell [ShellChannel] sized directly for this mobile client.
+  Future<ShellChannel> openProxyLocalChannel(String shellId, {required int cols, required int rows}) =>
+      _openProxyChannel(type: 'proxy.openLocal', key: 'shellId', targetId: shellId, cols: cols, rows: rows);
+
+  Future<ShellChannel> _openProxyChannel({
+    required String type,
+    required String key,
+    required String targetId,
+    required int cols,
+    required int rows,
+  }) async {
     final session = _session;
     if (!connected || session == null) throw const LinkException(LinkErrorKind.network);
     final channelId = newId();
@@ -1710,13 +2076,7 @@ class LinkClientController extends ChangeNotifier {
       },
     );
     _channels[channelId] = channel;
-    await session.sendMessage({
-      'type': 'proxy.open',
-      'channelId': channelId,
-      'hostId': desktopHostId,
-      'cols': cols,
-      'rows': rows,
-    });
+    await session.sendMessage({'type': type, 'channelId': channelId, key: targetId, 'cols': cols, 'rows': rows});
     try {
       await waiter.future.timeout(const Duration(seconds: 30));
       return channel;
@@ -1855,6 +2215,8 @@ class LinkClientController extends ChangeNotifier {
       title: target.title,
       targetLabel: '${_connectedDesktopName ?? 'Desktop'} · ${target.targetLabel}',
       isMirror: true,
+      isLocal: target.isLocal,
+      localShellKind: target.shellKind,
       openChannel: (_, _) async =>
           opened = await openMirrorChannel(target.sessionId, followDesktopSize: followDesktopSize),
       files: () => openTerminalFiles(opened!),
@@ -1894,6 +2256,23 @@ class LinkClientController extends ChangeNotifier {
     }
   }
 
+  /// Asks the desktop to open a local shell tab and returns the new session once its PTY is live.
+  Future<LinkSessionSummary?> openLocalOnDesktopForMirror(String shellId) async {
+    final session = _session;
+    if (!connected || session == null) return null;
+    final reqId = newId();
+    final waiter = Completer<LinkSessionSummary?>();
+    _handoffMirrorWaiters[reqId] = waiter;
+    try {
+      await session.sendMessage({'type': 'handoff.local.mirror', 'reqId': reqId, 'shellId': shellId});
+      return await waiter.future.timeout(const Duration(seconds: 30), onTimeout: () => null);
+    } on Object {
+      return null;
+    } finally {
+      _handoffMirrorWaiters.remove(reqId);
+    }
+  }
+
   /// Opens a desktop-proxied SSH tab in the local workspace via [bridge].
   void openProxiedHostInWorkspace(LinkHostSummary host) {
     if (!connected || _connectedDesktopId == null) return;
@@ -1906,6 +2285,25 @@ class LinkClientController extends ChangeNotifier {
       targetLabel: '${_connectedDesktopName ?? 'Desktop'} ⇄ ${host.targetLabel}',
       isMirror: false,
       openChannel: (cols, rows) async => opened = await openProxyChannel(host.hostId, cols: cols, rows: rows),
+      files: () => openTerminalFiles(opened!),
+    );
+  }
+
+  /// Opens a desktop-proxied local shell tab in the local workspace via [bridge].
+  void openProxiedLocalInWorkspace(LinkLocalShellSummary shell) {
+    if (!connected || _connectedDesktopId == null) return;
+    ShellChannel? opened;
+    final desktop = _connectedDesktopName ?? 'Desktop';
+    bridge.openRemoteTerminal(
+      peerId: _connectedDesktopId!,
+      peerName: desktop,
+      remoteId: shell.shellId,
+      title: shell.name,
+      targetLabel: '$desktop · ${shell.name}',
+      isMirror: false,
+      isLocal: true,
+      localShellKind: shell.kind,
+      openChannel: (cols, rows) async => opened = await openProxyLocalChannel(shell.shellId, cols: cols, rows: rows),
       files: () => openTerminalFiles(opened!),
     );
   }
@@ -1931,6 +2329,13 @@ class LinkClientController extends ChangeNotifier {
         _desktopHosts = [
           for (final item in msg['items'] as List<dynamic>? ?? const [])
             if (item is Map) LinkHostSummary.fromJson(item.cast<String, dynamic>()),
+        ];
+        _notify();
+
+      case 'localShells.list':
+        _desktopLocalShells = [
+          for (final item in msg['items'] as List<dynamic>? ?? const [])
+            if (item is Map) LinkLocalShellSummary.fromJson(item.cast<String, dynamic>()),
         ];
         _notify();
 
@@ -2072,9 +2477,11 @@ class LinkClientController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _cancelReconnect(notify: false);
     unawaited(disconnect());
     unawaited(_updateOffers.close());
     unawaited(_updatePushes.close());
+    unawaited(_reconnected.close());
     super.dispose();
   }
 }

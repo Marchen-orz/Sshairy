@@ -3335,6 +3335,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linkNoDesktopTerminals => 'No open terminals on desktop.';
 
   @override
+  String get linkDesktopLocalShells => 'Desktop local shell';
+
+  @override
+  String get linkLocalTag => 'Local';
+
+  @override
+  String linkReconnecting(String desktop) {
+    return 'Reconnecting to $desktop...';
+  }
+
+  @override
   String get linkMirrorTag => 'Mirror';
 
   @override

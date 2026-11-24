@@ -54,10 +54,14 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (isMobilePlatform && ref.read(settingsProvider).get(SettingKeys.mobileBiometricLock)) {
-      _locked = true;
+    if (isMobilePlatform) {
+      if (ref.read(settingsProvider).get(SettingKeys.mobileBiometricLock)) {
+        _locked = true;
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _locked) unawaited(_authenticate());
+        if (!mounted) return;
+        if (_locked) unawaited(_authenticate());
+        unawaited(ref.read(linkClientControllerProvider).ensureConnected());
       });
     }
   }
@@ -74,6 +78,9 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!isMobilePlatform) return;
+    if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(linkClientControllerProvider).ensureConnected());
+    }
     final biometricEnabled = ref.read(settingsProvider).get(SettingKeys.mobileBiometricLock);
     if (!biometricEnabled) return;
     if (state == AppLifecycleState.paused) {
@@ -201,7 +208,11 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
                 children: [
                   _MobileTabHeader(title: l.linkTitle),
                   Expanded(
-                    child: MobileLinkPage(onOpenedTerminal: _openTerminalScreen, onOpenFiles: _openFiles),
+                    child: MobileLinkPage(
+                      active: _tab == _MobileNavTab.link,
+                      onOpenedTerminal: _openTerminalScreen,
+                      onOpenFiles: _openFiles,
+                    ),
                   ),
                 ],
               ),
@@ -776,7 +787,10 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
             listenable: linkClient,
             builder: (context, _) {
               final desktopSessions = linkClient.connected ? linkClient.desktopSessions : const <LinkSessionSummary>[];
-              if (allHosts.isEmpty && desktopSessions.isEmpty) {
+              final desktopLocalShells = linkClient.connected
+                  ? linkClient.desktopLocalShells
+                  : const <LinkLocalShellSummary>[];
+              if (allHosts.isEmpty && desktopSessions.isEmpty && desktopLocalShells.isEmpty) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Space.lg),
                   child: BrandEmptyState(
@@ -843,7 +857,7 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                         ),
                         const SizedBox(height: Space.md),
                       ],
-                      if (desktopSessions.isNotEmpty) ...[
+                      if (desktopSessions.isNotEmpty || desktopLocalShells.isNotEmpty) ...[
                         Row(
                           children: [
                             Icon(Icons.desktop_windows_outlined, size: 16, color: palette.primary),
@@ -856,38 +870,81 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                           height: 54,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
-                            itemCount: desktopSessions.length,
+                            itemCount: desktopSessions.length + desktopLocalShells.length,
                             separatorBuilder: (_, _) => const SizedBox(width: Space.sm),
                             itemBuilder: (context, index) {
-                              final s = desktopSessions[index];
+                              if (index < desktopSessions.length) {
+                                final s = desktopSessions[index];
+                                return Material(
+                                  color: palette.surface,
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(14),
+                                    onTap: () async {
+                                      if (s.status != 'connected') {
+                                        final ok = await linkClient.connectDesktopSession(s.sessionId);
+                                        if (!ok || !mounted) return;
+                                      }
+                                      linkClient.openMirroredSessionInWorkspace(s);
+                                      widget.onOpenedTerminal();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: Space.md),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: palette.primary.withValues(alpha: .35)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            s.isLocal ? Icons.terminal_rounded : Icons.dns_outlined,
+                                            size: 16,
+                                            color: palette.primary,
+                                          ),
+                                          const SizedBox(width: Space.xs),
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(maxWidth: 160),
+                                            child: Text(
+                                              s.title,
+                                              style: Theme.of(context).textTheme.labelLarge,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                              final shell = desktopLocalShells[index - desktopSessions.length];
                               return Material(
                                 color: palette.surface,
                                 borderRadius: BorderRadius.circular(14),
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(14),
                                   onTap: () {
-                                    linkClient.openMirroredSessionInWorkspace(s);
+                                    linkClient.openProxiedLocalInWorkspace(shell);
+                                    widget.onOpenedTerminal();
+                                  },
+                                  onLongPress: () async {
+                                    final summary = await linkClient.openLocalOnDesktopForMirror(shell.shellId);
+                                    if (summary == null || !mounted) return;
+                                    linkClient.openMirroredSessionInWorkspace(summary);
                                     widget.onOpenedTerminal();
                                   },
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: Space.md),
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: palette.primary.withValues(alpha: .35)),
+                                      border: Border.all(color: scheme.outlineVariant.withValues(alpha: .45)),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.terminal_rounded, size: 16, color: palette.primary),
-                                        const SizedBox(width: Space.xs),
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(maxWidth: 160),
-                                          child: Text(
-                                            s.title,
-                                            style: Theme.of(context).textTheme.labelLarge,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
+                                        Icon(Icons.add_rounded, size: 16, color: palette.primary),
+                                        const SizedBox(width: 2),
+                                        Text(shell.name, style: Theme.of(context).textTheme.labelLarge),
                                       ],
                                     ),
                                   ),

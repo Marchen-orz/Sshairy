@@ -3173,6 +3173,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linkNoDesktopTerminals => '电脑端暂无打开的终端。';
 
   @override
+  String get linkDesktopLocalShells => '电脑本地终端';
+
+  @override
+  String get linkLocalTag => '本地';
+
+  @override
+  String linkReconnecting(String desktop) {
+    return '正在重连 $desktop…';
+  }
+
+  @override
   String get linkMirrorTag => '镜像';
 
   @override

@@ -6026,6 +6026,24 @@ abstract class AppLocalizations {
   /// **'No open terminals on desktop.'**
   String get linkNoDesktopTerminals;
 
+  /// No description provided for @linkDesktopLocalShells.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop local shell'**
+  String get linkDesktopLocalShells;
+
+  /// No description provided for @linkLocalTag.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get linkLocalTag;
+
+  /// No description provided for @linkReconnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting to {desktop}...'**
+  String linkReconnecting(String desktop);
+
   /// No description provided for @linkMirrorTag.
   ///
   /// In en, this message translates to:

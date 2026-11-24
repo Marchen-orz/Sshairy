@@ -1154,6 +1154,16 @@
   "linkDeny": "Deny",
   "linkDesktopTerminals": "Desktop terminals",
   "linkNoDesktopTerminals": "No open terminals on desktop.",
+  "linkDesktopLocalShells": "Desktop local shell",
+  "linkLocalTag": "Local",
+  "linkReconnecting": "Reconnecting to {desktop}...",
+  "@linkReconnecting": {
+    "placeholders": {
+      "desktop": {
+        "type": "String"
+      }
+    }
+  },
   "linkMirrorTag": "Mirror",
   "linkSessionPending": "Pending",
   "linkProxyTag": "Via desktop",

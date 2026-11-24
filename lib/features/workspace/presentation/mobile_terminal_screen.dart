@@ -151,6 +151,7 @@ class MobileTerminalScreen extends ConsumerStatefulWidget {
 class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
   final _paneFocus = <PaneId, FocusNode>{};
   final _tabScroll = ScrollController();
+  StreamSubscription<void>? _linkReconnectedSub;
   var _landscapeBarExpanded = false;
   var _monitorOpen = false;
   _TabletSidePanel? _rightPanel;
@@ -161,16 +162,34 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
   void initState() {
     super.initState();
     _applyKeepAwake();
+    _linkReconnectedSub = ref.read(linkClientControllerProvider).reconnected.listen((_) => _reattachLinkedSessions());
   }
 
   @override
   void dispose() {
+    unawaited(_linkReconnectedSub?.cancel());
     unawaited(MobilePlatform.setKeepScreenOn(false));
     _tabScroll.dispose();
     for (final node in _paneFocus.values) {
       node.dispose();
     }
     super.dispose();
+  }
+
+  void _reattachLinkedSessions() {
+    if (!mounted) return;
+    final link = ref.read(linkClientControllerProvider);
+    final peerId = link.connectedDesktopId;
+    if (!link.connected || peerId == null) return;
+    final sessions = ref.read(terminalSessionsProvider);
+    for (final session in sessions.values) {
+      final target = session.linkTarget;
+      if (target != null &&
+          target.peerId == peerId &&
+          (session.status == SessionStatus.disconnected || session.status == SessionStatus.failed)) {
+        unawaited(session.connect(const NoPrompts()).catchError((Object _) {}));
+      }
+    }
   }
 
   void _applyKeepAwake() {
@@ -334,8 +353,9 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
                     }
                     final target = session.linkTarget!;
                     final local =
-                        target.kind == LinkTerminalKind.mirror &&
-                        link.desktopSessions.any((entry) => entry.sessionId == target.remoteId && entry.isLocal);
+                        target.isLocal ||
+                        (target.kind == LinkTerminalKind.mirror &&
+                            link.desktopSessions.any((entry) => entry.sessionId == target.remoteId && entry.isLocal));
                     _openFilesPage(
                       session,
                       location: FileLocation(
@@ -398,10 +418,12 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     }
   }
 
-  Future<void> _mirrorProxySessionOnDesktop(String hostId) async {
+  Future<void> _mirrorProxySessionOnDesktop(LinkTerminalTarget target) async {
     final l = AppLocalizations.of(context);
     final link = ref.read(linkClientControllerProvider);
-    final summary = await link.openHostOnDesktopForMirror(hostId);
+    final summary = target.isLocal
+        ? await link.openLocalOnDesktopForMirror(target.remoteId)
+        : await link.openHostOnDesktopForMirror(target.remoteId);
     if (!mounted) return;
     if (summary == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.linkDesktopOpenFailed)));
@@ -440,7 +462,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
                     onTap: () {
                       Navigator.of(actions).pop();
                       if (popParent) Navigator.of(sheet).pop();
-                      unawaited(_mirrorProxySessionOnDesktop(target.remoteId));
+                      unawaited(_mirrorProxySessionOnDesktop(target));
                     },
                   ),
                 ListTile(

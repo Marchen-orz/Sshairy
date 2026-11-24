@@ -9,7 +9,7 @@ import '../domain/transport.dart';
 /// Direct WebSocket transport over LAN, Tailscale, or WireGuard.
 class DirectWsLinkTransport implements LinkTransport {
   DirectWsLinkTransport(this._socket, this.remoteLabel) {
-    _socket.pingInterval = const Duration(seconds: 20);
+    _socket.pingInterval = const Duration(seconds: 10);
     _sub = _socket.listen(
       (event) {
         if (_messages.isClosed) return;
@@ -215,7 +215,7 @@ class LanDiscoveryResponder {
 /// Sends a LAN UDP broadcast probe from mobile to discover nearby desktops running Sshairy Link.
 Future<List<DiscoveredDesktop>> discoverLanDesktops({
   int discoveryPort = linkDiscoveryPort,
-  Duration wait = const Duration(milliseconds: 900),
+  Duration wait = const Duration(milliseconds: 750),
 }) async {
   RawDatagramSocket? socket;
   try {
@@ -246,25 +246,37 @@ Future<List<DiscoveredDesktop>> discoverLanDesktops({
       }
     }, onError: (Object _) {});
     final probe = utf8.encode(_discoveryProbeMagic);
-    try {
-      socket.send(probe, InternetAddress('255.255.255.255'), discoveryPort);
-    } on Object {
-      // broadcast may be blocked on some interfaces
-    }
-    // The limited broadcast leaves through one interface only; each local /24 also gets a directed broadcast.
-    for (final address in await localLinkAddresses()) {
+    final addresses = await localLinkAddresses();
+    void sendProbe() {
       try {
-        socket.send(probe, InternetAddress('${address.substring(0, address.lastIndexOf('.'))}.255'), discoveryPort);
+        socket!.send(probe, InternetAddress('255.255.255.255'), discoveryPort);
       } on Object {
-        // an interface may refuse broadcasts
+        // broadcast may be blocked on some interfaces
+      }
+      // The limited broadcast leaves through one interface only; each local /24 also gets a directed broadcast.
+      for (final address in addresses) {
+        try {
+          socket!.send(probe, InternetAddress('${address.substring(0, address.lastIndexOf('.'))}.255'), discoveryPort);
+        } on Object {
+          // an interface may refuse broadcasts
+        }
+      }
+      try {
+        socket!.send(probe, InternetAddress.loopbackIPv4, discoveryPort);
+      } on Object {
+        // loopback probe helps local preview/testing
       }
     }
-    try {
-      socket.send(probe, InternetAddress.loopbackIPv4, discoveryPort);
-    } on Object {
-      // loopback probe helps local preview/testing
+
+    sendProbe();
+    final retryDelay = wait > const Duration(milliseconds: 300) ? const Duration(milliseconds: 220) : Duration.zero;
+    if (retryDelay > Duration.zero) {
+      await Future<void>.delayed(retryDelay);
+      sendProbe();
+      await Future<void>.delayed(wait - retryDelay);
+    } else {
+      await Future<void>.delayed(wait);
     }
-    await Future<void>.delayed(wait);
     return found.values.toList();
   } on Object {
     return const [];
