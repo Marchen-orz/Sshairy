@@ -41,7 +41,7 @@ McpConfig _config(Settings settings) => (
   hosts: settings.get(SettingKeys.mcpHosts),
 );
 
-final mcpClientsProvider = Provider<McpClients>((_) => McpClients());
+final mcpClientsProvider = Provider<McpClients>((ref) => McpClients(dataDirectory: ref.read(dataDirProvider)));
 
 final mcpControllerProvider = Provider<McpController>((ref) {
   final controller = McpController(

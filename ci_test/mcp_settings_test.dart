@@ -25,7 +25,7 @@ void main() {
         dataDirProvider.overrideWithValue(dir.path),
         mcpCredentialsProvider.overrideWithValue(_NoCredentials()),
         mcpClientsProvider.overrideWithValue(
-          McpClients(environment: {Platform.isWindows ? 'USERPROFILE' : 'HOME': dir.path}),
+          McpClients(environment: {Platform.isWindows ? 'USERPROFILE' : 'HOME': dir.path}, dataDirectory: dir.path),
         ),
         ...appOverrides(),
       ],
