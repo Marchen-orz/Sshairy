@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/dock_panel.dart';
+import '../../../design/menu.dart';
+import '../../../design/sidebar_frame.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
@@ -327,78 +330,91 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     );
   }
 
-  Widget _terminalTools(TerminalSession session, LinkClientController link, {bool dockMonitor = false}) =>
-      ListenableBuilder(
-        listenable: Listenable.merge([session, link]),
-        builder: (context, _) {
-          final l = AppLocalizations.of(context);
-          final palette = BrandPalette.of(context);
-          final host = session.sshHost, channel = session.linkShellChannel;
-          final remoteMonitor = link.terminalMonitor(channel);
-          final remoteFiles = channel != null && link.terminalFilesAvailable(channel);
-          final monitorActive = dockMonitor && _monitorOpen;
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (host != null || remoteFiles)
-                IconButton(
-                  key: const ValueKey('mobile-terminal-files'),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: l.files,
-                  icon: const Icon(Icons.folder_outlined, size: 19),
-                  onPressed: () {
-                    if (host != null) {
-                      _openFilesPage(session, host: host);
-                      return;
-                    }
-                    final target = session.linkTarget!;
-                    final local =
-                        target.isLocal ||
-                        (target.kind == LinkTerminalKind.mirror &&
-                            link.desktopSessions.any((entry) => entry.sessionId == target.remoteId && entry.isLocal));
-                    _openFilesPage(
-                      session,
-                      location: FileLocation(
-                        id: 'link:terminal:${session.id.value}:${session.shellGeneration}',
-                        label: local ? target.peerName : session.title,
-                        kind: local ? FileLocationKind.computer : FileLocationKind.server,
-                        open: () => link.openTerminalFiles(channel!),
-                        isCurrent: () =>
-                            identical(session.linkShellChannel, channel) && link.terminalFilesAvailable(channel),
-                      ),
-                    );
-                  },
-                ),
-              if (host != null || remoteMonitor != null)
-                IconButton(
-                  key: const ValueKey('mobile-terminal-monitor'),
-                  visualDensity: VisualDensity.compact,
-                  tooltip: l.monitor,
-                  style: monitorActive
-                      ? IconButton.styleFrom(backgroundColor: palette.primary.withValues(alpha: .14))
-                      : null,
-                  icon: Icon(Icons.monitor_heart_outlined, size: 19, color: monitorActive ? palette.primary : null),
-                  onPressed: () {
-                    if (dockMonitor) {
-                      setState(() => _monitorOpen = !_monitorOpen);
-                      return;
-                    }
-                    if (host != null) {
-                      _openMonitorSheet(host);
-                      return;
-                    }
-                    unawaited(
-                      _showSheet(
-                        heightFactor: .72,
-                        MonitorPanel.remote(remote: remoteMonitor!, remoteName: session.title, active: true),
-                      ),
-                    );
-                  },
-                ),
-            ],
-          );
-        },
+  /// A linked terminal's files as a [FileLocation]; null while that channel has none.
+  FileLocation? _linkFilesLocation(TerminalSession session, LinkClientController link) {
+    final channel = session.linkShellChannel;
+    final target = session.linkTarget;
+    if (channel == null || target == null || !link.terminalFilesAvailable(channel)) return null;
+    final local =
+        target.isLocal ||
+        (target.kind == LinkTerminalKind.mirror &&
+            link.desktopSessions.any((entry) => entry.sessionId == target.remoteId && entry.isLocal));
+    return FileLocation(
+      id: 'link:terminal:${session.id.value}:${session.shellGeneration}',
+      label: local ? target.peerName : session.title,
+      kind: local ? FileLocationKind.computer : FileLocationKind.server,
+      open: () => link.openTerminalFiles(channel),
+      isCurrent: () => identical(session.linkShellChannel, channel) && link.terminalFilesAvailable(channel),
+    );
+  }
+
+  Widget _terminalTools(
+    TerminalSession session,
+    LinkClientController link, {
+    bool dockMonitor = false,
+    bool dockFiles = false,
+  }) => ListenableBuilder(
+    listenable: Listenable.merge([session, link]),
+    builder: (context, _) {
+      final l = AppLocalizations.of(context);
+      final palette = BrandPalette.of(context);
+      final host = session.sshHost, channel = session.linkShellChannel;
+      final remoteMonitor = link.terminalMonitor(channel);
+      final remoteFiles = _linkFilesLocation(session, link);
+      final monitorActive = dockMonitor && _monitorOpen;
+      final filesActive = dockFiles && ref.read(settingsProvider).get(SettingKeys.mobileTabletFilesOpen);
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (host != null || remoteFiles != null)
+            IconButton(
+              key: const ValueKey('mobile-terminal-files'),
+              visualDensity: VisualDensity.compact,
+              tooltip: l.files,
+              style: filesActive ? IconButton.styleFrom(backgroundColor: palette.primary.withValues(alpha: .14)) : null,
+              icon: Icon(Icons.folder_outlined, size: 19, color: filesActive ? palette.primary : null),
+              onPressed: () {
+                if (dockFiles) {
+                  ref.read(settingsProvider.notifier).set(SettingKeys.mobileTabletFilesOpen, !filesActive);
+                  return;
+                }
+                if (host != null) {
+                  _openFilesPage(session, host: host);
+                  return;
+                }
+                _openFilesPage(session, location: remoteFiles);
+              },
+            ),
+          if (host != null || remoteMonitor != null)
+            IconButton(
+              key: const ValueKey('mobile-terminal-monitor'),
+              visualDensity: VisualDensity.compact,
+              tooltip: l.monitor,
+              style: monitorActive
+                  ? IconButton.styleFrom(backgroundColor: palette.primary.withValues(alpha: .14))
+                  : null,
+              icon: Icon(Icons.monitor_heart_outlined, size: 19, color: monitorActive ? palette.primary : null),
+              onPressed: () {
+                if (dockMonitor) {
+                  setState(() => _monitorOpen = !_monitorOpen);
+                  return;
+                }
+                if (host != null) {
+                  _openMonitorSheet(host);
+                  return;
+                }
+                unawaited(
+                  _showSheet(
+                    heightFactor: .72,
+                    MonitorPanel.remote(remote: remoteMonitor!, remoteName: session.title, active: true),
+                  ),
+                );
+              },
+            ),
+        ],
       );
+    },
+  );
 
   Future<void> _handoffHost(Host host) async {
     final l = AppLocalizations.of(context);
@@ -687,7 +703,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
             icon: Icon(Icons.code_rounded, size: 19, color: snippetsOpen ? palette.primary : null),
             onPressed: () => setState(() => _rightPanel = snippetsOpen ? null : _TabletSidePanel.snippets),
           ),
-          _terminalTools(activeSession, link, dockMonitor: true),
+          _terminalTools(activeSession, link, dockMonitor: true, dockFiles: true),
           _moreMenu(activeTab, activeSession, link),
         ],
       ),
@@ -843,7 +859,8 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     final palette = BrandPalette.of(context);
     final state = ref.watch(workspaceProvider);
     final sessions = ref.watch(terminalSessionsProvider);
-    final keepAwake = ref.watch(settingsProvider).get(SettingKeys.mobileKeepScreenOn);
+    final settings = ref.watch(settingsProvider);
+    final keepAwake = settings.get(SettingKeys.mobileKeepScreenOn);
     unawaited(MobilePlatform.setKeepScreenOn(keepAwake));
 
     final livePanes = {for (final t in state.tabs) ...t.layout.leaves.map((leaf) => leaf.pane)};
@@ -954,7 +971,78 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
       final host = activeSession.sshHost;
       final remoteMonitor = link.terminalMonitor(activeSession.linkShellChannel);
       final showMonitor = _monitorOpen && (host != null || remoteMonitor != null);
-      final rightWidth = math.min(380.0, size.width * 0.4);
+      final filesLocation = _linkFilesLocation(activeSession, link);
+      final filesAvailable = host != null || filesLocation != null;
+      final showFiles =
+          filesAvailable &&
+          activeSession.status == SessionStatus.connected &&
+          settings.get(SettingKeys.mobileTabletFilesOpen);
+      final monitorWidth = settings.get(SettingKeys.monitorWidth);
+      final dock = settings.get(SettingKeys.filesDock);
+      final rightPanel = _rightPanel;
+
+      void setFilesOpen(bool open) => ref.read(settingsProvider.notifier).set(SettingKeys.mobileTabletFilesOpen, open);
+      void closeRightPanel() => setState(() => _rightPanel = null);
+
+      final paneWithFiles = DockPanel(
+        key: const ValueKey('tablet-files-dock'),
+        open: showFiles,
+        side: switch (dock) {
+          FilesDock.left => DockSide.left,
+          FilesDock.right => DockSide.right,
+          FilesDock.bottom => DockSide.bottom,
+        },
+        onClose: () => setFilesOpen(false),
+        closeLabel: l.closePane,
+        resizeLabel: l.resizeToolPanel,
+        showHeader: false,
+        panel: filesAvailable
+            ? SideFilesPanel(
+                key: const ValueKey('tablet-files-panel'),
+                host: filesLocation == null ? host : null,
+                location: filesLocation,
+                active: true,
+                tree: dock == FilesDock.bottom,
+                directory: activeSession.directory,
+                listing: activeSession.listingTicks,
+                toolbarActions: [
+                  AppMenuButton<FilesDock>(
+                    key: const ValueKey('tablet-files-dock-menu'),
+                    tooltip: l.dockPosition,
+                    icon: const Icon(Icons.space_dashboard_outlined, size: 16),
+                    minWidth: 0,
+                    items: () => [
+                      for (final (side, shape, label) in [
+                        (FilesDock.left, DockSide.left, l.dockLeft),
+                        (FilesDock.right, DockSide.right, l.dockRight),
+                        (FilesDock.bottom, DockSide.bottom, l.dockBottom),
+                      ])
+                        AppMenuItem(value: side, label: label, glyph: DockSideIcon(shape), checked: side == dock),
+                    ],
+                    onSelected: (value) => ref.read(settingsProvider.notifier).set(SettingKeys.filesDock, value),
+                  ),
+                  IconButton(
+                    key: const ValueKey('tablet-files-expand'),
+                    tooltip: l.mobileFilesExpand,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 16),
+                    onPressed: () => _openFilesPage(
+                      activeSession,
+                      host: filesLocation == null ? host : null,
+                      location: filesLocation,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: l.closePane,
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close, size: 16),
+                    onPressed: () => setFilesOpen(false),
+                  ),
+                ],
+              )
+            : const SizedBox.shrink(),
+        child: pane,
+      );
 
       return Scaffold(
         key: const ValueKey('mobile-terminal-screen'),
@@ -971,70 +1059,71 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
               ),
               const MobileApprovalBanner(),
               Expanded(
-                child: Row(
-                  children: [
-                    if (showMonitor) ...[
-                      SizedBox(
-                        key: const ValueKey('tablet-side-monitor'),
-                        width: WorkspaceSize.monitor,
-                        child: ColoredBox(
-                          color: palette.surface,
-                          child: host != null
-                              ? MonitorPanel(
-                                  key: ValueKey('tablet-monitor-${activeTab.id.value}'),
-                                  host: host,
-                                  active: true,
-                                )
-                              : MonitorPanel.remote(
-                                  key: ValueKey('tablet-monitor-${activeTab.id.value}'),
-                                  remote: remoteMonitor!,
-                                  remoteName: activeSession.title,
-                                  active: true,
-                                ),
-                        ),
-                      ),
-                      VerticalDivider(width: 1, thickness: 1, color: scheme.outlineVariant.withValues(alpha: .35)),
-                    ],
-                    Expanded(child: pane),
-                    if (_rightPanel != null) ...[
-                      VerticalDivider(width: 1, thickness: 1, color: scheme.outlineVariant.withValues(alpha: .35)),
-                      SizedBox(
-                        key: ValueKey('tablet-side-${_rightPanel!.name}'),
-                        width: rightWidth,
-                        child: ColoredBox(
-                          color: palette.surface,
-                          child: switch (_rightPanel!) {
-                            _TabletSidePanel.airy => AgentPanel(onClose: () => setState(() => _rightPanel = null)),
-                            _TabletSidePanel.snippets => Column(
+                child: DockPanel(
+                  open: rightPanel != null,
+                  onClose: closeRightPanel,
+                  closeLabel: l.close,
+                  resizeLabel: l.aiAgentTitle,
+                  showHeader: false,
+                  initialWidth: math.min(WorkspaceSize.toolPanel, size.width * .4),
+                  panel: switch (rightPanel) {
+                    _TabletSidePanel.airy => KeyedSubtree(
+                      key: const ValueKey('tablet-side-airy'),
+                      child: AgentPanel(onClose: closeRightPanel),
+                    ),
+                    _TabletSidePanel.snippets => KeyedSubtree(
+                      key: const ValueKey('tablet-side-snippets'),
+                      child: Column(
+                        children: [
+                          Container(
+                            height: 40,
+                            padding: const EdgeInsets.only(left: Space.md, right: Space.xs),
+                            decoration: BoxDecoration(
+                              border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .3))),
+                            ),
+                            child: Row(
                               children: [
-                                Container(
-                                  height: 40,
-                                  padding: const EdgeInsets.only(left: Space.md, right: Space.xs),
-                                  decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .3)),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(child: Text(l.snippets, style: Theme.of(context).textTheme.titleSmall)),
-                                      IconButton(
-                                        tooltip: l.close,
-                                        visualDensity: VisualDensity.compact,
-                                        icon: const Icon(Icons.close_rounded, size: 18),
-                                        onPressed: () => setState(() => _rightPanel = null),
-                                      ),
-                                    ],
-                                  ),
+                                Expanded(child: Text(l.snippets, style: Theme.of(context).textTheme.titleSmall)),
+                                IconButton(
+                                  tooltip: l.close,
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.close_rounded, size: 18),
+                                  onPressed: closeRightPanel,
                                 ),
-                                const Expanded(child: SnippetsPanel()),
                               ],
                             ),
-                          },
-                        ),
+                          ),
+                          const Expanded(child: SnippetsPanel()),
+                        ],
                       ),
-                    ],
-                  ],
+                    ),
+                    null => const SizedBox.shrink(),
+                  },
+                  child: SidebarFrame(
+                    key: const ValueKey('tablet-monitor-frame'),
+                    width: monitorWidth,
+                    onResize: (width) => ref.read(settingsProvider.notifier).set(SettingKeys.monitorWidth, width),
+                    resizeLabel: l.resizeMonitor,
+                    sidebar: showMonitor
+                        ? ColoredBox(
+                            key: const ValueKey('tablet-side-monitor'),
+                            color: palette.surface,
+                            child: host != null
+                                ? MonitorPanel(
+                                    key: ValueKey('tablet-monitor-${activeTab.id.value}'),
+                                    host: host,
+                                    active: true,
+                                  )
+                                : MonitorPanel.remote(
+                                    key: ValueKey('tablet-monitor-${activeTab.id.value}'),
+                                    remote: remoteMonitor!,
+                                    remoteName: activeSession.title,
+                                    active: true,
+                                  ),
+                          )
+                        : null,
+                    child: paneWithFiles,
+                  ),
                 ),
               ),
             ],

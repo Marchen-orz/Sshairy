@@ -3523,6 +3523,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mobileFileTooLarge => 'File is too large for inline editor';
 
   @override
+  String get mobileFilesExpand => 'Open full file manager';
+
+  @override
   String get mobileSendPathToTerminal => 'Send path to terminal';
 
   @override

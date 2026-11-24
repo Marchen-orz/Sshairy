@@ -1086,6 +1086,7 @@
   "mobileFileEditor": "编辑",
   "mobileFileSaved": "已保存",
   "mobileFileTooLarge": "文件过大，不支持手机端直接编辑",
+  "mobileFilesExpand": "打开完整文件管理",
   "mobileSendPathToTerminal": "发送路径到终端",
   "mobileNewFile": "新建文件",
   "mobileNewFolder": "新建文件夹",

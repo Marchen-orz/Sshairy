@@ -3359,6 +3359,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mobileFileTooLarge => '文件过大，不支持手机端直接编辑';
 
   @override
+  String get mobileFilesExpand => '打开完整文件管理';
+
+  @override
   String get mobileSendPathToTerminal => '发送路径到终端';
 
   @override

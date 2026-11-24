@@ -406,6 +406,9 @@ abstract final class SettingKeys {
   /// Upright file panes sit side by side instead of stacked; turned, they always do.
   static const mobileFilesColumns = BoolSetting('mobileFilesColumns', false, agentExposed: false);
 
+  /// The tablet terminal keeps the file panel docked below the shell until it is closed (docs/MOBILE.md §3.2.1).
+  static const mobileTabletFilesOpen = BoolSetting('mobileTabletFilesOpen', true, agentExposed: false);
+
   static const List<SettingDef<Object?>> all = [
     mcpEnabled,
     mcpPort,
@@ -420,6 +423,7 @@ abstract final class SettingKeys {
     mobileHaptics,
     mobileBiometricLock,
     mobileFilesColumns,
+    mobileTabletFilesOpen,
     themeMode,
     accent,
     locale,

@@ -73,6 +73,7 @@ class DockPanel extends StatefulWidget {
     this.side = DockSide.right,
     this.actions = const [],
     this.showHeader = true,
+    this.initialWidth = WorkspaceSize.toolPanel,
   });
 
   final Widget child, panel;
@@ -87,6 +88,9 @@ class DockPanel extends StatefulWidget {
   /// False when the panel puts docking and close actions in its own toolbar.
   final bool showHeader;
 
+  /// Width before any drag; the tablet opens narrower so the shell keeps its minimum beside it.
+  final double initialWidth;
+
   @override
   State<DockPanel> createState() => _DockPanelState();
 }
@@ -96,7 +100,7 @@ class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMix
   final _focus = FocusNode();
   // Pointer focus keeps the arrow keys working without leaving the divider highlighted after the drag.
   var _pointerFocus = false;
-  var _width = WorkspaceSize.toolPanel;
+  late var _width = widget.initialWidth;
   var _height = WorkspaceSize.dockBottom;
   double? _guide;
 
@@ -277,7 +281,7 @@ class _DockPanelState extends State<DockPanel> with SingleTickerProviderStateMix
                         _focus.requestFocus();
                       },
                       onDoubleTap: () =>
-                          _resize(_vertical ? WorkspaceSize.dockBottom : WorkspaceSize.toolPanel, constraints),
+                          _resize(_vertical ? WorkspaceSize.dockBottom : widget.initialWidth, constraints),
                       onPanStart: (_) {
                         setState(() => _pointerFocus = true);
                         _focus.requestFocus();

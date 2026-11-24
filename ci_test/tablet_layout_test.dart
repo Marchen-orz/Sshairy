@@ -13,6 +13,7 @@ import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/credentials/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
 import 'package:sshairy/features/link/api.dart';
+import 'package:sshairy/features/settings/api.dart';
 import 'package:sshairy/features/terminal/api.dart';
 import 'package:sshairy/features/workspace/api.dart';
 import 'package:sshairy/foundation/data_dir.dart';
@@ -173,6 +174,9 @@ void main() {
       await tester.pumpWidget(_wrapApp(WorkspacePage(openPalette: (_) async {}), container: env.container));
       await tester.pumpAndSettle();
 
+      // The tablet terminal keeps its file panel docked below unless it is closed (docs/MOBILE.md §3.2.1).
+      expect(env.container.read(settingsProvider).get(SettingKeys.mobileTabletFilesOpen), isTrue);
+
       final workspaceFinder = find.byKey(const ValueKey('mobile-workspace'));
       expect(workspaceFinder, findsOneWidget);
       final useRail = size.width >= MobileSize.railBreakpoint;
@@ -287,6 +291,18 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('mobile-terminal-airy')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('tablet-side-airy')), findsOneWidget);
+
+        // The side panel resizes from its divider like the desktop dock.
+        final airy = find.byKey(const ValueKey('tablet-side-airy'));
+        final airyWidth = tester.getRect(airy).width;
+        final resizeHandle = find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics && widget.properties.label == lookupAppLocalizations(const Locale('en')).aiAgentTitle,
+        );
+        expect(resizeHandle, findsOneWidget);
+        await tester.drag(resizeHandle, const Offset(-80, 0));
+        await tester.pumpAndSettle();
+        expect(tester.getRect(airy).width, greaterThan(airyWidth));
 
         await tester.tap(find.byKey(const ValueKey('tablet-terminal-snippets')));
         await tester.pumpAndSettle();

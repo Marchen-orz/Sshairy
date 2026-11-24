@@ -1254,6 +1254,7 @@
   "mobileFileEditor": "Edit",
   "mobileFileSaved": "Saved",
   "mobileFileTooLarge": "File is too large for inline editor",
+  "mobileFilesExpand": "Open full file manager",
   "mobileSendPathToTerminal": "Send path to terminal",
   "mobileNewFile": "New file",
   "mobileNewFolder": "New folder",

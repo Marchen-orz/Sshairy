@@ -6374,6 +6374,12 @@ abstract class AppLocalizations {
   /// **'File is too large for inline editor'**
   String get mobileFileTooLarge;
 
+  /// No description provided for @mobileFilesExpand.
+  ///
+  /// In en, this message translates to:
+  /// **'Open full file manager'**
+  String get mobileFilesExpand;
+
   /// No description provided for @mobileSendPathToTerminal.
   ///
   /// In en, this message translates to:

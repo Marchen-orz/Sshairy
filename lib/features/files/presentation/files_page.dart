@@ -125,6 +125,7 @@ class SideFilesPanel extends ConsumerStatefulWidget {
   const SideFilesPanel({
     super.key,
     required this.host,
+    this.location,
     this.active = true,
     this.tree = false,
     this.directory,
@@ -134,6 +135,9 @@ class SideFilesPanel extends ConsumerStatefulWidget {
 
   /// Null for this computer.
   final Host? host;
+
+  /// A linked terminal's files; takes the place of [host].
+  final FileLocation? location;
   final bool active;
 
   /// Docked below: a directory tree beside the list.
@@ -182,7 +186,7 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     super.didUpdateWidget(old);
     final directoryChanged = !identical(old.directory, widget.directory);
     final listingChanged = !identical(old.listing, widget.listing);
-    final hostChanged = old.host?.id != widget.host?.id;
+    final hostChanged = old.host?.id != widget.host?.id || old.location?.id != widget.location?.id;
     if (old.active && (!widget.active || directoryChanged)) old.directory?.removeListener(_follow);
     if (old.active && (!widget.active || listingChanged)) old.listing?.removeListener(_listingChanged);
     if (widget.active && (!old.active || directoryChanged)) widget.directory?.addListener(_follow);
@@ -214,7 +218,15 @@ class _SideFilesPanelState extends ConsumerState<SideFilesPanel> {
     if (!mounted || !widget.active) return;
     final gen = _generation;
     final prompts = _ActivePrompts(DialogPrompts(context), () => mounted && widget.active && gen == _generation);
-    if (_browser.host?.id != widget.host?.id || (_browser.status == BrowserStatus.idle && !_browser.suspended)) {
+    final location = widget.location;
+    if (location != null) {
+      if (_browser.location?.id != location.id || (_browser.status == BrowserStatus.idle && !_browser.suspended)) {
+        _wanted = null;
+        await _browser.openLocation(location, at: widget.directory?.value);
+      } else {
+        await _browser.resume(prompts);
+      }
+    } else if (_browser.host?.id != widget.host?.id || (_browser.status == BrowserStatus.idle && !_browser.suspended)) {
       _wanted = null;
       await _browser.open(widget.host, prompts, at: widget.directory?.value);
     } else {
