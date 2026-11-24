@@ -240,6 +240,12 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
     case WM_SIZE: {
+      // With a custom WM_NCCALCSIZE frame, Windows gives a minimized window an iconic ~160x28 client
+      // area instead of 0x0. Resizing Flutter to that rect collapses desktop breakpoints and unmounts
+      // panels like the monitor, resetting their state on restore.
+      if (wparam == SIZE_MINIMIZED || IsIconic(hwnd)) {
+        return 0;
+      }
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {
         // Size and position the child window.

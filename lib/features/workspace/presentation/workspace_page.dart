@@ -48,6 +48,10 @@ class WorkspacePage extends ConsumerStatefulWidget {
 
   final Future<void> Function(BuildContext context) openPalette;
 
+  /// Ignores collapsed sizes (0×0 or Win32's iconic ~160×28 bar) so minimizing does not flip desktop breakpoints.
+  static double effectiveWindowWidth(double previous, Size size) =>
+      size.width >= 320 && size.height >= 200 ? size.width : previous;
+
   @override
   ConsumerState<WorkspacePage> createState() => _WorkspacePageState();
 }
@@ -392,9 +396,10 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
     });
     final vault = state.active == null && !state.files;
     _filesBuilt |= state.files;
-    // A minimized window reports 0×0; keeping the last real width stops panels from leaving and sliding in again.
-    final width = MediaQuery.sizeOf(context).width;
-    if (width > 0) _windowWidth = width;
+    // A minimized window can report 0×0 or Win32's iconic ~160×28 bar; keeping the last real width stops panels
+    // from leaving, resetting their state, and sliding in again on restore.
+    final size = MediaQuery.sizeOf(context);
+    _windowWidth = WorkspacePage.effectiveWindowWidth(_windowWidth, size);
     final wide = _windowWidth >= WorkspaceSize.wideBreakpoint;
     final showMonitor = settings.get(SettingKeys.showMonitor);
     final showFiles = settings.get(SettingKeys.showFiles);
