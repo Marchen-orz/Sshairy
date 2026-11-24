@@ -265,6 +265,8 @@ class _Prepared {
   final String binding;
 }
 
+enum _ApprovalOutcome { approved, denied, notExposed }
+
 /// A single owned turn. Model calls propose actions; dispatcher policy and typed handlers perform them.
 class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvocation {
   /// Deterministic per-turn budgets. One request is reserved for the reviewer only when review mode is on.
@@ -793,13 +795,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       while (true) {
         _check();
         // The user can change permission mode mid-turn, so each request offers the current catalog.
-        final tools = <ModelTool>[
-          if (_hasTools)
-            for (final tool in agentTools)
-              if (dispatcher[tool.capability] case final capability?)
-                if (_allowedInMode(capability))
-                  ModelTool(tool.name, tool.description, _agentSchema(tool, capability.inputSchema)),
-        ];
+        var tools = _currentTools();
         if (_modelRequests >= maxModelRequests) throw const AgentFailure('stepLimit');
         final profile = _profile!;
         final int Function(List<ModelMessage>)? estimate = estimateInputBytes == null
@@ -822,6 +818,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         var messageBytes = 0;
         _modelRequests++;
         for (var attempt = 0; ; attempt++) {
+          if (attempt > 0) tools = _currentTools();
           try {
             await for (final event in model!.stream(
               ModelRequest(profile: profile, system: _system, messages: history.messages, tools: tools),
@@ -1018,6 +1015,14 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       permissionMode != AgentPermissionMode.observe ||
       capability.effect == Effect.query ||
       capability.id == 'agent.diagnose';
+
+  List<ModelTool> _currentTools() => [
+    if (_hasTools)
+      for (final tool in agentTools)
+        if (dispatcher[tool.capability] case final capability?)
+          if (_allowedInMode(capability))
+            ModelTool(tool.name, tool.description, _agentSchema(tool, capability.inputSchema)),
+  ];
   String get _system =>
       '$_systemBase '
       'The user\'s current permissionMode is ${permissionMode.name}; it can change while you work, and the latest value governs every new action. '
@@ -1228,7 +1233,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     },
     _owner,
     _scope!.revision,
-    permissionMode.name,
     _configRevision,
     _profile!.identity,
     target?.identity,
@@ -1269,11 +1273,6 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
 
     try {
       currentTurn();
-      if (!toolIds.values.contains(capability.id) ||
-          !_hasTools ||
-          capability.id == 'agent.execute' && permissionMode == AgentPermissionMode.observe) {
-        return const Err(AppError('notExposed'));
-      }
       final tool = _toolFor(capability.id);
       if (tool == null || !_hasTools || !_allowedInMode(capability)) return const Err(AppError('notExposed'));
       if (const {'agent.hosts', 'agent.output', 'agent.terminals', 'local.requestAccess'}.contains(capability.id)) {
@@ -1322,10 +1321,10 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         }
         _prepared[context.operationId] = _Prepared(null, binding);
         // Screen content is more sensitive than history: a person decides every read, in every mode.
-        final accepted = await _approveAction(_bounded(session.label, 256), '', '', capability, alwaysAsk: true);
+        final outcome = await _approveAction(_bounded(session.label, 256), '', '', capability, alwaysAsk: true);
         currentTurn();
         if (terminalHistory?.isCurrent(session) != true) return const Err(AppError('scopeChanged'));
-        if (!accepted) {
+        if (outcome != _ApprovalOutcome.approved) {
           _deniedScreens.add(session.sessionId);
           return const Err(AppError('denied'));
         }
@@ -1340,6 +1339,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         if (!_hostGranted(host)) {
           final refusal = await _ensureHost(host, token, owner);
           if (refusal != null) return refusal;
+          if (!_allowedInMode(capability)) return const Err(AppError('notExposed'));
         }
         _usedHostRoutes[host] = hostRoutes()[host];
       }
@@ -1352,6 +1352,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
       if (executeAction) {
         target = await _prepareActionTarget(hosts.single, token!, owner);
         if (target == null) return const Err(AppError('scopeChanged'));
+        if (!_allowedInMode(capability)) return const Err(AppError('notExposed'));
       }
       var binding = _binding(capability, args, target, hosts, resource: resource);
       if (_denied.contains(binding)) return const Err(AppError('denied'));
@@ -1363,7 +1364,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         final key = jsonEncode([hosts.single.value, template.name]);
         if (_deniedReads.contains(key)) return const Err(AppError('denied'));
         final alias = _availableHosts.firstWhere((entry) => entry.id == hosts.single).label;
-        final accepted = await _approveAction(
+        final outcome = await _approveAction(
           _bounded(alias, 256),
           diagnosticCommand(template),
           '/',
@@ -1373,7 +1374,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           template: template.name,
         );
         currentTurn();
-        if (!accepted) {
+        if (outcome != _ApprovalOutcome.approved) {
           _deniedReads.add(key);
           return const Err(AppError('denied'));
         }
@@ -1382,7 +1383,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         binding = _binding(capability, args, target, hosts);
         _prepared[context.operationId] = _Prepared(target, binding);
       } else if (executeAction) {
-        final accepted = await _approveAction(
+        final outcome = await _approveAction(
           target!.display,
           args['command'] as String,
           args['cwd'] as String,
@@ -1392,7 +1393,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           purpose: _purpose(args['purpose']),
         );
         currentTurn();
-        if (!accepted) {
+        if (outcome == _ApprovalOutcome.notExposed) return const Err(AppError('notExposed'));
+        if (outcome != _ApprovalOutcome.approved) {
           _denied.add(binding);
           return const Err(AppError('denied'));
         }
@@ -1400,7 +1402,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         final labels = [
           for (final host in hosts) _bounded(_availableHosts.firstWhere((entry) => entry.id == host).label, 256),
         ];
-        final accepted = await _approveAction(
+        final outcome = await _approveAction(
           labels.join(', '),
           _approvalSummary(tool, args, resource),
           '',
@@ -1408,7 +1410,8 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
           host: hosts.firstOrNull,
         );
         currentTurn();
-        if (!accepted) {
+        if (outcome == _ApprovalOutcome.notExposed) return const Err(AppError('notExposed'));
+        if (outcome != _ApprovalOutcome.approved) {
           _denied.add(binding);
           return const Err(AppError('denied'));
         }
@@ -1843,7 +1846,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     }
 
     check();
-    if (_answerOnly || !diagnostic && permissionMode == AgentPermissionMode.observe) {
+    if (_answerOnly) {
       return const Err(AppError('notExposed'));
     }
     final target = _prepared[context.operationId]?.target;
@@ -2051,7 +2054,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     }
   }
 
-  Future<bool> _approveAction(
+  Future<_ApprovalOutcome> _approveAction(
     String target,
     String command,
     String cwd,
@@ -2064,7 +2067,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
   }) async {
     final token = _cancel, owner = _owner;
     _checkTurn(token, owner);
-    if (!alwaysAsk && permissionMode == AgentPermissionMode.auto) return true;
+    if (!alwaysAsk && permissionMode == AgentPermissionMode.auto) return _ApprovalOutcome.approved;
     if (!alwaysAsk && permissionMode == AgentPermissionMode.review) {
       final decision = await _review({
         'kind': 'access',
@@ -2078,7 +2081,11 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
         if (template != null) 'templateVersion': 1,
       });
       _checkTurn(token, owner);
-      if (decision != AgentReviewDecision.ask) return decision == AgentReviewDecision.allow;
+      if (!_allowedInMode(capability)) return _ApprovalOutcome.notExposed;
+      if (permissionMode == AgentPermissionMode.auto) return _ApprovalOutcome.approved;
+      if (permissionMode == AgentPermissionMode.review && decision != AgentReviewDecision.ask) {
+        return decision == AgentReviewDecision.allow ? _ApprovalOutcome.approved : _ApprovalOutcome.denied;
+      }
     }
     _checkTurn(token, owner);
     final pending = approval = AgentApproval(
@@ -2095,7 +2102,7 @@ class AgentRuntime extends ChangeNotifier implements AgentAuthority, AgentInvoca
     try {
       final accepted = await _decision(result.future, false, cancel: token);
       _checkTurn(token, owner);
-      return accepted;
+      return accepted ? _ApprovalOutcome.approved : _ApprovalOutcome.denied;
     } finally {
       if (identical(approval, pending) && identical(_approvalResult, result)) {
         approval = null;
