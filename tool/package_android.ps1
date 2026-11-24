@@ -1,5 +1,6 @@
 param(
-    [string]$Destination = "dist"
+    [string]$Destination = "dist",
+    [int]$BuildNumber = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,7 +40,9 @@ try {
         Write-Output "SHA256 $hash"
     }
 
-    & flutter build apk --release --split-per-abi
+    $buildArgs = @("build", "apk", "--release", "--split-per-abi")
+    if ($BuildNumber -gt 0) { $buildArgs += @("--build-number", "$BuildNumber") }
+    & flutter @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "Split-ABI APK build failed." }
     foreach ($abi in @("arm64-v8a", "armeabi-v7a", "x86_64")) {
         Export-Apk "app-$abi-release.apk" $abi
