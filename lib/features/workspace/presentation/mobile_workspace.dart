@@ -867,7 +867,7 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                         ),
                         const SizedBox(height: Space.sm),
                         SizedBox(
-                          height: 54,
+                          height: 48,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: desktopSessions.length + desktopLocalShells.length,
@@ -877,9 +877,9 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                                 final s = desktopSessions[index];
                                 return Material(
                                   color: palette.surface,
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(16),
                                   child: InkWell(
-                                    borderRadius: BorderRadius.circular(14),
+                                    borderRadius: BorderRadius.circular(16),
                                     onTap: () async {
                                       if (s.status != 'connected') {
                                         final ok = await linkClient.connectDesktopSession(s.sessionId);
@@ -891,7 +891,7 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: Space.md),
                                       decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(16),
                                         border: Border.all(color: palette.primary.withValues(alpha: .35)),
                                       ),
                                       child: Row(
@@ -920,9 +920,9 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                               final shell = desktopLocalShells[index - desktopSessions.length];
                               return Material(
                                 color: palette.surface,
-                                borderRadius: BorderRadius.circular(14),
+                                borderRadius: BorderRadius.circular(16),
                                 child: InkWell(
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(16),
                                   onTap: () {
                                     linkClient.openProxiedLocalInWorkspace(shell);
                                     widget.onOpenedTerminal();
@@ -936,7 +936,7 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: Space.md),
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(16),
                                       border: Border.all(color: scheme.outlineVariant.withValues(alpha: .45)),
                                     ),
                                     child: Row(
