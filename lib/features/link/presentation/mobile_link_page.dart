@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
+import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
 import '../../../l10n/app_localizations.dart';
@@ -367,7 +368,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: FilledButton.tonalIcon(
+              child: OutlinedButton.icon(
                 key: const ValueKey('link-scan-button'),
                 style: pairingActionStyle,
                 onPressed: client.discovering ? null : () => unawaited(client.discoverLan()),
@@ -392,83 +393,75 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
       ),
       if (client.lastError != null) ...[
         const SizedBox(height: Space.md),
-        Container(
-          padding: const EdgeInsets.all(Space.sm),
-          decoration: BoxDecoration(color: scheme.errorContainer, borderRadius: BorderRadius.circular(Radii.card)),
-          child: Row(
-            children: [
-              Icon(Icons.error_outline, size: 18, color: scheme.onErrorContainer),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(
-                  _errorText(l, client.lastError!),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onErrorContainer),
-                ),
+        Row(
+          children: [
+            Icon(Icons.error_outline, size: 18, color: scheme.error),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: Text(
+                _errorText(l, client.lastError!),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.error),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
       if (client.discoveredDesktops.isNotEmpty) ...[
         const SizedBox(height: Space.lg),
-        Text(l.linkDiscoveredDesktops, style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: Space.sm),
-        for (final d in client.discoveredDesktops)
-          _SurfaceCard(
-            child: ListTile(
-              key: ValueKey('link-discovered-${d.deviceId}'),
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.desktop_windows_outlined, color: scheme.primary),
-              title: Text(d.name, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${d.address}:${d.port}', style: mono(context, Theme.of(context).textTheme.bodySmall)),
-              trailing: _connectingDiscoveredId == d.deviceId
-                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-              onTap: connecting ? null : () => unawaited(_openDiscoveredDesktop(client, d)),
-            ),
-          ),
+        _SectionTitle(l.linkDiscoveredDesktops),
+        _Group(
+          children: [
+            for (final d in client.discoveredDesktops)
+              ListTile(
+                key: ValueKey('link-discovered-${d.deviceId}'),
+                leading: const Icon(Icons.desktop_windows_outlined),
+                title: Text(d.name, overflow: TextOverflow.ellipsis),
+                subtitle: Text('${d.address}:${d.port}', style: mono(context, Theme.of(context).textTheme.bodySmall)),
+                trailing: _connectingDiscoveredId == d.deviceId
+                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+                onTap: connecting ? null : () => unawaited(_openDiscoveredDesktop(client, d)),
+              ),
+          ],
+        ),
       ],
       if (client.savedDesktops.isNotEmpty) ...[
         const SizedBox(height: Space.lg),
-        Text(l.linkSavedDesktops, style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: Space.sm),
-        for (final peer in client.savedDesktops)
-          _SurfaceCard(
-            child: Row(
-              children: [
-                Icon(Icons.computer_outlined, color: scheme.primary, size: 20),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(peer.name, style: Theme.of(context).textTheme.titleSmall, overflow: TextOverflow.ellipsis),
-                      if (peer.lastAddress != null)
-                        Text(
-                          '${peer.lastAddress}:${peer.lastPort ?? linkDefaultPort}',
-                          style: mono(context, Theme.of(context).textTheme.bodySmall),
-                        ),
-                    ],
-                  ),
+        _SectionTitle(l.linkSavedDesktops),
+        _Group(
+          children: [
+            for (final peer in client.savedDesktops)
+              ListTile(
+                leading: const Icon(Icons.computer_outlined),
+                title: Text(peer.name, overflow: TextOverflow.ellipsis),
+                subtitle: peer.lastAddress == null
+                    ? null
+                    : Text(
+                        '${peer.lastAddress}:${peer.lastPort ?? linkDefaultPort}',
+                        style: mono(context, Theme.of(context).textTheme.bodySmall),
+                      ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: connecting ? null : () => unawaited(client.connectToPeer(peer)),
+                      child: Text(l.linkReconnect),
+                    ),
+                    IconButton(
+                      tooltip: l.linkRevoke,
+                      icon: Icon(Icons.delete_outline, size: 18, color: scheme.onSurfaceVariant),
+                      onPressed: () => unawaited(client.forgetDesktop(peer.deviceId)),
+                    ),
+                  ],
                 ),
-                FilledButton.tonal(
-                  onPressed: connecting ? null : () => unawaited(client.connectToPeer(peer)),
-                  child: Text(l.linkReconnect),
-                ),
-                IconButton(
-                  tooltip: l.linkRevoke,
-                  icon: Icon(Icons.delete_outline, size: 18, color: scheme.error),
-                  onPressed: () => unawaited(client.forgetDesktop(peer.deviceId)),
-                ),
-              ],
-            ),
-          ),
+              ),
+          ],
+        ),
       ],
     ];
 
     final manualConnectWidgets = <Widget>[
-      Text(l.linkManualConnect, style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: Space.sm),
+      _SectionTitle(l.linkManualConnect),
       _SurfaceCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -531,23 +524,18 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
             padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
             children: [
               if (client.reconnecting) ...[
-                _SurfaceCard(
+                _Group(
                   key: const ValueKey('link-reconnecting-banner'),
-                  borderColor: scheme.primary.withValues(alpha: .4),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                      const SizedBox(width: Space.sm),
-                      Expanded(
-                        child: Text(
-                          l.linkReconnecting(client.reconnectingDesktopName ?? ''),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                  children: [
+                    ListTile(
+                      leading: const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      title: Text(
+                        l.linkReconnecting(client.reconnectingDesktopName ?? ''),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      TextButton(onPressed: client.cancelReconnect, child: Text(l.cancel)),
-                    ],
-                  ),
+                      trailing: TextButton(onPressed: client.cancelReconnect, child: Text(l.cancel)),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: Space.sm),
               ],
@@ -598,19 +586,19 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
       if (client.pendingApprovals.isNotEmpty) ...[
         Row(
           children: [
-            Icon(Icons.shield_outlined, size: 18, color: scheme.error),
+            const SizedBox(width: Space.xs),
+            Icon(Icons.shield_outlined, size: 16, color: scheme.error),
             const SizedBox(width: Space.xs),
             Text(
               '${l.linkPendingApprovals} (${client.pendingApprovals.length})',
-              style: Theme.of(context).textTheme.titleSmall,
+              style: Theme.of(context).textTheme.labelLarge,
             ),
           ],
         ),
-        const SizedBox(height: Space.sm),
+        const SizedBox(height: Space.xs),
         for (final item in client.pendingApprovals)
           _SurfaceCard(
             key: ValueKey('link-approval-${item.approvalId}'),
-            borderColor: scheme.error.withValues(alpha: .35),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -625,7 +613,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(Space.sm),
                     decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest,
+                      color: scheme.surfaceContainerLowest,
                       borderRadius: BorderRadius.circular(Radii.control),
                     ),
                     child: Text(item.command, style: mono(context, Theme.of(context).textTheme.bodySmall)),
@@ -667,96 +655,74 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
         const SizedBox(height: Space.lg),
       ],
       if (client.desktopLocalShells.isNotEmpty) ...[
-        Text(l.linkDesktopLocalShells, style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: Space.sm),
-        Wrap(
-          spacing: Space.sm,
-          runSpacing: Space.sm,
+        _SectionTitle(l.linkDesktopLocalShells),
+        _Group(
           children: [
             for (final shell in client.desktopLocalShells)
-              Material(
+              ListTile(
                 key: ValueKey('link-local-shell-${shell.shellId}'),
-                color: scheme.surfaceContainerLow,
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .45)),
-                ),
-                child: InkWell(
-                  onTap: () {
-                    client.openProxiedLocalInWorkspace(shell);
-                    widget.onOpenedTerminal?.call();
-                  },
-                  onLongPress: () => _showLocalShellActions(client, shell),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_connectingLocalShellId == shell.shellId)
-                          const SizedBox.square(dimension: 15, child: CircularProgressIndicator(strokeWidth: 2))
-                        else
-                          Icon(Icons.terminal_rounded, size: 16, color: scheme.primary),
-                        const SizedBox(width: Space.xs),
-                        Text(shell.name, style: Theme.of(context).textTheme.labelLarge),
-                      ],
-                    ),
-                  ),
-                ),
+                leading: _connectingLocalShellId == shell.shellId
+                    ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.terminal_rounded),
+                title: Text(shell.name, overflow: TextOverflow.ellipsis),
+                onTap: () {
+                  client.openProxiedLocalInWorkspace(shell);
+                  widget.onOpenedTerminal?.call();
+                },
+                onLongPress: () => _showLocalShellActions(client, shell),
               ),
           ],
         ),
         const SizedBox(height: Space.lg),
       ],
-      Text(l.linkDesktopTerminals, style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: Space.sm),
+      _SectionTitle(l.linkDesktopTerminals),
       if (client.desktopSessions.isEmpty)
-        Text(
-          l.linkNoDesktopTerminals,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        Padding(
+          padding: const EdgeInsets.only(left: Space.xs),
+          child: Text(
+            l.linkNoDesktopTerminals,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
         )
       else
-        for (final s in client.desktopSessions)
-          _SurfaceCard(
-            key: ValueKey('link-mirror-${s.sessionId}'),
-            onTap: () => unawaited(_openDesktopTerminal(client, s)),
-            child: Row(
-              children: [
-                Icon(s.isLocal ? Icons.terminal : Icons.dns_outlined, size: 18, color: scheme.primary),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(s.title, style: Theme.of(context).textTheme.titleSmall, overflow: TextOverflow.ellipsis),
-                      Text(
-                        s.targetLabel,
-                        style: mono(context, Theme.of(context).textTheme.bodySmall),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+        _Group(
+          children: [
+            for (final s in client.desktopSessions)
+              ListTile(
+                key: ValueKey('link-mirror-${s.sessionId}'),
+                leading: Icon(
+                  s.isLocal ? Icons.terminal : Icons.dns_outlined,
+                  color: s.status == 'connected' ? scheme.primary : null,
                 ),
-                if (_connectingSessionId == s.sessionId)
-                  const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                else ...[
-                  if (s.isLocal) ...[
-                    _Tag(label: l.linkLocalTag, color: scheme.tertiary),
-                    const SizedBox(width: Space.xs),
-                  ],
-                  _Tag(
-                    label: s.status == 'connected' ? l.linkMirrorTag : l.linkSessionPending,
-                    color: s.status == 'connected' ? scheme.primary : scheme.onSurfaceVariant,
-                  ),
-                ],
-              ],
-            ),
-          ),
+                title: Text(s.title, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  s.targetLabel,
+                  style: mono(context, Theme.of(context).textTheme.bodySmall),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: _connectingSessionId == s.sessionId
+                    ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (s.isLocal) ...[
+                            _Tag(label: l.linkLocalTag, color: scheme.onSurfaceVariant),
+                            const SizedBox(width: Space.sm),
+                          ],
+                          _Tag(
+                            label: s.status == 'connected' ? l.linkMirrorTag : l.linkSessionPending,
+                            color: s.status == 'connected' ? scheme.primary : scheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                onTap: () => unawaited(_openDesktopTerminal(client, s)),
+              ),
+          ],
+        ),
     ];
 
     final desktopHostsSection = <Widget>[
-      Text(l.linkDesktopHosts, style: Theme.of(context).textTheme.titleSmall),
-      const SizedBox(height: Space.sm),
+      _SectionTitle(l.linkDesktopHosts),
       if (client.desktopHosts.length > 5) ...[
         TextField(
           controller: _hostSearchController,
@@ -770,47 +736,37 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
         const SizedBox(height: Space.sm),
       ],
       if (filteredHosts.isEmpty)
-        Text(
-          l.linkNoDesktopHosts,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        Padding(
+          padding: const EdgeInsets.only(left: Space.xs),
+          child: Text(
+            l.linkNoDesktopHosts,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
         )
       else
-        for (final h in filteredHosts)
-          _SurfaceCard(
-            key: ValueKey('link-proxy-${h.hostId}'),
-            onTap: () {
-              client.openProxiedHostInWorkspace(h);
-              widget.onOpenedTerminal?.call();
-            },
-            onLongPress: () => _showHostActions(client, h),
-            child: Row(
-              children: [
-                Icon(Icons.hub_outlined, size: 18, color: scheme.secondary),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        h.label.isEmpty ? h.targetLabel : h.label,
-                        style: Theme.of(context).textTheme.titleSmall,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        h.group.isEmpty ? h.targetLabel : '${h.group} · ${h.targetLabel}',
-                        style: mono(context, Theme.of(context).textTheme.bodySmall),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+        _Group(
+          children: [
+            for (final h in filteredHosts)
+              ListTile(
+                key: ValueKey('link-proxy-${h.hostId}'),
+                leading: const Icon(Icons.hub_outlined),
+                title: Text(h.label.isEmpty ? h.targetLabel : h.label, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  h.group.isEmpty ? h.targetLabel : '${h.group} · ${h.targetLabel}',
+                  style: mono(context, Theme.of(context).textTheme.bodySmall),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                if (_connectingHostId == h.hostId)
-                  const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                else
-                  _Tag(label: l.linkProxyTag, color: scheme.secondary),
-              ],
-            ),
-          ),
+                trailing: _connectingHostId == h.hostId
+                    ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : _Tag(label: l.linkProxyTag, color: scheme.onSurfaceVariant),
+                onTap: () {
+                  client.openProxiedHostInWorkspace(h);
+                  widget.onOpenedTerminal?.call();
+                },
+                onLongPress: () => _showHostActions(client, h),
+              ),
+          ],
+        ),
     ];
 
     return LayoutBuilder(
@@ -827,112 +783,106 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
             children: [
-              _SurfaceCard(
-                borderColor: scheme.primary.withValues(alpha: .35),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.link, color: scheme.primary, size: 20),
-                        const SizedBox(width: Space.sm),
-                        Expanded(
-                          child: Text(
-                            l.linkConnectedTo(client.connectedDesktopName ?? ''),
-                            style: Theme.of(context).textTheme.titleSmall,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        TextButton(
-                          key: const ValueKey('link-disconnect-button'),
-                          onPressed: () => unawaited(client.disconnect()),
-                          child: Text(l.linkDisconnect),
-                        ),
-                      ],
+              _Group(
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.link, color: scheme.primary),
+                    title: Text(
+                      l.linkConnectedTo(client.connectedDesktopName ?? ''),
+                      style: Theme.of(context).textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: Space.sm),
-                    Wrap(
-                      spacing: Space.sm,
-                      runSpacing: Space.xs,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        FilledButton.tonalIcon(
-                          key: const ValueKey('link-sync-button'),
-                          onPressed: _syncing ? null : _syncNow,
-                          icon: _syncing
-                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.sync_outlined, size: 16),
-                          label: Text(l.linkSyncConfig),
-                        ),
-                        OutlinedButton.icon(
-                          key: const ValueKey('link-clipboard-button'),
-                          onPressed: _pushClipboard,
-                          icon: const Icon(Icons.content_paste_go_rounded, size: 16),
-                          label: Text(l.mobilePushClipboard),
-                        ),
-                        if (client.desktopSharesFiles && widget.onOpenFiles != null)
-                          OutlinedButton.icon(
-                            key: const ValueKey('link-files-button'),
-                            onPressed: widget.onOpenFiles,
-                            icon: const Icon(Icons.folder_outlined, size: 16),
-                            label: Text(l.files),
-                          ),
-                        FilterChip(
-                          key: const ValueKey('link-share-files-chip'),
-                          label: Text(l.linkSharePhoneFiles),
-                          selected: client.sharesPhoneFiles,
-                          onSelected: (on) => unawaited(_sharePhoneFiles(client, on)),
-                        ),
-                        if (_notice != null)
-                          Text(_notice!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.primary)),
-                      ],
+                    trailing: TextButton(
+                      key: const ValueKey('link-disconnect-button'),
+                      onPressed: () => unawaited(client.disconnect()),
+                      child: Text(l.linkDisconnect),
                     ),
-                    if (client.passwordSyncStatus != LinkPasswordSyncStatus.idle) ...[
-                      const SizedBox(height: Space.xs),
-                      Row(
-                        key: const ValueKey('link-password-sync-status'),
-                        children: [
-                          if (client.passwordSyncStatus == LinkPasswordSyncStatus.awaitingDesktop)
-                            const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                          else
-                            Icon(
-                              client.passwordSyncStatus == LinkPasswordSyncStatus.imported
-                                  ? Icons.key_outlined
-                                  : Icons.info_outline,
-                              size: 14,
-                              color: client.passwordSyncStatus == LinkPasswordSyncStatus.imported
-                                  ? scheme.primary
-                                  : scheme.onSurfaceVariant,
+                  ),
+                  ListTile(
+                    key: const ValueKey('link-sync-button'),
+                    leading: const Icon(Icons.sync_outlined),
+                    title: Text(l.linkSyncConfig),
+                    trailing: _syncing
+                        ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : null,
+                    onTap: _syncing ? null : _syncNow,
+                  ),
+                  ListTile(
+                    key: const ValueKey('link-clipboard-button'),
+                    leading: const Icon(Icons.content_paste_go_rounded),
+                    title: Text(l.mobilePushClipboard),
+                    onTap: _pushClipboard,
+                  ),
+                  if (client.desktopSharesFiles && widget.onOpenFiles != null)
+                    ListTile(
+                      key: const ValueKey('link-files-button'),
+                      leading: const Icon(Icons.folder_outlined),
+                      title: Text(l.files),
+                      trailing: Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+                      onTap: widget.onOpenFiles,
+                    ),
+                  MergeSemantics(
+                    child: ListTile(
+                      key: const ValueKey('link-share-files-switch'),
+                      leading: const Icon(Icons.phone_android_outlined),
+                      title: Text(l.linkSharePhoneFiles),
+                      trailing: AppSwitch(
+                        value: client.sharesPhoneFiles,
+                        onChanged: (on) => unawaited(_sharePhoneFiles(client, on)),
+                      ),
+                      onTap: () => unawaited(_sharePhoneFiles(client, !client.sharesPhoneFiles)),
+                    ),
+                  ),
+                ],
+              ),
+              if (_notice != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: Space.xs, bottom: Space.xs),
+                  child: Text(_notice!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.primary)),
+                ),
+              if (client.passwordSyncStatus != LinkPasswordSyncStatus.idle)
+                Padding(
+                  padding: const EdgeInsets.only(left: Space.xs),
+                  child: Row(
+                    key: const ValueKey('link-password-sync-status'),
+                    children: [
+                      if (client.passwordSyncStatus == LinkPasswordSyncStatus.awaitingDesktop)
+                        const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                      else
+                        Icon(
+                          client.passwordSyncStatus == LinkPasswordSyncStatus.imported
+                              ? Icons.key_outlined
+                              : Icons.info_outline,
+                          size: 14,
+                          color: client.passwordSyncStatus == LinkPasswordSyncStatus.imported
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      const SizedBox(width: Space.xs),
+                      Expanded(
+                        child: Text(
+                          switch (client.passwordSyncStatus) {
+                            LinkPasswordSyncStatus.awaitingDesktop => l.linkPasswordSyncWaiting,
+                            LinkPasswordSyncStatus.imported => l.linkPasswordSyncImported(
+                              client.lastImportedPasswordCount,
                             ),
-                          const SizedBox(width: Space.xs),
-                          Expanded(
-                            child: Text(
-                              switch (client.passwordSyncStatus) {
-                                LinkPasswordSyncStatus.awaitingDesktop => l.linkPasswordSyncWaiting,
-                                LinkPasswordSyncStatus.imported => l.linkPasswordSyncImported(
-                                  client.lastImportedPasswordCount,
-                                ),
-                                LinkPasswordSyncStatus.declined => l.linkPasswordSyncDeclined,
-                                LinkPasswordSyncStatus.idle => '',
-                              },
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: client.passwordSyncStatus == LinkPasswordSyncStatus.declined
-                                    ? scheme.onSurfaceVariant
-                                    : scheme.primary,
-                              ),
-                            ),
+                            LinkPasswordSyncStatus.declined => l.linkPasswordSyncDeclined,
+                            LinkPasswordSyncStatus.idle => '',
+                          },
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: client.passwordSyncStatus == LinkPasswordSyncStatus.declined
+                                ? scheme.onSurfaceVariant
+                                : scheme.primary,
                           ),
-                        ],
+                        ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
               if (offer != null) ...[
                 const SizedBox(height: Space.md),
                 _SurfaceCard(
                   key: const ValueKey('link-credential-offer'),
-                  borderColor: scheme.tertiary.withValues(alpha: .5),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -996,35 +946,70 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   }
 }
 
+/// The theme surface on the page background with a hairline edge, as on the Me page.
 class _SurfaceCard extends StatelessWidget {
-  const _SurfaceCard({super.key, required this.child, this.onTap, this.onLongPress, this.borderColor});
+  const _SurfaceCard({super.key, required this.child, this.padding = const EdgeInsets.all(Space.md)});
 
   final Widget child;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-  final Color? borderColor;
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final body = Padding(padding: const EdgeInsets.all(Space.md), child: child);
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.sm),
       child: Material(
-        color: scheme.surfaceContainerLow,
+        color: BrandPalette.of(context).surface.withValues(alpha: .88),
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: borderColor ?? scheme.outlineVariant.withValues(alpha: .45)),
+          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .35)),
         ),
-        child: onTap == null && onLongPress == null
-            ? body
-            : InkWell(onTap: onTap, onLongPress: onLongPress, child: body),
+        child: Padding(padding: padding, child: child),
       ),
     );
   }
 }
 
+/// List rows in one card, split by inset hairlines.
+class _Group extends StatelessWidget {
+  const _Group({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => _SurfaceCard(
+    padding: EdgeInsets.zero,
+    child: ListTileTheme.merge(
+      minTileHeight: MobileSize.touchTarget,
+      contentPadding: const EdgeInsets.symmetric(horizontal: Space.md),
+      shape: const RoundedRectangleBorder(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, row) in children.indexed) ...[
+            if (i > 0) const Divider(indent: Space.md, endIndent: Space.md),
+            row,
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(left: Space.xs, bottom: Space.xs),
+    child: Text(text, style: Theme.of(context).textTheme.labelLarge),
+  );
+}
+
+/// A short state word beside a row, without a fill.
 class _Tag extends StatelessWidget {
   const _Tag({required this.label, required this.color});
 
@@ -1032,11 +1017,8 @@ class _Tag extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 2),
-    decoration: BoxDecoration(color: color.withValues(alpha: .14), borderRadius: BorderRadius.circular(Radii.pill)),
-    child: Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color)),
-  );
+  Widget build(BuildContext context) =>
+      Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color));
 }
 
 class _DiscoveredPairDialog extends StatefulWidget {

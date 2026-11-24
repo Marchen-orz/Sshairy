@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
 import '../../../design/form_field.dart';
+import '../../../design/menu.dart';
+import '../../../design/select.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/result.dart';
 import '../../../l10n/app_localizations.dart';
@@ -338,6 +340,12 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
     final discovery = settings.get(SettingKeys.linkDiscovery);
     final savedName = settings.get(SettingKeys.linkDeviceName) ?? '';
     final portError = _parsedPort == null ? '1024–65535' : null;
+    final muted = theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
+
+    void copy(String text) {
+      unawaited(Clipboard.setData(ClipboardData(text: text)));
+      _showNotice(l.linkCopied);
+    }
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
@@ -362,252 +370,169 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(Space.md),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(Radii.card),
-                          border: Border.all(color: scheme.outlineVariant.withValues(alpha: .45)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            InkWell(
-                              borderRadius: BorderRadius.circular(Radii.control),
-                              onTap: () => unawaited(_saveBool(SettingKeys.linkEnabled, !enabled)),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: Space.xs),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(l.linkEnabled, style: theme.textTheme.bodyMedium),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            host.failed
-                                                ? l.linkStartFailed
-                                                : host.running
-                                                ? l.linkRunning(host.port)
-                                                : l.linkStopped,
-                                            style: theme.textTheme.bodySmall?.copyWith(
-                                              color: host.failed
-                                                  ? scheme.error
-                                                  : host.running
-                                                  ? scheme.primary
-                                                  : scheme.onSurfaceVariant,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: Space.md),
-                                    AppSwitch(
-                                      key: const ValueKey('link-enabled-switch'),
-                                      value: enabled,
-                                      onChanged: (v) => unawaited(_saveBool(SettingKeys.linkEnabled, v)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: Space.md),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: AppFormField(
-                                    label: l.linkDeviceName,
-                                    child: TextField(
-                                      key: const ValueKey('link-name-field'),
-                                      controller: _nameController,
-                                      focusNode: _nameFocus,
-                                      inputFormatters: [LengthLimitingTextInputFormatter(64)],
-                                      decoration: AppFormField.decoration(context)
-                                          .copyWith(hintText: savedName.isEmpty ? host.deviceName : null),
-                                      onChanged: (_) => _scheduleNameSave(),
-                                      onSubmitted: (_) => unawaited(_commitName()),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: Space.md),
-                                SizedBox(
-                                  width: 112,
-                                  child: AppFormField(
-                                    label: l.linkPort,
-                                    child: TextField(
-                                      key: const ValueKey('link-port-field'),
-                                      controller: _portController,
-                                      focusNode: _portFocus,
-                                      keyboardType: TextInputType.number,
-                                      inputFormatters: [
-                                        FilteringTextInputFormatter.digitsOnly,
-                                        LengthLimitingTextInputFormatter(5),
-                                      ],
-                                      decoration: AppFormField.decoration(context).copyWith(errorText: portError),
-                                      onChanged: (_) {
-                                        setState(() {});
-                                        _schedulePortSave();
-                                      },
-                                      onSubmitted: (_) => unawaited(_commitPort()),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: Space.md),
-                            InkWell(
-                              borderRadius: BorderRadius.circular(Radii.control),
-                              onTap: () => unawaited(_saveBool(SettingKeys.linkDiscovery, !discovery)),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: Space.xs),
-                                child: Row(
-                                  children: [
-                                    Expanded(child: Text(l.linkDiscovery, style: theme.textTheme.bodyMedium)),
-                                    const SizedBox(width: Space.md),
-                                    AppSwitch(
-                                      key: const ValueKey('link-discovery-switch'),
-                                      value: discovery,
-                                      onChanged: (v) => unawaited(_saveBool(SettingKeys.linkDiscovery, v)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            if (host.running && host.addresses.isNotEmpty) ...[
-                              const Divider(height: Space.lg),
-                              Text(
-                                l.linkAddresses,
-                                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                              ),
-                              const SizedBox(height: Space.xs),
-                              Wrap(
-                                spacing: Space.xs,
-                                runSpacing: Space.xs,
-                                children: [
-                                  for (final addr in host.addresses)
-                                    ActionChip(
-                                      visualDensity: VisualDensity.compact,
-                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      label: Text(
-                                        '$addr:${host.port}',
-                                        style: mono(context, theme.textTheme.labelSmall),
-                                      ),
-                                      onPressed: () {
-                                        unawaited(Clipboard.setData(ClipboardData(text: '$addr:${host.port}')));
-                                        _showNotice(l.linkCopied);
-                                      },
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ],
+                      _SwitchRow(
+                        switchKey: const ValueKey('link-enabled-switch'),
+                        title: l.linkEnabled,
+                        value: enabled,
+                        onChanged: (v) => unawaited(_saveBool(SettingKeys.linkEnabled, v)),
+                        status: _Status(
+                          label: host.failed
+                              ? l.linkStartFailed
+                              : host.running
+                              ? l.linkRunning(host.port)
+                              : l.linkStopped,
+                          color: host.failed
+                              ? scheme.error
+                              : host.running
+                              ? scheme.primary
+                              : null,
+                          error: host.failed,
                         ),
                       ),
                       const SizedBox(height: Space.md),
-                      FilledButton.icon(
-                        key: const ValueKey('link-pair-button'),
-                        onPressed: host.running
-                            ? () {
-                                if (pairing != null) {
-                                  host.cancelPairing();
-                                } else {
-                                  unawaited(host.startPairing());
-                                }
-                              }
-                            : null,
-                        icon: Icon(pairing != null ? Icons.close : Icons.phonelink_setup_outlined, size: 18),
-                        label: Text(pairing != null ? l.linkCancelPairing : l.linkPairDevice),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: AppFormField(
+                              label: l.linkDeviceName,
+                              child: TextField(
+                                key: const ValueKey('link-name-field'),
+                                controller: _nameController,
+                                focusNode: _nameFocus,
+                                inputFormatters: [LengthLimitingTextInputFormatter(64)],
+                                decoration: AppFormField.decoration(context)
+                                    .copyWith(hintText: savedName.isEmpty ? host.deviceName : null),
+                                onChanged: (_) => _scheduleNameSave(),
+                                onSubmitted: (_) => unawaited(_commitName()),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: Space.md),
+                          SizedBox(
+                            width: 112,
+                            child: AppFormField(
+                              label: l.linkPort,
+                              child: TextField(
+                                key: const ValueKey('link-port-field'),
+                                controller: _portController,
+                                focusNode: _portFocus,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(5),
+                                ],
+                                decoration: AppFormField.decoration(context).copyWith(errorText: portError),
+                                onChanged: (_) {
+                                  setState(() {});
+                                  _schedulePortSave();
+                                },
+                                onSubmitted: (_) => unawaited(_commitPort()),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: Space.sm),
+                      _SwitchRow(
+                        switchKey: const ValueKey('link-discovery-switch'),
+                        title: l.linkDiscovery,
+                        value: discovery,
+                        onChanged: (v) => unawaited(_saveBool(SettingKeys.linkDiscovery, v)),
+                      ),
+                      if (host.running && host.addresses.isNotEmpty) ...[
+                        const SizedBox(height: Space.md),
+                        Text(l.linkAddresses, style: muted),
+                        const SizedBox(height: Space.xs),
+                        for (final addr in host.addresses)
+                          _AddressRow(address: '$addr:${host.port}', onCopy: () => copy('$addr:${host.port}')),
+                      ],
+                      const Divider(height: Space.xxl),
+                      Row(
+                        children: [
+                          Expanded(child: Text(l.linkPairedDevices, style: theme.textTheme.titleSmall)),
+                          TextButton.icon(
+                            key: const ValueKey('link-pair-button'),
+                            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: Space.sm)),
+                            onPressed: host.running
+                                ? () {
+                                    if (pairing != null) {
+                                      host.cancelPairing();
+                                    } else {
+                                      unawaited(host.startPairing());
+                                    }
+                                  }
+                                : null,
+                            icon: Icon(pairing != null ? Icons.close : Icons.add, size: 16),
+                            label: Text(pairing != null ? l.linkCancelPairing : l.linkPairDevice),
+                          ),
+                        ],
                       ),
                       if (pairing != null) ...[
-                        const SizedBox(height: Space.md),
-                        Container(
+                        const SizedBox(height: Space.sm),
+                        Row(
                           key: const ValueKey('link-pairing-card'),
-                          padding: const EdgeInsets.all(Space.md),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(Radii.card),
-                            border: Border.all(color: scheme.primary.withValues(alpha: .35)),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              LinkQrCodeView(key: const ValueKey('link-pairing-qr'), data: pairing.toUri(), size: 132),
-                              const SizedBox(width: Space.md),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            l.linkPairingCode,
-                                            style: theme.textTheme.labelMedium,
-                                            overflow: TextOverflow.ellipsis,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            LinkQrCodeView(key: const ValueKey('link-pairing-qr'), data: pairing.toUri(), size: 132),
+                            const SizedBox(width: Space.lg),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(l.linkPairingCode, style: muted),
+                                  const SizedBox(height: Space.xs),
+                                  SelectableText(
+                                    '${pairing.code.substring(0, 3)} ${pairing.code.substring(3)}',
+                                    key: const ValueKey('link-pairing-code'),
+                                    style: mono(
+                                      context,
+                                      theme.textTheme.headlineMedium,
+                                    ).copyWith(letterSpacing: 4, fontWeight: FontWeight.w700, color: scheme.primary),
+                                  ),
+                                  const SizedBox(height: Space.sm),
+                                  if (host.addresses.length > 1)
+                                    AppSelect<String>(
+                                      key: const ValueKey('link-pairing-host'),
+                                      value: pairing.host,
+                                      options: [
+                                        for (final addr in host.addresses)
+                                          AppOption(
+                                            addr,
+                                            '$addr:${pairing.port}',
+                                            style: mono(context, theme.textTheme.bodySmall),
                                           ),
-                                        ),
-                                        TextButton.icon(
-                                          key: const ValueKey('link-copy-uri'),
-                                          onPressed: () {
-                                            unawaited(Clipboard.setData(ClipboardData(text: pairing.toUri())));
-                                            _showNotice(l.linkCopied);
-                                          },
-                                          icon: const Icon(Icons.copy_outlined, size: 16),
-                                          label: Text(l.linkCopyUri),
-                                        ),
                                       ],
+                                      onChanged: host.selectPairingHost,
+                                    )
+                                  else
+                                    SelectableText('${pairing.host}:${pairing.port}', style: mono(context, muted)),
+                                  const SizedBox(height: Space.xs),
+                                  TextButton.icon(
+                                    key: const ValueKey('link-copy-uri'),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: Space.sm),
                                     ),
-                                    const SizedBox(height: Space.xs),
-                                    SelectableText(
-                                      '${pairing.code.substring(0, 3)} ${pairing.code.substring(3)}',
-                                      key: const ValueKey('link-pairing-code'),
-                                      style: mono(
-                                        context,
-                                        theme.textTheme.headlineMedium,
-                                      ).copyWith(letterSpacing: 4, fontWeight: FontWeight.w700, color: scheme.primary),
-                                    ),
-                                    const SizedBox(height: Space.xs),
-                                    if (host.addresses.length > 1)
-                                      Wrap(
-                                        spacing: Space.xs,
-                                        runSpacing: Space.xs,
-                                        children: [
-                                          for (final addr in host.addresses)
-                                            ChoiceChip(
-                                              key: ValueKey('link-pairing-host-$addr'),
-                                              visualDensity: VisualDensity.compact,
-                                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              label: Text(
-                                                '$addr:${pairing.port}',
-                                                style: mono(context, theme.textTheme.labelSmall),
-                                              ),
-                                              selected: addr == pairing.host,
-                                              onSelected: (_) => host.selectPairingHost(addr),
-                                            ),
-                                        ],
-                                      )
-                                    else
-                                      SelectableText(
-                                        '${pairing.host}:${pairing.port}',
-                                        style: mono(context, theme.textTheme.bodySmall),
-                                      ),
-                                  ],
-                                ),
+                                    onPressed: () => copy(pairing.toUri()),
+                                    icon: const Icon(Icons.copy_outlined, size: 16),
+                                    label: Text(l.linkCopyUri),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: Space.md),
                       ],
-                      const SizedBox(height: Space.lg),
-                      Text(l.linkPairedDevices, style: theme.textTheme.titleSmall),
-                      const SizedBox(height: Space.sm),
                       if (host.peers.isEmpty)
-                        Text(l.linkNoPeers, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: Space.sm),
+                          child: Text(l.linkNoPeers, style: muted),
+                        )
                       else
-                        for (final peer in host.peers)
-                          _PeerCard(
+                        for (final (i, peer) in host.peers.indexed) ...[
+                          if (i > 0) const Divider(height: Space.lg),
+                          _PeerTile(
                             peer: peer,
                             online: host.connectedDeviceIds.contains(peer.deviceId),
                             onUpdatePermissions: (perms) => unawaited(host.updatePermissions(peer.deviceId, perms)),
@@ -618,6 +543,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                             onDisconnect: () => host.disconnectPeer(peer.deviceId),
                             onRevoke: () => unawaited(host.revokePeer(peer.deviceId)),
                           ),
+                        ],
                     ],
                   ),
                 ),
@@ -638,8 +564,120 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
   }
 }
 
-class _PeerCard extends StatelessWidget {
-  const _PeerCard({
+/// A title, an optional status line under it, and a switch; the whole row toggles.
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
+    required this.switchKey,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+    this.status,
+  });
+
+  final Key switchKey;
+  final String title;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Widget? status;
+
+  @override
+  Widget build(BuildContext context) => MergeSemantics(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(Radii.control),
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: Space.xs),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title),
+                  if (status != null) ...[const SizedBox(height: 2), status!],
+                ],
+              ),
+            ),
+            const SizedBox(width: Space.md),
+            AppSwitch(key: switchKey, value: value, onChanged: onChanged),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// A dot and a short label: filled in [color], or hollow when there is none.
+class _Status extends StatelessWidget {
+  const _Status({required this.label, this.color, this.error = false});
+
+  final String label;
+  final Color? color;
+  final bool error;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Text.rich(
+      TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(right: Space.xs),
+              child: Icon(
+                color == null ? Icons.circle_outlined : Icons.circle,
+                size: 8,
+                color: color ?? scheme.outline,
+              ),
+            ),
+          ),
+          TextSpan(text: label),
+        ],
+      ),
+      style: theme.textTheme.bodySmall?.copyWith(color: error ? scheme.error : scheme.onSurfaceVariant),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+/// One local address; tapping copies it.
+class _AddressRow extends StatelessWidget {
+  const _AddressRow({required this.address, required this.onCopy});
+
+  final String address;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Tooltip(
+      message: AppLocalizations.of(context).copy,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.control),
+        onTap: onCopy,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: Space.xs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(address, style: mono(context, theme.textTheme.bodyMedium), overflow: TextOverflow.ellipsis),
+              ),
+              Icon(Icons.copy_outlined, size: 14, color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _PeerAction { pushCredentials, offerUpdate, disconnect, revoke }
+
+class _PeerTile extends StatelessWidget {
+  const _PeerTile({
     required this.peer,
     required this.online,
     required this.onUpdatePermissions,
@@ -657,107 +695,120 @@ class _PeerCard extends StatelessWidget {
   final VoidCallback onDisconnect;
   final VoidCallback onRevoke;
 
+  void _run(_PeerAction action) {
+    switch (action) {
+      case _PeerAction.pushCredentials:
+        onPushCredentials();
+      case _PeerAction.offerUpdate:
+        onOfferUpdate?.call();
+      case _PeerAction.disconnect:
+        onDisconnect();
+      case _PeerAction.revoke:
+        onRevoke();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final p = peer.permissions;
-    return Container(
-      margin: const EdgeInsets.only(bottom: Space.sm),
-      padding: const EdgeInsets.all(Space.md),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(Radii.card),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .45)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final permissions = <(String, bool, LinkPeerPermissions Function(bool))>[
+      (l.linkPermMirror, p.allowMirror, (v) => p.copyWith(allowMirror: v)),
+      (l.linkPermProxy, p.allowProxy, (v) => p.copyWith(allowProxy: v)),
+      (l.files, p.allowFiles, (v) => p.copyWith(allowFiles: v)),
+      (l.linkPermSync, p.allowSync, (v) => p.copyWith(allowSync: v)),
+      (l.linkPermApproval, p.allowApproval, (v) => p.copyWith(allowApproval: v)),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.smartphone_outlined, size: 18, color: scheme.onSurfaceVariant),
+            const SizedBox(width: Space.sm),
+            Expanded(
+              child: Text(peer.name, style: theme.textTheme.titleSmall, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: Space.sm),
+            _Status(label: online ? l.linkOnline : l.linkOffline, color: online ? scheme.primary : null),
+            AppMenuButton<_PeerAction>(
+              tooltip: l.more,
+              items: () => [
+                if (online)
+                  AppMenuItem(
+                    value: _PeerAction.pushCredentials,
+                    label: l.linkPushCredentials,
+                    icon: Icons.key_outlined,
+                  ),
+                if (onOfferUpdate != null)
+                  AppMenuItem(
+                    value: _PeerAction.offerUpdate,
+                    label: l.linkOfferUpdate,
+                    icon: Icons.system_update_outlined,
+                  ),
+                if (online) AppMenuItem(value: _PeerAction.disconnect, label: l.linkDisconnect, icon: Icons.link_off),
+                if (online || onOfferUpdate != null) const AppMenuDivider(),
+                AppMenuItem(
+                  value: _PeerAction.revoke,
+                  label: l.linkRevoke,
+                  icon: Icons.delete_outline,
+                  destructive: true,
+                ),
+              ],
+              onSelected: _run,
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 18 + Space.sm),
+          child: Column(
             children: [
-              Icon(Icons.smartphone_outlined, size: 18, color: online ? scheme.primary : scheme.onSurfaceVariant),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: Text(peer.name, style: Theme.of(context).textTheme.titleSmall, overflow: TextOverflow.ellipsis),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (online ? scheme.primary : scheme.outline).withValues(alpha: .14),
-                  borderRadius: BorderRadius.circular(Radii.pill),
+              for (var i = 0; i < permissions.length; i += 2)
+                Row(
+                  children: [
+                    for (final (label, value, update) in permissions.skip(i).take(2))
+                      Expanded(
+                        child: _PermissionToggle(
+                          label: label,
+                          value: value,
+                          onChanged: (v) => onUpdatePermissions(update(v)),
+                        ),
+                      ),
+                    if (i + 1 == permissions.length) const Spacer(),
+                  ],
                 ),
-                child: Text(
-                  online ? l.linkOnline : l.linkOffline,
-                  style: Theme.of(context).textTheme.labelSmall
-                      ?.copyWith(color: online ? scheme.primary : scheme.onSurfaceVariant),
-                ),
-              ),
             ],
           ),
-          const SizedBox(height: Space.sm),
-          Wrap(
-            spacing: Space.xs,
-            runSpacing: Space.xs,
-            children: [
-              FilterChip(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                label: Text(l.linkPermMirror),
-                selected: p.allowMirror,
-                onSelected: (v) => onUpdatePermissions(p.copyWith(allowMirror: v)),
-              ),
-              FilterChip(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                label: Text(l.linkPermProxy),
-                selected: p.allowProxy,
-                onSelected: (v) => onUpdatePermissions(p.copyWith(allowProxy: v)),
-              ),
-              FilterChip(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                label: Text(l.files),
-                selected: p.allowFiles,
-                onSelected: (v) => onUpdatePermissions(p.copyWith(allowFiles: v)),
-              ),
-              FilterChip(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                label: Text(l.linkPermSync),
-                selected: p.allowSync,
-                onSelected: (v) => onUpdatePermissions(p.copyWith(allowSync: v)),
-              ),
-              FilterChip(
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                label: Text(l.linkPermApproval),
-                selected: p.allowApproval,
-                onSelected: (v) => onUpdatePermissions(p.copyWith(allowApproval: v)),
-              ),
-            ],
-          ),
-          const SizedBox(height: Space.sm),
-          Wrap(
-            spacing: Space.sm,
-            runSpacing: Space.xs,
-            children: [
-              if (online)
-                OutlinedButton.icon(
-                  onPressed: onPushCredentials,
-                  icon: const Icon(Icons.key_outlined, size: 16),
-                  label: Text(l.linkPushCredentials),
-                ),
-              if (onOfferUpdate != null) TextButton(onPressed: onOfferUpdate, child: Text(l.linkOfferUpdate)),
-              if (online) TextButton(onPressed: onDisconnect, child: Text(l.linkDisconnect)),
-              TextButton(
-                onPressed: onRevoke,
-                style: TextButton.styleFrom(foregroundColor: scheme.error),
-                child: Text(l.linkRevoke),
-              ),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+class _PermissionToggle extends StatelessWidget {
+  const _PermissionToggle({required this.label, required this.value, required this.onChanged});
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => MergeSemantics(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(Radii.control),
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: Space.xs + 2),
+        child: Row(
+          children: [
+            AppCheckbox(value: value, onChanged: onChanged),
+            const SizedBox(width: Space.sm),
+            Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+      ),
+    ),
+  );
 }
