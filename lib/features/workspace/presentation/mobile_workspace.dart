@@ -392,59 +392,64 @@ class _ActiveSessionCapsule extends StatelessWidget {
         ? l.linkMirrorTag
         : l.linkProxyTag;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, Space.sm),
-      child: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          final vx = details.primaryVelocity ?? 0;
-          if (totalCount > 1 && vx.abs() > 140) {
-            onCycle(vx < 0 ? 1 : -1);
-          }
-        },
-        child: Material(
-          key: const ValueKey('mobile-session-capsule'),
-          color: palette.raised,
-          elevation: 2,
-          borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              height: 48,
-              padding: const EdgeInsets.only(left: Space.md, right: Space.xs),
-              decoration: BoxDecoration(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: MobileSize.contentMaxWidth),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.lg, Space.sm),
+          child: GestureDetector(
+            onHorizontalDragEnd: (details) {
+              final vx = details.primaryVelocity ?? 0;
+              if (totalCount > 1 && vx.abs() > 140) {
+                onCycle(vx < 0 ? 1 : -1);
+              }
+            },
+            child: Material(
+              key: const ValueKey('mobile-session-capsule'),
+              color: palette.raised,
+              elevation: 2,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                onTap: onTap,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: palette.primary.withValues(alpha: .35)),
-              ),
-              child: Row(
-                children: [
-                  ListenableBuilder(listenable: session, builder: (_, _) => SessionStatusIcon(session.status)),
-                  const SizedBox(width: Space.sm),
-                  Expanded(
-                    child: Text(
-                      session.title,
-                      style: Theme.of(context).textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                child: Container(
+                  height: 48,
+                  padding: const EdgeInsets.only(left: Space.md, right: Space.xs),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: palette.primary.withValues(alpha: .35)),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: palette.primary.withValues(alpha: .14),
-                      borderRadius: BorderRadius.circular(Radii.pill),
-                    ),
-                    child: Text(
-                      totalCount > 1 ? '$tag · $totalCount' : tag,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: palette.primary),
-                    ),
+                  child: Row(
+                    children: [
+                      ListenableBuilder(listenable: session, builder: (_, _) => SessionStatusIcon(session.status)),
+                      const SizedBox(width: Space.sm),
+                      Expanded(
+                        child: Text(
+                          session.title,
+                          style: Theme.of(context).textTheme.titleSmall,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: palette.primary.withValues(alpha: .14),
+                          borderRadius: BorderRadius.circular(Radii.pill),
+                        ),
+                        child: Text(
+                          totalCount > 1 ? '$tag · $totalCount' : tag,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: palette.primary),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: l.close,
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(Icons.close_rounded, size: 18, color: scheme.onSurfaceVariant),
+                        onPressed: onClose,
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    tooltip: l.close,
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(Icons.close_rounded, size: 18, color: scheme.onSurfaceVariant),
-                    onPressed: onClose,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -490,9 +495,15 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
             body: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-                child: HostForm(host: host, group: _group),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: MobileSize.contentMaxWidth),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+                    child: HostForm(host: host, group: _group),
+                  ),
+                ),
               ),
             ),
           ),
@@ -715,233 +726,263 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                 );
               }
 
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.xl),
-                children: [
-                  if (allHosts.isNotEmpty) ...[
-                    TextField(
-                      key: const ValueKey('mobile-hosts-search'),
-                      controller: _search,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                        suffixIcon: q.isEmpty
-                            ? null
-                            : IconButton(
-                                icon: const Icon(Icons.close_rounded, size: 18),
-                                onPressed: () {
-                                  _search.clear();
-                                  setState(() {});
-                                },
-                              ),
-                        hintText: l.searchHint,
-                        filled: true,
-                        fillColor: palette.surface,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: Space.md),
-                  ],
-                  if (desktopSessions.isNotEmpty) ...[
-                    Row(
-                      children: [
-                        Icon(Icons.desktop_windows_outlined, size: 16, color: palette.primary),
-                        const SizedBox(width: Space.xs),
-                        Text(l.linkDesktopTerminals, style: Theme.of(context).textTheme.labelLarge),
-                      ],
-                    ),
-                    const SizedBox(height: Space.sm),
-                    SizedBox(
-                      height: 54,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: desktopSessions.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: Space.sm),
-                        itemBuilder: (context, index) {
-                          final s = desktopSessions[index];
-                          return Material(
-                            color: palette.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            child: InkWell(
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final inset = MobileSize.contentInset(constraints.maxWidth, maxWidth: MobileSize.wideContentMaxWidth);
+                  final twoColumns = constraints.maxWidth >= MobileSize.gridBreakpoint;
+                  return ListView(
+                    padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
+                    children: [
+                      if (allHosts.isNotEmpty) ...[
+                        TextField(
+                          key: const ValueKey('mobile-hosts-search'),
+                          controller: _search,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                            suffixIcon: q.isEmpty
+                                ? null
+                                : IconButton(
+                                    icon: const Icon(Icons.close_rounded, size: 18),
+                                    onPressed: () {
+                                      _search.clear();
+                                      setState(() {});
+                                    },
+                                  ),
+                            hintText: l.searchHint,
+                            filled: true,
+                            fillColor: palette.surface,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 10),
+                            border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(14),
-                              onTap: () {
-                                linkClient.openMirroredSessionInWorkspace(s);
-                                widget.onOpenedTerminal();
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: Space.md),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: palette.primary.withValues(alpha: .35)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.terminal_rounded, size: 16, color: palette.primary),
-                                    const SizedBox(width: Space.xs),
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 160),
-                                      child: Text(
-                                        s.title,
-                                        style: Theme.of(context).textTheme.labelLarge,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: Space.md),
-                  ],
-                  if (quickHosts.isNotEmpty && allHosts.length > 3) ...[
-                    Text(l.mobileQuickConnect, style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: Space.sm),
-                    SizedBox(
-                      height: 44,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: quickHosts.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: Space.sm),
-                        itemBuilder: (context, index) {
-                          final host = quickHosts[index];
-                          return ActionChip(
-                            avatar: Icon(
-                              host.pinned ? Icons.push_pin_rounded : Icons.bolt_rounded,
-                              size: 15,
-                              color: palette.primary,
-                            ),
-                            label: Text(host.title),
-                            onPressed: () => widget.onOpenHost(host),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: Space.md),
-                  ],
-                  if (groups.isNotEmpty) ...[
-                    SizedBox(
-                      height: 38,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(right: Space.xs),
-                            child: ChoiceChip(
-                              label: Text(l.mobileAllGroups),
-                              selected: _group.isEmpty,
-                              onSelected: (_) => setState(() => _group = ''),
+                              borderSide: BorderSide.none,
                             ),
                           ),
-                          for (final g in groups)
-                            Padding(
-                              padding: const EdgeInsets.only(right: Space.xs),
-                              child: ChoiceChip(
-                                label: Text(g),
-                                selected: _group == g,
-                                onSelected: (_) => setState(() => _group = g),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: Space.md),
-                  ],
-                  if (filtered.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: Space.xl),
-                      child: Center(
-                        child: Text(
-                          l.noMatches,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
                         ),
-                      ),
-                    )
-                  else
-                    for (final host in filtered)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: Space.sm),
-                        child: Material(
-                          color: palette.surface.withValues(alpha: .9),
-                          borderRadius: BorderRadius.circular(16),
-                          child: InkWell(
-                            key: ValueKey('mobile-host-${host.id.value}'),
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () => widget.onOpenHost(host),
-                            onLongPress: () => _openHostActions(host),
-                            child: Container(
-                              padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.xs, Space.sm),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: scheme.outlineVariant.withValues(alpha: .35)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
+                        const SizedBox(height: Space.md),
+                      ],
+                      if (desktopSessions.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Icon(Icons.desktop_windows_outlined, size: 16, color: palette.primary),
+                            const SizedBox(width: Space.xs),
+                            Text(l.linkDesktopTerminals, style: Theme.of(context).textTheme.labelLarge),
+                          ],
+                        ),
+                        const SizedBox(height: Space.sm),
+                        SizedBox(
+                          height: 54,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: desktopSessions.length,
+                            separatorBuilder: (_, _) => const SizedBox(width: Space.sm),
+                            itemBuilder: (context, index) {
+                              final s = desktopSessions[index];
+                              return Material(
+                                color: palette.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(14),
+                                  onTap: () {
+                                    linkClient.openMirroredSessionInWorkspace(s);
+                                    widget.onOpenedTerminal();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: Space.md),
                                     decoration: BoxDecoration(
-                                      color: palette.primary.withValues(alpha: .12),
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: palette.primary.withValues(alpha: .35)),
                                     ),
-                                    alignment: Alignment.center,
-                                    child: Icon(Icons.dns_outlined, size: 20, color: palette.primary),
-                                  ),
-                                  const SizedBox(width: Space.md),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Row(
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                host.title,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: Theme.of(context).textTheme.titleSmall,
-                                              ),
-                                            ),
-                                            if (host.pinned) ...[
-                                              const SizedBox(width: 4),
-                                              Icon(Icons.push_pin_rounded, size: 13, color: palette.primary),
-                                            ],
-                                          ],
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          host.target,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: mono(context, Theme.of(context).textTheme.bodySmall),
+                                        Icon(Icons.terminal_rounded, size: 16, color: palette.primary),
+                                        const SizedBox(width: Space.xs),
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(maxWidth: 160),
+                                          child: Text(
+                                            s.title,
+                                            style: Theme.of(context).textTheme.labelLarge,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  IconButton(
-                                    tooltip: l.more,
-                                    icon: Icon(Icons.more_vert_rounded, size: 20, color: scheme.onSurfaceVariant),
-                                    onPressed: () => _openHostActions(host),
-                                  ),
-                                ],
-                              ),
-                            ),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      ),
-                ],
+                        const SizedBox(height: Space.md),
+                      ],
+                      if (quickHosts.isNotEmpty && allHosts.length > 3) ...[
+                        Text(l.mobileQuickConnect, style: Theme.of(context).textTheme.labelLarge),
+                        const SizedBox(height: Space.sm),
+                        SizedBox(
+                          height: 44,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: quickHosts.length,
+                            separatorBuilder: (_, _) => const SizedBox(width: Space.sm),
+                            itemBuilder: (context, index) {
+                              final host = quickHosts[index];
+                              return ActionChip(
+                                avatar: Icon(
+                                  host.pinned ? Icons.push_pin_rounded : Icons.bolt_rounded,
+                                  size: 15,
+                                  color: palette.primary,
+                                ),
+                                label: Text(host.title),
+                                onPressed: () => widget.onOpenHost(host),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: Space.md),
+                      ],
+                      if (groups.isNotEmpty) ...[
+                        SizedBox(
+                          height: 38,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(right: Space.xs),
+                                child: ChoiceChip(
+                                  label: Text(l.mobileAllGroups),
+                                  selected: _group.isEmpty,
+                                  onSelected: (_) => setState(() => _group = ''),
+                                ),
+                              ),
+                              for (final g in groups)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: Space.xs),
+                                  child: ChoiceChip(
+                                    label: Text(g),
+                                    selected: _group == g,
+                                    onSelected: (_) => setState(() => _group = g),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: Space.md),
+                      ],
+                      if (filtered.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: Space.xl),
+                          child: Center(
+                            child: Text(
+                              l.noMatches,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ),
+                        )
+                      else if (twoColumns)
+                        for (var i = 0; i < filtered.length; i += 2)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: Space.sm),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: _hostCard(context, filtered[i])),
+                                const SizedBox(width: Space.sm),
+                                Expanded(
+                                  child: i + 1 < filtered.length
+                                      ? _hostCard(context, filtered[i + 1])
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ),
+                          )
+                      else
+                        for (final host in filtered)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: Space.sm),
+                            child: _hostCard(context, host),
+                          ),
+                    ],
+                  );
+                },
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _hostCard(BuildContext context, Host host) {
+    final l = AppLocalizations.of(context);
+    final palette = BrandPalette.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: palette.surface.withValues(alpha: .9),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        key: ValueKey('mobile-host-${host.id.value}'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => widget.onOpenHost(host),
+        onLongPress: () => _openHostActions(host),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(Space.md, Space.sm, Space.xs, Space.sm),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: scheme.outlineVariant.withValues(alpha: .35)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: palette.primary.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(Icons.dns_outlined, size: 20, color: palette.primary),
+              ),
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            host.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                        if (host.pinned) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.push_pin_rounded, size: 13, color: palette.primary),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      host.target,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: mono(context, Theme.of(context).textTheme.bodySmall),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: l.more,
+                icon: Icon(Icons.more_vert_rounded, size: 20, color: scheme.onSurfaceVariant),
+                onPressed: () => _openHostActions(host),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -988,27 +1029,39 @@ class _MobileAiryTab extends ConsumerWidget {
             },
           ),
         ),
-        SizedBox(
-          height: 46,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs),
-            itemCount: quickOps.length,
-            separatorBuilder: (_, _) => const SizedBox(width: Space.xs),
-            itemBuilder: (context, index) {
-              final op = quickOps[index];
-              return ActionChip(
-                avatar: Icon(op.icon, size: 15, color: palette.primary),
-                label: Text(op.label),
-                onPressed: () => _seedPrompt(ref, op.label),
-              );
-            },
-          ),
-        ),
-        const Expanded(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: Space.xs),
-            child: AgentPanel(),
+        Expanded(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: MobileSize.wideContentMaxWidth),
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 46,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs),
+                      itemCount: quickOps.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: Space.xs),
+                      itemBuilder: (context, index) {
+                        final op = quickOps[index];
+                        return ActionChip(
+                          avatar: Icon(op.icon, size: 15, color: palette.primary),
+                          label: Text(op.label),
+                          onPressed: () => _seedPrompt(ref, op.label),
+                        );
+                      },
+                    ),
+                  ),
+                  const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: Space.xs),
+                      child: AgentPanel(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -1096,252 +1149,261 @@ class _MobileMeTab extends ConsumerWidget {
       children: [
         _MobileTabHeader(title: l.mobileTabMe),
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.xl),
-            children: [
-              // Brand + Accent + ThemeMode card
-              _SettingsGroupCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final inset = MobileSize.contentInset(constraints.maxWidth);
+              return ListView(
+                padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
+                children: [
+                  // Brand + Accent + ThemeMode card
+                  _SettingsGroupCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const BrandMark(size: 36),
-                        const SizedBox(width: Space.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Sshairy', style: Theme.of(context).textTheme.titleMedium),
-                              Text('v$appVersion', style: mono(context, Theme.of(context).textTheme.bodySmall)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (isAndroidPlatform) const UpdateCheckControl(),
-                    const SizedBox(height: Space.sm),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        const accents = Accent.values;
-                        final columns = constraints.maxWidth >= accents.length * MobileSize.touchTarget
-                            ? accents.length
-                            : 3;
-                        return Column(
+                        Row(
                           children: [
-                            for (var start = 0; start < accents.length; start += columns)
-                              Row(
+                            const BrandMark(size: 36),
+                            const SizedBox(width: Space.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  for (final accent in accents.skip(start).take(columns))
-                                    Expanded(
-                                      child: Tooltip(
-                                        message: accent.label(l),
-                                        child: Semantics(
-                                          selected: settings.accent == accent,
-                                          child: InkWell(
-                                            key: ValueKey('mobile-accent-${accent.name}'),
-                                            borderRadius: BorderRadius.circular(Radii.pill),
-                                            onTap: () => unawaited(writer.set(SettingKeys.accent, accent)),
-                                            child: SizedBox(
-                                              height: MobileSize.touchTarget,
-                                              child: Center(
-                                                child: Container(
-                                                  width: Space.xxl,
-                                                  height: Space.xxl,
-                                                  decoration: BoxDecoration(
-                                                    color: accent.of(brightness),
-                                                    shape: BoxShape.circle,
-                                                    border: settings.accent == accent
-                                                        ? Border.all(color: scheme.onSurface, width: 2)
-                                                        : null,
+                                  Text('Sshairy', style: Theme.of(context).textTheme.titleMedium),
+                                  Text('v$appVersion', style: mono(context, Theme.of(context).textTheme.bodySmall)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (isAndroidPlatform) const UpdateCheckControl(),
+                        const SizedBox(height: Space.sm),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            const accents = Accent.values;
+                            final columns = constraints.maxWidth >= accents.length * MobileSize.touchTarget
+                                ? accents.length
+                                : 3;
+                            return Column(
+                              children: [
+                                for (var start = 0; start < accents.length; start += columns)
+                                  Row(
+                                    children: [
+                                      for (final accent in accents.skip(start).take(columns))
+                                        Expanded(
+                                          child: Tooltip(
+                                            message: accent.label(l),
+                                            child: Semantics(
+                                              selected: settings.accent == accent,
+                                              child: InkWell(
+                                                key: ValueKey('mobile-accent-${accent.name}'),
+                                                borderRadius: BorderRadius.circular(Radii.pill),
+                                                onTap: () => unawaited(writer.set(SettingKeys.accent, accent)),
+                                                child: SizedBox(
+                                                  height: MobileSize.touchTarget,
+                                                  child: Center(
+                                                    child: Container(
+                                                      width: Space.xxl,
+                                                      height: Space.xxl,
+                                                      decoration: BoxDecoration(
+                                                        color: accent.of(brightness),
+                                                        shape: BoxShape.circle,
+                                                        border: settings.accent == accent
+                                                            ? Border.all(color: scheme.onSurface, width: 2)
+                                                            : null,
+                                                      ),
+                                                      child: settings.accent == accent
+                                                          ? Icon(
+                                                              Icons.check_rounded,
+                                                              size: 16,
+                                                              color: onColor(accent.of(brightness)),
+                                                            )
+                                                          : null,
+                                                    ),
                                                   ),
-                                                  child: settings.accent == accent
-                                                      ? Icon(
-                                                          Icons.check_rounded,
-                                                          size: 16,
-                                                          color: onColor(accent.of(brightness)),
-                                                        )
-                                                      : null,
                                                 ),
                                               ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                          ],
-                        );
-                      },
+                                    ],
+                                  ),
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: Space.sm),
+                        choice(l.theme, settings.themeMode, [
+                          AppOption(ThemeMode.system, l.themeSystem),
+                          AppOption(ThemeMode.light, l.themeLight),
+                          AppOption(ThemeMode.dark, l.themeDark),
+                        ], (v) => unawaited(writer.set(SettingKeys.themeMode, v))),
+                        const SizedBox(height: Space.xs),
+                        choice(l.uiScale, settings.uiScale, [
+                          for (final scale in scales) AppOption(scale, '${(scale * 100).round()}%'),
+                        ], (v) => unawaited(writer.set(SettingKeys.uiScale, v))),
+                        const SizedBox(height: Space.xs),
+                        choice<String?>(l.language, settings.locale, [
+                          AppOption(null, l.themeSystem),
+                          AppOption('zh', l.langZh),
+                          AppOption('en', l.langEn),
+                        ], (v) => unawaited(writer.set(SettingKeys.locale, v))),
+                      ],
                     ),
-                    const SizedBox(height: Space.sm),
-                    choice(l.theme, settings.themeMode, [
-                      AppOption(ThemeMode.system, l.themeSystem),
-                      AppOption(ThemeMode.light, l.themeLight),
-                      AppOption(ThemeMode.dark, l.themeDark),
-                    ], (v) => unawaited(writer.set(SettingKeys.themeMode, v))),
-                    const SizedBox(height: Space.xs),
-                    choice(l.uiScale, settings.uiScale, [
-                      for (final scale in scales) AppOption(scale, '${(scale * 100).round()}%'),
-                    ], (v) => unawaited(writer.set(SettingKeys.uiScale, v))),
-                    const SizedBox(height: Space.xs),
-                    choice<String?>(l.language, settings.locale, [
-                      AppOption(null, l.themeSystem),
-                      AppOption('zh', l.langZh),
-                      AppOption('en', l.langEn),
-                    ], (v) => unawaited(writer.set(SettingKeys.locale, v))),
-                  ],
-                ),
-              ),
-              const SizedBox(height: Space.md),
-              // Custom background images (app + terminal)
-              _SettingsGroupCard(
-                key: const ValueKey('mobile-background-settings'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(l.appBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: Space.sm),
-                    const BackgroundImageControls(slot: BackgroundSlot.app),
-                    const Divider(height: Space.lg),
-                    Text(l.terminalBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: Space.sm),
-                    const BackgroundImageControls(slot: BackgroundSlot.terminal),
-                  ],
-                ),
-              ),
-              const SizedBox(height: Space.md),
-              section(l.mobileTerminalSection),
-              group([
-                Padding(
-                  padding: const EdgeInsets.all(Space.md),
-                  child: Column(
-                    children: [
-                      Row(
+                  ),
+                  const SizedBox(height: Space.md),
+                  // Custom background images (app + terminal)
+                  _SettingsGroupCard(
+                    key: const ValueKey('mobile-background-settings'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(l.appBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
+                        const SizedBox(height: Space.sm),
+                        const BackgroundImageControls(slot: BackgroundSlot.app),
+                        const Divider(height: Space.lg),
+                        Text(l.terminalBackgroundImage, style: Theme.of(context).textTheme.labelLarge),
+                        const SizedBox(height: Space.sm),
+                        const BackgroundImageControls(slot: BackgroundSlot.terminal),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Space.md),
+                  section(l.mobileTerminalSection),
+                  group([
+                    Padding(
+                      padding: const EdgeInsets.all(Space.md),
+                      child: Column(
                         children: [
-                          Expanded(child: Text(l.fontSize)),
-                          Text('${fontSize.round()} pt', style: mono(context, Theme.of(context).textTheme.labelMedium)),
+                          Row(
+                            children: [
+                              Expanded(child: Text(l.fontSize)),
+                              Text(
+                                '${fontSize.round()} pt',
+                                style: mono(context, Theme.of(context).textTheme.labelMedium),
+                              ),
+                            ],
+                          ),
+                          Slider(
+                            min: 8,
+                            max: 32,
+                            divisions: 24,
+                            value: fontSize.clamp(8.0, 32.0),
+                            onChanged: (v) => unawaited(writer.set(SettingKeys.fontSize, v.roundToDouble())),
+                          ),
+                          choice(l.cursorShape, settings.get(SettingKeys.cursorShape), [
+                            AppOption(CursorShape.block, l.cursorBlock),
+                            AppOption(CursorShape.underline, l.cursorUnderline),
+                            AppOption(CursorShape.bar, l.cursorBar),
+                          ], (v) => unawaited(writer.set(SettingKeys.cursorShape, v))),
                         ],
                       ),
-                      Slider(
-                        min: 8,
-                        max: 32,
-                        divisions: 24,
-                        value: fontSize.clamp(8.0, 32.0),
-                        onChanged: (v) => unawaited(writer.set(SettingKeys.fontSize, v.roundToDouble())),
-                      ),
-                      choice(l.cursorShape, settings.get(SettingKeys.cursorShape), [
-                        AppOption(CursorShape.block, l.cursorBlock),
-                        AppOption(CursorShape.underline, l.cursorUnderline),
-                        AppOption(CursorShape.bar, l.cursorBar),
-                      ], (v) => unawaited(writer.set(SettingKeys.cursorShape, v))),
-                    ],
-                  ),
-                ),
-                SwitchListTile.adaptive(
-                  title: Text(l.mobileHaptics),
-                  value: haptics,
-                  onChanged: (v) => unawaited(writer.set(SettingKeys.mobileHaptics, v)),
-                ),
-                SwitchListTile.adaptive(
-                  title: Text(l.mobileKeepScreenOn),
-                  value: keepAwake,
-                  onChanged: (v) => unawaited(writer.set(SettingKeys.mobileKeepScreenOn, v)),
-                ),
-                SwitchListTile.adaptive(
-                  title: Text(l.completionTranslation),
-                  value: settings.get(SettingKeys.completionTranslation),
-                  onChanged: (v) => unawaited(writer.set(SettingKeys.completionTranslation, v)),
-                ),
-              ]),
-              const SizedBox(height: Space.md),
-              section(l.mobileSecuritySection),
-              group([
-                SwitchListTile.adaptive(
-                  title: Text(l.mobileKeepAlive),
-                  value: keepAlive,
-                  onChanged: (v) async {
-                    if (v) await MobilePlatform.requestNotificationPermission();
-                    await writer.set(SettingKeys.mobileKeepAlive, v);
-                  },
-                ),
-                SwitchListTile.adaptive(
-                  title: Text(l.mobileBiometricLock),
-                  value: biometricLock,
-                  onChanged: (v) async {
-                    if (v && isMobilePlatform) {
-                      final can = await MobilePlatform.canAuthenticateBiometric();
-                      if (!can) return;
-                      final ok = await MobilePlatform.authenticateBiometric(title: l.mobileUnlockPrompt);
-                      if (!ok) return;
-                    }
-                    await writer.set(SettingKeys.mobileBiometricLock, v);
-                  },
-                ),
-              ]),
-              const SizedBox(height: Space.md),
-              group([
-                ListTile(
-                  leading: const Icon(Icons.key_outlined),
-                  title: Text(l.keys),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _pushTool(context, l.keys, const KeysPanel(), padding: const EdgeInsets.all(Space.md)),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.verified_user_outlined),
-                  title: Text(l.trustedKeys),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _pushTool(
-                    context,
-                    l.trustedKeys,
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.all(Space.lg),
-                      child: trustSettingsSection.build(context),
                     ),
-                    padding: EdgeInsets.zero,
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.alt_route_rounded),
-                  title: Text(l.proxies),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _pushTool(context, l.proxies, const ProxyPanel()),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.swap_horiz_rounded),
-                  title: Text(l.portForwarding),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _pushTool(context, l.portForwarding, const ForwardingPanel()),
-                ),
-              ]),
-              const SizedBox(height: Space.md),
-              group([
-                ListTile(
-                  leading: Icon(Icons.auto_awesome_outlined, color: palette.primary),
-                  title: Text(l.aiConfigTitle),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _pushTool(
-                    context,
-                    l.aiConfigTitle,
-                    const SingleChildScrollView(padding: EdgeInsets.all(Space.lg), child: AiSettings()),
-                    padding: EdgeInsets.zero,
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.code_rounded),
-                  title: Text(l.snippets),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _pushTool(context, l.snippets, const SnippetsPanel()),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.receipt_long_outlined),
-                  title: Text(l.logs),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _pushTool(context, l.logs, const LogsPanel()),
-                ),
-              ]),
-            ],
+                    SwitchListTile.adaptive(
+                      title: Text(l.mobileHaptics),
+                      value: haptics,
+                      onChanged: (v) => unawaited(writer.set(SettingKeys.mobileHaptics, v)),
+                    ),
+                    SwitchListTile.adaptive(
+                      title: Text(l.mobileKeepScreenOn),
+                      value: keepAwake,
+                      onChanged: (v) => unawaited(writer.set(SettingKeys.mobileKeepScreenOn, v)),
+                    ),
+                    SwitchListTile.adaptive(
+                      title: Text(l.completionTranslation),
+                      value: settings.get(SettingKeys.completionTranslation),
+                      onChanged: (v) => unawaited(writer.set(SettingKeys.completionTranslation, v)),
+                    ),
+                  ]),
+                  const SizedBox(height: Space.md),
+                  section(l.mobileSecuritySection),
+                  group([
+                    SwitchListTile.adaptive(
+                      title: Text(l.mobileKeepAlive),
+                      value: keepAlive,
+                      onChanged: (v) async {
+                        if (v) await MobilePlatform.requestNotificationPermission();
+                        await writer.set(SettingKeys.mobileKeepAlive, v);
+                      },
+                    ),
+                    SwitchListTile.adaptive(
+                      title: Text(l.mobileBiometricLock),
+                      value: biometricLock,
+                      onChanged: (v) async {
+                        if (v && isMobilePlatform) {
+                          final can = await MobilePlatform.canAuthenticateBiometric();
+                          if (!can) return;
+                          final ok = await MobilePlatform.authenticateBiometric(title: l.mobileUnlockPrompt);
+                          if (!ok) return;
+                        }
+                        await writer.set(SettingKeys.mobileBiometricLock, v);
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: Space.md),
+                  group([
+                    ListTile(
+                      leading: const Icon(Icons.key_outlined),
+                      title: Text(l.keys),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () =>
+                          _pushTool(context, l.keys, const KeysPanel(), padding: const EdgeInsets.all(Space.md)),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.verified_user_outlined),
+                      title: Text(l.trustedKeys),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _pushTool(
+                        context,
+                        l.trustedKeys,
+                        SingleChildScrollView(
+                          padding: const EdgeInsets.all(Space.lg),
+                          child: trustSettingsSection.build(context),
+                        ),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.alt_route_rounded),
+                      title: Text(l.proxies),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _pushTool(context, l.proxies, const ProxyPanel()),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.swap_horiz_rounded),
+                      title: Text(l.portForwarding),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _pushTool(context, l.portForwarding, const ForwardingPanel()),
+                    ),
+                  ]),
+                  const SizedBox(height: Space.md),
+                  group([
+                    ListTile(
+                      leading: Icon(Icons.auto_awesome_outlined, color: palette.primary),
+                      title: Text(l.aiConfigTitle),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _pushTool(
+                        context,
+                        l.aiConfigTitle,
+                        const SingleChildScrollView(padding: EdgeInsets.all(Space.lg), child: AiSettings()),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.code_rounded),
+                      title: Text(l.snippets),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _pushTool(context, l.snippets, const SnippetsPanel()),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.receipt_long_outlined),
+                      title: Text(l.logs),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _pushTool(context, l.logs, const LogsPanel()),
+                    ),
+                  ]),
+                ],
+              );
+            },
           ),
         ),
       ],
