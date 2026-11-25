@@ -8,4 +8,14 @@ export 'presentation/background_image.dart' show BackgroundImageControls, Backgr
 export 'presentation/update_check.dart' show StartupUpdatePrompt, UpdateAvailableButton, UpdateCheckControl;
 export 'adapters/github_update_files.dart' show GithubUpdateFiles;
 export 'application/updates.dart'
-    show updateOffersProvider, updatePushesProvider, updatePushProvider, updateRelayProvider, updateSuggestionsProvider;
+    show
+        AndroidUpdatePackage,
+        IncomingUpdate,
+        PeerUpdate,
+        androidReleaseAbis,
+        isNewerVersion,
+        updateOffersProvider,
+        updatePushesProvider,
+        updatePushProvider,
+        updateRelayProvider,
+        updateSuggestionsProvider;

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/dialog.dart';
 import '../../../design/theme.dart';
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/open_external.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../platform/desktop_window.dart';
@@ -40,10 +41,12 @@ class StartupUpdatePrompt extends ConsumerStatefulWidget {
 class _StartupUpdatePromptState extends ConsumerState<StartupUpdatePrompt> {
   Timer? _timer;
   StreamSubscription<void>? _offers;
-  StreamSubscription<void>? _pushes;
+  StreamSubscription<IncomingUpdate>? _pushes;
   StreamSubscription<PeerUpdate>? _peerUpdates;
+  UpdateDownloader? _receiving;
   final _prompted = <String>{};
   var _showingUpdate = false;
+  var _showingPeerUpdate = false;
 
   @override
   void initState() {
@@ -54,6 +57,7 @@ class _StartupUpdatePromptState extends ConsumerState<StartupUpdatePrompt> {
   @override
   void dispose() {
     _timer?.cancel();
+    _receiving?.cancel();
     unawaited(_offers?.cancel());
     unawaited(_pushes?.cancel());
     unawaited(_peerUpdates?.cancel());
@@ -63,7 +67,7 @@ class _StartupUpdatePromptState extends ConsumerState<StartupUpdatePrompt> {
   Future<void> _start() async {
     if (!mounted || !widget.enabled) return;
     _offers = ref.read(updateOffersProvider)?.listen((_) => unawaited(_check(preferRelay: true)));
-    _pushes = ref.read(updatePushesProvider)?.listen((_) => unawaited(_check(preferRelay: true, autoDownload: true)));
+    _pushes = ref.read(updatePushesProvider)?.listen((incoming) => unawaited(_receiveUpdate(incoming)));
     _peerUpdates = ref.read(updateSuggestionsProvider)?.listen((peer) => unawaited(_promptPeerUpdate(peer)));
     if (_offers != null) {
       ref.listenManual(updateRelayProvider, (previous, next) {
@@ -77,7 +81,7 @@ class _StartupUpdatePromptState extends ConsumerState<StartupUpdatePrompt> {
     _timer = Timer.periodic(widget.interval, (_) => _recheck());
   }
 
-  Future<void> _check({bool preferRelay = false, bool autoDownload = false}) async {
+  Future<void> _check({bool preferRelay = false}) async {
     if (!mounted || !widget.enabled || _showingUpdate) return;
     _showingUpdate = true;
     try {
@@ -85,50 +89,76 @@ class _StartupUpdatePromptState extends ConsumerState<StartupUpdatePrompt> {
       if (!mounted) return;
       final state = ref.read(updateCheckProvider);
       if (state.status == UpdateStatus.available) {
-        await showReleaseNotes(context, state, preferRelay: preferRelay, autoDownload: autoDownload);
+        await showReleaseNotes(context, state, preferRelay: preferRelay);
       }
     } finally {
       _showingUpdate = false;
     }
   }
 
-  /// A phone just connected to this desktop; offer the Android build it reported behind.
   Future<void> _promptPeerUpdate(PeerUpdate peer) async {
-    if (!mounted || !widget.enabled || _showingUpdate) return;
+    if (!mounted || !widget.enabled || _showingPeerUpdate || peer.lifetime.isCancelled) return;
     final push = ref.read(updatePushProvider);
     final key = '${peer.deviceId}@${peer.version}';
-    if (push == null || _prompted.contains(key)) return;
-    var state = ref.read(updateCheckProvider);
-    if (state.releases.isEmpty) {
-      await ref.read(updateCheckProvider.notifier).check(silent: true);
-      if (!mounted) return;
-      state = ref.read(updateCheckProvider);
-    }
-    if (!mounted || _showingUpdate) return;
-    final latest = latestAndroidRelease(state.releases);
-    if (latest == null || !isNewerVersion(latest.version, peer.version)) return;
-    _prompted.add(key);
-    _showingUpdate = true;
+    if (push == null || (!peer.requested && _prompted.contains(key))) return;
+    _showingPeerUpdate = true;
     try {
-      final l = AppLocalizations.of(context);
-      final accepted = await showAppDialog<bool>(
-        context: context,
-        builder: (context) => AppDialog(
-          width: 420,
-          title: Text(l.updatePhoneAvailable(latest.version)),
-          content: Text(l.updatePhonePrompt(peer.name, peer.version, latest.version)),
-          actions: [
-            TextButton(onPressed: () => Navigator.maybePop(context, false), child: Text(l.later)),
-            FilledButton(onPressed: () => Navigator.maybePop(context, true), child: Text(l.updatePush)),
-          ],
-        ),
-      );
-      if (accepted == true && mounted && !await push(peer.deviceId) && mounted) {
-        ScaffoldMessenger.maybeOf(context)
-            ?.showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).linkUpdateOfferFailed)));
+      var state = ref.read(updateCheckProvider);
+      if (state.releases.isEmpty) {
+        await ref.read(updateCheckProvider.notifier).check(silent: !peer.requested);
+        if (!mounted || peer.lifetime.isCancelled) return;
+        state = ref.read(updateCheckProvider);
       }
+      final latest = latestAndroidUpdate(state.releases, peer.abis);
+      if (latest == null || !isNewerVersion(latest.release.version, peer.version)) {
+        if (peer.requested) {
+          final l = AppLocalizations.of(context);
+          final message = state.status == UpdateStatus.failed
+              ? l.updateFailed
+              : latest == null
+              ? l.updateNoPackage
+              : l.upToDate;
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(message)));
+        }
+        return;
+      }
+      _prompted.add(key);
+      await showAppDialog<void>(
+        context: context,
+        builder: (_) => _PeerUpdateDialog(peer: peer, update: latest, push: push),
+      );
     } finally {
-      _showingUpdate = false;
+      _showingPeerUpdate = false;
+    }
+  }
+
+  Future<void> _receiveUpdate(IncomingUpdate incoming) async {
+    if (!mounted || _receiving != null) {
+      await incoming.complete(false);
+      return;
+    }
+    final downloader = _receiving = ref.read(updateDownloaderProvider)();
+    try {
+      String? path;
+      try {
+        path = (await downloader.receive(incoming)).path;
+      } on UpdateDownloadFailure {
+        if (mounted) {
+          final l = AppLocalizations.of(context);
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(l.updateDownloadFailed)));
+        }
+      } on UpdateDownloadCancelled {
+        // The app closed while the package was arriving.
+      } finally {
+        await incoming.complete(path != null && mounted);
+      }
+      if (!mounted || path == null) return;
+      await showAppDialog<void>(
+        context: context,
+        builder: (_) => _ReceivedUpdateDialog(path: path!, version: incoming.package.version),
+      );
+    } finally {
+      _receiving = null;
     }
   }
 
@@ -272,12 +302,7 @@ class UpdateCheckControl extends ConsumerWidget {
   }
 }
 
-Future<void> showReleaseNotes(
-  BuildContext context,
-  UpdateState state, {
-  bool preferRelay = false,
-  bool autoDownload = false,
-}) {
+Future<void> showReleaseNotes(BuildContext context, UpdateState state, {bool preferRelay = false}) {
   final latest = state.latest;
   if (latest == null) return Future.value();
   final available = state.status == UpdateStatus.available;
@@ -288,7 +313,6 @@ Future<void> showReleaseNotes(
       releases: available ? state.newerReleases.toList(growable: false) : state.releases,
       available: available,
       preferRelay: preferRelay,
-      autoDownload: autoDownload,
     ),
   );
 }
@@ -303,12 +327,11 @@ class _ReleaseNotesDialog extends ConsumerStatefulWidget {
     required this.releases,
     required this.available,
     required this.preferRelay,
-    this.autoDownload = false,
   });
 
   final ReleaseNote latest;
   final List<ReleaseNote> releases;
-  final bool available, preferRelay, autoDownload;
+  final bool available, preferRelay;
 
   @override
   ConsumerState<_ReleaseNotesDialog> createState() => _ReleaseNotesDialogState();
@@ -318,7 +341,6 @@ class _ReleaseNotesDialogState extends ConsumerState<_ReleaseNotesDialog> {
   UpdateDownloader? _downloader;
   UpdateDownloadState _download = const UpdateDownloadState.idle();
   var _installing = false;
-  var _autoStarted = false;
   MobileUpdateInstallResult? _installResult;
 
   @override
@@ -392,15 +414,6 @@ class _ReleaseNotesDialogState extends ConsumerState<_ReleaseNotesDialog> {
     final android = delivery?.operatingSystem == 'android';
     final relay = android ? ref.watch(updateRelayProvider) : null;
     final downloading = status == UpdateDownloadStatus.downloading || status == UpdateDownloadStatus.verifying;
-    if (widget.autoDownload && !_autoStarted && asset != null) {
-      _autoStarted = true;
-      final openRelay = android ? relay : null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _downloader == null && _download.status == UpdateDownloadStatus.idle) {
-          unawaited(_startDownload(asset, openRelay: openRelay));
-        }
-      });
-    }
     final installNotice = switch (_installResult) {
       MobileUpdateInstallResult.permission => l.updateAllowInstall,
       MobileUpdateInstallResult.failed => android ? l.updateApkFailed : l.updateLaunchFailed,
@@ -486,6 +499,149 @@ class _ReleaseNotesDialogState extends ConsumerState<_ReleaseNotesDialog> {
             ],
           ],
         ],
+      ],
+    );
+  }
+}
+
+class _PeerUpdateDialog extends ConsumerStatefulWidget {
+  const _PeerUpdateDialog({required this.peer, required this.update, required this.push});
+
+  final PeerUpdate peer;
+  final AndroidUpdate update;
+  final PushPeerUpdate push;
+
+  @override
+  ConsumerState<_PeerUpdateDialog> createState() => _PeerUpdateDialogState();
+}
+
+class _PeerUpdateDialogState extends ConsumerState<_PeerUpdateDialog> {
+  CancellationToken? _cancel;
+  UpdateDownloadState _download = const UpdateDownloadState.idle();
+  bool? _sent;
+
+  @override
+  void dispose() {
+    _cancel?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    if (_cancel != null || widget.peer.lifetime.isCancelled) return;
+    final cancel = CancellationToken();
+    setState(() {
+      _cancel = cancel;
+      _download = const UpdateDownloadState(UpdateDownloadStatus.downloading);
+      _sent = null;
+    });
+    try {
+      final sent = await ref
+          .read(updateDownloaderProvider)()
+          .downloadAndPush(
+            widget.peer,
+            widget.update,
+            push: widget.push,
+            cancellation: cancel,
+            onProgress: (download) {
+              if (mounted && !cancel.isCancelled) setState(() => _download = download);
+            },
+          );
+      if (mounted) setState(() => _sent = sent);
+    } on Object {
+      if (mounted) setState(() => _download = const UpdateDownloadState(UpdateDownloadStatus.failed));
+    } finally {
+      if (mounted) setState(() => _cancel = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final version = widget.update.release.version;
+    final busy = _cancel != null;
+    final errorStyle = TextStyle(color: Theme.of(context).colorScheme.error);
+    return AppDialog(
+      width: 420,
+      title: Text(l.updatePhoneAvailable(version)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(l.updatePhonePrompt(widget.peer.name, widget.peer.version, version)),
+          if (_download.status != UpdateDownloadStatus.idle) const SizedBox(height: Space.md),
+          if (_sent case final sent?)
+            Text(sent ? l.linkUpdateOffered : l.linkUpdateOfferFailed, style: sent ? null : errorStyle)
+          else if (_download.status == UpdateDownloadStatus.ready) ...[
+            Text(l.updateSending),
+            const SizedBox(height: Space.xs),
+            const LinearProgressIndicator(minHeight: 4),
+          ] else
+            _DownloadStatus(download: _download),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            _cancel?.cancel();
+            Navigator.maybePop(context);
+          },
+          child: Text(
+            busy
+                ? l.cancel
+                : _sent == true
+                ? l.close
+                : l.later,
+          ),
+        ),
+        if (!busy && _sent != true && !widget.peer.lifetime.isCancelled)
+          FilledButton(onPressed: _start, child: Text(l.updatePush)),
+      ],
+    );
+  }
+}
+
+class _ReceivedUpdateDialog extends StatefulWidget {
+  const _ReceivedUpdateDialog({required this.path, required this.version});
+
+  final String path, version;
+
+  @override
+  State<_ReceivedUpdateDialog> createState() => _ReceivedUpdateDialogState();
+}
+
+class _ReceivedUpdateDialogState extends State<_ReceivedUpdateDialog> {
+  var _installing = false;
+  MobileUpdateInstallResult? _result;
+
+  Future<void> _install() async {
+    if (_installing) return;
+    setState(() => _installing = true);
+    final result = await MobilePlatform.installUpdate(widget.path, widget.version);
+    if (!mounted) return;
+    if (result == MobileUpdateInstallResult.opened) {
+      await Navigator.maybePop(context);
+    } else {
+      setState(() {
+        _result = result;
+        _installing = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final notice = switch (_result) {
+      MobileUpdateInstallResult.permission => l.updateAllowInstall,
+      MobileUpdateInstallResult.failed => l.updateApkFailed,
+      _ => null,
+    };
+    return AppDialog(
+      title: Text(l.updateReadyToInstall(widget.version)),
+      content: notice == null ? null : Text(notice),
+      actions: [
+        TextButton(onPressed: () => Navigator.maybePop(context), child: Text(l.later)),
+        FilledButton(onPressed: _installing ? null : _install, child: Text(l.updateInstallApk)),
       ],
     );
   }

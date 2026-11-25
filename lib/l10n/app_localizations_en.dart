@@ -837,11 +837,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linkUpdateOffered =>
-      'Update notification sent. Confirm the download on your phone.';
+      'Update sent. Confirm installation on your phone.';
 
   @override
   String get linkUpdateOfferFailed =>
-      'Could not send the update notification. Check that your phone is connected.';
+      'Could not transfer the update. Check Device Link and try again.';
+
+  @override
+  String get updateSending => 'Sending update to phone…';
+
+  @override
+  String updateReadyToInstall(String version) {
+    return 'Version $version is ready to install';
+  }
 
   @override
   String updatePhoneAvailable(String version) {

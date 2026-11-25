@@ -792,10 +792,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linkOfferUpdate => '向手机发送更新';
 
   @override
-  String get linkUpdateOffered => '已发送更新提醒，请在手机上确认下载。';
+  String get linkUpdateOffered => '更新已发送，请在手机上确认安装。';
 
   @override
-  String get linkUpdateOfferFailed => '无法发送更新提醒，请确认手机在线。';
+  String get linkUpdateOfferFailed => '更新传输失败，请检查互联连接后重试。';
+
+  @override
+  String get updateSending => '正在向手机传输更新…';
+
+  @override
+  String updateReadyToInstall(String version) {
+    return '版本 $version 已就绪，可以安装';
+  }
 
   @override
   String updatePhoneAvailable(String version) {

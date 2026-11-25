@@ -1583,14 +1583,26 @@ abstract class AppLocalizations {
   /// No description provided for @linkUpdateOffered.
   ///
   /// In en, this message translates to:
-  /// **'Update notification sent. Confirm the download on your phone.'**
+  /// **'Update sent. Confirm installation on your phone.'**
   String get linkUpdateOffered;
 
   /// No description provided for @linkUpdateOfferFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not send the update notification. Check that your phone is connected.'**
+  /// **'Could not transfer the update. Check Device Link and try again.'**
   String get linkUpdateOfferFailed;
+
+  /// No description provided for @updateSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending update to phone…'**
+  String get updateSending;
+
+  /// No description provided for @updateReadyToInstall.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} is ready to install'**
+  String updateReadyToInstall(String version);
 
   /// No description provided for @updatePhoneAvailable.
   ///

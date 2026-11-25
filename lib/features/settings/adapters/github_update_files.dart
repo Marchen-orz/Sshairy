@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,17 +8,28 @@ import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
 import '../application/updates.dart';
 
-/// A read-only Link mount for public releases. Each request selects a fixed GitHub resource.
+/// A read-only Link mount for public releases or one predownloaded update.
 class GithubUpdateFiles implements FileSystem {
   GithubUpdateFiles(CancellationToken lifetime, {HttpClient Function()? clientFactory})
-    : _client = (clientFactory ?? HttpClient.new)()..connectionTimeout = _timeout {
+    : _client = (clientFactory ?? HttpClient.new)()..connectionTimeout = _timeout,
+      _staged = null {
     unawaited(lifetime.whenCancelled.then((_) => close()));
   }
+
+  GithubUpdateFiles.staged(AndroidUpdatePackage package, String path, String sha256)
+    : _staged = (package: package, file: File(path), sha256: sha256),
+      _client = null;
 
   static const _timeout = Duration(seconds: 15);
   static final _path = RegExp(r'^/(\d{1,6}\.\d{1,6}\.\d{1,6})/([A-Za-z0-9_.-]+)$');
 
-  final HttpClient _client;
+  final HttpClient? _client;
+  final ({AndroidUpdatePackage package, File file, String sha256})? _staged;
+
+  bool _contains(String path) => switch (_staged) {
+    final staged? => path == staged.package.path || path == staged.package.checksumsPath,
+    null => _resource(path) != null,
+  };
 
   static ({Uri url, int limit})? _resource(String path) {
     if (path == releaseFeedPath) {
@@ -46,22 +58,32 @@ class GithubUpdateFiles implements FileSystem {
 
   @override
   Future<String> resolve(String path) async {
-    if (path != '/' && _resource(path) == null) throw const FsError(FsFailure.notFound);
+    if (path != '/' && !_contains(path)) throw const FsError(FsFailure.notFound);
     return path;
   }
 
   @override
   Future<FileEntry?> stat(String path) async => path == '/'
       ? const FileEntry('/', FileKind.directory)
-      : _resource(path) == null
-      ? null
-      : FileEntry(style.name(path), FileKind.file);
+      : _contains(path)
+      ? FileEntry(style.name(path), FileKind.file)
+      : null;
 
   @override
   Stream<Uint8List> read(String path, {int offset = 0}) async* {
-    final resource = _resource(path);
-    if (resource == null || offset != 0) throw const FsError(FsFailure.permission);
-    final request = await _client.getUrl(resource.url).timeout(_timeout);
+    if (offset != 0 || !_contains(path)) throw const FsError(FsFailure.permission);
+    if (_staged case final staged?) {
+      if (path == staged.package.checksumsPath) {
+        yield utf8.encode('${staged.sha256}  ${staged.package.name}\n');
+      } else {
+        await for (final chunk in staged.file.openRead()) {
+          yield chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+        }
+      }
+      return;
+    }
+    final resource = _resource(path)!;
+    final request = await _client!.getUrl(resource.url).timeout(_timeout);
     request.headers.set(HttpHeaders.userAgentHeader, 'Sshairy/$appVersion');
     if (path == releaseFeedPath) request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
     final response = await request.close().timeout(_timeout);
@@ -77,7 +99,7 @@ class GithubUpdateFiles implements FileSystem {
   }
 
   @override
-  Future<void> close() async => _client.close(force: true);
+  Future<void> close() async => _client?.close(force: true);
 
   Never _unsupported() => throw const FsError(FsFailure.unsupported);
 

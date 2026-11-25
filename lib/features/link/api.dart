@@ -13,7 +13,6 @@ export 'application/link_service.dart'
         LinkMobileBridge,
         LinkHostController,
         LinkClientController,
-        LinkPeerUpdate,
         linkDesktopBridgeProvider,
         linkMobileBridgeProvider,
         linkHostControllerProvider,

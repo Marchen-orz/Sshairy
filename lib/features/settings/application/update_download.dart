@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../foundation/app_info.dart';
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
 import '../adapters/file_digest.dart';
 import 'updates.dart';
@@ -13,14 +14,14 @@ import 'updates.dart';
 enum UpdateDownloadStatus { idle, downloading, verifying, ready, failed }
 
 class UpdateDownloadState {
-  const UpdateDownloadState(this.status, {this.received = 0, this.total = 0, this.path});
+  const UpdateDownloadState(this.status, {this.received = 0, this.total = 0, this.path, this.sha256});
 
   const UpdateDownloadState.idle() : this(UpdateDownloadStatus.idle);
 
   final UpdateDownloadStatus status;
   final int received;
   final int total;
-  final String? path;
+  final String? path, sha256;
 
   double? get progress => total > 0 ? (received / total).clamp(0.0, 1.0) : null;
 }
@@ -61,18 +62,69 @@ class UpdateDownloader {
     unawaited(_relay?.close());
   }
 
+  Future<bool> downloadAndPush(
+    PeerUpdate peer,
+    AndroidUpdate update, {
+    required PushPeerUpdate push,
+    required CancellationToken cancellation,
+    required void Function(UpdateDownloadState) onProgress,
+  }) async {
+    final folder = await Directory.systemTemp.createTemp('sshairy-update-push-');
+    final finished = CancellationToken();
+    unawaited(
+      Future.any([peer.lifetime.whenCancelled, cancellation.whenCancelled, finished.whenCancelled]).then((_) {
+        if (peer.lifetime.isCancelled || cancellation.isCancelled) cancel();
+      }),
+    );
+    try {
+      if (peer.lifetime.isCancelled || cancellation.isCancelled) throw const UpdateDownloadCancelled();
+      final ready = await download(update.release, asset: update.asset, destination: folder, onProgress: onProgress);
+      final package = AndroidUpdatePackage(version: update.release.version, abi: update.abi, size: ready.received);
+      if (!package.valid || package.name != update.asset.name || ready.sha256 == null) {
+        throw const UpdateDownloadFailure();
+      }
+      return await push(peer, package, ready.path!, ready.sha256!, cancellation);
+    } finally {
+      finished.cancel();
+      await _deleteUpdateStaging(folder);
+    }
+  }
+
+  Future<UpdateDownloadState> receive(IncomingUpdate incoming) {
+    final package = incoming.package;
+    final apk = ReleaseAsset(name: package.name, url: '', size: package.size);
+    return download(
+      ReleaseNote(
+        version: package.version,
+        title: '',
+        notes: '',
+        url: '',
+        assets: [
+          apk,
+          const ReleaseAsset(name: 'SHA256SUMS', url: '', size: 0),
+        ],
+      ),
+      asset: apk,
+      openRelay: incoming.open,
+      expectedSize: package.size,
+      onProgress: (_) {},
+    );
+  }
+
   /// Streams [asset] into a private staging file, then moves the verified download into place.
   Future<UpdateDownloadState> download(
     ReleaseNote release, {
     required ReleaseAsset asset,
     required void Function(UpdateDownloadState state) onProgress,
     OpenUpdateRelay? openRelay,
+    Directory? destination,
+    int? expectedSize,
   }) async {
     _cancelled = false;
     Directory? staging;
     try {
       final open = await _assetSource(release.version, openRelay);
-      final folder = await _downloadsDirectory();
+      final folder = destination ?? await _downloadsDirectory();
       if (_cancelled) throw const UpdateDownloadCancelled();
       await folder.create(recursive: true);
       final name = _safeName(asset.name);
@@ -90,7 +142,7 @@ class UpdateDownloader {
         await for (final chunk in download.chunks) {
           if (_cancelled) throw const UpdateDownloadCancelled();
           received += chunk.length;
-          if (apk && received > maxUpdateApkBytes) throw const UpdateDownloadFailure();
+          if (apk && received > (expectedSize ?? maxUpdateApkBytes)) throw const UpdateDownloadFailure();
           sink.add(chunk);
           onProgress(UpdateDownloadState(UpdateDownloadStatus.downloading, received: received, total: total));
         }
@@ -98,6 +150,7 @@ class UpdateDownloader {
         await sink.close();
       }
       if (_cancelled) throw const UpdateDownloadCancelled();
+      if (expectedSize != null && received != expectedSize) throw const UpdateDownloadFailure();
       onProgress(UpdateDownloadState(UpdateDownloadStatus.verifying, received: received, total: total));
       final expected = await _expectedDigest(open, release, name);
       if (_cancelled) throw const UpdateDownloadCancelled();
@@ -109,7 +162,13 @@ class UpdateDownloader {
       }
       await part.rename(target.path);
       if (_cancelled) throw const UpdateDownloadCancelled();
-      final ready = UpdateDownloadState(UpdateDownloadStatus.ready, path: target.path);
+      final ready = UpdateDownloadState(
+        UpdateDownloadStatus.ready,
+        path: target.path,
+        received: received,
+        total: total,
+        sha256: expected,
+      );
       onProgress(ready);
       return ready;
     } on UpdateDownloadCancelled {
@@ -120,13 +179,7 @@ class UpdateDownloader {
       if (_cancelled) throw const UpdateDownloadCancelled();
       throw const UpdateDownloadFailure();
     } finally {
-      if (staging != null) {
-        try {
-          await staging.delete(recursive: true);
-        } on FileSystemException {
-          // Each attempt owns its staging directory, so a leftover file cannot block a retry.
-        }
-      }
+      if (staging != null) await _deleteUpdateStaging(staging);
       _client?.close(force: true);
       _client = null;
       await _relay?.close();
@@ -173,6 +226,14 @@ class UpdateDownloader {
     } on Object {
       return null;
     }
+  }
+}
+
+Future<void> _deleteUpdateStaging(Directory staging) async {
+  try {
+    await staging.delete(recursive: true);
+  } on FileSystemException {
+    // Each attempt owns its staging directory, so a leftover file cannot block a retry.
   }
 }
 

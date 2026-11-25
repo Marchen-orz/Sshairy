@@ -13,6 +13,7 @@ import '../../../foundation/data_dir.dart';
 import '../../../foundation/file_system.dart';
 import '../../../foundation/ids.dart';
 import '../../../foundation/secret.dart';
+import '../../../platform/mobile_platform.dart';
 import '../../connections/api.dart';
 import '../../credentials/api.dart';
 import '../../monitor/api.dart';
@@ -210,9 +211,6 @@ class _NullMobileBridge implements LinkMobileBridge {
 final linkDesktopBridgeProvider = Provider<LinkDesktopBridge>((_) => const _NullDesktopBridge());
 final linkMobileBridgeProvider = Provider<LinkMobileBridge>((_) => const _NullMobileBridge());
 
-/// A phone that connected to the desktop, with the version it reported.
-typedef LinkPeerUpdate = ({String deviceId, String name, String version});
-
 /// Leading-edge micro-batcher for terminal output over E2EE Link: flushes the first chunk
 /// immediately for zero added interactive echo latency, then coalesces rapid bursts for [window]
 /// (up to [maxBytes]) into single encrypted frames.
@@ -284,6 +282,17 @@ class _OutputCoalescer {
   }
 }
 
+class _StagedUpdate {
+  _StagedUpdate(this.files);
+
+  final FileSystem files;
+  final id = newId();
+  final receipt = Completer<bool>();
+  Completer<void>? released;
+
+  String get target => '$linkUpdateTarget:$id';
+}
+
 /// A desktop-side active connection from one paired mobile peer.
 class _ConnectedPeer {
   _ConnectedPeer(this.deviceId, this.name, this.session, this.files);
@@ -295,7 +304,10 @@ class _ConnectedPeer {
   Object? sharedFilesBinding;
   var acceptsUpdates = false;
   String? version;
+  List<String> updateAbis = const [];
+  final updateLifetime = CancellationToken();
   CancellationToken? updateMount;
+  _StagedUpdate? updatePush;
   final mirrors = <String, ({MirrorAttachment attachment, _OutputCoalescer coalescer})>{};
   final proxyChannels =
       <
@@ -324,6 +336,7 @@ class _ConnectedPeer {
   }
 
   void cleanup() {
+    updateLifetime.cancel();
     for (final request in monitorRequests.values) {
       request.cancel.cancel();
     }
@@ -389,7 +402,7 @@ class LinkHostController extends ChangeNotifier {
   List<LinkPeer> _peers = const [];
   final _connected = <String, _ConnectedPeer>{};
   final _passwordSyncQueue = <LinkPasswordSyncRequest>[];
-  final _updateSuggestions = StreamController<LinkPeerUpdate>.broadcast();
+  final _updateSuggestions = StreamController<PeerUpdate>.broadcast();
   _ActivePairing? _pairing;
   List<String> _addresses = const [];
   String? _pairingHost;
@@ -418,31 +431,76 @@ class LinkHostController extends ChangeNotifier {
     return peer != null && peer.files.current ? peer.sharedFilesBinding : null;
   }
 
-  bool canOfferUpdate(String id) => openUpdateFiles != null && _connected[id]?.acceptsUpdates == true;
-
-  /// Phones that connected to this desktop, for the app-version reminder.
-  Stream<LinkPeerUpdate> get updateSuggestions => _updateSuggestions.stream;
-
-  Future<bool> offerUpdate(String id) async => _sendUpdate(id, 'update.offer');
-
-  /// Asks the phone to fetch the latest package through this desktop without another prompt there.
-  Future<bool> pushUpdate(String id) async => _sendUpdate(id, 'update.push');
-
-  Future<bool> _sendUpdate(String id, String type) async {
+  bool canOfferUpdate(String id) {
     final peer = _connected[id];
-    if (peer == null || peer.session.isClosed || !canOfferUpdate(id)) return false;
+    return peer != null &&
+        peer.acceptsUpdates &&
+        peer.version != null &&
+        peer.updateAbis.isNotEmpty &&
+        !peer.session.isClosed;
+  }
+
+  Stream<PeerUpdate> get updateSuggestions => _updateSuggestions.stream;
+
+  bool requestUpdate(String id) {
+    final peer = _connected[id];
+    return peer != null && _suggestPeerUpdate(peer, requested: true);
+  }
+
+  Future<bool> pushUpdate(
+    PeerUpdate suggestion,
+    AndroidUpdatePackage package,
+    String path,
+    String sha256,
+    CancellationToken cancel,
+  ) async {
+    final peer = _connected[suggestion.deviceId];
+    if (peer == null ||
+        !identical(peer.updateLifetime, suggestion.lifetime) ||
+        !canOfferUpdate(peer.deviceId) ||
+        peer.updatePush != null ||
+        cancel.isCancelled ||
+        !package.valid ||
+        !peer.updateAbis.contains(package.abi) ||
+        !isNewerVersion(package.version, peer.version!)) {
+      return false;
+    }
+    final staged = peer.updatePush = _StagedUpdate(GithubUpdateFiles.staged(package, path, sha256));
     try {
-      await peer.session.sendMessage({'type': type});
-      return true;
+      return await Future.any([
+        peer.session
+            .sendMessage({
+              'type': 'update.package',
+              'id': staged.id,
+              'version': package.version,
+              'abi': package.abi,
+              'size': package.size,
+            })
+            .then((_) => staged.receipt.future),
+        peer.updateLifetime.whenCancelled.then((_) => false),
+        cancel.whenCancelled.then((_) => false),
+      ]).timeout(const Duration(minutes: 10), onTimeout: () => false);
     } on Object {
       return false;
+    } finally {
+      peer.updatePush = null;
+      if (!staged.receipt.isCompleted) staged.receipt.complete(false);
+      peer.files.revoke();
+      await staged.released?.future;
     }
   }
 
-  void _suggestPeerUpdate(_ConnectedPeer peer) {
-    final version = peer.version;
-    if (version == null || _updateSuggestions.isClosed || !canOfferUpdate(peer.deviceId)) return;
-    _updateSuggestions.add((deviceId: peer.deviceId, name: peer.name, version: version));
+  bool _suggestPeerUpdate(_ConnectedPeer peer, {bool requested = false}) {
+    if (!canOfferUpdate(peer.deviceId) || _updateSuggestions.isClosed) return false;
+    _updateSuggestions.add((
+      deviceId: peer.deviceId,
+      name: peer.name,
+      version: peer.version!,
+      abis: peer.updateAbis,
+      lifetime: peer.updateLifetime,
+      requested: requested,
+    ));
+    return true;
   }
 
   int get connectedCount => _connected.length;
@@ -836,8 +894,11 @@ class LinkHostController extends ChangeNotifier {
         send: session.sendMessage,
         isConnected: () => !session.isClosed,
         canOpen: (target) {
-          if (target == linkUpdateTarget) {
-            return identical(_connected[peerId], active) && _findPeer(peerId) != null && active.acceptsUpdates;
+          if (target == linkUpdateTarget || target.startsWith('$linkUpdateTarget:')) {
+            return identical(_connected[peerId], active) &&
+                _findPeer(peerId) != null &&
+                active.acceptsUpdates &&
+                (target == linkUpdateTarget || target == active.updatePush?.target);
           }
           if (target.startsWith('terminal:')) return terminalResources(target)?.current() == true;
           final permissions = _findPeer(peerId)?.permissions;
@@ -845,6 +906,20 @@ class LinkHostController extends ChangeNotifier {
               (target == 'local' || (target.startsWith('host:') && permissions!.allowProxy));
         },
         openTarget: (target, cancel) {
+          final staged = active.updatePush;
+          if (staged != null && target == staged.target) {
+            if (staged.released != null) throw const FsError(FsFailure.unsupported);
+            final released = staged.released = Completer<void>();
+            return Future.value(
+              LinkFsHandle(staged.files, () async {
+                try {
+                  await staged.files.close();
+                } finally {
+                  released.complete();
+                }
+              }),
+            );
+          }
           if (target == linkUpdateTarget) {
             final open = openUpdateFiles;
             if (open == null || active.updateMount?.isCancelled == false) {
@@ -913,7 +988,16 @@ class LinkHostController extends ChangeNotifier {
           await peer.session.sendMessage({'type': 'update.relay'});
           _notify();
         }
+        if (msg['abis'] case final List abis when abis.length <= 16) {
+          peer.updateAbis = List.unmodifiable(abis.whereType<String>().where(androidReleaseAbis.contains).toSet());
+          _notify();
+        }
         _suggestPeerUpdate(peer);
+      case 'update.received':
+        final staged = peer.updatePush;
+        if (staged != null && msg['id'] == staged.id && !staged.receipt.isCompleted) {
+          staged.receipt.complete(staged.released != null && msg['ok'] == true);
+        }
       case 'sessions.list':
         _pushSessionsTo(peer);
       case 'hosts.list':
@@ -1407,8 +1491,10 @@ class LinkClientController extends ChangeNotifier {
     required this.bridge,
     this.transportFactory,
     bool? acceptAndroidUpdates,
+    Future<List<String>> Function()? updateAbis,
     this.autoReconnect = true,
-  }) : _acceptAndroidUpdates = acceptAndroidUpdates ?? Platform.isAndroid {
+  }) : _acceptAndroidUpdates = acceptAndroidUpdates ?? Platform.isAndroid,
+       _updateAbis = updateAbis ?? MobilePlatform.updateAbis {
     _peers = store.load();
   }
 
@@ -1417,10 +1503,12 @@ class LinkClientController extends ChangeNotifier {
   final LinkMobileBridge bridge;
   final Future<LinkTransport> Function(String host, int port)? transportFactory;
   final bool _acceptAndroidUpdates;
+  final Future<List<String>> Function() _updateAbis;
   final bool autoReconnect;
   final _updateOffers = StreamController<void>.broadcast();
-  final _updatePushes = StreamController<void>.broadcast();
+  final _updatePushes = StreamController<IncomingUpdate>.broadcast();
   final _reconnected = StreamController<void>.broadcast();
+  List<String> _supportedUpdateAbis = const [];
   var _updateRelay = false;
 
   LinkIdentity? _identity;
@@ -1499,8 +1587,7 @@ class LinkClientController extends ChangeNotifier {
   Object? get updateRelayBinding => _updateRelay ? filesBinding : null;
   Stream<void> get updateOffers => _updateOffers.stream;
 
-  /// A desktop-confirmed push: fetch the latest package through the relay without another prompt.
-  Stream<void> get updatePushes => _updatePushes.stream;
+  Stream<IncomingUpdate> get updatePushes => _updatePushes.stream;
 
   /// Fires whenever Link transitions back to connected after a prior connection.
   Stream<void> get reconnected => _reconnected.stream;
@@ -1869,9 +1956,7 @@ class LinkClientController extends ChangeNotifier {
         onError: (Object _) => disconnected(),
         onDone: disconnected,
       );
-      if (_acceptAndroidUpdates) {
-        unawaited(session.sendMessage({'type': 'update.ready', 'version': appVersion}).catchError((Object _) {}));
-      }
+      if (_acceptAndroidUpdates) unawaited(_announceUpdates(session));
       _notify();
       if (wasConnectedBefore && !_reconnected.isClosed) _reconnected.add(null);
       return true;
@@ -1891,6 +1976,17 @@ class LinkClientController extends ChangeNotifier {
       _status = LinkConnectionStatus.error;
       _notify();
       return false;
+    }
+  }
+
+  Future<void> _announceUpdates(LinkCipherSession session) async {
+    try {
+      final abis = (await _updateAbis()).where(androidReleaseAbis.contains).toSet().toList(growable: false);
+      if (!identical(_session, session) || session.isClosed) return;
+      _supportedUpdateAbis = abis;
+      await session.sendMessage({'type': 'update.ready', 'version': appVersion, 'abis': abis});
+    } on Object {
+      // Link remains usable when the platform or connection cannot report update support.
     }
   }
 
@@ -1916,6 +2012,7 @@ class LinkClientController extends ChangeNotifier {
     _session = null;
     _files?.close();
     _files = null;
+    _supportedUpdateAbis = const [];
     _updateRelay = false;
     _sharesPhoneFiles = false;
     _desktopFilesBinding = _proxyFilesBinding = null;
@@ -2318,6 +2415,26 @@ class LinkClientController extends ChangeNotifier {
     }
   }
 
+  void _receiveUpdate(Map<String, dynamic> msg) {
+    final files = _files, session = _session, id = msg['id'];
+    if (!_updateRelay || files == null || session == null || id is! String || id.isEmpty || id.length > 64) return;
+
+    Future<void> complete(bool received) async {
+      if (!files.current) return;
+      await session.sendMessage({'type': 'update.received', 'id': id, 'ok': received}).catchError((Object _) {});
+    }
+
+    final version = msg['version'], abi = msg['abi'], size = msg['size'];
+    if (version is String && abi is String && size is int && _updatePushes.hasListener && !_updatePushes.isClosed) {
+      final package = AndroidUpdatePackage(version: version, abi: abi, size: size);
+      if (package.valid && _supportedUpdateAbis.contains(abi) && isNewerVersion(version, appVersion)) {
+        _updatePushes.add((package: package, open: () => files.open('$linkUpdateTarget:$id'), complete: complete));
+        return;
+      }
+    }
+    unawaited(complete(false));
+  }
+
   void _handleMessage(Map<String, dynamic> msg) {
     final type = msg['type'] as String? ?? '';
     switch (type) {
@@ -2464,10 +2581,10 @@ class LinkClientController extends ChangeNotifier {
           _updateRelay = true;
           _notify();
         }
-      case 'update.offer':
+      case 'update.offer' || 'update.push':
         if (updateRelayBinding != null && !_updateOffers.isClosed) _updateOffers.add(null);
-      case 'update.push':
-        if (updateRelayBinding != null && !_updatePushes.isClosed) _updatePushes.add(null);
+      case 'update.package':
+        _receiveUpdate(msg);
       case 'fs.access':
         _desktopFilesBinding = msg['local'] == true ? _desktopFilesBinding ?? Object() : null;
         _proxyFilesBinding = msg['proxy'] == true ? _proxyFilesBinding ?? Object() : null;

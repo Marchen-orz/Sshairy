@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../foundation/app_info.dart';
+import '../../../foundation/cancellation.dart';
 import '../../../foundation/file_system.dart';
 
 /// One file attached to a published release.
@@ -48,13 +49,49 @@ const androidReleaseAbis = {'arm64-v8a', 'armeabi-v7a', 'x86_64'};
 
 typedef OpenUpdateRelay = Future<FileSystem> Function();
 
-/// A phone that started an SSH session through this desktop, and the app version it reported.
-typedef PeerUpdate = ({String deviceId, String name, String version});
-typedef PushPeerUpdate = Future<bool> Function(String deviceId);
+class AndroidUpdatePackage {
+  const AndroidUpdatePackage({required this.version, required this.abi, required this.size});
+
+  static final _version = RegExp(r'^\d{1,6}\.\d{1,6}\.\d{1,6}$');
+
+  final String version, abi;
+  final int size;
+
+  String get name => 'sshairy-$version-android-$abi.apk';
+  String get path => '/$version/$name';
+  String get checksumsPath => '/$version/SHA256SUMS';
+  bool get valid =>
+      _version.stringMatch(version) == version &&
+      androidReleaseAbis.contains(abi) &&
+      size > 0 &&
+      size <= maxUpdateApkBytes;
+}
+
+/// A connected Android device with the ABI preference reported by the device.
+typedef PeerUpdate = ({
+  String deviceId,
+  String name,
+  String version,
+  List<String> abis,
+  CancellationToken lifetime,
+  bool requested,
+});
+typedef PushPeerUpdate = Future<bool> Function(
+  PeerUpdate peer,
+  AndroidUpdatePackage package,
+  String path,
+  String sha256,
+  CancellationToken cancel,
+);
+typedef IncomingUpdate = ({
+  AndroidUpdatePackage package,
+  OpenUpdateRelay open,
+  Future<void> Function(bool received) complete,
+});
 
 final updateRelayProvider = Provider<OpenUpdateRelay?>((_) => null);
 final updateOffersProvider = Provider<Stream<void>?>((_) => null);
-final updatePushesProvider = Provider<Stream<void>?>((_) => null);
+final updatePushesProvider = Provider<Stream<IncomingUpdate>?>((_) => null);
 final updateSuggestionsProvider = Provider<Stream<PeerUpdate>?>((_) => null);
 final updatePushProvider = Provider<PushPeerUpdate?>((_) => null);
 
@@ -238,15 +275,18 @@ String _alternatingNotes(String notes, String languageCode) {
   return text.isEmpty ? notes.trim() : text;
 }
 
-bool _isAndroidApk(ReleaseAsset asset) {
-  final name = asset.name.toLowerCase();
-  return name.endsWith('.apk') && name.contains('-android-');
-}
+typedef AndroidUpdate = ({ReleaseNote release, ReleaseAsset asset, String abi});
 
-/// The newest published release that ships an Android package, in feed order.
-ReleaseNote? latestAndroidRelease(Iterable<ReleaseNote> releases) {
+/// The newest checksummed release with an APK for one of the peer's preferred ABIs.
+AndroidUpdate? latestAndroidUpdate(Iterable<ReleaseNote> releases, List<String> abis) {
   for (final release in releases) {
-    if (release.assets.any(_isAndroidApk)) return release;
+    if (release.checksums == null) continue;
+    for (final abi in abis) {
+      for (final asset in release.assets) {
+        final package = AndroidUpdatePackage(version: release.version, abi: abi, size: asset.size);
+        if (asset.name == package.name && package.valid) return (release: release, asset: asset, abi: abi);
+      }
+    }
   }
   return null;
 }
@@ -343,16 +383,17 @@ class UpdateState {
 }
 
 class UpdateCheck extends Notifier<UpdateState> {
-  var _checking = false;
+  Future<void>? _checking;
 
   @override
   UpdateState build() => const UpdateState(UpdateStatus.idle);
 
   /// A [silent] check runs behind the user's back: it shows no checking or failed state and keeps
   /// whatever the last visible answer was, so the title-bar reminder does not flicker or lie.
-  Future<void> check({bool silent = false, bool preferRelay = false}) async {
-    if (_checking) return;
-    _checking = true;
+  Future<void> check({bool silent = false, bool preferRelay = false}) =>
+      _checking ??= _check(silent: silent, preferRelay: preferRelay).whenComplete(() => _checking = null);
+
+  Future<void> _check({required bool silent, required bool preferRelay}) async {
     if (!silent) state = const UpdateState(UpdateStatus.checking);
     try {
       final releases = await _fetchReleases(preferRelay: preferRelay);
@@ -363,8 +404,6 @@ class UpdateCheck extends Notifier<UpdateState> {
       );
     } on Object {
       if (!silent && ref.mounted) state = const UpdateState(UpdateStatus.failed);
-    } finally {
-      _checking = false;
     }
   }
 

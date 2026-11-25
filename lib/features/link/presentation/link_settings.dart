@@ -244,11 +244,10 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
     if (mounted) await Navigator.maybePop(context);
   }
 
-  Future<void> _offerUpdate(LinkPeer peer) async {
-    final sent = await ref.read(linkHostControllerProvider).offerUpdate(peer.deviceId);
-    if (!mounted) return;
-    final l = AppLocalizations.of(context);
-    _showNotice(sent ? l.linkUpdateOffered : l.linkUpdateOfferFailed);
+  void _offerUpdate(LinkPeer peer) {
+    if (!ref.read(linkHostControllerProvider).requestUpdate(peer.deviceId)) {
+      _showNotice(AppLocalizations.of(context).linkUpdateOfferFailed);
+    }
   }
 
   Future<void> _pushCredentials(LinkPeer peer) async {
@@ -579,9 +578,7 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                             online: host.connectedDeviceIds.contains(peer.deviceId),
                             onUpdatePermissions: (perms) => unawaited(host.updatePermissions(peer.deviceId, perms)),
                             onPushCredentials: () => unawaited(_pushCredentials(peer)),
-                            onOfferUpdate: host.canOfferUpdate(peer.deviceId)
-                                ? () => unawaited(_offerUpdate(peer))
-                                : null,
+                            onOfferUpdate: host.canOfferUpdate(peer.deviceId) ? () => _offerUpdate(peer) : null,
                             onDisconnect: () => host.disconnectPeer(peer.deviceId),
                             onRevoke: () => unawaited(host.revokePeer(peer.deviceId)),
                           ),
