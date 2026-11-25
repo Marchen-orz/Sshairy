@@ -394,8 +394,6 @@ class _LinkSettingsState extends ConsumerState<LinkSettings> {
                                       icon: Icons.phonelink_rounded,
                                       size: 44,
                                       tone: enabled ? scheme.primary : null,
-                                      dot: state,
-                                      ring: heroFill,
                                     ),
                                     const SizedBox(width: Space.md),
                                     Expanded(
@@ -916,11 +914,7 @@ class _PeerCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              AppIconBadge(
-                icon: Icons.smartphone_rounded,
-                tone: online ? scheme.primary : null,
-                dot: online ? success : null,
-              ),
+              AppIconBadge(icon: Icons.smartphone_rounded, tone: online ? scheme.primary : null),
               const SizedBox(width: Space.md),
               Expanded(
                 child: Column(

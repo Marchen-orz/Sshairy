@@ -727,7 +727,6 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                     : AppIconBadge(
                         icon: s.isLocal ? Icons.terminal_rounded : Icons.dns_rounded,
                         tone: s.status == 'connected' ? scheme.primary : null,
-                        dot: s.status == 'connected' ? palette.success : null,
                       ),
                 title: Text(s.title, overflow: TextOverflow.ellipsis),
                 subtitle: Text(s.targetLabel, style: addressStyle, overflow: TextOverflow.ellipsis),
@@ -855,13 +854,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
           children: [
             Row(
               children: [
-                AppIconBadge(
-                  icon: Icons.desktop_windows_rounded,
-                  size: 48,
-                  tone: scheme.primary,
-                  dot: palette.success,
-                  ring: heroFill,
-                ),
+                AppIconBadge(icon: Icons.desktop_windows_rounded, size: 48, tone: scheme.primary),
                 const SizedBox(width: Space.md),
                 Expanded(
                   child: Column(

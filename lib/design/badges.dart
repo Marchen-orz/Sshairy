@@ -8,24 +8,20 @@ Color toneFill(BuildContext context, Color tone, Color base, {double strength = 
   return Color.alphaBlend(tone.withValues(alpha: (dark ? .16 : .09) * strength), base);
 }
 
-/// An icon in [tone] on a rounded square of the same tone; [dot] marks a live state at the corner.
+/// An icon in [tone] on a rounded square of the same tone.
 class AppIconBadge extends StatelessWidget {
-  const AppIconBadge({super.key, required this.icon, this.tone, this.size = 36, this.dot, this.ring});
+  const AppIconBadge({super.key, required this.icon, this.tone, this.size = 36});
 
   final IconData icon;
   final Color? tone;
   final double size;
-  final Color? dot;
-
-  /// The colour behind the badge, which the dot's ring cuts out of.
-  final Color? ring;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
     final color = tone ?? scheme.onSurfaceVariant;
-    final badge = AnimatedContainer(
+    return AnimatedContainer(
       duration: Motion.of(context, Motion.normal),
       curve: Motion.move,
       width: size,
@@ -35,28 +31,6 @@ class AppIconBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(size >= 40 ? Radii.card : Radii.control),
       ),
       child: Icon(icon, size: size * .5, color: color),
-    );
-    final dot = this.dot;
-    if (dot == null) return badge;
-    final dotSize = (size * .28).clamp(8.0, 12.0);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        badge,
-        Positioned(
-          right: -2,
-          bottom: -2,
-          child: Container(
-            width: dotSize + 4,
-            height: dotSize + 4,
-            decoration: BoxDecoration(
-              color: dot,
-              shape: BoxShape.circle,
-              border: Border.all(color: ring ?? scheme.surface, width: 2),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
