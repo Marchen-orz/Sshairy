@@ -127,6 +127,8 @@ void main() {
         final absolute = RemotePaths.absolute(r'.\alpha', cwd: dirPath, style: PathStyle.windows);
         expect(absolute, '$dirPath\\alpha');
       },
+      // The temp directory is a real drive path only on Windows.
+      skip: !Platform.isWindows,
     );
 
     test('converts MSYS paths for Git Bash local terminals', () {
