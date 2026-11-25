@@ -320,6 +320,67 @@ void main() {
     }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   }
 
+  for (final (label, size) in [('phone', const Size(412, 560)), ('tablet', const Size(1280, 800))]) {
+    testWidgets('$label tab actions close other tabs and activate the pressed tab', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final env = _createEnv('sshairy_close_other_tabs_');
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.container.dispose();
+        await tester.runAsync(() async {
+          try {
+            env.dir.deleteSync(recursive: true);
+          } on FileSystemException {
+            // Windows may briefly hold a file handle during async teardown.
+          }
+        });
+      });
+
+      final workspace = env.container.read(workspaceProvider.notifier);
+      final tabs = [
+        for (final title in ['First tab', 'Keep this tab', 'Last tab'])
+          workspace.openRemote(
+            LinkTerminalTarget(
+              peerId: 'desktop',
+              peerName: 'PC',
+              remoteId: title,
+              title: title,
+              targetLabel: 'PC / $title',
+              kind: LinkTerminalKind.proxy,
+            ),
+            (_, _) async => _TestShellChannel(),
+          ),
+      ];
+      await tester.pumpWidget(_wrapApp(WorkspacePage(openPalette: (_) async {}), container: env.container));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('mobile-session-capsule')));
+      await tester.pumpAndSettle();
+
+      final keep = tabs[1];
+      if (label == 'tablet') {
+        await tester.longPress(find.byKey(ValueKey('tablet-tab-${keep.value}')));
+      } else {
+        await tester.tap(find.text('Last tab'));
+        await tester.pumpAndSettle();
+        await tester.longPress(find.widgetWithText(ListTile, 'Keep this tab'));
+      }
+      await tester.pumpAndSettle();
+
+      final closeOthers = find.text('Close other tabs');
+      await tester.ensureVisible(closeOthers);
+      await tester.tap(closeOthers);
+      await tester.pumpAndSettle();
+
+      final state = env.container.read(workspaceProvider);
+      expect(state.tabs.map((tab) => tab.id), [keep]);
+      expect(state.active, keep);
+      expect(find.byType(BottomSheet), findsNothing);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+  }
+
   testWidgets('Windows stays on desktop workspace even at narrow width', (tester) async {
     tester.view.physicalSize = const Size(412, 915);
     tester.view.devicePixelRatio = 1.0;

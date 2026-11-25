@@ -467,8 +467,8 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
             },
           );
           return SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: ListView(
+              shrinkWrap: true,
               children: [
                 if (target != null && target.kind == LinkTerminalKind.proxy)
                   ListTile(
@@ -491,6 +491,7 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
                 ),
                 closing(TabCloseScope.left, popParent ? l.closeAbove : l.closeTabsLeft, Icons.vertical_align_top),
                 closing(TabCloseScope.right, popParent ? l.closeBelow : l.closeTabsRight, Icons.vertical_align_bottom),
+                closing(TabCloseScope.others, l.closeOtherTabs, Icons.tab_unselected),
               ],
             ),
           );
