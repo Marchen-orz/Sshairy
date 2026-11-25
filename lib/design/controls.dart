@@ -341,6 +341,85 @@ class AppIconToggle extends StatelessWidget {
   }
 }
 
+/// A pill that switches on tap: tinted with a check while on, outlined with [icon] while off.
+class AppToggleChip extends StatelessWidget {
+  const AppToggleChip({super.key, required this.label, required this.value, required this.onChanged, this.icon});
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final palette = BrandPalette.of(context);
+    final enabled = onChanged != null;
+    final fill = Color.alphaBlend(
+      scheme.primary.withValues(alpha: theme.brightness == Brightness.dark ? .2 : .1),
+      scheme.surface,
+    );
+    final ink = readableColor(palette.controlPrimary, fill, 4.5);
+    final glyph = value ? Icons.check_rounded : icon;
+    return Semantics(
+      button: true,
+      toggled: value,
+      enabled: enabled,
+      label: label,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: enabled ? 1 : .45,
+        child: _Pressable(
+          onTap: enabled ? () => onChanged!(!value) : null,
+          builder: (context, hovered, focused) => AnimatedContainer(
+            duration: Motion.of(context, Motion.quick),
+            height: 30,
+            padding: EdgeInsets.only(left: glyph == null ? Space.md : 10, right: Space.md),
+            decoration: BoxDecoration(
+              color: value
+                  ? fill
+                  : hovered
+                  ? scheme.onSurface.withValues(alpha: .04)
+                  : scheme.surface.withValues(alpha: 0),
+              borderRadius: BorderRadius.circular(Radii.pill),
+              border: focused
+                  ? Border.all(color: scheme.primary, width: 2)
+                  : Border.all(
+                      color: value
+                          ? scheme.primary.withValues(alpha: .45)
+                          : hovered
+                          ? scheme.outline
+                          : scheme.outlineVariant,
+                    ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (glyph != null) ...[
+                  Icon(glyph, size: 14, color: value ? ink : scheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: value ? ink : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A label with a switch on the right, or a checkbox on the left; the whole row toggles.
 class AppToggleRow extends StatelessWidget {
   const AppToggleRow({

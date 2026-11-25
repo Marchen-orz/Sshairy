@@ -562,16 +562,19 @@ class LinkHostController extends ChangeNotifier {
     if (listener != null) await listener.close();
   }
 
-  /// Generates a fresh 6-digit single-use pairing code valid for 3 minutes.
+  /// How long a pairing code stays valid.
+  static const pairingLifetime = Duration(minutes: 3);
+
+  /// Generates a fresh 6-digit single-use pairing code valid for [pairingLifetime].
   Future<LinkPairingInfo?> startPairing() async {
     if (!running) return null;
     await _ensureIdentity();
     _addresses = await localLinkAddresses();
     final rng = Random.secure();
     final code = List<int>.generate(6, (_) => rng.nextInt(10)).join();
-    _pairing = _ActivePairing(code, DateTime.now().add(const Duration(minutes: 3)));
+    _pairing = _ActivePairing(code, DateTime.now().add(pairingLifetime));
     _pairingTimer?.cancel();
-    _pairingTimer = Timer(const Duration(minutes: 3), () {
+    _pairingTimer = Timer(pairingLifetime, () {
       _pairing = null;
       _notify();
     });

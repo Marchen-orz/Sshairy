@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/badges.dart';
 import '../../../design/brand.dart';
 import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
@@ -345,101 +346,126 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   }
 
   Widget _buildDisconnected(BuildContext context, AppLocalizations l, ColorScheme scheme, LinkClientController client) {
+    final theme = Theme.of(context);
     final connecting = client.status == LinkConnectionStatus.connecting;
-    const pairingActionStyle = ButtonStyle(
-      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs)),
+    final nothingFound = client.savedDesktops.isEmpty && client.discoveredDesktops.isEmpty;
+    final heroFill = toneFill(context, scheme.primary, BrandPalette.of(context).surface, strength: .7);
+    final pairingActionStyle = OutlinedButton.styleFrom(
+      backgroundColor: scheme.surface,
+      minimumSize: const Size(0, MobileSize.touchTarget),
+      side: BorderSide(color: scheme.outlineVariant),
+      padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.xs),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.card)),
     );
+    final addressStyle = mono(context, theme.textTheme.bodySmall);
     final discoveryWidgets = <Widget>[
-      if (isMobilePlatform) ...[
-        FilledButton.icon(
-          key: const ValueKey('link-scan-qr-button'),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(MobileSize.touchTarget),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.panel)),
-          ),
-          onPressed: connecting ? null : _scanQr,
-          icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
-          label: Text(l.mobileScanQr),
-        ),
-        const SizedBox(height: Space.sm),
-      ],
-      IntrinsicHeight(
-        child: Row(
+      _SurfaceCard(
+        color: heroFill,
+        border: scheme.primary.withValues(alpha: .22),
+        padding: const EdgeInsets.all(Space.lg),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                key: const ValueKey('link-scan-button'),
-                style: pairingActionStyle,
-                onPressed: client.discovering ? null : () => unawaited(client.discoverLan()),
-                icon: client.discovering
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.radar_outlined, size: 18),
-                label: Text(client.discovering ? l.linkScanning : l.linkScanLan, textAlign: TextAlign.center),
+            if (nothingFound) ...[
+              const Center(child: BrandIllustration(pose: BrandPose.security, size: 112)),
+              const SizedBox(height: Space.md),
+            ],
+            if (isMobilePlatform) ...[
+              FilledButton.icon(
+                key: const ValueKey('link-scan-qr-button'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(MobileSize.touchTarget),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.card)),
+                ),
+                onPressed: connecting ? null : _scanQr,
+                icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                label: Text(l.mobileScanQr),
               ),
-            ),
-            const SizedBox(width: Space.sm),
-            Expanded(
-              child: OutlinedButton.icon(
-                key: const ValueKey('link-paste-uri-button'),
-                style: pairingActionStyle,
-                onPressed: connecting ? null : _pasteUri,
-                icon: const Icon(Icons.content_paste_outlined, size: 18),
-                label: Text(l.linkPasteUri, textAlign: TextAlign.center),
+              const SizedBox(height: Space.sm),
+            ],
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('link-scan-button'),
+                      style: pairingActionStyle,
+                      onPressed: client.discovering ? null : () => unawaited(client.discoverLan()),
+                      icon: client.discovering
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.radar_rounded, size: 18),
+                      label: Text(client.discovering ? l.linkScanning : l.linkScanLan, textAlign: TextAlign.center),
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('link-paste-uri-button'),
+                      style: pairingActionStyle,
+                      onPressed: connecting ? null : _pasteUri,
+                      icon: const Icon(Icons.content_paste_rounded, size: 18),
+                      label: Text(l.linkPasteUri, textAlign: TextAlign.center),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
-      if (client.lastError != null) ...[
-        const SizedBox(height: Space.md),
-        Row(
-          children: [
-            Icon(Icons.error_outline, size: 18, color: scheme.error),
-            const SizedBox(width: Space.sm),
-            Expanded(
-              child: Text(
-                _errorText(l, client.lastError!),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.error),
+      if (client.lastError != null)
+        Container(
+          margin: const EdgeInsets.only(bottom: Space.sm),
+          padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm + 2),
+          decoration: BoxDecoration(
+            color: toneFill(context, scheme.error, scheme.surface),
+            borderRadius: BorderRadius.circular(Radii.card),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 18, color: scheme.error),
+              const SizedBox(width: Space.sm),
+              Expanded(
+                child: Text(
+                  _errorText(l, client.lastError!),
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ],
       if (client.discoveredDesktops.isNotEmpty) ...[
-        const SizedBox(height: Space.lg),
-        _SectionTitle(l.linkDiscoveredDesktops),
+        const SizedBox(height: Space.md),
+        _SectionTitle(l.linkDiscoveredDesktops, count: client.discoveredDesktops.length),
         _Group(
           children: [
             for (final d in client.discoveredDesktops)
               ListTile(
                 key: ValueKey('link-discovered-${d.deviceId}'),
-                leading: const Icon(Icons.desktop_windows_outlined),
+                leading: AppIconBadge(icon: Icons.desktop_windows_rounded, tone: scheme.primary),
                 title: Text(d.name, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${d.address}:${d.port}', style: mono(context, Theme.of(context).textTheme.bodySmall)),
+                subtitle: Text('${d.address}:${d.port}', style: addressStyle),
                 trailing: _connectingDiscoveredId == d.deviceId
                     ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+                    : Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
                 onTap: connecting ? null : () => unawaited(_openDiscoveredDesktop(client, d)),
               ),
           ],
         ),
       ],
       if (client.savedDesktops.isNotEmpty) ...[
-        const SizedBox(height: Space.lg),
-        _SectionTitle(l.linkSavedDesktops),
+        const SizedBox(height: Space.md),
+        _SectionTitle(l.linkSavedDesktops, count: client.savedDesktops.length),
         _Group(
           children: [
             for (final peer in client.savedDesktops)
               ListTile(
-                leading: const Icon(Icons.computer_outlined),
+                leading: const AppIconBadge(icon: Icons.computer_rounded),
                 title: Text(peer.name, overflow: TextOverflow.ellipsis),
                 subtitle: peer.lastAddress == null
                     ? null
-                    : Text(
-                        '${peer.lastAddress}:${peer.lastPort ?? linkDefaultPort}',
-                        style: mono(context, Theme.of(context).textTheme.bodySmall),
-                      ),
+                    : Text('${peer.lastAddress}:${peer.lastPort ?? linkDefaultPort}', style: addressStyle),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -449,7 +475,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                     ),
                     IconButton(
                       tooltip: l.linkRevoke,
-                      icon: Icon(Icons.delete_outline, size: 18, color: scheme.onSurfaceVariant),
+                      icon: Icon(Icons.delete_outline_rounded, size: 18, color: scheme.onSurfaceVariant),
                       onPressed: () => unawaited(client.forgetDesktop(peer.deviceId)),
                     ),
                   ],
@@ -463,6 +489,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     final manualConnectWidgets = <Widget>[
       _SectionTitle(l.linkManualConnect),
       _SurfaceCard(
+        padding: const EdgeInsets.all(Space.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -473,7 +500,11 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                   child: TextField(
                     key: const ValueKey('link-manual-host'),
                     controller: _hostController,
-                    decoration: InputDecoration(labelText: l.linkHostOrIp, isDense: true),
+                    decoration: InputDecoration(
+                      labelText: l.linkHostOrIp,
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.lan_outlined, size: 18),
+                    ),
                   ),
                 ),
                 const SizedBox(width: Space.sm),
@@ -488,17 +519,26 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                 ),
               ],
             ),
-            const SizedBox(height: Space.sm),
+            const SizedBox(height: Space.md),
             TextField(
               key: const ValueKey('link-manual-code'),
               controller: _codeController,
               keyboardType: TextInputType.number,
-              decoration: InputDecoration(labelText: l.linkPairingCode, isDense: true),
+              style: addressStyle.copyWith(fontSize: theme.textTheme.titleMedium?.fontSize, letterSpacing: 3),
+              decoration: InputDecoration(
+                labelText: l.linkPairingCode,
+                isDense: true,
+                prefixIcon: const Icon(Icons.pin_outlined, size: 18),
+              ),
               onSubmitted: (_) => _pairManual(),
             ),
-            const SizedBox(height: Space.md),
+            const SizedBox(height: Space.lg),
             FilledButton(
               key: const ValueKey('link-pair-submit'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(MobileSize.touchTarget),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.card)),
+              ),
               onPressed: connecting ? null : _pairManual,
               child: connecting
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -523,26 +563,24 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
             children: [
-              if (client.reconnecting) ...[
-                _Group(
+              if (client.reconnecting)
+                _SurfaceCard(
                   key: const ValueKey('link-reconnecting-banner'),
-                  children: [
-                    ListTile(
-                      leading: const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                      title: Text(
-                        l.linkReconnecting(client.reconnectingDesktopName ?? ''),
-                        overflow: TextOverflow.ellipsis,
+                  padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.xs, Space.xs),
+                  child: Row(
+                    children: [
+                      const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(width: Space.md),
+                      Expanded(
+                        child: Text(
+                          l.linkReconnecting(client.reconnectingDesktopName ?? ''),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      trailing: TextButton(onPressed: client.cancelReconnect, child: Text(l.cancel)),
-                    ),
-                  ],
+                      TextButton(onPressed: client.cancelReconnect, child: Text(l.cancel)),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: Space.sm),
-              ],
-              if (client.savedDesktops.isEmpty && client.discoveredDesktops.isEmpty) ...[
-                const Center(child: BrandIllustration(pose: BrandPose.security, size: 112)),
-                const SizedBox(height: Space.md),
-              ],
               if (twoColumns)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -558,7 +596,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                 )
               else ...[
                 ...discoveryWidgets,
-                const SizedBox(height: Space.lg),
+                const SizedBox(height: Space.md),
                 ...manualConnectWidgets,
               ],
             ],
@@ -569,7 +607,12 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   }
 
   Widget _buildConnected(BuildContext context, AppLocalizations l, ColorScheme scheme, LinkClientController client) {
+    final theme = Theme.of(context);
+    final palette = BrandPalette.of(context);
     final offer = client.pendingCredentialOffer;
+    final addressStyle = mono(context, theme.textTheme.bodySmall);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
+    final heroFill = toneFill(context, scheme.primary, palette.surface, strength: .7);
     final query = _hostSearchController.text.trim().toLowerCase();
     final filteredHosts = query.isEmpty
         ? client.desktopHosts
@@ -584,49 +627,43 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
 
     final approvalsAndSessions = <Widget>[
       if (client.pendingApprovals.isNotEmpty) ...[
-        Row(
-          children: [
-            const SizedBox(width: Space.xs),
-            Icon(Icons.shield_outlined, size: 16, color: scheme.error),
-            const SizedBox(width: Space.xs),
-            Text(
-              '${l.linkPendingApprovals} (${client.pendingApprovals.length})',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-          ],
-        ),
-        const SizedBox(height: Space.xs),
+        _SectionTitle(l.linkPendingApprovals, count: client.pendingApprovals.length, tone: scheme.error),
         for (final item in client.pendingApprovals)
           _SurfaceCard(
             key: ValueKey('link-approval-${item.approvalId}'),
+            border: scheme.error.withValues(alpha: .3),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(item.title, style: Theme.of(context).textTheme.titleSmall),
-                if (item.target.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(item.target, style: mono(context, Theme.of(context).textTheme.bodySmall)),
-                ],
+                Row(
+                  children: [
+                    AppIconBadge(icon: Icons.shield_outlined, tone: scheme.error),
+                    const SizedBox(width: Space.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item.title, style: theme.textTheme.titleSmall),
+                          if (item.target.isNotEmpty) Text(item.target, style: addressStyle),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
                 if (item.command.isNotEmpty) ...[
-                  const SizedBox(height: Space.xs),
+                  const SizedBox(height: Space.sm),
                   Container(
-                    width: double.infinity,
                     padding: const EdgeInsets.all(Space.sm),
                     decoration: BoxDecoration(
                       color: scheme.surfaceContainerLowest,
                       borderRadius: BorderRadius.circular(Radii.control),
+                      border: Border.all(color: scheme.outlineVariant.withValues(alpha: .5)),
                     ),
-                    child: Text(item.command, style: mono(context, Theme.of(context).textTheme.bodySmall)),
+                    child: Text(item.command, style: addressStyle),
                   ),
                 ],
-                if (item.detail.isNotEmpty) ...[
-                  const SizedBox(height: Space.xs),
-                  Text(
-                    item.detail,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                  ),
-                ],
-                const SizedBox(height: Space.sm),
+                if (item.detail.isNotEmpty) ...[const SizedBox(height: Space.xs), Text(item.detail, style: muted)],
+                const SizedBox(height: Space.md),
                 if (item.actionable)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -647,24 +684,25 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                 else
                   Text(
                     l.linkDesktopOnlyAction,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+                    style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
                   ),
               ],
             ),
           ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
       ],
       if (client.desktopLocalShells.isNotEmpty) ...[
-        _SectionTitle(l.linkDesktopLocalShells),
+        _SectionTitle(l.linkDesktopLocalShells, count: client.desktopLocalShells.length),
         _Group(
           children: [
             for (final shell in client.desktopLocalShells)
               ListTile(
                 key: ValueKey('link-local-shell-${shell.shellId}'),
                 leading: _connectingLocalShellId == shell.shellId
-                    ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.terminal_rounded),
+                    ? const _BadgeSpinner()
+                    : const AppIconBadge(icon: Icons.terminal_rounded),
                 title: Text(shell.name, overflow: TextOverflow.ellipsis),
+                trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
                 onTap: () {
                   client.openProxiedLocalInWorkspace(shell);
                   widget.onOpenedTerminal?.call();
@@ -673,48 +711,36 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
               ),
           ],
         ),
-        const SizedBox(height: Space.lg),
+        const SizedBox(height: Space.md),
       ],
-      _SectionTitle(l.linkDesktopTerminals),
+      _SectionTitle(l.linkDesktopTerminals, count: client.desktopSessions.length),
       if (client.desktopSessions.isEmpty)
-        Padding(
-          padding: const EdgeInsets.only(left: Space.xs),
-          child: Text(
-            l.linkNoDesktopTerminals,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-        )
+        _EmptyNote(icon: Icons.terminal_rounded, text: l.linkNoDesktopTerminals)
       else
         _Group(
           children: [
             for (final s in client.desktopSessions)
               ListTile(
                 key: ValueKey('link-mirror-${s.sessionId}'),
-                leading: Icon(
-                  s.isLocal ? Icons.terminal : Icons.dns_outlined,
-                  color: s.status == 'connected' ? scheme.primary : null,
-                ),
-                title: Text(s.title, overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                  s.targetLabel,
-                  style: mono(context, Theme.of(context).textTheme.bodySmall),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: _connectingSessionId == s.sessionId
-                    ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (s.isLocal) ...[
-                            _Tag(label: l.linkLocalTag, color: scheme.onSurfaceVariant),
-                            const SizedBox(width: Space.sm),
-                          ],
-                          _Tag(
-                            label: s.status == 'connected' ? l.linkMirrorTag : l.linkSessionPending,
-                            color: s.status == 'connected' ? scheme.primary : scheme.onSurfaceVariant,
-                          ),
-                        ],
+                leading: _connectingSessionId == s.sessionId
+                    ? const _BadgeSpinner()
+                    : AppIconBadge(
+                        icon: s.isLocal ? Icons.terminal_rounded : Icons.dns_rounded,
+                        tone: s.status == 'connected' ? scheme.primary : null,
+                        dot: s.status == 'connected' ? palette.success : null,
                       ),
+                title: Text(s.title, overflow: TextOverflow.ellipsis),
+                subtitle: Text(s.targetLabel, style: addressStyle, overflow: TextOverflow.ellipsis),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (s.isLocal) ...[AppTag(label: l.linkLocalTag), const SizedBox(width: Space.xs)],
+                    AppTag(
+                      label: s.status == 'connected' ? l.linkMirrorTag : l.linkSessionPending,
+                      tone: s.status == 'connected' ? scheme.primary : null,
+                    ),
+                  ],
+                ),
                 onTap: () => unawaited(_openDesktopTerminal(client, s)),
               ),
           ],
@@ -722,12 +748,12 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
     ];
 
     final desktopHostsSection = <Widget>[
-      _SectionTitle(l.linkDesktopHosts),
+      _SectionTitle(l.linkDesktopHosts, count: client.desktopHosts.length),
       if (client.desktopHosts.length > 5) ...[
         TextField(
           controller: _hostSearchController,
           decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search, size: 18),
+            prefixIcon: const Icon(Icons.search_rounded, size: 18),
             hintText: l.searchHint,
             isDense: true,
           ),
@@ -736,29 +762,23 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
         const SizedBox(height: Space.sm),
       ],
       if (filteredHosts.isEmpty)
-        Padding(
-          padding: const EdgeInsets.only(left: Space.xs),
-          child: Text(
-            l.linkNoDesktopHosts,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-        )
+        _EmptyNote(icon: Icons.dns_outlined, text: l.linkNoDesktopHosts)
       else
         _Group(
           children: [
             for (final h in filteredHosts)
               ListTile(
                 key: ValueKey('link-proxy-${h.hostId}'),
-                leading: const Icon(Icons.hub_outlined),
+                leading: _connectingHostId == h.hostId
+                    ? const _BadgeSpinner()
+                    : const AppIconBadge(icon: Icons.dns_outlined),
                 title: Text(h.label.isEmpty ? h.targetLabel : h.label, overflow: TextOverflow.ellipsis),
                 subtitle: Text(
                   h.group.isEmpty ? h.targetLabel : '${h.group} · ${h.targetLabel}',
-                  style: mono(context, Theme.of(context).textTheme.bodySmall),
+                  style: addressStyle,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: _connectingHostId == h.hostId
-                    ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : _Tag(label: l.linkProxyTag, color: scheme.onSurfaceVariant),
+                trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
                 onTap: () {
                   client.openProxiedHostInWorkspace(h);
                   widget.onOpenedTerminal?.call();
@@ -768,6 +788,119 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
           ],
         ),
     ];
+
+    final shareRow = Material(
+      color: scheme.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.card),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
+      ),
+      child: MergeSemantics(
+        child: InkWell(
+          key: const ValueKey('link-share-files-switch'),
+          onTap: () => unawaited(_sharePhoneFiles(client, !client.sharesPhoneFiles)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: MobileSize.touchTarget),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Space.md),
+              child: Row(
+                children: [
+                  Icon(Icons.phone_android_rounded, size: 20, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: Space.md),
+                  Expanded(child: Text(l.linkSharePhoneFiles)),
+                  AppSwitch(value: client.sharesPhoneFiles, onChanged: (on) => unawaited(_sharePhoneFiles(client, on))),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    /// Wide layouts lay the shortcuts and the share switch in one row; narrow ones stack the switch below.
+    Widget hero(bool wide) {
+      final tiles = [
+        _ActionTile(
+          key: const ValueKey('link-sync-button'),
+          icon: Icons.sync_rounded,
+          label: l.linkSyncConfig,
+          busy: _syncing,
+          wide: wide,
+          onTap: _syncNow,
+        ),
+        _ActionTile(
+          key: const ValueKey('link-clipboard-button'),
+          icon: Icons.content_paste_go_rounded,
+          label: l.mobilePushClipboard,
+          wide: wide,
+          onTap: _pushClipboard,
+        ),
+        if (client.desktopSharesFiles && widget.onOpenFiles != null)
+          _ActionTile(
+            key: const ValueKey('link-files-button'),
+            icon: Icons.folder_rounded,
+            label: l.files,
+            wide: wide,
+            onTap: widget.onOpenFiles!,
+          ),
+        if (wide) shareRow,
+      ];
+      return _SurfaceCard(
+        color: heroFill,
+        border: scheme.primary.withValues(alpha: .22),
+        padding: const EdgeInsets.all(Space.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                AppIconBadge(
+                  icon: Icons.desktop_windows_rounded,
+                  size: 48,
+                  tone: scheme.primary,
+                  dot: palette.success,
+                  ring: heroFill,
+                ),
+                const SizedBox(width: Space.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        client.connectedDesktopName ?? '',
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      AppStatusLabel(label: l.linkOnline, color: palette.success),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  key: const ValueKey('link-disconnect-button'),
+                  onPressed: () => unawaited(client.disconnect()),
+                  child: Text(l.linkDisconnect),
+                ),
+              ],
+            ),
+            const SizedBox(height: Space.lg),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (i, tile) in tiles.indexed) ...[
+                    if (i > 0) const SizedBox(width: Space.sm),
+                    Expanded(child: tile),
+                  ],
+                ],
+              ),
+            ),
+            if (!wide) ...[const SizedBox(height: Space.sm), shareRow],
+          ],
+        ),
+      );
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -783,126 +916,54 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
             children: [
-              _Group(
-                children: [
-                  ListTile(
-                    leading: Icon(Icons.link, color: scheme.primary),
-                    title: Text(
-                      l.linkConnectedTo(client.connectedDesktopName ?? ''),
-                      style: Theme.of(context).textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: TextButton(
-                      key: const ValueKey('link-disconnect-button'),
-                      onPressed: () => unawaited(client.disconnect()),
-                      child: Text(l.linkDisconnect),
-                    ),
-                  ),
-                  ListTile(
-                    key: const ValueKey('link-sync-button'),
-                    leading: const Icon(Icons.sync_outlined),
-                    title: Text(l.linkSyncConfig),
-                    trailing: _syncing
-                        ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : null,
-                    onTap: _syncing ? null : _syncNow,
-                  ),
-                  ListTile(
-                    key: const ValueKey('link-clipboard-button'),
-                    leading: const Icon(Icons.content_paste_go_rounded),
-                    title: Text(l.mobilePushClipboard),
-                    onTap: _pushClipboard,
-                  ),
-                  if (client.desktopSharesFiles && widget.onOpenFiles != null)
-                    ListTile(
-                      key: const ValueKey('link-files-button'),
-                      leading: const Icon(Icons.folder_outlined),
-                      title: Text(l.files),
-                      trailing: Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-                      onTap: widget.onOpenFiles,
-                    ),
-                  MergeSemantics(
-                    child: ListTile(
-                      key: const ValueKey('link-share-files-switch'),
-                      leading: const Icon(Icons.phone_android_outlined),
-                      title: Text(l.linkSharePhoneFiles),
-                      trailing: AppSwitch(
-                        value: client.sharesPhoneFiles,
-                        onChanged: (on) => unawaited(_sharePhoneFiles(client, on)),
-                      ),
-                      onTap: () => unawaited(_sharePhoneFiles(client, !client.sharesPhoneFiles)),
-                    ),
-                  ),
-                ],
-              ),
-              if (_notice != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: Space.xs, bottom: Space.xs),
-                  child: Text(_notice!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.primary)),
-                ),
+              hero(twoColumns),
+              if (_notice != null) _StatusLine(icon: Icons.check_circle_outline_rounded, text: _notice!),
               if (client.passwordSyncStatus != LinkPasswordSyncStatus.idle)
-                Padding(
-                  padding: const EdgeInsets.only(left: Space.xs),
-                  child: Row(
-                    key: const ValueKey('link-password-sync-status'),
-                    children: [
-                      if (client.passwordSyncStatus == LinkPasswordSyncStatus.awaitingDesktop)
-                        const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
-                      else
-                        Icon(
-                          client.passwordSyncStatus == LinkPasswordSyncStatus.imported
-                              ? Icons.key_outlined
-                              : Icons.info_outline,
-                          size: 14,
-                          color: client.passwordSyncStatus == LinkPasswordSyncStatus.imported
-                              ? scheme.primary
-                              : scheme.onSurfaceVariant,
-                        ),
-                      const SizedBox(width: Space.xs),
-                      Expanded(
-                        child: Text(
-                          switch (client.passwordSyncStatus) {
-                            LinkPasswordSyncStatus.awaitingDesktop => l.linkPasswordSyncWaiting,
-                            LinkPasswordSyncStatus.imported => l.linkPasswordSyncImported(
-                              client.lastImportedPasswordCount,
-                            ),
-                            LinkPasswordSyncStatus.declined => l.linkPasswordSyncDeclined,
-                            LinkPasswordSyncStatus.idle => '',
-                          },
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: client.passwordSyncStatus == LinkPasswordSyncStatus.declined
-                                ? scheme.onSurfaceVariant
-                                : scheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                _StatusLine(
+                  key: const ValueKey('link-password-sync-status'),
+                  busy: client.passwordSyncStatus == LinkPasswordSyncStatus.awaitingDesktop,
+                  icon: client.passwordSyncStatus == LinkPasswordSyncStatus.imported
+                      ? Icons.key_rounded
+                      : Icons.info_outline_rounded,
+                  quiet: client.passwordSyncStatus == LinkPasswordSyncStatus.declined,
+                  text: switch (client.passwordSyncStatus) {
+                    LinkPasswordSyncStatus.awaitingDesktop => l.linkPasswordSyncWaiting,
+                    LinkPasswordSyncStatus.imported => l.linkPasswordSyncImported(client.lastImportedPasswordCount),
+                    LinkPasswordSyncStatus.declined => l.linkPasswordSyncDeclined,
+                    LinkPasswordSyncStatus.idle => '',
+                  },
                 ),
-              if (offer != null) ...[
-                const SizedBox(height: Space.md),
+              if (offer != null)
                 _SurfaceCard(
                   key: const ValueKey('link-credential-offer'),
+                  border: palette.warning.withValues(alpha: .4),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.key_outlined, size: 18, color: scheme.tertiary),
-                          const SizedBox(width: Space.sm),
+                          AppIconBadge(icon: Icons.key_rounded, tone: palette.warning),
+                          const SizedBox(width: Space.md),
                           Expanded(
-                            child: Text(l.linkCredentialOfferTitle, style: Theme.of(context).textTheme.titleSmall),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(l.linkCredentialOfferTitle, style: theme.textTheme.titleSmall),
+                                Text(
+                                  offer.aiApiKey != null
+                                      ? '${l.linkCredentialOfferDetail(offer.hostPasswords.length, offer.privateKeys.length)} ${l.mobileSyncAiIncluded}'
+                                      : l.linkCredentialOfferDetail(
+                                          offer.hostPasswords.length,
+                                          offer.privateKeys.length,
+                                        ),
+                                  style: muted,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: Space.xs),
-                      Text(
-                        offer.aiApiKey != null
-                            ? '${l.linkCredentialOfferDetail(offer.hostPasswords.length, offer.privateKeys.length)} ${l.mobileSyncAiIncluded}'
-                            : l.linkCredentialOfferDetail(offer.hostPasswords.length, offer.privateKeys.length),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: Space.sm),
+                      const SizedBox(height: Space.md),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -918,8 +979,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                     ],
                   ),
                 ),
-              ],
-              const SizedBox(height: Space.lg),
+              const SizedBox(height: Space.md),
               if (twoColumns)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -935,7 +995,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
                 )
               else ...[
                 ...approvalsAndSessions,
-                const SizedBox(height: Space.lg),
+                const SizedBox(height: Space.md),
                 ...desktopHostsSection,
               ],
             ],
@@ -946,12 +1006,19 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   }
 }
 
-/// The theme surface on the page background with a hairline edge, as on the Me page.
+/// The theme surface on the page background with a hairline edge, as on the Me page; [color] and [border] tint it.
 class _SurfaceCard extends StatelessWidget {
-  const _SurfaceCard({super.key, required this.child, this.padding = const EdgeInsets.all(Space.md)});
+  const _SurfaceCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(Space.md),
+    this.color,
+    this.border,
+  });
 
   final Widget child;
   final EdgeInsets padding;
+  final Color? color, border;
 
   @override
   Widget build(BuildContext context) {
@@ -959,11 +1026,11 @@ class _SurfaceCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: Space.sm),
       child: Material(
-        color: BrandPalette.of(context).surface.withValues(alpha: .88),
+        color: color ?? BrandPalette.of(context).surface.withValues(alpha: .88),
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .35)),
+          side: BorderSide(color: border ?? scheme.outlineVariant.withValues(alpha: .35)),
         ),
         child: Padding(padding: padding, child: child),
       ),
@@ -971,24 +1038,28 @@ class _SurfaceCard extends StatelessWidget {
   }
 }
 
-/// List rows in one card, split by inset hairlines.
+/// List rows led by icon badges in one card, split by hairlines that start under the text.
 class _Group extends StatelessWidget {
-  const _Group({super.key, required this.children});
+  const _Group({required this.children});
 
   final List<Widget> children;
 
+  static const _badge = 36.0;
+
   @override
   Widget build(BuildContext context) => _SurfaceCard(
-    padding: EdgeInsets.zero,
+    padding: const EdgeInsets.symmetric(vertical: Space.xs),
     child: ListTileTheme.merge(
-      minTileHeight: MobileSize.touchTarget,
+      minTileHeight: MobileSize.touchTarget + Space.sm,
+      minLeadingWidth: _badge,
+      horizontalTitleGap: Space.md,
       contentPadding: const EdgeInsets.symmetric(horizontal: Space.md),
       shape: const RoundedRectangleBorder(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final (i, row) in children.indexed) ...[
-            if (i > 0) const Divider(indent: Space.md, endIndent: Space.md),
+            if (i > 0) const Divider(indent: Space.md + _badge + Space.md, endIndent: Space.md),
             row,
           ],
         ],
@@ -997,28 +1068,159 @@ class _Group extends StatelessWidget {
   );
 }
 
+/// A section name with how many items it holds.
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
+  const _SectionTitle(this.text, {this.count, this.tone});
 
+  final String text;
+  final int? count;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final count = this.count;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.xs, Space.xs, Space.xs, Space.sm),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          if (count != null && count > 0) ...[const SizedBox(width: Space.sm), AppTag(label: '$count', tone: tone)],
+        ],
+      ),
+    );
+  }
+}
+
+/// One shortcut in the connected card: a badge over a short label, or beside it when [wide].
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.busy = false,
+    this.wide = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool busy, wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final badge = busy ? const _BadgeSpinner() : AppIconBadge(icon: icon, tone: scheme.primary);
+    final style = theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500, color: scheme.onSurface);
+    final content = wide
+        ? Row(
+            children: [
+              badge,
+              const SizedBox(width: Space.md),
+              Expanded(
+                child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: style),
+              ),
+            ],
+          )
+        : Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              badge,
+              const SizedBox(height: Space.sm),
+              Text(label, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: style),
+            ],
+          );
+    return Material(
+      color: scheme.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.card),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5)),
+      ),
+      child: InkWell(
+        onTap: busy ? null : onTap,
+        child: Padding(
+          padding: wide
+              ? const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm + 2)
+              : const EdgeInsets.symmetric(horizontal: Space.sm, vertical: Space.md),
+          child: content,
+        ),
+      ),
+    );
+  }
+}
+
+/// A quiet card in place of an empty list.
+class _EmptyNote extends StatelessWidget {
+  const _EmptyNote({required this.icon, required this.text});
+
+  final IconData icon;
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(left: Space.xs, bottom: Space.xs),
-    child: Text(text, style: Theme.of(context).textTheme.labelLarge),
-  );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return _SurfaceCard(
+      child: Row(
+        children: [
+          AppIconBadge(icon: icon, size: 32),
+          const SizedBox(width: Space.md),
+          Expanded(
+            child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-/// A short state word beside a row, without a fill.
-class _Tag extends StatelessWidget {
-  const _Tag({required this.label, required this.color});
+/// A one-line result under the connected card; [quiet] mutes it.
+class _StatusLine extends StatelessWidget {
+  const _StatusLine({super.key, required this.icon, required this.text, this.busy = false, this.quiet = false});
 
-  final String label;
-  final Color color;
+  final IconData icon;
+  final String text;
+  final bool busy, quiet;
 
   @override
-  Widget build(BuildContext context) =>
-      Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color));
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = quiet ? theme.colorScheme.onSurfaceVariant : theme.colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.xs, Space.xs, Space.xs, Space.sm),
+      child: Row(
+        children: [
+          if (busy)
+            const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+          else
+            Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text, style: theme.textTheme.bodySmall?.copyWith(color: color)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A spinner the size of an icon badge, while that row is opening.
+class _BadgeSpinner extends StatelessWidget {
+  const _BadgeSpinner();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.square(
+    dimension: 36,
+    child: Center(child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+  );
 }
 
 class _DiscoveredPairDialog extends StatefulWidget {
