@@ -74,7 +74,7 @@ Airy 在终端旁边，也在终端里，配备 **42 个工具**，可管理主�
 
 ## MCP / Skill
 
-在 **设置 → MCP / Skill** 中选择审批档位，再开启 Claude Code、Codex、Zcode 或 DeepSeek Harness 的对应开关。开关会安装连接配置和 Skill。客户端首次连接时，在 Sshairy 内确认。MCP 与内置 Airy 共用工具目录，包括 SSH 命令与后台任务、文件和传输、终端上下文、工作区、主机、设置及端口转发。
+在 **设置 → MCP / Skill** 中选择审批档位，再开启 Claude Code、Codex、Zcode、DeepSeek Harness 或 Antigravity（`agy` CLI 和 IDE）的对应开关。开关会安装连接配置和 Skill。客户端首次连接时，在 Sshairy 内确认。MCP 与内置 Airy 共用工具目录，包括 SSH 命令与后台任务、文件和传输、终端上下文、工作区、主机、设置及端口转发。
 
 **主机确认**在每次会话中每台主机只问一次。**模型审核**还会逐次审核合规的工具调用。**范围内自动**在所选主机上直接执行，免主机确认和模型审核。访问已有终端和授权本地文件仍须明确确认。同一页可查审计记录，也可撤销客户端接入。
 

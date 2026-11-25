@@ -601,6 +601,10 @@ void main() {
     File('${home.path}/.zcode/cli/config.json')
       ..createSync(recursive: true)
       ..writeAsStringSync('{"mcp": {"servers": {}}}');
+    final antigravity = File('${home.path}/.gemini/config/mcp_config.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"mcpServers": {"other": {"command": "x"}}}');
+    final antigravitySkill = File('${home.path}/.gemini/config/skills/sshairy/SKILL.md');
     final patch = File('${home.path}/.dsh/profiles/desktop/cordis.patch.yml')
       ..createSync(recursive: true)
       ..writeAsStringSync('# header\n- id: a\n');
@@ -620,6 +624,14 @@ void main() {
     final zcode = jsonDecode(File('${home.path}/.zcode/cli/config.json').readAsStringSync()) as Map;
     expect(zcode['features'], {'mcp': true});
     expect(zcode['mcp']['servers']['sshairy']['url'], 'http://127.0.0.1:1234/mcp');
+    expect(jsonDecode(antigravity.readAsStringSync())['mcpServers'], {
+      'other': {'command': 'x'},
+      'sshairy': {
+        'serverUrl': 'http://127.0.0.1:1234/mcp',
+        'headers': {'Authorization': 'Bearer $token', 'X-Sshairy-Managed': '1'},
+      },
+    });
+    expect(antigravitySkill.readAsStringSync(), sshairySkill);
     expect(
       patch.readAsStringSync(),
       allOf(startsWith('# header\n- id: a\n# sshairy:begin\n- insert:'), contains(token)),
@@ -632,6 +644,9 @@ void main() {
       clients.refresh(client, 'http://127.0.0.1:99/mcp', next);
     }
     expect(skill.readAsStringSync(), sshairySkill);
+    final refreshed = jsonDecode(antigravity.readAsStringSync())['mcpServers']['sshairy'];
+    expect(refreshed['serverUrl'], 'http://127.0.0.1:99/mcp');
+    expect(refreshed['headers']['Authorization'], 'Bearer $next');
     for (final path in ['.codex/config.toml', '.dsh/profiles/desktop/cordis.patch.yml', '.claude.json']) {
       final text = File('${home.path}/$path').readAsStringSync();
       expect(text, contains(next), reason: path);
@@ -653,6 +668,10 @@ void main() {
     });
     expect(File('${home.path}/.codex/config.toml').readAsStringSync().trimRight(), '[mcp_servers.node]\ncommand = "x"');
     expect(patch.readAsStringSync(), '# header\n- id: a\n');
+    expect(jsonDecode(antigravity.readAsStringSync())['mcpServers'], {
+      'other': {'command': 'x'},
+    });
+    expect(antigravitySkill.existsSync(), false);
   });
 
   test('client configs we cannot edit safely are left untouched', () {
@@ -666,11 +685,24 @@ void main() {
     final zcode = File('${home.path}/.zcode/cli/config.json')
       ..createSync(recursive: true)
       ..writeAsStringSync('{broken');
+    final antigravity = File('${home.path}/.gemini/config/mcp_config.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync(
+        jsonEncode({
+          'mcpServers': {
+            'sshairy': {
+              'serverUrl': 'http://127.0.0.1:1234/mcp',
+              'headers': {'Authorization': 'Bearer ${mcpRandomToken()}'},
+            },
+          },
+        }),
+      );
     for (final (client, file, state) in [
       (McpClient.claude, claude, SkillStatus.conflict),
       (McpClient.codex, codex, SkillStatus.conflict),
       (McpClient.zcode, zcode, SkillStatus.conflict),
       (McpClient.deepseek, claude, SkillStatus.unavailable),
+      (McpClient.antigravity, antigravity, SkillStatus.conflict),
     ]) {
       final before = file.readAsStringSync();
       expect(clients.status(client), state, reason: '$client');
@@ -682,6 +714,29 @@ void main() {
       expect(file.readAsStringSync(), before);
       expect(File('${home.path}/${client.directory}/skills/sshairy/SKILL.md').existsSync(), false);
     }
+  });
+
+  test('Antigravity shares approval and revocation across separate MCP sessions', () async {
+    await h.start();
+    final claudeToken = h.token;
+    await h.controller.connect(McpClient.antigravity);
+    final config = File('${h.dir.path}/.gemini/config/mcp_config.json');
+    final entry = jsonDecode(config.readAsStringSync())['mcpServers']['sshairy'];
+    expect(entry['serverUrl'], h.controller.url);
+    h.token = (entry['headers']['Authorization'] as String).substring(7);
+    expect(h.token, isNot(claudeToken));
+
+    final cli = await h.open();
+    final ide = await h.open(requireApproved: true);
+    expect(cli, isNot(ide));
+    expect((await h.post('tools/list', session: cli)).status, 200);
+    expect((await h.post('tools/list', session: ide)).status, 200);
+
+    await h.controller.disconnect(McpClient.antigravity);
+    expect((await h.post('tools/list', session: cli)).status, 401);
+    expect((await h.post('tools/list', session: ide)).status, 401);
+    h.token = claudeToken;
+    await h.open();
   });
 
   test('legacy narrow catalog approval needs consent and revoking a pending client rejects stale approval', () async {

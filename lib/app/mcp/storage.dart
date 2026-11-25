@@ -9,7 +9,8 @@ enum McpClient {
   claude('Claude Code', '.claude'),
   codex('Codex', '.codex', 'CODEX_HOME'),
   zcode('Zcode', '.zcode'),
-  deepseek('DeepSeek Harness', '.dsh', 'DSH_HOME');
+  deepseek('DeepSeek Harness', '.dsh', 'DSH_HOME'),
+  antigravity('Antigravity', '.gemini/config');
 
   const McpClient(this.label, this.directory, [this.homeVariable]);
   final String label, directory;
@@ -86,7 +87,12 @@ class McpSkills {
 
   File _file(McpClient client, {bool create = false}) {
     final root = this.root(client);
-    for (final path in [root, '$root/skills', '$root/skills/sshairy']) {
+    for (final path in [
+      if (client == McpClient.antigravity) '$home/.gemini',
+      root,
+      '$root/skills',
+      '$root/skills/sshairy',
+    ]) {
       final type = FileSystemEntity.typeSync(path, followLinks: false);
       if (type == FileSystemEntityType.notFound && create) {
         Directory(path).createSync();
@@ -230,11 +236,15 @@ class McpClients {
     : _skills = McpSkills(environment: environment, dataDirectory: dataDirectory, skill: skill);
   final McpSkills _skills;
 
-  static bool _json(McpClient client) => client == McpClient.claude || client == McpClient.zcode;
+  static bool _json(McpClient client) => switch (client) {
+    McpClient.claude || McpClient.zcode || McpClient.antigravity => true,
+    McpClient.codex || McpClient.deepseek => false,
+  };
 
   List<File> _targets(McpClient client) {
     final home = _skills.home, root = _skills.root(client);
     _checkDirectory(home);
+    if (client == McpClient.antigravity) _checkDirectory('$home/.gemini');
     _checkDirectory(root);
     if (client == McpClient.zcode) _checkDirectory('$root/cli');
     if (client == McpClient.deepseek) _checkDirectory('$root/profiles');
@@ -249,6 +259,7 @@ class McpClients {
                   FileSystemEntityType.notFound)
             File('${entry.path}/cordis.patch.yml'),
       ],
+      McpClient.antigravity => [File('$root/mcp_config.json')],
     };
   }
 
@@ -360,8 +371,9 @@ class McpClients {
   }
 
   void _checkEntry(McpClient client, Object? entry) {
-    if (entry is! Map || entry['type'] != 'http') throw const FormatException('entry conflict');
-    final url = entry['url'], headers = entry['headers'];
+    final antigravity = client == McpClient.antigravity;
+    if (entry is! Map || (!antigravity && entry['type'] != 'http')) throw const FormatException('entry conflict');
+    final url = entry[antigravity ? 'serverUrl' : 'url'], headers = entry['headers'];
     final authorization = headers is Map ? headers['Authorization'] : null;
     final zcode = client == McpClient.zcode;
     if (url is! String ||
@@ -372,7 +384,7 @@ class McpClients {
         authorization is! String ||
         !authorization.startsWith('Bearer ') ||
         !mcpTokenPattern.hasMatch(authorization.substring(7)) ||
-        entry.length != (zcode ? 4 : 3) ||
+        entry.length != (antigravity ? 2 : (zcode ? 4 : 3)) ||
         (zcode && entry['timeoutMs'] != 60000)) {
       throw const FormatException('entry conflict');
     }
@@ -407,9 +419,10 @@ class McpClients {
         }
         features['mcp'] = true;
       }
+      final antigravity = client == McpClient.antigravity;
       servers['sshairy'] = {
-        'type': 'http',
-        'url': url,
+        if (!antigravity) 'type': 'http',
+        (antigravity ? 'serverUrl' : 'url'): url,
         if (client == McpClient.zcode) 'timeoutMs': 60000,
         'headers': {'Authorization': 'Bearer $token', 'X-Sshairy-Managed': '1'},
       };
@@ -425,7 +438,7 @@ class McpClients {
 
   Map<String, dynamic>? _servers(McpClient client, Map<String, dynamic> root, {required bool create}) {
     var node = root;
-    for (final key in client == McpClient.claude ? ['mcpServers'] : ['mcp', 'servers']) {
+    for (final key in client == McpClient.zcode ? ['mcp', 'servers'] : ['mcpServers']) {
       if (!node.containsKey(key) && create) node[key] = <String, dynamic>{};
       if (!node.containsKey(key)) return null;
       final next = node[key];

@@ -74,7 +74,7 @@ Four permission modes cover the range from watching to hands-off: **Observe**, *
 
 ## MCP / Skill
 
-Open **Settings → MCP / Skill**, choose an approval mode, then enable Claude Code, Codex, Zcode or DeepSeek Harness. Each switch installs the connection and Skill. Approve the client's first connection in Sshairy. MCP exposes the same tool catalog as Airy, including SSH commands and jobs, files and transfers, terminal context, workspace, hosts, settings, and port forwarding.
+Open **Settings → MCP / Skill**, choose an approval mode, then enable Claude Code, Codex, Zcode, DeepSeek Harness or Antigravity (`agy` CLI and IDE). Each switch installs the connection and Skill. Approve the client's first connection in Sshairy. MCP exposes the same tool catalog as Airy, including SSH commands and jobs, files and transfers, terminal context, workspace, hosts, settings, and port forwarding.
 
 **Host confirmation** asks once per host per session. **Model review** also reviews each eligible call. **Automatic within scope** runs on selected hosts without a host prompt or per-call model review. Existing terminal access and local file grants still need explicit approval. The MCP settings also show the audit log and let you revoke client access.
 
