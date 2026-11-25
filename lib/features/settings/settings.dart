@@ -198,6 +198,17 @@ class OptionalStringSetting extends SettingDef<String?> {
 
 enum McpApprovalMode { model, host, automatic }
 
+enum McpIdleTimeout {
+  oneHour(1),
+  fourHours(4),
+  eightHours(8),
+  twelveHours(12);
+
+  const McpIdleTimeout(this.hours);
+
+  final int hours;
+}
+
 class McpHostSetting extends SettingDef<Map<String, String>> {
   const McpHostSetting() : super('mcpHosts', const {}, agentExposed: false);
 
@@ -392,6 +403,12 @@ abstract final class SettingKeys {
   static const mcpPort = IntSetting('mcpPort', 47826, 1024, 65535, agentExposed: false);
   static const mcpMode = EnumSetting('mcpMode', McpApprovalMode.host, McpApprovalMode.values, agentExposed: false);
   static const mcpHosts = McpHostSetting();
+  static const mcpIdleTimeout = EnumSetting(
+    'mcpIdleTimeout',
+    McpIdleTimeout.fourHours,
+    McpIdleTimeout.values,
+    agentExposed: false,
+  );
 
   static const linkEnabled = BoolSetting('linkEnabled', false, agentExposed: false);
   static const linkPort = IntSetting('linkPort', 47827, 1024, 65535, agentExposed: false);
@@ -414,6 +431,7 @@ abstract final class SettingKeys {
     mcpPort,
     mcpMode,
     mcpHosts,
+    mcpIdleTimeout,
     linkEnabled,
     linkPort,
     linkDiscovery,

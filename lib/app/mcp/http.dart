@@ -12,8 +12,11 @@ import 'storage.dart';
 const _versions = ['2025-11-25', '2025-06-18', '2025-03-26'];
 
 class McpSession {
-  McpSession(this.client, this.version);
+  McpSession(this.client, this.version, this._idleTimeout, this._elapsed) : _started = _elapsed() {
+    _lastActivity = _started;
+  }
 
+  static const _maxAge = Duration(hours: 24);
   final McpClient client;
   final String version, id = mcpRandomToken();
   final auditId = mcpRandomToken().substring(0, 16);
@@ -21,9 +24,21 @@ class McpSession {
   final localGrants = <String, LocalGrant>{};
   final terminalGrants = <SessionId, ({TerminalHistorySession terminal, bool allowed})>{};
   final requests = <Object, CancellationToken>{};
-  final expires = DateTime.now().add(const Duration(hours: 4));
+  final Duration _idleTimeout, _started;
+  final Duration Function() _elapsed;
+  late Duration _lastActivity;
   bool initialized = false, closed = false;
-  bool get current => !closed && DateTime.now().isBefore(expires);
+
+  bool get current => _currentAt(_elapsed());
+
+  bool _currentAt(Duration now) => !closed && now - _lastActivity < _idleTimeout && now - _started < _maxAge;
+
+  bool _touch() {
+    final now = _elapsed();
+    if (!_currentAt(now)) return false;
+    _lastActivity = now;
+    return true;
+  }
 
   void close() {
     if (closed) return;
@@ -38,7 +53,18 @@ class McpSession {
 }
 
 class McpHttp {
-  McpHttp(this._server, this.authenticate, this.tools, this.call, this.onClose, this.confirmConnection) {
+  McpHttp(
+    this._server,
+    this.authenticate,
+    this.tools,
+    this.call,
+    this.onClose,
+    this.confirmConnection, {
+    required this.sessionIdleTimeout,
+    Duration Function()? elapsed,
+  }) {
+    final clock = Stopwatch()..start();
+    _elapsed = elapsed ?? () => clock.elapsed;
     _server.listen((request) => unawaited(_serve(request)), onError: (Object _) {});
     _sweep = Timer.periodic(const Duration(seconds: 30), (_) {
       for (final session in _sessions.values.toList()) {
@@ -55,6 +81,8 @@ class McpHttp {
   final Future<bool> Function(McpClient, CancellationToken) confirmConnection;
   final _sessions = <String, McpSession>{};
   late final Timer _sweep;
+  late final Duration Function() _elapsed;
+  Duration sessionIdleTimeout;
   var _active = 0, _closed = false;
 
   int get port => _server.port;
@@ -101,6 +129,11 @@ class McpHttp {
       );
     }
 
+    void sessionNotFound() {
+      status(HttpStatus.notFound);
+      write(null, code: -32000, message: 'MCP session not found. Reinitialize without Mcp-Session-Id.');
+    }
+
     String? header(String name) => request.headers.value(name);
     try {
       response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
@@ -115,7 +148,7 @@ class McpHttp {
       final sessionId = header('mcp-session-id');
       session = sessionId == null ? null : _sessions[sessionId];
       if (sessionId != null && (session == null || !session.current || session.client != client)) {
-        return status(HttpStatus.notFound);
+        return sessionNotFound();
       }
       final version = header('mcp-protocol-version');
       if (version != null && (!_versions.contains(version) || (session != null && version != session.version))) {
@@ -142,9 +175,8 @@ class McpHttp {
           }
           body.addAll(chunk);
         }
-        if (_closed || authenticate(authorization!) != client || (session != null && !session.current)) {
-          return status(HttpStatus.unauthorized);
-        }
+        if (_closed || authenticate(authorization!) != client) return status(HttpStatus.unauthorized);
+        if (session != null && !session.current) return sessionNotFound();
         Object? decoded;
         try {
           decoded = jsonDecode(utf8.decode(body));
@@ -168,7 +200,7 @@ class McpHttp {
             return write(id, code: -32000, message: 'Too many sessions');
           }
           final negotiated = _versions.contains(requested) ? requested : _versions.first;
-          final opened = McpSession(client, negotiated);
+          final opened = McpSession(client, negotiated, sessionIdleTimeout, _elapsed);
           _sessions[opened.id] = opened;
           final cancel = active = CancellationToken();
           final timer = Timer(const Duration(seconds: 55), cancel.cancel);
@@ -178,9 +210,9 @@ class McpHttp {
             accepted =
                 await confirmConnection(client, cancel) &&
                 !cancel.isCancelled &&
-                opened.current &&
                 !_closed &&
-                authenticate(authorization) == client;
+                authenticate(authorization) == client &&
+                opened._touch();
           } finally {
             timer.cancel();
             opened.requests.remove(id);
@@ -206,11 +238,15 @@ class McpHttp {
         }
         if (method == 'ping') return write(id, result: {});
         if (!session.initialized) return write(id, code: -32000, message: 'Session not initialized');
-        if (method == 'tools/list') return write(id, result: {'tools': tools()});
+        if (method == 'tools/list') {
+          if (!session._touch()) return sessionNotFound();
+          return write(id, result: {'tools': tools()});
+        }
         if (method != 'tools/call') return write(id, code: -32601, message: 'Method not found');
         if (session.requests.containsKey(id) || session.requests.length >= 3) {
           return write(id, code: -32000, message: 'Too many or duplicate requests');
         }
+        if (!session._touch()) return sessionNotFound();
         final cancel = active = CancellationToken();
         final seconds = params['name'] == 'command_execute' && params['arguments'] is Map
             ? (params['arguments'] as Map)['timeoutSeconds']
@@ -223,9 +259,8 @@ class McpHttp {
           // Cancellation withholds data but cannot establish the outcome of a submitted write.
           final unknown =
               response['isError'] == true && (response['content'] as List).single['text'] == 'outcomeUnknown';
-          final result = (!session.current || cancel.isCancelled) && !unknown
-              ? mcpToolResult('cancelled', error: true)
-              : response;
+          final current = !cancel.isCancelled && session._touch();
+          final result = !current && !unknown ? mcpToolResult('cancelled', error: true) : response;
           write(id, result: result);
         } finally {
           session.requests.remove(id);

@@ -21,7 +21,7 @@ import 'storage.dart';
 
 const mcpDiagnosticTemplates = DiagnosticTemplate.values;
 
-typedef McpConfig = ({bool enabled, int port, McpApprovalMode mode, Map<String, String> hosts});
+typedef McpConfig = ({bool enabled, int port, McpApprovalMode mode, Map<String, String> hosts, Duration idleTimeout});
 
 final mcpRouteDigestsProvider = Provider<Map<HostId, String>>(
   (ref) => {
@@ -39,6 +39,7 @@ McpConfig _config(Settings settings) => (
   port: settings.get(SettingKeys.mcpPort),
   mode: settings.get(SettingKeys.mcpMode),
   hosts: settings.get(SettingKeys.mcpHosts),
+  idleTimeout: Duration(hours: settings.get(SettingKeys.mcpIdleTimeout).hours),
 );
 
 final mcpClientsProvider = Provider<McpClients>((ref) => McpClients(dataDirectory: ref.read(dataDirProvider)));
@@ -198,11 +199,13 @@ class McpController extends ChangeNotifier {
         next.enabled == _settings.enabled &&
         next.port == _settings.port &&
         next.mode == _settings.mode &&
+        next.idleTimeout == _settings.idleTimeout &&
         mapEquals(next.hosts, _settings.hosts)) {
       return;
     }
     final previous = _configured ? _settings.hosts : const <String, String>{};
-    if (!mapEquals(previous, next.hosts)) {
+    final scopeChanged = !mapEquals(previous, next.hosts);
+    if (scopeChanged) {
       final current = routes(), digests = routeDigests();
       _autoRoutes.removeWhere((id, _) => next.hosts[id.value] != previous[id.value]);
       for (final entry in next.hosts.entries) {
@@ -213,13 +216,14 @@ class McpController extends ChangeNotifier {
       }
     }
     final listen = !_configured || next.enabled != _settings.enabled || next.port != _settings.port;
+    final revoke = !listen && (scopeChanged || next.mode != _settings.mode);
     _settings = next;
     _configured = true;
     if (listen) {
       _restart();
     } else {
-      // Mode and scope changes only end current grants; the listener and address stay up.
-      _http?.revoke();
+      if (revoke) _http?.revoke();
+      _http?.sessionIdleTimeout = next.idleTimeout;
       _notify();
     }
   }
@@ -269,7 +273,15 @@ class McpController extends ChangeNotifier {
           await listener.close(force: true);
           return;
         }
-        _http = McpHttp(listener, _authenticate, _tools, _call, _closeSession, _confirmClient);
+        _http = McpHttp(
+          listener,
+          _authenticate,
+          _tools,
+          _call,
+          _closeSession,
+          _confirmClient,
+          sessionIdleTimeout: _settings.idleTimeout,
+        );
         for (final entry in _tokens.entries) {
           try {
             clients.refresh(entry.key, url, entry.value.reveal());

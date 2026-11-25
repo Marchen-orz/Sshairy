@@ -5588,6 +5588,24 @@ abstract class AppLocalizations {
   /// **'Could not start MCP. Check the port and system credential storage.'**
   String get mcpStartFailed;
 
+  /// No description provided for @mcpIdleTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Session idle timeout'**
+  String get mcpIdleTimeout;
+
+  /// No description provided for @mcpIdleTimeoutHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to new MCP sessions.'**
+  String get mcpIdleTimeoutHint;
+
+  /// No description provided for @mcpIdleHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours, plural, =1{1 hour} other{{hours} hours}}'**
+  String mcpIdleHours(int hours);
+
   /// No description provided for @mcpModeModel.
   ///
   /// In en, this message translates to:

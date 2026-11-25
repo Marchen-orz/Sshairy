@@ -3086,6 +3086,23 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not start MCP. Check the port and system credential storage.';
 
   @override
+  String get mcpIdleTimeout => 'Session idle timeout';
+
+  @override
+  String get mcpIdleTimeoutHint => 'Applies to new MCP sessions.';
+
+  @override
+  String mcpIdleHours(int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get mcpModeModel => 'Model review';
 
   @override

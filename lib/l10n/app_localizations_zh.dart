@@ -2927,6 +2927,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mcpStartFailed => 'MCP 启动失败，请检查端口和系统安全存储。';
 
   @override
+  String get mcpIdleTimeout => '会话空闲超时';
+
+  @override
+  String get mcpIdleTimeoutHint => '对新建的 MCP 会话生效。';
+
+  @override
+  String mcpIdleHours(int hours) {
+    return '$hours 小时';
+  }
+
+  @override
   String get mcpModeModel => '模型审核';
 
   @override

@@ -274,6 +274,7 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
         ? ref.watch(hostsProvider).where((host) => !host.transient && hosts.containsKey(host.id.value)).toList()
         : const <Host>[];
     final port = settings.get(SettingKeys.mcpPort);
+    final idleTimeout = settings.get(SettingKeys.mcpIdleTimeout);
     if (_lastSyncedPort != port && !_portFocus.hasFocus) {
       _lastSyncedPort = port;
       _portController.text = '$port';
@@ -298,27 +299,48 @@ class _McpSettingsState extends ConsumerState<McpSettings> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 160),
-                    child: AppFormField(
-                      label: l.port,
-                      child: TextFormField(
-                        controller: _portController,
-                        focusNode: _portFocus,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(5)],
-                        decoration: AppFormField.decoration(context),
-                        onChanged: (text) => _schedulePortSave(write, text),
-                        onFieldSubmitted: (text) {
-                          _portTimer?.cancel();
-                          final parsed = _parseValidPort(text);
-                          if (parsed != null && parsed != port) unawaited(_savePort(write, parsed));
-                        },
+                Wrap(
+                  spacing: Space.md,
+                  runSpacing: Space.sm,
+                  children: [
+                    SizedBox(
+                      width: 112,
+                      child: AppFormField(
+                        label: l.port,
+                        child: TextFormField(
+                          controller: _portController,
+                          focusNode: _portFocus,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(5),
+                          ],
+                          decoration: AppFormField.decoration(context),
+                          onChanged: (text) => _schedulePortSave(write, text),
+                          onFieldSubmitted: (text) {
+                            _portTimer?.cancel();
+                            final parsed = _parseValidPort(text);
+                            if (parsed != null && parsed != port) unawaited(_savePort(write, parsed));
+                          },
+                        ),
                       ),
                     ),
-                  ),
+                    SizedBox(
+                      width: 160,
+                      child: Tooltip(
+                        message: l.mcpIdleTimeoutHint,
+                        child: AppSelect<McpIdleTimeout>(
+                          label: l.mcpIdleTimeout,
+                          value: idleTimeout,
+                          options: [
+                            for (final timeout in McpIdleTimeout.values)
+                              AppOption(timeout, l.mcpIdleHours(timeout.hours)),
+                          ],
+                          onChanged: (value) => _change(() => write.set(SettingKeys.mcpIdleTimeout, value)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: Space.md),
                 LayoutBuilder(

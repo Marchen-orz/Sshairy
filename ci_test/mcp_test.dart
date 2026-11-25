@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
 import 'package:sshairy/app/mcp/controller.dart';
+import 'package:sshairy/app/mcp/http.dart';
 import 'package:sshairy/app/mcp/storage.dart';
 import 'package:sshairy/features/ai/api.dart';
 import 'package:sshairy/features/capabilities/api.dart';
@@ -22,12 +23,67 @@ final _first = HostId('first');
 final _second = HostId('second');
 const _args = {'hostId': 'first', 'template': 'systemSummary'};
 const _command = {'hostId': 'first', 'command': 'echo hello', 'cwd': '/', 'purpose': 'Check command output'};
+const _idleTimeout = Duration(hours: 4);
 
 void main() {
   late _Harness h;
   setUp(() async {
     h = _Harness();
     addTearDown(h.close);
+  });
+
+  test('MCP usage renews the idle window, ping does not, and stale IDs require initialization', () async {
+    var elapsed = Duration.zero;
+    final server = McpHttp(
+      await McpHttp.bind(0),
+      (authorization) => authorization == 'Bearer test-token' ? McpClient.claude : null,
+      () => [],
+      (_, _, _) async => mcpToolResult('ok'),
+      (_) {},
+      (_, _) async => true,
+      sessionIdleTimeout: _idleTimeout,
+      elapsed: () => elapsed,
+    );
+    addTearDown(server.close);
+    final endpoint = Uri.parse('http://127.0.0.1:${server.port}/mcp');
+    post(String method, {String? session, bool notification = false, Map<String, Object?> params = const {}}) => h.post(
+      method,
+      endpoint: endpoint,
+      bearer: 'test-token',
+      session: session,
+      notification: notification,
+      params: params,
+    );
+    Future<String> open() async {
+      final response = await post('initialize', params: {'protocolVersion': '2025-11-25'});
+      expect(response.status, 200);
+      final id = response.session!;
+      expect((await post('notifications/initialized', session: id, notification: true)).status, 202);
+      return id;
+    }
+
+    final session = await open();
+    elapsed += const Duration(hours: 3, minutes: 50);
+    expect((await post('tools/call', session: session, params: {'name': 'host_list'})).status, 200);
+    elapsed += const Duration(minutes: 20);
+    expect((await post('tools/list', session: session)).status, 200);
+    elapsed += const Duration(hours: 3, minutes: 50);
+    expect((await post('ping', session: session)).status, 200);
+    elapsed += const Duration(minutes: 10);
+    final expired = await post('tools/list', session: session);
+    expect(expired.status, 404);
+    expect(expired.body!['error']['message'], contains('Reinitialize'));
+    expect((await post('initialize', session: session, params: {'protocolVersion': '2025-11-25'})).status, 404);
+
+    server.sessionIdleTimeout = const Duration(hours: 12);
+    final renewed = await open();
+    expect(renewed, isNot(session));
+    for (var step = 0; step < 2; step++) {
+      elapsed += const Duration(hours: 10);
+      expect((await post('tools/list', session: renewed)).status, 200);
+    }
+    elapsed += const Duration(hours: 4);
+    expect((await post('tools/list', session: renewed)).status, 404);
   });
 
   test('loopback authentication gates the same tool catalog as Airy', () async {
@@ -315,21 +371,44 @@ void main() {
     expect(h.controller.approval, isNull);
     h.routes[_first] = 'changed';
     expect(await h.error(session), 'outsideScope');
-    h.controller.configure((enabled: false, port: 0, mode: McpApprovalMode.automatic, hosts: scope));
+    h.controller.configure((
+      enabled: false,
+      port: 0,
+      mode: McpApprovalMode.automatic,
+      hosts: scope,
+      idleTimeout: _idleTimeout,
+    ));
     await h.start(mode: McpApprovalMode.automatic, scope: scope);
     expect(await h.error(await h.open()), 'outsideScope');
     expect(h.backend.prepared, 1);
   });
 
-  test('a mode change keeps the listener and address but ends current sessions', () async {
+  test('an idle setting change keeps sessions open and a mode change revokes them on the same listener', () async {
     final scope = {'first': h.digests[_first]!};
     await h.start(mode: McpApprovalMode.automatic, scope: scope);
     final session = await h.open();
     final url = h.controller.url;
-    h.controller.configure((enabled: true, port: 0, mode: McpApprovalMode.host, hosts: scope));
+    const idleTimeout = Duration(hours: 8);
+    h.controller.configure((
+      enabled: true,
+      port: 0,
+      mode: McpApprovalMode.automatic,
+      hosts: scope,
+      idleTimeout: idleTimeout,
+    ));
+    expect((await h.post('tools/list', session: session)).status, 200);
+
+    h.controller.configure((
+      enabled: true,
+      port: 0,
+      mode: McpApprovalMode.host,
+      hosts: scope,
+      idleTimeout: idleTimeout,
+    ));
     expect(h.controller.running, true);
     expect(h.controller.url, url);
     expect((await h.post('tools/list', session: session)).status, 404);
+    expect(await h.open(requireApproved: true), isNot(session));
   });
 
   test('client revocation cancels in-flight work and rejects the previous token', () async {
@@ -356,17 +435,21 @@ void main() {
     final defaults = h.container.read(settingsProvider);
     expect(defaults.get(SettingKeys.mcpEnabled), false);
     expect(defaults.get(SettingKeys.mcpMode), McpApprovalMode.host);
+    expect(defaults.get(SettingKeys.mcpIdleTimeout), McpIdleTimeout.fourHours);
     final scope = {'first': h.digests[_first]!};
     await store.set(SettingKeys.mcpHosts, scope);
+    await store.set(SettingKeys.mcpIdleTimeout, McpIdleTimeout.eightHours);
     final reloaded = Settings.fromJson(
       jsonDecode(File('${h.dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>,
     );
     expect(reloaded.get(SettingKeys.mcpHosts), scope);
+    expect(reloaded.get(SettingKeys.mcpIdleTimeout), McpIdleTimeout.eightHours);
     for (final key in <SettingDef<Object?>>[
       SettingKeys.mcpEnabled,
       SettingKeys.mcpPort,
       SettingKeys.mcpMode,
       SettingKeys.mcpHosts,
+      SettingKeys.mcpIdleTimeout,
     ]) {
       expect(key.agentExposed, false);
     }
@@ -635,7 +718,13 @@ void main() {
       200,
     );
 
-    h.controller.configure((enabled: true, port: 0, mode: McpApprovalMode.automatic, hosts: const {}));
+    h.controller.configure((
+      enabled: true,
+      port: 0,
+      mode: McpApprovalMode.automatic,
+      hosts: const {},
+      idleTimeout: _idleTimeout,
+    ));
     await h._until(() => h.controller.running);
     expect(((jsonDecode(config.readAsStringSync())['mcpServers']['sshairy']) as Map)['url'], h.controller.url);
     await h.open(requireApproved: true);
@@ -697,7 +786,7 @@ class _Harness {
     Map<String, String> scope = const {},
     bool connect = true,
   }) async {
-    controller.configure((enabled: true, port: 0, mode: mode, hosts: scope));
+    controller.configure((enabled: true, port: 0, mode: mode, hosts: scope, idleTimeout: _idleTimeout));
     await _until(() => controller.running || controller.failed);
     expect(controller.running, true);
     if (connect) await connectClaude();
@@ -725,6 +814,7 @@ class _Harness {
 
   Future<({int status, Map<String, dynamic>? body, String? session})> post(
     String method, {
+    Uri? endpoint,
     String? session,
     String? bearer,
     String? origin,
@@ -732,7 +822,7 @@ class _Harness {
     bool notification = false,
     Map<String, Object?> params = const {},
   }) async {
-    final request = await http.postUrl(Uri.parse(controller.url));
+    final request = await http.postUrl(endpoint ?? Uri.parse(controller.url));
     request.headers.contentType = ContentType.json;
     request.headers.set('Accept', 'application/json, text/event-stream');
     request.headers.set('Authorization', 'Bearer ${bearer ?? token}');

@@ -54,6 +54,22 @@ void main() {
         expect(find.byWidgetPredicate((w) => w is AppIconToggle && w.tooltip.startsWith(client.label)), findsOneWidget);
       }
       expect(find.byType(AppToggleRow), findsOneWidget);
+      expect(find.text(locale == 'en' ? 'Session idle timeout' : '会话空闲超时'), findsOneWidget);
+      if (locale == 'en' && width == 340) {
+        await tester.tap(find.text('4 hours'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('8 hours'));
+        for (
+          var attempt = 0;
+          attempt < 40 && scoped.read(settingsProvider).get(SettingKeys.mcpIdleTimeout) != McpIdleTimeout.eightHours;
+          attempt++
+        ) {
+          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('8 hours'), findsOneWidget);
+      }
       expect(find.byType(AppCheckbox), findsNothing);
       expect(find.byIcon(Icons.dns_outlined), findsOneWidget);
       await tester.tap(find.byIcon(Icons.dns_outlined));
