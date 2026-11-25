@@ -1,157 +1,101 @@
-# Sshairy 0.3.0
+# Sshairy 0.3.1
 
 <!-- zh -->
-本版本新增 Android 预览版和手机与电脑互联，并更新终端 AI、MCP 工具和桌面文件面板。
+本版本为平板带来接近电脑的终端布局，手机可使用电脑本地终端，并修复 Windows 上已保存凭据可能被清空的问题。
 
-## Android 预览版
+## 安全与稳定
 
-- 支持从手机直接连接 SSH 主机（`6b90470`、`3f28ac0`）
-- 新增全屏触控终端，提供快捷键、滑动移动光标和双指缩放字号（`3f28ac0`）
-- 新增命令草稿箱，便于在手机上编辑后发送命令（`3f28ac0`）
-- 可从悬浮会话胶囊返回或切换终端（`3f28ac0`）
-- 手机会话列表支持关闭全部、关闭上方和关闭下方（`d151af5`）
-- 提供双栏 SFTP 文件管理，长按文件可拖到另一栏复制（`3f28ac0`、`211c92b`）
-- 可在手机预览和编辑远端文本文件（`3f28ac0`）
-- Airy 可在手机使用，也可从终端将内容带入 Airy 输入框（`3f28ac0`、`50c948d`）
-- 可开启 Android 后台连接保活（`ab8fe2a`）
-- 可开启生物识别应用锁（`ab8fe2a`）
-- 「我的」页面重新分组，并新增界面缩放设置（`c7d677a`）
-- 手机可设置自定义背景（`50c948d`）
+- 修复 Windows 上安全存储文件被杀毒或同步软件短暂占用后，下次保存会清空全部已保存密码和密钥的问题。现在读取或解密失败会报错并保留原文件，写入先落到临时文件再替换；已有凭据无需迁移（`23ebbe3`）
+- Airy 运行中切换权限模式后，后续步骤立即按新模式授权，已弹出的审批照常处理（`c162e48`、`e4d0362`）
+- 修复早期版本安装的 MCP 技能被当作外部配置，无法启用或移除的问题（`37f71c9`、`b563cf4`）
+- 修复 Windows 窗口最小化再恢复后，监控侧栏滑出又滑入并丢失状态的问题（`a720c77`、`4218a36`）
+
+## 平板
+
+- Android 和 iOS 平板改用触屏界面，宽屏下列表分为两栏（`adb6a64`、`8e3eb68`）
+- 平板终端提供与电脑相似的标签栏，监控、Airy/片段和文件面板停靠在终端旁（`8e3eb68`、`3e333b8`）
+- 文件面板默认停靠在终端下方，也可放到左侧或右侧，并按设备记住；各面板可拖动分隔线调整大小（`3e333b8`）
 
 ## 手机与电脑互联
 
-- 手机可通过扫码或局域网发现与电脑配对，互联通道端到端加密（`6b90470`、`3f28ac0`）
-- 电脑生成配对码时可选择局域网地址，手机会扫描各本地子网（`83de3e7`）
-- 电脑侧栏提供互联入口，并用主题主色显示手机在线状态（`8566457`、`4ab40c8`、`61ac5a3`）
-- 可将主机、命令片段、主机信任记录和 AI 配置同步到手机（`6b90470`、`3f28ac0`）
-- 同步已保存的服务器密码时，电脑会弹窗请求确认（`36f6710`）
-- 可在手机与电脑之间双向发送剪贴板文本（`6b90470`）
-- 可用手机处理电脑上的 Airy 和 MCP 审批（`6b90470`）
-- 可在手机镜像电脑终端，同一电脑会话只打开一个镜像窗口（`6b90470`、`d151af5`）
-- 可让电脑代为连接 SSH 主机，连接使用电脑上保存的凭据（`3f28ac0`）
-- 电脑仅打开标签但尚未连接时，手机显示「待连接」，点按后由电脑连接并进入镜像（`752f01c`）
-- 在手机长按「经电脑连接」的主机或会话，可选择「在电脑上打开并镜像」（`752f01c`）
-- 手机和电脑可双向传输已共享的文件（`211c92b`）
-- 手机可在电脑代理和镜像终端打开该会话对应的文件（`5b023a5`）
-- 手机可查看电脑代理和镜像终端的只读监控（`5b023a5`）
-- 修复代理和镜像终端的路径补全。切换目录后从 SSH shell 的当前目录列出相对路径，`~/` 仍从家目录展开（`e4f2b1f`、`11807b2`）
+- 手机可打开电脑本地终端，也可镜像电脑上已打开的本地终端标签（`b939678`）
+- 手机启动或回到前台时自动连接最近使用的电脑，断线重连期间显示提示（`b939678`）
+- 互联终端合并连续输出，减少卡顿，按键回显不增加延迟（`b939678`）
+- 手机可经已配对的电脑下载 Android 更新，安装前校验 SHA-256、包名、版本码和签名；电脑发现手机版本较旧时会询问是否推送（`edf9d12`）
+- 重新设计电脑端互联面板：服务状态卡、带有效期倒计时的配对二维码，每台手机一张卡片，权限点按即可切换（`cb423fc`、`efd8cfa`、`ca566d1`）
+- 重新设计手机互联页：扫码和已连接的电脑放在顶部卡片，常用操作做成快捷方块，列表用图标和状态标签区分（`cb423fc`、`efd8cfa`、`a536b34`）
+- 互联设置修改后自动保存（`c9a6fdc`）
 
-## 终端 AI
+## 终端与文件
 
-- 行内 AI 可在当前终端分步执行任务，逐步显示命令和结果（`143e731`）
-- 行内 AI 默认逐步按回车执行，也可为当前任务打开自动执行（`143e731`）
-- 可调整行内任务的步数上限和 `✦` 提示文字样式（`e02323a`）
-- 修复自动执行遇到命令折行或回显较慢时停住的问题（`4ec702b`）
-- 修复折行和多行粘贴导致的草稿跟踪问题，覆盖 SSH、本地终端和互联终端（`15cc3d8`、`8e731f7`）
-- 行内任务丢失命令结果后会继续分析并给出反馈（`fab7356`）
-- AI 补全改为显示在光标后的灰字（`a165ec9`）
-- 修复块光标盖住 AI 补全开头字符的问题（`98cf2eb`）
-- 可在设置中调整 AI 补全的触发延迟（`98cf2eb`）
-- 可按主机安装或移除 bash、zsh 的 SSH shell 集成（`0a82da9`）
-- 可选择在空提示符下预测下一条命令（`91e611f`）
-- 命令执行失败后可点击修复入口，由 AI 生成修复建议（`91e611f`）
+- 本地终端支持命令、路径和 AI 补全（`28a7961`）
+- 从终端菜单复制链接后显示「已复制」提示（`c9a6fdc`）
+- 可将私钥文件拖入密钥列表或导入窗口；读取失败时显示系统给出的原因（`a52e269`）
+- 拖入的文件只由最上层的区域接收：拖到本地终端会按当前 shell 插入带引号的路径，拖到 SSH 终端会询问是否上传到当前目录（`a52e269`）
 
-## Airy 与 MCP
+## 设置与更新
 
-- Airy 和外部 MCP 客户端共用 42 项工具，涵盖 SSH 命令、后台任务、文件、传输、终端上下文、主机、会话、设置和转发（`317b5ab`、`45283f7`）
-- MCP 客户端首次连接时需在 Sshairy 内确认（`6cabf83`）
-- MCP 读取已有终端的屏幕或历史时需要对应终端的授权（`6cabf83`）
-- MCP 访问本机文件时需要用户授予对应文件或目录的访问权限（`317b5ab`）
-- 修复切换对话轮次后 Airy 执行卡丢失命令用途的问题（`8646563`）
-
-## 桌面文件与更新
-
-- Windows 支持粘贴资源管理器「复制文件地址」生成的私钥路径，已保存的带引号路径也可读取（`1248b19`）
-- 外部编辑的文件同步时会显示上传和下载进度（`3807958`）
-- 传输面板保留已完成任务的状态（`3807958`）
-- 整理桌面文件面板的路径栏布局（`3807958`）
-- 文件列表只在双击下载进行时为对应行显示进度条，平时文件名垂直居中（`6b18f0a`）
-- 更新提示默认展示最新版本的更新日志（`f9aecfa`）
+- AI、翻译和 MCP 设置修改后自动保存（`baa80de`）
+- 更新提示只列出比当前版本新的发布（`339ecee`）
+- Windows 更新改为「重启并更新」，先退出 Sshairy 再启动安装包（`339ecee`）
+- Android 启动图标改用全幅渐变背景（`133d434`、`6b0e9d5`）
 
 ## 下载
 
 - Windows x64 提供安装版和便携版 EXE
 - macOS 提供适用于 Apple 芯片和 Intel 的通用 DMG 与 ZIP
 - Linux x64 提供 AppImage 和 deb
-- Android 8.0 及以上可选择 `arm64-v8a`、`armeabi-v7a` 或 `x86_64` APK，三个包沿用预览版签名（`ad17232`、`e1a3c85`）
+- Android 8.0 及以上可选择 `arm64-v8a`、`armeabi-v7a` 或 `x86_64` APK，沿用预览版签名，可直接覆盖安装
 
-[查看自 v0.2.5 起的全部提交](https://github.com/Marchen-orz/sshairy/compare/v0.2.5...v0.3.0)
+[查看自 v0.3.0 起的全部提交](https://github.com/Marchen-orz/sshairy/compare/v0.3.0...v0.3.1)
 <!-- /zh -->
 
 <!-- en -->
-This release introduces the Android preview and Device Link between phones and computers, and updates terminal AI, MCP tools, and the desktop files panel.
+This release brings a desktop-like terminal layout to tablets, lets phones use the computer's local terminals, and fixes a Windows issue that could wipe saved credentials.
 
-## Android preview
+## Security and stability
 
-- Connect directly to SSH hosts from your phone (`6b90470`, `3f28ac0`)
-- Use a full-screen touch terminal with shortcut keys, swipe-to-move cursor controls, and pinch-to-zoom text (`3f28ac0`)
-- Draft and edit commands before sending them from your phone (`3f28ac0`)
-- Return to or switch terminals from the floating session pill (`3f28ac0`)
-- Close all sessions, sessions above, or sessions below from the mobile session list (`d151af5`)
-- Use the dual-pane SFTP browser and drag files to the other pane to copy them (`3f28ac0`, `211c92b`)
-- Preview and edit remote text files on your phone (`3f28ac0`)
-- Use Airy on your phone and bring terminal content into its prompt (`3f28ac0`, `50c948d`)
-- Enable background connection keep-alive on Android (`ab8fe2a`)
-- Enable biometric app lock (`ab8fe2a`)
-- The Me page has revised settings groups and a new interface scale setting (`c7d677a`)
-- Set a custom background on your phone (`50c948d`)
+- Fix saved passwords and keys on Windows being wiped by the next save after antivirus or sync software briefly locked the secure storage file. A failed read or decryption now reports an error and leaves the file untouched, and writes go through a temporary file. Existing credentials need no migration (`23ebbe3`)
+- Permission mode changes during a running Airy task now apply to the following steps, while approvals already on screen are handled as before (`c162e48`, `e4d0362`)
+- Fix MCP skills installed by earlier versions being treated as foreign configuration that could not be enabled or removed (`37f71c9`, `b563cf4`)
+- Fix the monitor sidebar sliding out and back in and losing its state after the Windows window was minimized and restored (`a720c77`, `4218a36`)
+
+## Tablets
+
+- Android and iOS tablets use the touch interface, with two-column lists on wide screens (`adb6a64`, `8e3eb68`)
+- The tablet terminal has a desktop-style tab bar, with the monitor, Airy/snippets, and files panels docked beside it (`8e3eb68`, `3e333b8`)
+- The files panel docks below the terminal by default, can move to the left or right, and is remembered per device; drag the dividers to resize each panel (`3e333b8`)
 
 ## Device Link
 
-- Pair a phone and computer by QR code or LAN discovery over an end-to-end encrypted link (`6b90470`, `3f28ac0`)
-- Choose the desktop LAN address used for pairing. The phone scans each local subnet during discovery (`83de3e7`)
-- Open Device Link from the desktop sidebar, which shows a connected phone using the theme accent color (`8566457`, `4ab40c8`, `61ac5a3`)
-- Sync hosts, snippets, host trust records, and AI settings to your phone (`6b90470`, `3f28ac0`)
-- The desktop asks for confirmation before syncing saved server passwords (`36f6710`)
-- Send clipboard text in both directions between your phone and computer (`6b90470`)
-- Respond to desktop Airy and MCP approval requests from your phone (`6b90470`)
-- Mirror a desktop terminal on your phone, with one mirror window per desktop session (`6b90470`, `d151af5`)
-- Let the desktop connect to an SSH host using credentials stored on the desktop (`3f28ac0`)
-- A disconnected desktop tab appears as pending. Tap it to connect on the desktop and then open the mirror (`752f01c`)
-- Long-press a proxied host or session to open it on the computer and attach as a mirror (`752f01c`)
-- Transfer shared files in both directions between phone and desktop (`211c92b`)
-- Open the files for a proxied or mirrored terminal from that session on the phone (`5b023a5`)
-- View read-only monitoring for proxied and mirrored terminals on the phone (`5b023a5`)
-- Fixed path completion in proxied and mirrored terminals. Relative paths follow the SSH shell's current directory after changing directories, and `~/` expands to the home directory (`e4f2b1f`, `11807b2`)
+- Open the computer's local terminals from the phone, or mirror local terminal tabs already open on the computer (`b939678`)
+- The phone connects to the most recently used computer on launch or resume, and shows a notice while reconnecting (`b939678`)
+- Link terminals coalesce bursts of output to reduce stutter without adding keystroke echo latency (`b939678`)
+- Download Android updates through a paired computer, verified by SHA-256, package name, version code, and signer before installing; the computer offers to push an update when the phone is out of date (`edf9d12`)
+- Redesign the desktop Link panel with a service status card, a pairing QR code with an expiry countdown, and one card per phone whose permissions toggle with a tap (`cb423fc`, `efd8cfa`, `ca566d1`)
+- Redesign the mobile Link page with scanning or the connected computer in a top card, shortcut tiles for common actions, and lists marked by icons and status tags (`cb423fc`, `efd8cfa`, `a536b34`)
+- Link settings save as you change them (`c9a6fdc`)
 
-## Terminal AI
+## Terminal and files
 
-- Inline AI runs step-by-step tasks in the current terminal and shows each command and result (`143e731`)
-- Press Enter to run each inline AI step by default, or enable automatic execution for the current task (`143e731`)
-- Set the inline task step limit and style of the `✦` status text (`e02323a`)
-- Fixed automatic execution getting stuck on wrapped commands or slow echo (`4ec702b`)
-- Fixed draft tracking across line wraps and multiline paste in SSH, local, and Device Link terminals (`15cc3d8`, `8e731f7`)
-- Inline tasks continue analyzing and give feedback when a command result is lost (`fab7356`)
-- AI completion appears as ghost text after the cursor (`a165ec9`)
-- Fixed the block cursor hiding the first character of AI completion (`98cf2eb`)
-- Adjust the AI completion delay in settings (`98cf2eb`)
-- Install or remove bash and zsh SSH shell integration per host (`0a82da9`)
-- Opt in to next-command prediction at an empty prompt (`91e611f`)
-- Request an AI fix after a command fails (`91e611f`)
+- Local terminals get command, path, and AI completion (`28a7961`)
+- Copying a link from the terminal menu shows a "Copied" notice (`c9a6fdc`)
+- Drop a private key file onto the keys list or the import dialog; a failed read shows the system's reason (`a52e269`)
+- Only the topmost zone takes a dropped file: a local terminal inserts the path quoted for its shell, and an SSH terminal offers to upload to its current directory (`a52e269`)
 
-## Airy and MCP
+## Settings and updates
 
-- Airy and external MCP clients share 42 tools for SSH commands, background jobs, files, transfers, terminal context, hosts, sessions, settings, and forwarding (`317b5ab`, `45283f7`)
-- Approve each MCP client's first connection in Sshairy (`6cabf83`)
-- MCP access to a terminal's screen or history requires permission for that terminal (`6cabf83`)
-- Local file access from MCP requires a user grant for the file or folder (`317b5ab`)
-- Fixed Airy execution cards losing the command's purpose across conversation turns (`8646563`)
-
-## Desktop files and updates
-
-- Windows accepts private key paths from Explorer's Copy as path, including quoted paths in existing configurations (`1248b19`)
-- Upload and download progress is shown when syncing externally edited files (`3807958`)
-- The transfers panel retains the status of completed transfers (`3807958`)
-- Updated the path bar layout in the desktop files panel (`3807958`)
-- File rows show progress during a double-click download, with filenames vertically centered in normal use (`6b18f0a`)
-- The update prompt shows the latest release notes by default (`f9aecfa`)
+- AI, translation, and MCP settings save as you change them (`baa80de`)
+- The update prompt lists only releases newer than the installed version (`339ecee`)
+- Windows updates use "Restart and update", which quits Sshairy before launching the installer (`339ecee`)
+- The Android launcher icon uses a full-bleed gradient background (`133d434`, `6b0e9d5`)
 
 ## Downloads
 
 - Windows x64 has an installer and a portable EXE
 - macOS has a universal DMG and ZIP for Apple silicon and Intel
 - Linux x64 has an AppImage and a deb
-- Android 8.0 and later has separate `arm64-v8a`, `armeabi-v7a`, and `x86_64` APKs signed with the existing preview certificate (`ad17232`, `e1a3c85`)
+- Android 8.0 and later has separate `arm64-v8a`, `armeabi-v7a`, and `x86_64` APKs signed with the existing preview certificate, so they install over earlier versions
 
-[View all commits since v0.2.5](https://github.com/Marchen-orz/sshairy/compare/v0.2.5...v0.3.0)
+[View all commits since v0.3.0](https://github.com/Marchen-orz/sshairy/compare/v0.3.0...v0.3.1)
 <!-- /en -->
