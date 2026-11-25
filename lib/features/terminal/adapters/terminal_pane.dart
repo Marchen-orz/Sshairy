@@ -516,6 +516,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     final settings = ref.watch(settingsProvider);
     final copyOnSelect = settings.get(SettingKeys.copyOnSelect);
     final palette = TerminalPalette.of(Theme.of(context));
+    final contrast = _terminalContrast(palette);
     final imageOpacity =
         ref.watch(backgroundImagesProvider)[BackgroundSlot.terminal] ??
         settings.get<double>(SettingKeys.terminalBackgroundOpacity);
@@ -563,6 +564,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
                           ? const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm)
                           : const EdgeInsets.all(Space.sm),
                       theme: _terminalTheme(palette),
+                      paintExtension: contrast,
                       // The backdrop already carries the image's transparency; a second veil would tint it twice.
                       backgroundOpacity: hasImage ? 0 : 1,
                       cursorType: switch (settings.get(SettingKeys.cursorShape)) {

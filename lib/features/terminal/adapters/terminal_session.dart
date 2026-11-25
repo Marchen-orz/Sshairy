@@ -1262,3 +1262,53 @@ TerminalTheme _terminalTheme(TerminalPalette p) {
     searchHitForeground: p.searchHitForeground,
   );
 }
+
+TerminalPaintExtension _terminalContrast(TerminalPalette palette) {
+  final corrections = <(int, int), Color?>{};
+  final paint = Paint()..isAntiAlias = false;
+  return TerminalPaintExtension(
+    beforeCellForegrounds: (frame) {
+      final terminal = frame.terminal;
+      if (terminal.reverseDisplayMode ||
+          terminal.indexedColorOverrides.isNotEmpty ||
+          terminal.specialColorOverrides.isNotEmpty ||
+          terminal.foregroundColorOverride != null) {
+        return;
+      }
+      // Keep the original glyphs, selection, and cursor painting above the adjusted background.
+      for (var row = frame.firstRow; row < frame.endRow; row++) {
+        final line = terminal.buffer.lines[row];
+        for (var column = 0; column < line.length; column++) {
+          final background = _ansiIndex(line.getBackground(column));
+          if (background == null) continue;
+          final span = line.getWidth(column);
+          if (span == 0) continue;
+          final attributes = line.getAttributes(column);
+          if (attributes & (CellAttr.inverse | CellAttr.faint | CellAttr.invisible) != 0) continue;
+          final rawForeground = line.getForeground(column);
+          final foreground = rawForeground == CellColor.normal ? 16 : _ansiIndex(rawForeground);
+          if (foreground == null) continue;
+          final index = foreground < 8 && attributes & CellAttr.bold != 0 ? foreground + 8 : foreground;
+          final color = corrections.putIfAbsent((index, background), () {
+            final ink = index == 16 ? palette.foreground : palette.ansi[index];
+            final fill = palette.ansi[background];
+            return colorContrast(ink, fill) >= 4.5 ? null : readableColor(fill, ink, 4.55);
+          });
+          if (color != null) {
+            frame.canvas.drawRect(
+              frame.cellOffset(column, row) & Size(frame.cellSize.width * span, frame.cellSize.height),
+              paint..color = color,
+            );
+          }
+          if (span == 2) column++;
+        }
+      }
+    },
+  );
+}
+
+int? _ansiIndex(int color) {
+  final type = color & CellColor.typeMask;
+  final index = color & CellColor.valueMask;
+  return (type == CellColor.named || type == CellColor.palette) && index < 16 ? index : null;
+}

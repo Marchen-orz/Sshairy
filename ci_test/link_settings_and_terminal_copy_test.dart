@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show ImageByteFormat;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,21 +73,24 @@ class _FakeShellChannel implements ShellChannel {
   }
 }
 
-Widget _app({required ProviderContainer container, required Widget child}) => UncontrolledProviderScope(
-  container: container,
-  child: MaterialApp(
-    locale: const Locale('en'),
-    localizationsDelegates: const [
-      AppLocalizations.delegate,
-      GlobalMaterialLocalizations.delegate,
-      GlobalWidgetsLocalizations.delegate,
-      GlobalCupertinoLocalizations.delegate,
-    ],
-    supportedLocales: AppLocalizations.supportedLocales,
-    theme: buildTheme(Brightness.light, Accent.blue, 14, null, null).copyWith(splashFactory: NoSplash.splashFactory),
-    home: Scaffold(body: child),
-  ),
-);
+Widget _app({required ProviderContainer container, required Widget child, ThemeData? theme}) =>
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: (theme ?? buildTheme(Brightness.light, Accent.blue, 14, null, null)).copyWith(
+          splashFactory: NoSplash.splashFactory,
+        ),
+        home: Scaffold(body: child),
+      ),
+    );
 
 Future<void> _waitUntil(WidgetTester tester, bool Function() check) async {
   for (var i = 0; i < 40; i++) {
@@ -156,6 +161,67 @@ void main() {
     final portField = tester.widget<TextField>(find.byKey(const ValueKey('link-port-field')));
     expect(portField.controller?.text, '49100');
     expect(container.read(settingsProvider).get(SettingKeys.linkPort), 49100);
+  });
+
+  testWidgets('TerminalPane renders GNU ls blue-on-green directory names at readable contrast', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('sshairy-terminal-color-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final channel = _FakeShellChannel();
+    final session = TerminalSession.remote(
+      const SessionId('contrast'),
+      const LinkTerminalTarget(
+        peerId: 'd1',
+        peerName: 'Desk',
+        remoteId: 'r1',
+        title: 'Demo',
+        targetLabel: 'Demo',
+        kind: LinkTerminalKind.mirror,
+      ),
+      (_, _) async => channel,
+    );
+    addTearDown(session.dispose);
+    final container = ProviderContainer(overrides: [dataDirProvider.overrideWithValue(dir.path)]);
+    addTearDown(container.dispose);
+    const boundary = ValueKey('terminal-colors');
+    await tester.pumpWidget(
+      _app(
+        container: container,
+        theme: buildTheme(Brightness.dark, Accent.deepSea, 14, null, null),
+        child: SizedBox(
+          width: 360,
+          height: 140,
+          child: RepaintBoundary(key: boundary, child: TerminalPane(session, active: true)),
+        ),
+      ),
+    );
+    await tester.pump();
+    channel.emit('\x1b[34;42m  █ writable directory  \x1b[0m\r\n');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    final render = tester.renderObject<RenderRepaintBoundary>(find.byKey(boundary));
+    final pixels = (await tester.runAsync(() async {
+      final image = await render.toImage();
+      try {
+        return await image.toByteData(format: ImageByteFormat.rawRgba);
+      } finally {
+        image.dispose();
+      }
+    }))!;
+    final palette = Accent.deepSea.palette(Brightness.dark);
+    final foreground = palette.ansi[4];
+    final originalBackground = palette.ansi[2];
+    final colors = <int, int>{};
+    for (var offset = 0; offset < pixels.lengthInBytes; offset += 4) {
+      final rgb = pixels.getUint32(offset) >> 8 | 0xFF000000;
+      colors.update(rgb, (count) => count + 1, ifAbsent: () => 1);
+    }
+    expect(colors, contains(foreground.toARGB32()));
+    expect(colors, isNot(contains(originalBackground.toARGB32())));
+    colors.remove(palette.terminalBackground.toARGB32());
+    colors.remove(foreground.toARGB32());
+    final fill = colors.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    expect(colorContrast(foreground, Color(fill)), greaterThanOrEqualTo(4.5));
   });
 
   testWidgets('TerminalPane shows a lightweight copied notice after copying selected text', (tester) async {
