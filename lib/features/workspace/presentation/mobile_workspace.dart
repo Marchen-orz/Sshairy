@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/brand.dart';
+import '../../../design/controls.dart';
 import '../../../design/dialog.dart';
 import '../../../design/select.dart';
 import '../../../design/theme.dart';
@@ -129,7 +130,9 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
     _terminalRouteOpen = true;
     unawaited(
       Navigator.of(context)
-          .push<void>(MaterialPageRoute<void>(builder: (_) => const MobileTerminalScreen()))
+          .push<void>(
+            appPageRoute<void>(context, slideFrom: const Offset(0, 0.04), builder: (_) => const MobileTerminalScreen()),
+          )
           .whenComplete(() => _terminalRouteOpen = false),
     );
   }
@@ -141,7 +144,8 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
 
   void _openFiles() => unawaited(
     Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
+      appPageRoute<void>(
+        context,
         builder: (routeContext) => MobileFilesPage(
           onAskAiry: (prompt) {
             Navigator.of(routeContext).pop();
@@ -186,49 +190,91 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
     final hasAppBg = ref.watch(settingsProvider.select((s) => s.get(imageSetting(BackgroundSlot.app)) != null));
 
     final useRail = MediaQuery.sizeOf(context).width >= MobileSize.railBreakpoint;
+    final pageBackdrop = BackgroundImageView(slot: BackgroundSlot.app, baseColor: palette.background);
+    final pages = <(bool, Widget)>[
+      (
+        _tab == _MobileNavTab.hosts,
+        PageVisibility(
+          key: const ValueKey('mobile-page-hosts'),
+          visible: _tab == _MobileNavTab.hosts,
+          backdrop: pageBackdrop,
+          child: _MobileHostsTab(
+            active: _tab == _MobileNavTab.hosts,
+            onOpenHost: _openHost,
+            onOpenedTerminal: _openTerminalScreen,
+            onGoLink: () => setState(() => _tab = _MobileNavTab.link),
+            onAskAiry: _askAiry,
+          ),
+        ),
+      ),
+      if (_airyBuilt)
+        (
+          _tab == _MobileNavTab.airy,
+          PageVisibility(
+            key: const ValueKey('mobile-page-airy'),
+            visible: _tab == _MobileNavTab.airy,
+            appear: true,
+            backdrop: pageBackdrop,
+            child: _MobileAiryTab(onGoLink: () => setState(() => _tab = _MobileNavTab.link)),
+          ),
+        ),
+      (
+        _tab == _MobileNavTab.link,
+        PageVisibility(
+          key: const ValueKey('mobile-page-link'),
+          visible: _tab == _MobileNavTab.link,
+          backdrop: pageBackdrop,
+          child: Column(
+            children: [
+              _MobileTabHeader(title: l.linkTitle),
+              Expanded(
+                child: MobileLinkPage(
+                  active: _tab == _MobileNavTab.link,
+                  onOpenedTerminal: _openTerminalScreen,
+                  onOpenFiles: _openFiles,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      (
+        _tab == _MobileNavTab.me,
+        PageVisibility(
+          key: const ValueKey('mobile-page-me'),
+          visible: _tab == _MobileNavTab.me,
+          backdrop: pageBackdrop,
+          child: const _MobileMeTab(),
+        ),
+      ),
+    ];
+
     final contentColumn = Column(
       children: [
         const MobileApprovalBanner(),
         Expanded(
-          child: IndexedStack(
-            index: _tab.index,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              _MobileHostsTab(
-                active: _tab == _MobileNavTab.hosts,
-                onOpenHost: _openHost,
-                onOpenedTerminal: _openTerminalScreen,
-                onGoLink: () => setState(() => _tab = _MobileNavTab.link),
-                onAskAiry: _askAiry,
-              ),
-              if (_airyBuilt)
-                _MobileAiryTab(onGoLink: () => setState(() => _tab = _MobileNavTab.link))
-              else
-                const SizedBox.shrink(),
-              Column(
-                children: [
-                  _MobileTabHeader(title: l.linkTitle),
-                  Expanded(
-                    child: MobileLinkPage(
-                      active: _tab == _MobileNavTab.link,
-                      onOpenedTerminal: _openTerminalScreen,
-                      onOpenFiles: _openFiles,
-                    ),
-                  ),
-                ],
-              ),
-              const _MobileMeTab(),
+              for (final (shown, page) in pages)
+                if (!shown) page,
+              for (final (shown, page) in pages)
+                if (shown) page,
             ],
           ),
         ),
-        if (activeTab != null && activeSession != null)
-          _ActiveSessionCapsule(
-            tab: activeTab,
-            session: activeSession,
-            totalCount: state.tabs.length,
-            onTap: _openTerminalScreen,
-            onCycle: _workspace.cycle,
-            onClose: () => _workspace.closeTab(activeTab.id),
-          ),
+        _AnimatedSessionCapsule(
+          capsule: activeTab != null && activeSession != null
+              ? _ActiveSessionCapsule(
+                  tab: activeTab,
+                  session: activeSession,
+                  totalCount: state.tabs.length,
+                  onTap: _openTerminalScreen,
+                  onCycle: _workspace.cycle,
+                  onClose: () => _workspace.closeTab(activeTab.id),
+                )
+              : null,
+        ),
       ],
     );
 
@@ -329,6 +375,7 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
                     return NavigationBar(
                       key: const ValueKey('mobile-bottom-nav'),
                       height: 64,
+                      animationDuration: Motion.of(context, Motion.normal),
                       backgroundColor: navSurface,
                       indicatorColor: palette.primary.withValues(alpha: .16),
                       selectedIndex: _tab.index,
@@ -380,34 +427,44 @@ class _MobileWorkspaceState extends ConsumerState<MobileWorkspace> with WidgetsB
       ],
     );
 
-    if (!_locked) return shell;
     return Stack(
       children: [
         shell,
         Positioned.fill(
-          child: Material(
-            color: palette.background,
-            child: SafeArea(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(Space.xl),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const BrandIllustration(pose: BrandPose.security, size: 132),
-                      const SizedBox(height: Space.lg),
-                      Text(l.mobileUnlockPrompt, style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: Space.lg),
-                      FilledButton.icon(
-                        style: FilledButton.styleFrom(minimumSize: const Size(180, 48)),
-                        onPressed: _authenticate,
-                        icon: const Icon(Icons.fingerprint_rounded),
-                        label: Text(l.mobileUnlockAction),
+          child: IgnorePointer(
+            ignoring: !_locked,
+            child: AnimatedSwitcher(
+              duration: Motion.overlay(context, Motion.normal),
+              switchInCurve: Motion.enter,
+              switchOutCurve: Motion.exit,
+              child: !_locked
+                  ? const SizedBox.shrink()
+                  : Material(
+                      key: const ValueKey('mobile-lock-overlay'),
+                      color: palette.background,
+                      child: SafeArea(
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(Space.xl),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const BrandIllustration(pose: BrandPose.security, size: 132),
+                                const SizedBox(height: Space.lg),
+                                Text(l.mobileUnlockPrompt, style: Theme.of(context).textTheme.titleMedium),
+                                const SizedBox(height: Space.lg),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(minimumSize: const Size(180, 48)),
+                                  onPressed: _authenticate,
+                                  icon: const Icon(Icons.fingerprint_rounded),
+                                  label: Text(l.mobileUnlockAction),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
+                    ),
             ),
           ),
         ),
@@ -448,6 +505,40 @@ class _MobileTabHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Smoothly reveals the active-session capsule on open and collapses it on close without dropping its last content
+/// mid-transition.
+class _AnimatedSessionCapsule extends StatefulWidget {
+  const _AnimatedSessionCapsule({required this.capsule});
+
+  final Widget? capsule;
+
+  @override
+  State<_AnimatedSessionCapsule> createState() => _AnimatedSessionCapsuleState();
+}
+
+class _AnimatedSessionCapsuleState extends State<_AnimatedSessionCapsule> {
+  Widget? _last;
+
+  @override
+  void initState() {
+    super.initState();
+    _last = widget.capsule;
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedSessionCapsule old) {
+    super.didUpdateWidget(old);
+    if (widget.capsule != null) _last = widget.capsule;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final child = widget.capsule ?? _last;
+    if (child == null) return const SizedBox.shrink();
+    return Reveal(open: widget.capsule != null, appear: true, child: child);
   }
 }
 
@@ -513,10 +604,18 @@ class _ActiveSessionCapsule extends StatelessWidget {
                       ListenableBuilder(listenable: session, builder: (_, _) => SessionStatusIcon(session.status)),
                       const SizedBox(width: Space.sm),
                       Expanded(
-                        child: Text(
-                          session.title,
-                          style: Theme.of(context).textTheme.titleSmall,
-                          overflow: TextOverflow.ellipsis,
+                        child: AnimatedSwitcher(
+                          duration: Motion.of(context, Motion.quick),
+                          switchInCurve: Motion.enter,
+                          switchOutCurve: Motion.exit,
+                          layoutBuilder: (current, previous) =>
+                              Stack(alignment: Alignment.centerLeft, children: [...previous, ?current]),
+                          child: Text(
+                            session.title,
+                            key: ValueKey(tab.id),
+                            style: Theme.of(context).textTheme.titleSmall,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                       Container(
@@ -581,7 +680,8 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
   void _openHostEditor([Host? host]) {
     unawaited(
       Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
+        appPageRoute<void>(
+          context,
           builder: (_) => Scaffold(
             body: SafeArea(
               child: Align(
@@ -634,10 +734,8 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
     final link = ref.read(linkClientControllerProvider);
     final scheme = Theme.of(context).colorScheme;
     unawaited(
-      showModalBottomSheet<void>(
+      showAppBottomSheet<void>(
         context: context,
-        useSafeArea: true,
-        showDragHandle: true,
         builder: (sheetContext) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -657,7 +755,8 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                   Navigator.pop(sheetContext);
                   unawaited(
                     Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
+                      appPageRoute<void>(
+                        context,
                         builder: (routeContext) => MobileFilesPage(
                           host: host,
                           onAskAiry: (prompt) {
@@ -676,11 +775,9 @@ class _MobileHostsTabState extends ConsumerState<_MobileHostsTab> {
                 onTap: () {
                   Navigator.pop(sheetContext);
                   unawaited(
-                    showModalBottomSheet<void>(
+                    showAppBottomSheet<void>(
                       context: context,
                       isScrollControlled: true,
-                      useSafeArea: true,
-                      showDragHandle: true,
                       builder: (_) =>
                           FractionallySizedBox(heightFactor: 0.72, child: MonitorPanel(host: host, active: true)),
                     ),
@@ -1221,7 +1318,8 @@ class _MobileMeTab extends ConsumerWidget {
   }) {
     unawaited(
       Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
+        appPageRoute<void>(
+          context,
           builder: (_) => Scaffold(
             appBar: AppBar(title: Text(title)),
             body: SafeArea(
@@ -1334,7 +1432,9 @@ class _MobileMeTab extends ConsumerWidget {
                                   child: SizedBox(
                                     height: MobileSize.touchTarget,
                                     child: Center(
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: Motion.of(context, Motion.quick),
+                                        curve: Motion.move,
                                         width: Space.xxl,
                                         height: Space.xxl,
                                         decoration: BoxDecoration(
@@ -1370,6 +1470,33 @@ class _MobileMeTab extends ConsumerWidget {
           choice(l.uiScale, settings.uiScale, [
             for (final scale in scales) AppOption(scale, '${(scale * 100).round()}%'),
           ], (v) => unawaited(writer.set(SettingKeys.uiScale, v))),
+          const SizedBox(height: Space.xs),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: Space.sm,
+            runSpacing: Space.xs,
+            children: [
+              Text(l.motion),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Semantics(
+                  label: l.motion,
+                  child: AppSegmented<MotionLevel>(
+                    key: const ValueKey('mobile-motion-setting'),
+                    segments: {
+                      MotionLevel.off: l.off,
+                      MotionLevel.light: l.motionLight,
+                      MotionLevel.full: l.motionFull,
+                    },
+                    selected: settings.motion,
+                    onChanged: (v) => unawaited(writer.set(SettingKeys.motion, v)),
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: Space.xs),
           choice<String?>(l.language, settings.locale, [
             AppOption(null, l.themeSystem),

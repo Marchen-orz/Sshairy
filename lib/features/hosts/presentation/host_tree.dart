@@ -42,32 +42,43 @@ class _HostTreeState extends ConsumerState<HostTree> {
       for (final child in groups.where(
         (g) => (g.contains('/') ? g.substring(0, g.lastIndexOf('/')) : '') == group,
       )) ...[
-        Padding(
-          padding: EdgeInsets.only(left: Space.sm + depth.clamp(0, 8) * Space.md),
-          child: SizedBox(
-            height: WorkspaceSize.treeRow,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () =>
-                    setState(() => _collapsed.contains(child) ? _collapsed.remove(child) : _collapsed.add(child)),
-                child: Row(
-                  children: [
-                    Icon(
-                      _collapsed.contains(child) && _query.isEmpty ? Icons.chevron_right : Icons.expand_more,
-                      size: 16,
+        Builder(
+          builder: (context) {
+            final expanded = !_collapsed.contains(child) || _query.isNotEmpty;
+            return Padding(
+              padding: EdgeInsets.only(left: Space.sm + depth.clamp(0, 8) * Space.md),
+              child: SizedBox(
+                height: WorkspaceSize.treeRow,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () =>
+                        setState(() => _collapsed.contains(child) ? _collapsed.remove(child) : _collapsed.add(child)),
+                    child: Row(
+                      children: [
+                        AnimatedRotation(
+                          turns: expanded ? .25 : 0,
+                          duration: Motion.of(context, Motion.normal),
+                          curve: Motion.move,
+                          child: const Icon(Icons.chevron_right, size: 16),
+                        ),
+                        const SizedBox(width: Space.xs),
+                        Icon(Icons.folder_outlined, size: 16, color: scheme.onSurfaceVariant),
+                        const SizedBox(width: Space.sm),
+                        Expanded(child: Text(child.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      ],
                     ),
-                    const SizedBox(width: Space.xs),
-                    Icon(Icons.folder_outlined, size: 16, color: scheme.onSurfaceVariant),
-                    const SizedBox(width: Space.sm),
-                    Expanded(child: Text(child.split('/').last, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
-        if (!_collapsed.contains(child) || _query.isNotEmpty) ...rows(child, depth + 1),
+        Reveal(
+          key: ValueKey('host-tree-group-$child'),
+          open: !_collapsed.contains(child) || _query.isNotEmpty,
+          child: Column(mainAxisSize: MainAxisSize.min, children: rows(child, depth + 1)),
+        ),
       ],
       for (final host in hosts.where((h) => h.group == group))
         Padding(

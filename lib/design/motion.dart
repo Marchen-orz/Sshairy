@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
@@ -548,10 +550,11 @@ class PageVisibility extends StatefulWidget {
     required this.visible,
     required this.child,
     this.animate = true,
+    this.appear = false,
     this.backdrop = const SizedBox.shrink(),
   });
 
-  final bool visible, animate;
+  final bool visible, animate, appear;
   final Widget child, backdrop;
 
   @override
@@ -559,15 +562,34 @@ class PageVisibility extends StatefulWidget {
 }
 
 class _PageVisibilityState extends State<PageVisibility> with SingleTickerProviderStateMixin {
-  late final _controller = AnimationController(vsync: this, duration: Motion.page, value: widget.visible ? 1 : 0)
-    ..addStatusListener(_status);
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: Motion.page,
+    value: widget.visible && !widget.appear ? 1 : 0,
+  )..addStatusListener(_status);
   // Complementary curves preserve the same blend when two partly transitioned pages swap their paint order.
   late final _fade = CurvedAnimation(parent: _controller, curve: Motion.enter, reverseCurve: Motion.enter.flipped);
   final _tracker = MotionTracker();
+  var _started = false;
 
   void _status(AnimationStatus status) {
     _tracker.status(status);
     if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (widget.visible && widget.appear) {
+      if (!widget.animate || !Motion.layout(context)) {
+        _controller.value = 1;
+      } else {
+        _controller.duration = Motion.of(context, Motion.page);
+        _controller.forward();
+      }
+    }
   }
 
   @override
@@ -577,9 +599,11 @@ class _PageVisibilityState extends State<PageVisibility> with SingleTickerProvid
     if (!widget.animate || !Motion.layout(context)) {
       _controller.value = widget.visible ? 1 : 0;
     } else if (widget.visible) {
+      _controller.duration = Motion.of(context, Motion.page);
       _controller.forward();
     } else {
       // The page coming in fades in over this one, which leaves only once that is done.
+      _controller.duration = Motion.of(context, Motion.page);
       _controller.reverse();
     }
   }
@@ -723,4 +747,429 @@ class PanelSlide extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shows [sliver] while [open], growing its scroll extent and fading it in; closing reverses that while keeping
+/// sliver virtualization intact. The sliver is only built while open or closing.
+class SliverReveal extends StatefulWidget {
+  const SliverReveal({super.key, required this.open, required this.sliver, this.duration = Motion.normal});
+
+  final bool open;
+  final Widget sliver;
+  final Duration duration;
+
+  @override
+  State<SliverReveal> createState() => _SliverRevealState();
+}
+
+class _SliverRevealState extends State<SliverReveal> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this, duration: widget.duration, value: widget.open ? 1 : 0)
+    ..addStatusListener(_status);
+  late final _size = CurvedAnimation(parent: _controller, curve: Motion.move);
+  late final _fade = Motion.curve(_controller);
+  final _tracker = MotionTracker();
+
+  void _status(AnimationStatus status) {
+    _tracker.status(status);
+    if (status.isDismissed && mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(SliverReveal old) {
+    super.didUpdateWidget(old);
+    if (widget.open != old.open) {
+      _controller.duration = Motion.of(context, widget.duration);
+      widget.open ? _controller.forward() : _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _tracker.dispose();
+    _size.dispose();
+    _fade.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.open && _controller.isDismissed) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.sliver,
+      builder: (context, child) => _SliverRevealBox(factor: _size.value, opacity: _fade.value, child: child),
+    );
+  }
+}
+
+class _SliverRevealBox extends SingleChildRenderObjectWidget {
+  const _SliverRevealBox({required this.factor, required this.opacity, super.child});
+
+  final double factor;
+  final double opacity;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderSliverReveal(factor: factor, opacity: opacity);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderSliverReveal renderObject) {
+    renderObject
+      ..factor = factor
+      ..opacity = opacity;
+  }
+}
+
+class _RenderSliverReveal extends RenderProxySliver {
+  _RenderSliverReveal({required double factor, required double opacity})
+    : _factor = factor.clamp(0.0, 1.0),
+      _opacity = opacity.clamp(0.0, 1.0);
+
+  double _factor;
+  double _opacity;
+  final _clipLayer = LayerHandle<ClipRectLayer>();
+  final _opacityLayer = LayerHandle<OpacityLayer>();
+
+  set factor(double value) {
+    final clamped = value.clamp(0.0, 1.0);
+    if (_factor == clamped) return;
+    _factor = clamped;
+    markNeedsLayout();
+  }
+
+  set opacity(double value) {
+    final clamped = value.clamp(0.0, 1.0);
+    if (_opacity == clamped) return;
+    final wasCompositing = _opacity > 0 && _opacity < 1;
+    _opacity = clamped;
+    final isCompositing = _opacity > 0 && _opacity < 1;
+    if (wasCompositing != isCompositing) markNeedsCompositingBitsUpdate();
+    markNeedsPaint();
+  }
+
+  @override
+  bool get alwaysNeedsCompositing => child != null && _opacity > 0 && _opacity < 1;
+
+  @override
+  void performLayout() {
+    assert(child != null);
+    child!.layout(constraints, parentUsesSize: true);
+    final g = child!.geometry!;
+    if (_factor <= 0) {
+      geometry = SliverGeometry.zero;
+      return;
+    }
+    if (_factor >= 1) {
+      geometry = g;
+      return;
+    }
+    final scrollExtent = g.scrollExtent * _factor;
+    final maxPaintExtent = g.maxPaintExtent * _factor;
+    final rawPaint = calculatePaintOffset(constraints, from: 0, to: scrollExtent);
+    final paintExtent = rawPaint.clamp(0.0, math.min(g.paintExtent, maxPaintExtent)).toDouble();
+    final layoutExtent = paintExtent.clamp(0.0, g.layoutExtent).toDouble();
+    final cacheExtent = calculateCacheOffset(
+      constraints,
+      from: 0,
+      to: scrollExtent,
+    ).clamp(0.0, g.cacheExtent).toDouble();
+    geometry = SliverGeometry(
+      scrollExtent: scrollExtent,
+      paintExtent: paintExtent,
+      layoutExtent: layoutExtent,
+      maxPaintExtent: math.max(maxPaintExtent, paintExtent),
+      cacheExtent: cacheExtent,
+      hitTestExtent: 0,
+      hasVisualOverflow: paintExtent < g.paintExtent || g.hasVisualOverflow,
+    );
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    final g = geometry;
+    if (child == null || g == null || !g.visible || _opacity <= 0) {
+      _clipLayer.layer = null;
+      _opacityLayer.layer = null;
+      return;
+    }
+    final alpha = Color.getAlphaFromOpacity(_opacity);
+    if (alpha == 0) {
+      _clipLayer.layer = null;
+      _opacityLayer.layer = null;
+      return;
+    }
+    void paintInner(PaintingContext context, Offset offset) {
+      if (alpha == 255) {
+        _opacityLayer.layer = null;
+        context.paintChild(child, offset);
+      } else {
+        _opacityLayer.layer = context.pushOpacity(
+          offset,
+          alpha,
+          (context, offset) => context.paintChild(child, offset),
+          oldLayer: _opacityLayer.layer,
+        );
+      }
+    }
+
+    if (_factor >= 1) {
+      _clipLayer.layer = null;
+      paintInner(context, offset);
+      return;
+    }
+    final clipRect = switch (constraints.axis) {
+      Axis.vertical => Rect.fromLTWH(0, 0, constraints.crossAxisExtent, g.paintExtent),
+      Axis.horizontal => Rect.fromLTWH(0, 0, g.paintExtent, constraints.crossAxisExtent),
+    };
+    _clipLayer.layer = context.pushClipRect(needsCompositing, offset, clipRect, paintInner, oldLayer: _clipLayer.layer);
+  }
+
+  @override
+  void dispose() {
+    _clipLayer.layer = null;
+    _opacityLayer.layer = null;
+    super.dispose();
+  }
+}
+
+/// Fade + subtle shift route transition (UI §2, MOBILE §3.1) that never scales page text, respects all three
+/// [MotionLevel] tiers, and tracks [motionActivity] so terminals behind or inside the route stay smooth.
+Route<T> appPageRoute<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+  Offset slideFrom = const Offset(0.06, 0),
+  RouteSettings? settings,
+  bool maintainState = true,
+  bool fullscreenDialog = false,
+}) => AppPageRoute<T>(
+  builder: builder,
+  level: Motion.levelOf(context),
+  slideFrom: slideFrom,
+  settings: settings,
+  maintainState: maintainState,
+  fullscreenDialog: fullscreenDialog,
+);
+
+class AppPageRoute<T> extends MaterialPageRoute<T> {
+  AppPageRoute({
+    required super.builder,
+    required this.level,
+    this.slideFrom = const Offset(0.06, 0),
+    super.settings,
+    super.maintainState,
+    super.fullscreenDialog,
+  });
+
+  final MotionLevel level;
+  final Offset slideFrom;
+
+  @override
+  Duration get transitionDuration => switch (level) {
+    MotionLevel.off => Duration.zero,
+    MotionLevel.light => Motion.page,
+    MotionLevel.full => Motion.panel,
+  };
+
+  @override
+  Duration get reverseTransitionDuration => switch (level) {
+    MotionLevel.off => Duration.zero,
+    MotionLevel.light => Motion.normal,
+    MotionLevel.full => Motion.page,
+  };
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => _RouteTransition(
+    animation: animation,
+    secondaryAnimation: secondaryAnimation,
+    slideFrom: slideFrom,
+    child: child,
+  );
+}
+
+/// Theme-level fallback matching [AppPageRoute] so any standard [MaterialPageRoute] also avoids scaling text.
+class AppPageTransitionsBuilder extends PageTransitionsBuilder {
+  const AppPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => _RouteTransition(
+    animation: animation,
+    secondaryAnimation: secondaryAnimation,
+    slideFrom: const Offset(0.06, 0),
+    child: child,
+  );
+}
+
+class _RouteTransition extends StatefulWidget {
+  const _RouteTransition({
+    required this.animation,
+    required this.secondaryAnimation,
+    required this.slideFrom,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final Animation<double> secondaryAnimation;
+  final Offset slideFrom;
+  final Widget child;
+
+  @override
+  State<_RouteTransition> createState() => _RouteTransitionState();
+}
+
+class _RouteTransitionState extends State<_RouteTransition> {
+  final _tracker = MotionTracker();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.animation.addStatusListener(_statusChanged);
+    widget.secondaryAnimation.addStatusListener(_statusChanged);
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_RouteTransition old) {
+    super.didUpdateWidget(old);
+    if (widget.animation != old.animation) {
+      old.animation.removeStatusListener(_statusChanged);
+      widget.animation.addStatusListener(_statusChanged);
+    }
+    if (widget.secondaryAnimation != old.secondaryAnimation) {
+      old.secondaryAnimation.removeStatusListener(_statusChanged);
+      widget.secondaryAnimation.addStatusListener(_statusChanged);
+    }
+    _sync();
+  }
+
+  void _statusChanged(AnimationStatus _) => _sync();
+
+  void _sync() => _tracker._set(widget.animation.status.isAnimating || widget.secondaryAnimation.status.isAnimating);
+
+  @override
+  void dispose() {
+    widget.animation.removeStatusListener(_statusChanged);
+    widget.secondaryAnimation.removeStatusListener(_statusChanged);
+    _tracker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final level = Motion.levelOf(context);
+    if (level == MotionLevel.off) return widget.child;
+    return AnimatedBuilder(
+      animation: Listenable.merge([widget.animation, widget.secondaryAnimation]),
+      child: widget.child,
+      builder: (context, child) {
+        if (widget.animation.isCompleted && widget.secondaryAnimation.isDismissed) return child!;
+        final enter = Motion.eased(widget.animation);
+        Widget out = child!;
+        if (level == MotionLevel.full) {
+          final leave = Motion.eased(widget.secondaryAnimation);
+          final incoming = widget.slideFrom * (1 - enter);
+          final outgoing = widget.slideFrom.dx != 0 ? Offset(-widget.slideFrom.dx * .35 * leave, 0) : Offset.zero;
+          final shift = incoming + outgoing;
+          if (shift != Offset.zero) {
+            out = FractionalTranslation(translation: shift, child: out);
+          }
+        }
+        if (enter < 1) {
+          out = Opacity(opacity: enter.clamp(0.0, 1.0), child: out);
+        }
+        return out;
+      },
+    );
+  }
+}
+
+/// Modal bottom sheet with duration/curve matched to [MotionLevel] and [motionActivity] tracking so live terminals
+/// behind the sheet stay fluid on mobile and tablet.
+Future<T?> showAppBottomSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool isScrollControlled = false,
+  bool useSafeArea = true,
+  bool showDragHandle = true,
+  bool isDismissible = true,
+  bool enableDrag = true,
+}) {
+  final level = Motion.levelOf(context);
+  final style = switch (level) {
+    MotionLevel.off => AnimationStyle.noAnimation,
+    MotionLevel.light => const AnimationStyle(
+      duration: Motion.quick,
+      reverseDuration: Motion.quick,
+      curve: Motion.enter,
+      reverseCurve: Motion.exit,
+    ),
+    MotionLevel.full => const AnimationStyle(
+      duration: Motion.panel,
+      reverseDuration: Motion.normal,
+      curve: Motion.enter,
+      reverseCurve: Motion.exit,
+    ),
+  };
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: isScrollControlled,
+    useSafeArea: useSafeArea,
+    showDragHandle: showDragHandle,
+    isDismissible: isDismissible,
+    enableDrag: enableDrag,
+    sheetAnimationStyle: style,
+    builder: (sheetContext) => _SheetMotionScope(child: Builder(builder: builder)),
+  );
+}
+
+class _SheetMotionScope extends StatefulWidget {
+  const _SheetMotionScope({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SheetMotionScope> createState() => _SheetMotionScopeState();
+}
+
+class _SheetMotionScopeState extends State<_SheetMotionScope> {
+  final _tracker = MotionTracker();
+  Animation<double>? _animation;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = ModalRoute.of(context)?.animation;
+    if (next == _animation) return;
+    _animation?.removeStatusListener(_tracker.status);
+    _animation = next;
+    if (next != null) {
+      next.addStatusListener(_tracker.status);
+      _tracker.status(next.status);
+    } else {
+      _tracker._set(false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animation?.removeStatusListener(_tracker.status);
+    _tracker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

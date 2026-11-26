@@ -146,8 +146,10 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (hasCompletions)
-            Container(
+          Reveal(
+            open: hasCompletions,
+            duration: Motion.quick,
+            child: Container(
               key: const ValueKey('mobile-completion-bar'),
               height: 36,
               decoration: BoxDecoration(
@@ -241,8 +243,11 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
                 ],
               ),
             ),
-          if (_draftOpen)
-            Container(
+          ),
+          Reveal(
+            open: _draftOpen,
+            duration: Motion.quick,
+            child: Container(
               key: const ValueKey('mobile-terminal-draft-bar'),
               padding: const EdgeInsets.fromLTRB(Space.md, Space.xs, Space.sm, Space.xs),
               decoration: BoxDecoration(
@@ -285,6 +290,7 @@ class _MobileTerminalKeyBarState extends State<MobileTerminalKeyBar> {
                 ],
               ),
             ),
+          ),
           Container(
             key: const ValueKey('mobile-terminal-key-bar'),
             height: 46,
@@ -492,7 +498,9 @@ class _TrackpadChipState extends State<_TrackpadChip> {
           onPanUpdate: _onPanUpdate,
           onPanEnd: _onPanEnd,
           onPanCancel: () => setState(() => _active = false),
-          child: Container(
+          child: AnimatedContainer(
+            duration: Motion.of(context, Motion.quick),
+            curve: Motion.move,
             constraints: const BoxConstraints(minWidth: 42),
             padding: const EdgeInsets.symmetric(horizontal: Space.sm),
             decoration: BoxDecoration(
@@ -635,35 +643,40 @@ class _ModifierChip extends StatelessWidget {
         : scheme.onSurface;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Material(
-        color: bg,
-        borderRadius: BorderRadius.circular(Radii.control),
-        child: InkWell(
+      child: AnimatedContainer(
+        duration: Motion.of(context, Motion.quick),
+        curve: Motion.move,
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Radii.control)),
+        child: Material(
+          type: MaterialType.transparency,
           borderRadius: BorderRadius.circular(Radii.control),
-          onTap: onTap,
-          onDoubleTap: onDoubleTap,
-          child: Container(
-            constraints: const BoxConstraints(minWidth: 44),
-            padding: const EdgeInsets.symmetric(horizontal: Space.sm),
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 3,
-              children: [
-                Text(
-                  label,
-                  style: mono(
-                    context,
-                    Theme.of(context).textTheme.labelMedium,
-                  ).copyWith(fontWeight: FontWeight.w700, color: fg),
-                ),
-                if (locked)
-                  Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(Radii.control),
+            onTap: onTap,
+            onDoubleTap: onDoubleTap,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 44),
+              padding: const EdgeInsets.symmetric(horizontal: Space.sm),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 3,
+                children: [
+                  Text(
+                    label,
+                    style: mono(
+                      context,
+                      Theme.of(context).textTheme.labelMedium,
+                    ).copyWith(fontWeight: FontWeight.w700, color: fg),
                   ),
-              ],
+                  if (locked)
+                    Container(
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

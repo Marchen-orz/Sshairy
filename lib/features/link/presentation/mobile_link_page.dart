@@ -41,6 +41,7 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   final _hostSearchController = TextEditingController();
   var _syncing = false;
   String? _notice;
+  String? _lastNotice;
   String? _connectingSessionId;
   String? _connectingHostId;
   String? _connectingDiscoveredId;
@@ -85,7 +86,10 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
 
   void _showNotice(String text) {
     if (!mounted) return;
-    setState(() => _notice = text);
+    setState(() {
+      _notice = text;
+      _lastNotice = text;
+    });
     Future<void>.delayed(const Duration(seconds: 4), () {
       if (mounted && _notice == text) setState(() => _notice = null);
     });
@@ -150,10 +154,8 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   void _showLocalShellActions(LinkClientController client, LinkLocalShellSummary shell) {
     final l = AppLocalizations.of(context);
     unawaited(
-      showModalBottomSheet<void>(
+      showAppBottomSheet<void>(
         context: context,
-        useSafeArea: true,
-        showDragHandle: true,
         builder: (sheet) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -177,10 +179,8 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   void _showHostActions(LinkClientController client, LinkHostSummary host) {
     final l = AppLocalizations.of(context);
     unawaited(
-      showModalBottomSheet<void>(
+      showAppBottomSheet<void>(
         context: context,
-        useSafeArea: true,
-        showDragHandle: true,
         builder: (sheet) => SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -271,7 +271,8 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
   Future<void> _scanQr() async {
     final l = AppLocalizations.of(context);
     final raw = await Navigator.of(context).push<String>(
-      MaterialPageRoute<String>(
+      appPageRoute<String>(
+        context,
         builder: (_) => LinkQrScannerPage(title: l.mobileScanQr, hint: l.mobileScanQrHint),
       ),
     );
@@ -336,12 +337,20 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
 
     return ListenableBuilder(
       listenable: client,
-      builder: (context, _) {
-        if (client.connected) {
-          return _buildConnected(context, l, scheme, client);
-        }
-        return _buildDisconnected(context, l, scheme, client);
-      },
+      builder: (context, _) => AnimatedSwitcher(
+        duration: Motion.of(context, Motion.page),
+        switchInCurve: Motion.enter,
+        switchOutCurve: Motion.exit,
+        child: client.connected
+            ? KeyedSubtree(
+                key: const ValueKey('mobile-link-state-connected'),
+                child: _buildConnected(context, l, scheme, client),
+              )
+            : KeyedSubtree(
+                key: const ValueKey('mobile-link-state-disconnected'),
+                child: _buildDisconnected(context, l, scheme, client),
+              ),
+      ),
     );
   }
 
@@ -910,7 +919,12 @@ class _MobileLinkPageState extends ConsumerState<MobileLinkPage> {
             padding: EdgeInsets.fromLTRB(inset, Space.md, inset, Space.xl),
             children: [
               hero(twoColumns),
-              if (_notice != null) _StatusLine(icon: Icons.check_circle_outline_rounded, text: _notice!),
+              if (_lastNotice != null)
+                Reveal(
+                  open: _notice != null,
+                  appear: true,
+                  child: _StatusLine(icon: Icons.check_circle_outline_rounded, text: _lastNotice!),
+                ),
               if (client.passwordSyncStatus != LinkPasswordSyncStatus.idle)
                 _StatusLine(
                   key: const ValueKey('link-password-sync-status'),

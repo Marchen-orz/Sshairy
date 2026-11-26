@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/controls.dart';
 import '../../../design/select.dart';
 import '../../../design/side_drawer.dart';
+import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
 import '../../../l10n/app_localizations.dart';
 import '../application/hosts.dart';
@@ -217,6 +218,7 @@ class ConnectionEditorState extends ConsumerState<ConnectionEditor> {
       tilePadding: EdgeInsets.zero,
       maintainState: true,
       initiallyExpanded: !_jumpLinked || !_proxyLinked || !_legacyLinked,
+      expansionAnimationStyle: AnimationStyle(duration: Motion.of(context, Motion.normal), curve: Motion.move),
       children: [
         _Inheritable(
           linked: _jumpLinked,

@@ -167,8 +167,14 @@ void main() {
     expect(tester.getTopLeft(host).dy, lessThan(tester.getTopLeft(localsHeader).dy));
     expect(tester.getTopLeft(localsHeader).dy, lessThan(tester.getTopLeft(local).dy));
 
+    final openLocalsY = tester.getTopLeft(localsHeader).dy;
     await tester.tap(hostsHeader);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 90));
+    final midLocalsY = tester.getTopLeft(localsHeader).dy;
+    expect(midLocalsY, lessThan(openLocalsY), reason: 'collapsing section animates height smoothly under full motion');
     await tester.pumpAndSettle();
+    expect(tester.getTopLeft(localsHeader).dy, lessThan(midLocalsY));
     expect(host, findsNothing);
     expect(local, findsOneWidget);
     await tester.tap(hostsHeader);

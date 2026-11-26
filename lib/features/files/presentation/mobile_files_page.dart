@@ -63,6 +63,7 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
   final _opened = DateTime.now();
   var _busy = false;
   String? _banner;
+  String? _lastBanner;
 
   late final _phone = FileLocation(
     id: 'phone',
@@ -104,7 +105,10 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
 
   void _flash(String text) {
     if (!mounted) return;
-    setState(() => _banner = text);
+    setState(() {
+      _banner = text;
+      _lastBanner = text;
+    });
     Future<void>.delayed(const Duration(seconds: 3), () {
       if (mounted && _banner == text) setState(() => _banner = null);
     });
@@ -153,11 +157,9 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
   Future<String?> _askName(String title, {String initial = '', String? hint}) async {
     final l = AppLocalizations.of(context);
     final controller = TextEditingController(text: initial);
-    final name = await showModalBottomSheet<String>(
+    final name = await showAppBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (context) => Padding(
         padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, MediaQuery.viewInsetsOf(context).bottom + Space.lg),
         child: Column(
@@ -236,10 +238,8 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
 
   Future<void> _delete(FileBrowser b, FileEntry entry) async {
     final l = AppLocalizations.of(context);
-    final ok = await showModalBottomSheet<bool>(
+    final ok = await showAppBottomSheet<bool>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.xl),
         child: Column(
@@ -280,7 +280,8 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
       return;
     }
     final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
+      appPageRoute<bool>(
+        context,
         builder: (_) => _MobileFileEditorPage(
           fs: fs,
           placeLabel: b.location?.label ?? b.host?.title ?? '',
@@ -297,82 +298,82 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
     final l = AppLocalizations.of(context);
     final fullPath = b.pathOf(entry);
     final toTerminal = widget.onSendPathToTerminal;
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) {
-        Widget action(IconData icon, String label, VoidCallback run, {Color? color}) => ListTile(
-          leading: Icon(icon, color: color),
-          title: Text(label, style: color == null ? null : TextStyle(color: color)),
-          onTap: () {
-            Navigator.pop(context);
-            run();
-          },
-        );
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(entry.browsable ? Icons.folder_outlined : Icons.description_outlined),
-                title: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text(fullPath, style: mono(context, Theme.of(context).textTheme.bodySmall), maxLines: 1),
-              ),
-              const Divider(height: 1),
-              if (!entry.browsable)
-                action(Icons.edit_outlined, l.mobileFileEditor, () => unawaited(_openEditor(b, entry))),
-              if (toTerminal != null &&
-                  (b.host != null && b.host!.id == widget.host?.id ||
-                      widget.location != null && b.location?.id == widget.location!.id))
-                action(Icons.terminal, l.mobileSendPathToTerminal, () {
-                  toTerminal(fullPath);
-                  Navigator.of(this.context).maybePop();
+    unawaited(
+      showAppBottomSheet<void>(
+        context: context,
+        builder: (context) {
+          Widget action(IconData icon, String label, VoidCallback run, {Color? color}) => ListTile(
+            leading: Icon(icon, color: color),
+            title: Text(label, style: color == null ? null : TextStyle(color: color)),
+            onTap: () {
+              Navigator.pop(context);
+              run();
+            },
+          );
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(entry.browsable ? Icons.folder_outlined : Icons.description_outlined),
+                  title: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(fullPath, style: mono(context, Theme.of(context).textTheme.bodySmall), maxLines: 1),
+                ),
+                const Divider(height: 1),
+                if (!entry.browsable)
+                  action(Icons.edit_outlined, l.mobileFileEditor, () => unawaited(_openEditor(b, entry))),
+                if (toTerminal != null &&
+                    (b.host != null && b.host!.id == widget.host?.id ||
+                        widget.location != null && b.location?.id == widget.location!.id))
+                  action(Icons.terminal, l.mobileSendPathToTerminal, () {
+                    toTerminal(fullPath);
+                    Navigator.of(this.context).maybePop();
+                  }),
+                action(Icons.copy_outlined, l.copy, () {
+                  unawaited(Clipboard.setData(ClipboardData(text: fullPath)));
+                  _flash(l.linkCopied);
                 }),
-              action(Icons.copy_outlined, l.copy, () {
-                unawaited(Clipboard.setData(ClipboardData(text: fullPath)));
-                _flash(l.linkCopied);
-              }),
-              action(Icons.drive_file_rename_outline, l.rename, () => unawaited(_rename(b, entry))),
-              action(
-                Icons.delete_outline,
-                l.delete,
-                () => unawaited(_delete(b, entry)),
-                color: Theme.of(context).colorScheme.error,
-              ),
-            ],
-          ),
-        );
-      },
+                action(Icons.drive_file_rename_outline, l.rename, () => unawaited(_rename(b, entry))),
+                action(
+                  Icons.delete_outline,
+                  l.delete,
+                  () => unawaited(_delete(b, entry)),
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
   void _showAddSheet(FileBrowser b) {
     final l = AppLocalizations.of(context);
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) {
-        Widget action(IconData icon, String label, Future<void> Function(FileBrowser) run) => ListTile(
-          leading: Icon(icon),
-          title: Text(label),
-          onTap: () {
-            Navigator.pop(context);
-            unawaited(run(b));
-          },
-        );
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              action(Icons.upload_file_outlined, l.mobileUploadFile, _upload),
-              action(Icons.create_new_folder_outlined, l.mobileNewFolder, _newFolder),
-              action(Icons.note_add_outlined, l.mobileNewFile, _newFile),
-            ],
-          ),
-        );
-      },
+    unawaited(
+      showAppBottomSheet<void>(
+        context: context,
+        builder: (context) {
+          Widget action(IconData icon, String label, Future<void> Function(FileBrowser) run) => ListTile(
+            leading: Icon(icon),
+            title: Text(label),
+            onTap: () {
+              Navigator.pop(context);
+              unawaited(run(b));
+            },
+          );
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                action(Icons.upload_file_outlined, l.mobileUploadFile, _upload),
+                action(Icons.create_new_folder_outlined, l.mobileNewFolder, _newFolder),
+                action(Icons.note_add_outlined, l.mobileNewFile, _newFile),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -459,13 +460,18 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_busy) const LinearProgressIndicator(minHeight: 2),
-            if (_banner != null)
-              Container(
-                color: scheme.primaryContainer,
-                padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.sm),
-                child: Text(
-                  _banner!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onPrimaryContainer),
+            if (_lastBanner != null)
+              Reveal(
+                open: _banner != null,
+                appear: true,
+                duration: Motion.quick,
+                child: Container(
+                  color: scheme.primaryContainer,
+                  padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.sm),
+                  child: Text(
+                    _lastBanner!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onPrimaryContainer),
+                  ),
                 ),
               ),
             Expanded(
@@ -483,8 +489,10 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
                 ],
               ),
             ),
-            if (mine.isNotEmpty)
-              ConstrainedBox(
+            Reveal(
+              open: mine.isNotEmpty,
+              appear: true,
+              child: ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 148),
                 child: Material(
                   color: palette.surface,
@@ -495,6 +503,7 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -514,8 +523,10 @@ class _MobileFilesPageState extends ConsumerState<MobileFilesPage> {
         return DragTarget<_Drag>(
           onWillAcceptWithDetails: (d) => d.data.from != b && b.ready,
           onAcceptWithDetails: (d) => _copy(d.data, b),
-          builder: (context, candidates, _) => DecoratedBox(
+          builder: (context, candidates, _) => AnimatedContainer(
             key: ValueKey('mobile-files-pane-$index'),
+            duration: Motion.of(context, Motion.quick),
+            curve: Motion.move,
             decoration: BoxDecoration(
               border: Border.all(color: candidates.isNotEmpty ? scheme.primary : Colors.transparent, width: 2),
             ),

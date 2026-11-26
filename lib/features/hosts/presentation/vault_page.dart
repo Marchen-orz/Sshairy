@@ -606,9 +606,15 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                                     onToggle: () => setState(() => _hostsCollapsed = !_hostsCollapsed),
                                   ),
                                 ),
-                              if (showSections && matches.isNotEmpty && hostsOpen)
-                                const SliverToBoxAdapter(child: SizedBox(height: Space.xs)),
-                              if (matches.isNotEmpty && hostsOpen) section(matches.length, (i) => tile(matches[i])),
+                              if (matches.isNotEmpty)
+                                SliverReveal(
+                                  key: const ValueKey('vault-hosts-section'),
+                                  open: hostsOpen,
+                                  sliver: SliverPadding(
+                                    padding: EdgeInsets.only(top: showSections ? Space.xs : 0),
+                                    sliver: section(matches.length, (i) => tile(matches[i])),
+                                  ),
+                                ),
                               if (both) const SliverToBoxAdapter(child: SizedBox(height: Space.md)),
                               if (locals.isNotEmpty)
                                 SliverToBoxAdapter(
@@ -619,9 +625,15 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                                     onToggle: () => setState(() => _localsCollapsed = !_localsCollapsed),
                                   ),
                                 ),
-                              if (locals.isNotEmpty && localsOpen)
-                                const SliverToBoxAdapter(child: SizedBox(height: Space.xs)),
-                              if (locals.isNotEmpty && localsOpen) section(locals.length, (i) => localTile(locals[i])),
+                              if (locals.isNotEmpty)
+                                SliverReveal(
+                                  key: const ValueKey('vault-locals-section'),
+                                  open: localsOpen,
+                                  sliver: SliverPadding(
+                                    padding: const EdgeInsets.only(top: Space.xs),
+                                    sliver: section(locals.length, (i) => localTile(locals[i])),
+                                  ),
+                                ),
                             ],
                           ),
                         ],
@@ -664,7 +676,12 @@ class _VaultSectionHeader extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16, color: muted),
+                AnimatedRotation(
+                  turns: collapsed ? 0 : .25,
+                  duration: Motion.of(context, Motion.normal),
+                  curve: Motion.move,
+                  child: Icon(Icons.chevron_right, size: 16, color: muted),
+                ),
                 const SizedBox(width: Space.xs),
                 Text(title, style: theme.textTheme.labelMedium?.copyWith(color: muted)),
                 const SizedBox(width: Space.xs),

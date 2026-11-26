@@ -34,6 +34,8 @@ class MobileApprovalBanner extends ConsumerStatefulWidget {
 
 class _MobileApprovalBannerState extends ConsumerState<MobileApprovalBanner> {
   String? _lastAlertId;
+  LinkApprovalItem? _lastItem;
+  var _lastCount = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -44,94 +46,106 @@ class _MobileApprovalBannerState extends ConsumerState<MobileApprovalBanner> {
       listenable: link,
       builder: (context, _) {
         final pending = link.pendingApprovals;
-        if (pending.isEmpty) {
+        final open = pending.isNotEmpty;
+        if (open) {
+          final current = pending.first;
+          _lastItem = current;
+          _lastCount = pending.length;
+          if (_lastAlertId != current.approvalId) {
+            _lastAlertId = current.approvalId;
+            if (haptics) unawaited(HapticFeedback.mediumImpact());
+          }
+        } else {
           _lastAlertId = null;
-          return const SizedBox.shrink();
         }
-        final item = pending.first;
-        if (_lastAlertId != item.approvalId) {
-          _lastAlertId = item.approvalId;
-          if (haptics) unawaited(HapticFeedback.mediumImpact());
-        }
+        final item = _lastItem;
+        if (item == null) return const SizedBox.shrink();
         final l = AppLocalizations.of(context);
         final scheme = Theme.of(context).colorScheme;
-        return Container(
-          key: ValueKey('mobile-approval-banner-${item.approvalId}'),
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, Space.sm),
-          decoration: BoxDecoration(
-            color: scheme.errorContainer,
-            border: Border(bottom: BorderSide(color: scheme.error.withValues(alpha: .35))),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.shield_outlined, size: 16, color: scheme.onErrorContainer),
-                  const SizedBox(width: Space.xs),
-                  Expanded(
-                    child: Text(
-                      item.target.isEmpty ? item.title : '${item.title} · ${item.target}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(color: scheme.onErrorContainer),
-                    ),
-                  ),
-                  if (pending.length > 1)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(color: scheme.error, borderRadius: BorderRadius.circular(Radii.pill)),
-                      child: Text(
-                        '+${pending.length - 1}',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onError),
-                      ),
-                    ),
-                ],
-              ),
-              if (item.command.isNotEmpty) ...[
-                const SizedBox(height: Space.xs),
-                Text(
-                  item.command,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: mono(context, Theme.of(context).textTheme.bodySmall).copyWith(color: scheme.onErrorContainer),
-                ),
-              ],
-              const SizedBox(height: Space.xs),
-              if (item.actionable)
+        return Reveal(
+          open: open,
+          appear: true,
+          child: Container(
+            key: ValueKey('mobile-approval-banner-${item.approvalId}'),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, Space.sm),
+            decoration: BoxDecoration(
+              color: scheme.errorContainer,
+              border: Border(bottom: BorderSide(color: scheme.error.withValues(alpha: .35))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    TextButton(
-                      key: ValueKey('banner-deny-${item.approvalId}'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: scheme.onErrorContainer,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      onPressed: () => unawaited(link.decideApproval(item.approvalId, false)),
-                      child: Text(l.linkDeny),
-                    ),
+                    Icon(Icons.shield_outlined, size: 16, color: scheme.onErrorContainer),
                     const SizedBox(width: Space.xs),
-                    FilledButton(
-                      key: ValueKey('banner-allow-${item.approvalId}'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: scheme.error,
-                        foregroundColor: scheme.onError,
-                        visualDensity: VisualDensity.compact,
+                    Expanded(
+                      child: Text(
+                        item.target.isEmpty ? item.title : '${item.title} · ${item.target}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: scheme.onErrorContainer),
                       ),
-                      onPressed: () => unawaited(link.decideApproval(item.approvalId, true)),
-                      child: Text(l.linkAllow),
                     ),
+                    if (_lastCount > 1)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(color: scheme.error, borderRadius: BorderRadius.circular(Radii.pill)),
+                        child: Text(
+                          '+${_lastCount - 1}',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onError),
+                        ),
+                      ),
                   ],
-                )
-              else
-                Text(
-                  l.linkDesktopOnlyAction,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onErrorContainer),
                 ),
-            ],
+                if (item.command.isNotEmpty) ...[
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    item.command,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: mono(
+                      context,
+                      Theme.of(context).textTheme.bodySmall,
+                    ).copyWith(color: scheme.onErrorContainer),
+                  ),
+                ],
+                const SizedBox(height: Space.xs),
+                if (item.actionable)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        key: ValueKey('banner-deny-${item.approvalId}'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: scheme.onErrorContainer,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () => unawaited(link.decideApproval(item.approvalId, false)),
+                        child: Text(l.linkDeny),
+                      ),
+                      const SizedBox(width: Space.xs),
+                      FilledButton(
+                        key: ValueKey('banner-allow-${item.approvalId}'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: scheme.error,
+                          foregroundColor: scheme.onError,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () => unawaited(link.decideApproval(item.approvalId, true)),
+                        child: Text(l.linkAllow),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    l.linkDesktopOnlyAction,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onErrorContainer),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -200,11 +214,9 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     unawaited(MobilePlatform.setKeepScreenOn(keepAwake));
   }
 
-  Future<void> _showSheet(Widget child, {double heightFactor = 0.78}) => showModalBottomSheet<void>(
+  Future<void> _showSheet(Widget child, {double heightFactor = 0.78}) => showAppBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
     builder: (context) => FractionallySizedBox(
       heightFactor: heightFactor,
       child: Padding(
@@ -309,7 +321,8 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
   void _openFilesPage(TerminalSession session, {Host? host, FileLocation? location}) {
     unawaited(
       Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
+        appPageRoute<void>(
+          context,
           builder: (routeContext) => MobileFilesPage(
             host: host,
             location: location,
@@ -452,10 +465,8 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
     final l = AppLocalizations.of(context);
     final target = ref.read(terminalSessionsProvider)[tab.layout.focusedLeaf.session]?.linkTarget;
     unawaited(
-      showModalBottomSheet<void>(
+      showAppBottomSheet<void>(
         context: sheet,
-        useSafeArea: true,
-        showDragHandle: true,
         builder: (actions) {
           Widget closing(TabCloseScope scope, String label, IconData icon) => ListTile(
             leading: Icon(icon),
@@ -665,14 +676,20 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
                       children: [
                         for (final tab in state.tabs)
                           if (sessions[tab.layout.focusedLeaf.session] case final session?)
-                            _TabletTabChip(
-                              key: ValueKey('tablet-tab-${tab.id.value}'),
-                              tab: tab,
-                              session: session,
-                              selected: tab.id == activeTab.id,
-                              onTap: () => _workspace.activate(tab.id),
-                              onLongPress: () => _openSessionActions(context, state, tab, popParent: false),
-                              onClose: () => _closeTab(tab.id),
+                            Reveal(
+                              key: ValueKey('tablet-tab-reveal-${tab.id.value}'),
+                              open: true,
+                              appear: true,
+                              axis: Axis.horizontal,
+                              child: _TabletTabChip(
+                                key: ValueKey('tablet-tab-${tab.id.value}'),
+                                tab: tab,
+                                session: session,
+                                selected: tab.id == activeTab.id,
+                                onTap: () => _workspace.activate(tab.id),
+                                onLongPress: () => _openSessionActions(context, state, tab, popParent: false),
+                                onClose: () => _closeTab(tab.id),
+                              ),
                             ),
                       ],
                     ),
@@ -925,40 +942,54 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
               Positioned(
                 top: Space.xs,
                 right: Space.sm,
-                child: _landscapeBarExpanded
-                    ? _sessionHeader(
-                        context: context,
-                        state: state,
-                        sessions: sessions,
-                        activeTab: activeTab,
-                        activeSession: activeSession,
-                        compactPill: true,
-                      )
-                    : Material(
-                        elevation: 2,
-                        color: palette.surface.withValues(alpha: .86),
-                        borderRadius: BorderRadius.circular(Radii.pill),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(Radii.pill),
-                          onTap: () => setState(() => _landscapeBarExpanded = true),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ListenableBuilder(
-                                  listenable: activeSession,
-                                  builder: (_, _) => SessionStatusIcon(activeSession.status),
+                child: AnimatedSize(
+                  duration: Motion.of(context, Motion.normal),
+                  curve: Motion.move,
+                  alignment: Alignment.topRight,
+                  child: AnimatedSwitcher(
+                    duration: Motion.of(context, Motion.quick),
+                    switchInCurve: Motion.enter,
+                    switchOutCurve: Motion.exit,
+                    child: _landscapeBarExpanded
+                        ? KeyedSubtree(
+                            key: const ValueKey('landscape-bar-expanded'),
+                            child: _sessionHeader(
+                              context: context,
+                              state: state,
+                              sessions: sessions,
+                              activeTab: activeTab,
+                              activeSession: activeSession,
+                              compactPill: true,
+                            ),
+                          )
+                        : Material(
+                            key: const ValueKey('landscape-bar-collapsed'),
+                            elevation: 2,
+                            color: palette.surface.withValues(alpha: .86),
+                            borderRadius: BorderRadius.circular(Radii.pill),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(Radii.pill),
+                              onTap: () => setState(() => _landscapeBarExpanded = true),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 6),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListenableBuilder(
+                                      listenable: activeSession,
+                                      builder: (_, _) => SessionStatusIcon(activeSession.status),
+                                    ),
+                                    const SizedBox(width: Space.xs),
+                                    Text(activeSession.title, style: Theme.of(context).textTheme.labelMedium),
+                                    const SizedBox(width: 2),
+                                    const Icon(Icons.expand_more_rounded, size: 16),
+                                  ],
                                 ),
-                                const SizedBox(width: Space.xs),
-                                Text(activeSession.title, style: Theme.of(context).textTheme.labelMedium),
-                                const SizedBox(width: 2),
-                                const Icon(Icons.expand_more_rounded, size: 16),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -1067,39 +1098,44 @@ class _MobileTerminalScreenState extends ConsumerState<MobileTerminalScreen> {
                   resizeLabel: l.aiAgentTitle,
                   showHeader: false,
                   initialWidth: math.min(WorkspaceSize.toolPanel, size.width * .4),
-                  panel: switch (rightPanel) {
-                    _TabletSidePanel.airy => KeyedSubtree(
-                      key: const ValueKey('tablet-side-airy'),
-                      child: AgentPanel(onClose: closeRightPanel),
-                    ),
-                    _TabletSidePanel.snippets => KeyedSubtree(
-                      key: const ValueKey('tablet-side-snippets'),
-                      child: Column(
-                        children: [
-                          Container(
-                            height: 40,
-                            padding: const EdgeInsets.only(left: Space.md, right: Space.xs),
-                            decoration: BoxDecoration(
-                              border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .3))),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(child: Text(l.snippets, style: Theme.of(context).textTheme.titleSmall)),
-                                IconButton(
-                                  tooltip: l.close,
-                                  visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.close_rounded, size: 18),
-                                  onPressed: closeRightPanel,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Expanded(child: SnippetsPanel()),
-                        ],
+                  panel: AnimatedSwitcher(
+                    duration: Motion.of(context, Motion.quick),
+                    switchInCurve: Motion.enter,
+                    switchOutCurve: Motion.exit,
+                    child: switch (rightPanel) {
+                      _TabletSidePanel.airy => KeyedSubtree(
+                        key: const ValueKey('tablet-side-airy'),
+                        child: AgentPanel(onClose: closeRightPanel),
                       ),
-                    ),
-                    null => const SizedBox.shrink(),
-                  },
+                      _TabletSidePanel.snippets => KeyedSubtree(
+                        key: const ValueKey('tablet-side-snippets'),
+                        child: Column(
+                          children: [
+                            Container(
+                              height: 40,
+                              padding: const EdgeInsets.only(left: Space.md, right: Space.xs),
+                              decoration: BoxDecoration(
+                                border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: .3))),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(l.snippets, style: Theme.of(context).textTheme.titleSmall)),
+                                  IconButton(
+                                    tooltip: l.close,
+                                    visualDensity: VisualDensity.compact,
+                                    icon: const Icon(Icons.close_rounded, size: 18),
+                                    onPressed: closeRightPanel,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Expanded(child: SnippetsPanel()),
+                          ],
+                        ),
+                      ),
+                      null => const SizedBox.shrink(),
+                    },
+                  ),
                   child: SidebarFrame(
                     key: const ValueKey('tablet-monitor-frame'),
                     width: monitorWidth,

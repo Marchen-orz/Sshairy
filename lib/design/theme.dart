@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'brand_palette.dart';
+import 'motion.dart';
 export 'brand_palette.dart';
 export 'motion.dart';
 
@@ -308,6 +309,14 @@ ThemeData buildTheme(
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.panel)),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: scheme.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.panel))),
+    ),
+    pageTransitionsTheme: PageTransitionsTheme(
+      builders: {for (final p in TargetPlatform.values) p: const AppPageTransitionsBuilder()},
     ),
     listTileTheme: ListTileThemeData(
       dense: true,
