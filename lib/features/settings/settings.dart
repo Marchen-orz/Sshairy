@@ -545,6 +545,9 @@ class SettingsNotifier extends Notifier<Settings> {
     },
   );
 
+  /// The file behind this state, for restoring a snapshot from settings.
+  JsonFile get storage => _file;
+
   @override
   Settings build() => Settings.fromJson(_file.read() ?? const {});
 

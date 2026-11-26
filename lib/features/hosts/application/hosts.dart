@@ -40,6 +40,9 @@ class HostsNotifier extends Notifier<List<Host>> {
   );
   HostLibrary _library = HostLibrary();
 
+  /// The file behind this state, for restoring a snapshot from settings.
+  JsonFile get storage => _file;
+
   @override
   List<Host> build() {
     final json = _file.read();

@@ -29,6 +29,9 @@ class Snippets extends Notifier<List<Snippet>> {
   );
   Future<void> _pending = Future.value();
 
+  /// The file behind this state, for restoring a snapshot from settings.
+  JsonFile get storage => _file;
+
   @override
   List<Snippet> build() => [
     for (final entry in _file.read()?['snippets'] as List<dynamic>? ?? const [])

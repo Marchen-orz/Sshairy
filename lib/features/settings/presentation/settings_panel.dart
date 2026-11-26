@@ -24,6 +24,7 @@ import '../../../platform/system_fonts.dart';
 import '../settings.dart';
 import '../domain/background.dart';
 import 'background_image.dart';
+import 'config_snapshots.dart';
 import 'shortcut_field.dart';
 import 'update_check.dart';
 
@@ -184,6 +185,17 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     if (!mounted) return;
     widget.onSavingChanged?.call(_saves.busy);
     setState(() {});
+  }
+
+  Future<void> _restoreSnapshot() async {
+    final l = AppLocalizations.of(context);
+    final stores = ref.read(configStoresProvider);
+    final restored = await showAppDialog<int>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ConfigSnapshotDialog([for (final s in stores) (label: s.label(l), file: s.file())]),
+    );
+    if (restored != null) stores[restored].reset();
   }
 
   void _showSection(SettingsSectionId section) {
@@ -572,7 +584,14 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ),
         _Field(
           l.dataDir,
-          TextButton(onPressed: () => openExternal(ref.read(dataDirProvider)), child: Text(l.open)),
+          Wrap(
+            spacing: Space.sm,
+            children: [
+              if (ref.read(configStoresProvider).isNotEmpty)
+                TextButton(onPressed: _restoreSnapshot, child: Text(l.configRestoreSnapshots)),
+              TextButton(onPressed: () => openExternal(ref.read(dataDirProvider)), child: Text(l.open)),
+            ],
+          ),
           hint: ref.read(dataDirProvider),
         ),
       ]),

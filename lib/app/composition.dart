@@ -87,6 +87,26 @@ List<Override> appOverrides() => [
   agentBackendProvider.overrideWith(
     (ref) => SshAgentBackend(ref.read(connectionManagerProvider), () => ref.read(hostsProvider)),
   ),
+  configStoresProvider.overrideWith(
+    (ref) => [
+      ConfigStore((l) => l.hosts, () => ref.read(hostsProvider.notifier).storage, () => ref.invalidate(hostsProvider)),
+      ConfigStore(
+        (l) => l.localTerminals,
+        () => ref.read(localProfilesProvider.notifier).storage,
+        () => ref.invalidate(localProfilesProvider),
+      ),
+      ConfigStore(
+        (l) => l.snippets,
+        () => ref.read(snippetsProvider.notifier).storage,
+        () => ref.invalidate(snippetsProvider),
+      ),
+      ConfigStore(
+        (l) => l.settings,
+        () => ref.read(settingsProvider.notifier).storage,
+        () => ref.invalidate(settingsProvider),
+      ),
+    ],
+  ),
   settingsSectionsProvider.overrideWith(
     (ref) => [
       SettingsSection(

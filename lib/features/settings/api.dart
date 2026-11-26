@@ -1,3 +1,4 @@
+export 'presentation/config_snapshots.dart';
 export 'presentation/settings_panel.dart';
 export 'settings.dart';
 export 'domain/background.dart' show BackgroundSlot;

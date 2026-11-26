@@ -23,6 +23,9 @@ class LocalProfiles extends Notifier<List<LocalProfile>> {
   );
   Future<void> _pending = Future.value();
 
+  /// The file behind this state, for restoring a snapshot from settings.
+  JsonFile get storage => _file;
+
   @override
   List<LocalProfile> build() => List.unmodifiable([
     for (final entry in _file.read()?['terminals'] as List<dynamic>? ?? const [])
