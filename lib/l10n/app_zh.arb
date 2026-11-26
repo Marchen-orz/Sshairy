@@ -142,6 +142,7 @@
   "highlightKeywords": "自定义关键词",
   "highlightKeywordsHint": "用逗号或空格分隔",
   "localTerminal": "本地",
+  "localTerminals": "本地终端",
   "localShell": "Shell",
   "startDirectory": "起始文件夹",
   "chooseFolder": "选择文件夹",

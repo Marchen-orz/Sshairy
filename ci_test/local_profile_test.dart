@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sshairy/app/composition.dart';
+import 'package:sshairy/design/controls.dart';
 import 'package:sshairy/design/theme.dart';
 import 'package:sshairy/features/connections/api.dart';
 import 'package:sshairy/features/hosts/api.dart';
@@ -135,6 +136,10 @@ void main() {
 
     await tester.tap(find.text('New host'));
     await tester.pumpAndSettle();
+    final switcher = find.byType(AppSegmented<bool>);
+    final nameField = find.widgetWithText(TextFormField, 'Name');
+    expect(tester.getSize(switcher).width, lessThan(tester.getSize(nameField).width * .6));
+    expect((tester.getCenter(switcher).dx - tester.getCenter(nameField).dx).abs(), lessThan(2));
     await tester.tap(find.text('Local'));
     await tester.pumpAndSettle();
     expect(find.text('PowerShell'), findsOneWidget);
@@ -149,11 +154,33 @@ void main() {
 
     final saved = File('${dir.path}/local_terminals.json');
     expect(jsonDecode(saved.readAsStringSync())['terminals'].single['directory'], _folder);
-    // The local terminal sits above the hosts, with its folder where a host shows its address.
+    // Hosts come first, followed by local terminals under collapsible section headers.
+    final vault = find.byType(VaultPage);
     final local = find.text('api'), host = find.text('remote');
+    final hostsHeader = find.descendant(of: vault, matching: find.text('Hosts'));
+    final localsHeader = find.descendant(of: vault, matching: find.text('Local terminals'));
+    expect(hostsHeader, findsOneWidget);
+    expect(localsHeader, findsOneWidget);
     expect(local, findsOneWidget);
     expect(find.text(_folder), findsOneWidget);
-    expect(tester.getTopLeft(local).dy, lessThan(tester.getTopLeft(host).dy));
+    expect(tester.getTopLeft(hostsHeader).dy, lessThan(tester.getTopLeft(host).dy));
+    expect(tester.getTopLeft(host).dy, lessThan(tester.getTopLeft(localsHeader).dy));
+    expect(tester.getTopLeft(localsHeader).dy, lessThan(tester.getTopLeft(local).dy));
+
+    await tester.tap(hostsHeader);
+    await tester.pumpAndSettle();
+    expect(host, findsNothing);
+    expect(local, findsOneWidget);
+    await tester.tap(hostsHeader);
+    await tester.pumpAndSettle();
+    expect(host, findsOneWidget);
+
+    await tester.tap(localsHeader);
+    await tester.pumpAndSettle();
+    expect(local, findsNothing);
+    await tester.tap(localsHeader);
+    await tester.pumpAndSettle();
+    expect(local, findsOneWidget);
 
     await tester.tap(local);
     await tester.pump(const Duration(milliseconds: 50));

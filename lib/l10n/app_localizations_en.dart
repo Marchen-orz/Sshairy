@@ -480,6 +480,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get localTerminal => 'Local';
 
   @override
+  String get localTerminals => 'Local terminals';
+
+  @override
   String get localShell => 'Shell';
 
   @override

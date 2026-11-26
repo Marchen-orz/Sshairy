@@ -148,6 +148,7 @@
   "highlightKeywords": "Custom keywords",
   "highlightKeywordsHint": "Separated by commas or spaces",
   "localTerminal": "Local",
+  "localTerminals": "Local terminals",
   "localShell": "Shell",
   "startDirectory": "Start in folder",
   "chooseFolder": "Choose folder",

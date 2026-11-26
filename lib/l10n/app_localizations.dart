@@ -914,6 +914,12 @@ abstract class AppLocalizations {
   /// **'Local'**
   String get localTerminal;
 
+  /// No description provided for @localTerminals.
+  ///
+  /// In en, this message translates to:
+  /// **'Local terminals'**
+  String get localTerminals;
+
   /// No description provided for @localShell.
   ///
   /// In en, this message translates to:

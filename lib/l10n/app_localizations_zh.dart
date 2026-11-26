@@ -452,6 +452,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get localTerminal => '本地';
 
   @override
+  String get localTerminals => '本地终端';
+
+  @override
   String get localShell => 'Shell';
 
   @override

@@ -24,7 +24,7 @@ import 'import_dialog.dart';
 import 'keys_panel.dart';
 import 'move_hosts_dialog.dart';
 
-const _gridTile = 320.0, _gridRow = 64.0;
+const _gridTile = 320.0, _gridRow = 64.0, _sectionHeader = 28.0;
 
 /// A saved local terminal as the vault shows it; the terminal feature owns the data (docs/UI.md §3).
 class VaultLocal {
@@ -51,7 +51,7 @@ class VaultPage extends ConsumerStatefulWidget {
   final bool active;
   final void Function(Host host) onConnect;
 
-  /// Shown before the hosts while no group is picked.
+  /// Shown below the hosts while no group is picked.
   final List<VaultLocal> locals;
 
   /// The form a new entry switches to for a local terminal.
@@ -72,6 +72,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
   HostId? _anchor;
   HostLibrary? _groupOrderBase, _groupOrderPreview;
   var _groupOrderSaving = false;
+  var _hostsCollapsed = false, _localsCollapsed = false;
 
   /// The setting lands only after its write, so this keeps a second offer from opening meanwhile.
   var _offered = false;
@@ -552,9 +553,19 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       final columns = list ? 1 : (contentWidth / (_gridTile + Space.sm)).ceil();
                       int rows(int count) => (count / columns).ceil();
                       final both = locals.isNotEmpty && matches.isNotEmpty;
+                      final showSections = locals.isNotEmpty;
+                      final hostsOpen = !showSections || !_hostsCollapsed;
+                      final localsOpen = !_localsCollapsed;
+                      final hostRows = hostsOpen ? rows(matches.length) : 0;
+                      final localRows = localsOpen ? rows(locals.length) : 0;
+                      final headers = (showSections && matches.isNotEmpty ? 1 : 0) + (locals.isNotEmpty ? 1 : 0);
+                      final headerGaps =
+                          (showSections && matches.isNotEmpty && hostsOpen ? 1 : 0) +
+                          (locals.isNotEmpty && localsOpen ? 1 : 0);
                       final used =
-                          (rows(locals.length) + rows(matches.length)) *
-                              (list ? WorkspaceSize.listRow + Space.xs : _gridRow + Space.sm) +
+                          (hostRows + localRows) * (list ? WorkspaceSize.listRow + Space.xs : _gridRow + Space.sm) +
+                          headers * _sectionHeader +
+                          headerGaps * Space.xs +
                           (both ? Space.md : 0);
                       Widget section(int count, Widget Function(int) item) => list
                           ? SliverList.separated(
@@ -586,10 +597,31 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                             ),
                           CustomScrollView(
                             slivers: [
-                              // Local terminals keep a block of their own above the hosts.
-                              if (locals.isNotEmpty) section(locals.length, (i) => localTile(locals[i])),
+                              if (showSections && matches.isNotEmpty)
+                                SliverToBoxAdapter(
+                                  child: _VaultSectionHeader(
+                                    title: l.hosts,
+                                    count: matches.length,
+                                    collapsed: _hostsCollapsed,
+                                    onToggle: () => setState(() => _hostsCollapsed = !_hostsCollapsed),
+                                  ),
+                                ),
+                              if (showSections && matches.isNotEmpty && hostsOpen)
+                                const SliverToBoxAdapter(child: SizedBox(height: Space.xs)),
+                              if (matches.isNotEmpty && hostsOpen) section(matches.length, (i) => tile(matches[i])),
                               if (both) const SliverToBoxAdapter(child: SizedBox(height: Space.md)),
-                              if (matches.isNotEmpty) section(matches.length, (i) => tile(matches[i])),
+                              if (locals.isNotEmpty)
+                                SliverToBoxAdapter(
+                                  child: _VaultSectionHeader(
+                                    title: l.localTerminals,
+                                    count: locals.length,
+                                    collapsed: _localsCollapsed,
+                                    onToggle: () => setState(() => _localsCollapsed = !_localsCollapsed),
+                                  ),
+                                ),
+                              if (locals.isNotEmpty && localsOpen)
+                                const SliverToBoxAdapter(child: SizedBox(height: Space.xs)),
+                              if (locals.isNotEmpty && localsOpen) section(locals.length, (i) => localTile(locals[i])),
                             ],
                           ),
                         ],
@@ -598,6 +630,49 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VaultSectionHeader extends StatelessWidget {
+  const _VaultSectionHeader({
+    required this.title,
+    required this.count,
+    required this.collapsed,
+    required this.onToggle,
+  });
+
+  final String title;
+  final int count;
+  final bool collapsed;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return SizedBox(
+      height: _sectionHeader,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Radii.control),
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.xs, vertical: Space.xs),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 16, color: muted),
+                const SizedBox(width: Space.xs),
+                Text(title, style: theme.textTheme.labelMedium?.copyWith(color: muted)),
+                const SizedBox(width: Space.xs),
+                Text('$count', style: theme.textTheme.labelSmall?.copyWith(color: muted.withValues(alpha: .7))),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

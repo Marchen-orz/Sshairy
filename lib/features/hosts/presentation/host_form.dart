@@ -324,10 +324,12 @@ class _HostFormState extends ConsumerState<HostForm> {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: Space.sm),
-          child: AppSegmented<bool>(
-            segments: {false: 'SSH', true: l.localTerminal},
-            selected: _local,
-            onChanged: (local) => setState(() => _local = local),
+          child: Center(
+            child: AppSegmented<bool>(
+              segments: {false: 'SSH', true: l.localTerminal},
+              selected: _local,
+              onChanged: (local) => setState(() => _local = local),
+            ),
           ),
         ),
         const SizedBox(height: Space.sm),
