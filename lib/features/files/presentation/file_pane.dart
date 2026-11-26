@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../design/controls.dart';
+import '../../../design/double_click.dart';
 import '../../../design/dialog.dart';
 import '../../../design/menu.dart';
 import '../../../design/popup.dart';
@@ -69,6 +70,8 @@ class FilePane extends ConsumerStatefulWidget {
 
 class _FilePaneState extends ConsumerState<FilePane> {
   final _list = FocusNode(debugLabel: 'file list');
+  var _clicks = DoubleClick();
+  String? _clicked;
   final _scroll = ScrollController();
   final _filter = TextEditingController();
   final _pathField = TextEditingController();
@@ -271,7 +274,14 @@ class _FilePaneState extends ConsumerState<FilePane> {
   void _tap(FileEntry e) {
     _list.requestFocus();
     final keys = HardwareKeyboard.instance;
+    final modified = keys.isControlPressed || keys.isMetaPressed || keys.isShiftPressed;
+    if (modified || _clicked != e.name) _clicks = DoubleClick();
+    _clicked = e.name;
     b.select(e.name, toggle: keys.isControlPressed || keys.isMetaPressed, range: keys.isShiftPressed);
+    if (!modified && _clicks.hit) {
+      _clicks = DoubleClick();
+      unawaited(_open(e));
+    }
   }
 
   void _reveal(String name) {
@@ -632,7 +642,6 @@ class _FilePaneState extends ConsumerState<FilePane> {
                               selected: b.selected.contains(e.name),
                               opening: opening[b.pathOf(e)],
                               onTap: () => _tap(e),
-                              onDoubleTap: () => _open(e),
                               onSecondaryTap: (p) => _menu(p, e),
                             );
                             return Draggable<FileDrag>(
@@ -754,7 +763,6 @@ class _Row extends StatelessWidget {
     required this.selected,
     this.opening,
     required this.onTap,
-    required this.onDoubleTap,
     required this.onSecondaryTap,
   });
 
@@ -764,7 +772,7 @@ class _Row extends StatelessWidget {
 
   /// The download that will open this file in an editor.
   final EditProgress? opening;
-  final VoidCallback onTap, onDoubleTap;
+  final VoidCallback onTap;
   final void Function(Offset) onSecondaryTap;
 
   @override
@@ -784,7 +792,6 @@ class _Row extends StatelessWidget {
       color: selected ? scheme.primary.withValues(alpha: 0.14) : Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        onDoubleTap: onDoubleTap,
         onSecondaryTapUp: (d) => onSecondaryTap(d.globalPosition),
         child: Stack(
           alignment: Alignment.center,
