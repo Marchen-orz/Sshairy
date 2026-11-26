@@ -18,7 +18,13 @@ class WindowsPtyFactory implements LocalPtyFactory {
   final String? workingDirectory;
 
   @override
-  Future<LocalPty> start(LocalShell shell, {required int cols, required int rows, CancellationToken? cancel}) async {
+  Future<LocalPty> start(
+    LocalShell shell, {
+    required int cols,
+    required int rows,
+    String? directory,
+    CancellationToken? cancel,
+  }) async {
     if (!Platform.isWindows || !LocalShell.validExecutable(shell.executable)) {
       throw StateError('Local terminal unavailable');
     }
@@ -26,7 +32,7 @@ class WindowsPtyFactory implements LocalPtyFactory {
     final pty = _WindowsPty();
     try {
       unawaited(cancel?.whenCancelled.then((_) => pty.close()));
-      await pty.start(shell, cols, rows, workingDirectory);
+      await pty.start(shell, cols, rows, directory ?? workingDirectory);
       if (cancel?.isCancelled ?? false) {
         pty.close();
         await pty.exitCode;

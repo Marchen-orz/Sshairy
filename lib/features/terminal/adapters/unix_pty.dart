@@ -19,7 +19,13 @@ class UnixPtyFactory implements LocalPtyFactory {
   }
 
   @override
-  Future<LocalPty> start(LocalShell shell, {required int cols, required int rows, CancellationToken? cancel}) async {
+  Future<LocalPty> start(
+    LocalShell shell, {
+    required int cols,
+    required int rows,
+    String? directory,
+    CancellationToken? cancel,
+  }) async {
     if ((!Platform.isLinux && !Platform.isMacOS) ||
         !shell.executable.startsWith('/') ||
         !LocalShell.validExecutable(shell.executable)) {
@@ -33,7 +39,7 @@ class UnixPtyFactory implements LocalPtyFactory {
         [
           '${cols.clamp(1, 32767)}',
           '${rows.clamp(1, 32767)}',
-          workingDirectory ?? Platform.environment['HOME'] ?? Directory.current.path,
+          directory ?? workingDirectory ?? Platform.environment['HOME'] ?? Directory.current.path,
           '--',
           shell.executable,
           ...shell.arguments,

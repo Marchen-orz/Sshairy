@@ -436,6 +436,16 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           segmented(SettingKeys.rightClick, {RightClick.menu: l.rightClickMenu, RightClick.paste: l.paste}),
         ),
         _Field(l.copyOnSelect, toggle(SettingKeys.copyOnSelect)),
+        _Field(l.keywordHighlight, toggle(SettingKeys.keywordHighlight)),
+        if (settings.get(SettingKeys.keywordHighlight))
+          _Field.stacked(
+            l.highlightKeywords,
+            _WordsField(
+              value: settings.get(SettingKeys.highlightKeywords) ?? '',
+              hint: l.highlightKeywordsHint,
+              onChanged: (v) => notifier.set(SettingKeys.highlightKeywords, v.trim().isEmpty ? null : v.trim()),
+            ),
+          ),
         _Field(l.confirmPaste, toggle(SettingKeys.confirmPaste)),
         _Field(
           l.aiTextStyle,
@@ -802,6 +812,56 @@ class _Field extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Saved when it loses focus or Enter is pressed, not on every key.
+class _WordsField extends StatefulWidget {
+  const _WordsField({required this.value, required this.hint, required this.onChanged});
+
+  final String value, hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_WordsField> createState() => _WordsFieldState();
+}
+
+class _WordsFieldState extends State<_WordsField> {
+  late final _text = TextEditingController(text: widget.value);
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _commit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_WordsField old) {
+    super.didUpdateWidget(old);
+    if (!_focus.hasFocus && widget.value != _text.text) _text.text = widget.value;
+  }
+
+  void _commit() {
+    if (_text.text.trim() != widget.value) widget.onChanged(_text.text);
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _text,
+    focusNode: _focus,
+    maxLength: SettingKeys.highlightKeywords.maxLength,
+    decoration: InputDecoration(hintText: widget.hint, counterText: ''),
+    onSubmitted: (_) => _commit(),
+  );
 }
 
 class _Choice<T> extends StatelessWidget {

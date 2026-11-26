@@ -31,6 +31,7 @@ import '../domain/command_assistance.dart';
 import '../domain/completion_command_metadata.dart';
 import '../domain/directory.dart';
 import '../domain/insertion.dart';
+import '../domain/keyword_highlight.dart';
 import '../domain/shell_integration.dart';
 import '../domain/local_pty.dart';
 import '../domain/terminal_target.dart';
@@ -90,6 +91,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     this.id,
     LocalShell shell,
     LocalPtyFactory factory, {
+    String? directory,
+    String? label,
     this.autoConnect = true,
     int scrollback = 2000,
     this.completionProvider,
@@ -97,7 +100,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     CompletionTranslations? completionTranslations,
     List<CommandSnippet> Function()? snippets,
   }) : _sshHost = null,
-       target = LocalTerminalTarget(shell),
+       target = LocalTerminalTarget(shell, directory: directory, label: label),
        _connections = null,
        _localPtyFactory = factory,
        _remoteOpener = null,
@@ -173,9 +176,15 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
     final LinkTerminalTarget t => t,
     _ => null,
   };
+
+  /// The saved local terminal's name, if it came from one.
+  String? get localLabel => switch (target) {
+    LocalTerminalTarget(:final label) => label,
+    _ => null,
+  };
   bool get isLocal => target is LocalTerminalTarget;
   bool get isRemote => target is LinkTerminalTarget;
-  String get title => _sshHost?.title ?? localShell?.name ?? linkTarget!.title;
+  String get title => _sshHost?.title ?? localLabel ?? localShell?.name ?? linkTarget!.title;
   String get targetLabel => _sshHost?.target ?? localShell?.name ?? linkTarget!.targetLabel;
   int get cols => _terminal.viewWidth;
   int get rows => _terminal.viewHeight;
@@ -847,6 +856,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         localShell!,
         cols: max(1, _terminal.viewWidth),
         rows: max(1, _terminal.viewHeight),
+        directory: (target as LocalTerminalTarget).directory,
         cancel: cancel,
       );
       owned = pty;
@@ -1263,11 +1273,18 @@ TerminalTheme _terminalTheme(TerminalPalette p) {
   );
 }
 
-TerminalPaintExtension _terminalContrast(TerminalPalette palette) {
+TerminalPaintExtension _terminalPaint(TerminalPalette palette, KeywordHighlighter? keywords) {
   final corrections = <(int, int), Color?>{};
   final paint = Paint()..isAntiAlias = false;
+  final tints = {
+    KeywordKind.error: palette.ansi[1].withValues(alpha: .28),
+    KeywordKind.warning: palette.ansi[3].withValues(alpha: .28),
+    KeywordKind.success: palette.ansi[2].withValues(alpha: .24),
+    KeywordKind.custom: palette.ansi[6].withValues(alpha: .28),
+  };
   return TerminalPaintExtension(
     beforeCellForegrounds: (frame) {
+      if (keywords != null && !frame.terminal.isUsingAltBuffer) _paintKeywords(frame, keywords, tints, paint);
       final terminal = frame.terminal;
       if (terminal.reverseDisplayMode ||
           terminal.indexedColorOverrides.isNotEmpty ||
@@ -1305,6 +1322,50 @@ TerminalPaintExtension _terminalContrast(TerminalPalette palette) {
       }
     },
   );
+}
+
+/// Tints keywords on the visible rows that keep the default background; programs that color a background chose it.
+void _paintKeywords(
+  TerminalPaintContext frame,
+  KeywordHighlighter keywords,
+  Map<KeywordKind, Color> tints,
+  Paint paint,
+) {
+  final lines = frame.terminal.buffer.lines;
+  for (var row = frame.firstRow; row < frame.endRow && row < lines.length; row++) {
+    final line = lines[row];
+    final (text, columns) = keywordLineText(line);
+    for (final m in keywords.match(text)) {
+      final first = columns[m.start], last = columns[m.end - 1];
+      final end = last + max(1, line.getWidth(last));
+      var plain = true;
+      for (var c = first; c < end && plain; c++) {
+        plain = line.getBackground(c) == CellColor.normal;
+      }
+      if (!plain) continue;
+      frame.canvas.drawRect(
+        frame.cellOffset(first, row) & Size(frame.cellSize.width * (end - first), frame.cellSize.height),
+        paint..color = tints[m.kind]!,
+      );
+    }
+  }
+}
+
+/// A row as text and, for each UTF-16 unit, the column it starts in; the second half of a wide character adds none.
+(String, List<int>) keywordLineText(BufferLine line) {
+  final text = StringBuffer();
+  final columns = <int>[];
+  for (var c = 0; c < line.length; c++) {
+    final width = line.getWidth(c);
+    final codePoint = line.getCodePoint(c);
+    final char = codePoint == 0 ? ' ' : String.fromCharCode(codePoint);
+    text.write(char);
+    for (var i = 0; i < char.length; i++) {
+      columns.add(c);
+    }
+    if (width == 2) c++;
+  }
+  return (text.toString(), columns);
 }
 
 int? _ansiIndex(int color) {

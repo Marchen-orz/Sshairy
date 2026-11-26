@@ -1,6 +1,7 @@
 import '../../../foundation/ids.dart';
 
-enum AuthKind { password, key }
+/// [agent] signs with keys held by the system's SSH agent.
+enum AuthKind { password, key, agent }
 
 enum ProxyKind { socks5, http }
 
@@ -50,17 +51,29 @@ class OverrideValue<T> {
 
 /// Authentication is replaced as a unit; private keys and passwords never enter this value.
 class AuthPolicy {
-  const AuthPolicy({this.methods = const [AuthKind.password], this.keyId, this.keyPath, this.allowInteractive = true});
+  const AuthPolicy({
+    this.methods = const [AuthKind.password],
+    this.keyId,
+    this.keyPath,
+    this.allowInteractive = true,
+    this.forwardAgent = false,
+  });
   final List<AuthKind> methods;
   final String? keyId, keyPath;
   final bool allowInteractive;
+
+  /// Lets the server use the system agent's keys for the session (docs/DESIGN.md ADR-17).
+  final bool forwardAgent;
   bool get usesKey => methods.contains(AuthKind.key);
+  bool get usesAgent => methods.contains(AuthKind.agent);
   bool get usesPassword => methods.contains(AuthKind.password);
 
   void validate() {
     if (methods.isEmpty ||
         methods.toSet().length != methods.length ||
-        (methods.length > 1 && methods.first != AuthKind.key) ||
+        // One public key way, optionally followed by the password.
+        methods.length > 2 ||
+        (methods.length == 2 && (methods.first == AuthKind.password || methods.last != AuthKind.password)) ||
         (usesKey && (keyId == null && (keyPath == null || keyPath!.trim().isEmpty))) ||
         (keyId != null && keyPath != null) ||
         (keyId != null && keyId!.isEmpty) ||
@@ -74,12 +87,14 @@ class AuthPolicy {
     keyId: j['keyId'] as String?,
     keyPath: j['keyPath'] as String?,
     allowInteractive: j['allowInteractive'] as bool? ?? true,
+    forwardAgent: j['forwardAgent'] as bool? ?? false,
   );
   Map<String, Object?> toJson() => {
     'methods': [for (final method in methods) method.name],
     if (keyId != null) 'keyId': keyId,
     if (keyPath != null) 'keyPath': keyPath,
     'allowInteractive': allowInteractive,
+    if (forwardAgent) 'forwardAgent': true,
   };
 }
 

@@ -88,9 +88,25 @@ final class SshTerminalTarget extends TerminalTarget {
   final HostId hostId;
 }
 
+/// [directory] and [label] come from a saved local terminal (docs/MODULES.md §3); without them the shell starts in
+/// the home directory under its own name.
 final class LocalTerminalTarget extends TerminalTarget {
-  const LocalTerminalTarget(this.shell);
+  const LocalTerminalTarget(this.shell, {this.directory, this.label});
   final LocalShell shell;
+  final String? directory, label;
+
+  Map<String, Object?> toJson() => {
+    'type': 'local',
+    'shell': shell.toJson(),
+    if (directory != null) 'directory': directory,
+    if (label != null) 'label': label,
+  };
+
+  factory LocalTerminalTarget.fromJson(Map<String, Object?> json) => LocalTerminalTarget(
+    LocalShell.fromJson((json['shell'] as Map).cast()),
+    directory: json['directory'] as String?,
+    label: json['label'] as String?,
+  );
 }
 
 enum LinkTerminalKind { mirror, proxy }

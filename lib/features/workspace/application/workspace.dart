@@ -90,8 +90,8 @@ class Workspace extends Notifier<WorkspaceState> {
     return tab.id;
   }
 
-  TabId openLocal(LocalShell shell) {
-    final s = _sessions.openLocal(shell);
+  TabId openLocal(LocalShell shell, {String? directory, String? label}) {
+    final s = _sessions.openLocal(shell, directory: directory, label: label);
     final tab = WorkspaceTab(TabId(newId()), Layout.single(PaneId(newId()), s.id));
     _set(WorkspaceState(tabs: [...state.tabs, tab], active: tab.id));
     return tab.id;
@@ -129,7 +129,11 @@ class Workspace extends Notifier<WorkspaceState> {
 
   TerminalSession? _copySession(TerminalSession session, bool Function()? authorizeInitialConnection) =>
       switch (session.target) {
-        LocalTerminalTarget(:final shell) => _sessions.openLocal(shell),
+        LocalTerminalTarget(:final shell, :final directory, :final label) => _sessions.openLocal(
+          shell,
+          directory: directory,
+          label: label,
+        ),
         SshTerminalTarget() => _sessions.open(session.host, authorizeInitialConnection: authorizeInitialConnection),
         LinkTerminalTarget() => null,
       };
@@ -139,9 +143,13 @@ class Workspace extends Notifier<WorkspaceState> {
     final tab = _tab(id);
     final s = tab == null ? null : session(tab.layout.focusedLeaf.session);
     if (s == null || s.isRemote) return null;
-    return switch (s.localShell) {
-      final shell? => openLocal(shell),
-      null => openHost(s.host),
+    return switch (s.target) {
+      LocalTerminalTarget(:final shell, :final directory, :final label) => openLocal(
+        shell,
+        directory: directory,
+        label: label,
+      ),
+      _ => openHost(s.host),
     };
   }
 
@@ -421,7 +429,7 @@ class Workspace extends Notifier<WorkspaceState> {
               for (final l in t.layout.leaves)
                 l.session.value: switch (sessions[l.session]!.target) {
                   SshTerminalTarget(:final hostId) => {'type': 'ssh', 'host': hostId.value},
-                  LocalTerminalTarget(:final shell) => {'type': 'local', 'shell': shell.toJson()},
+                  final LocalTerminalTarget local => local.toJson(),
                   LinkTerminalTarget() => throw StateError('remote sessions are not persisted'),
                 },
             },
@@ -453,7 +461,7 @@ class Workspace extends Notifier<WorkspaceState> {
             final target = targets[leaf.session.value] as Map;
             resolved[leaf.session] = switch (target['type']) {
               'ssh' => hosts.byId(HostId(target['host'] as String)),
-              'local' => LocalShell.fromJson((target['shell'] as Map).cast()),
+              'local' => LocalTerminalTarget.fromJson(target.cast()),
               _ => null,
             };
           }
@@ -479,8 +487,8 @@ class Workspace extends Notifier<WorkspaceState> {
         switch (target) {
           case Host():
             _sessions.open(target, id: id, autoConnect: false);
-          case LocalShell():
-            _sessions.openLocal(target, id: id, autoConnect: false);
+          case LocalTerminalTarget(:final shell, :final directory, :final label):
+            _sessions.openLocal(shell, id: id, autoConnect: false, directory: directory, label: label);
         }
       }
     });

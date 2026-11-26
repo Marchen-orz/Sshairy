@@ -866,6 +866,78 @@ abstract class AppLocalizations {
   /// **'Cannot read private key: {detail}'**
   String errKeyFile(String detail);
 
+  /// No description provided for @sshAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'SSH Agent'**
+  String get sshAgent;
+
+  /// No description provided for @forwardAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Forward SSH Agent'**
+  String get forwardAgent;
+
+  /// No description provided for @errAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot use the SSH agent: {detail}'**
+  String errAgent(String detail);
+
+  /// No description provided for @errAgentEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'The SSH agent holds no keys'**
+  String get errAgentEmpty;
+
+  /// No description provided for @keywordHighlight.
+  ///
+  /// In en, this message translates to:
+  /// **'Highlight keywords'**
+  String get keywordHighlight;
+
+  /// No description provided for @highlightKeywords.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom keywords'**
+  String get highlightKeywords;
+
+  /// No description provided for @highlightKeywordsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Separated by commas or spaces'**
+  String get highlightKeywordsHint;
+
+  /// No description provided for @localTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get localTerminal;
+
+  /// No description provided for @localShell.
+  ///
+  /// In en, this message translates to:
+  /// **'Shell'**
+  String get localShell;
+
+  /// No description provided for @startDirectory.
+  ///
+  /// In en, this message translates to:
+  /// **'Start in folder'**
+  String get startDirectory;
+
+  /// No description provided for @chooseFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose folder'**
+  String get chooseFolder;
+
+  /// No description provided for @noLocalShells.
+  ///
+  /// In en, this message translates to:
+  /// **'No local shell was found'**
+  String get noLocalShells;
+
   /// No description provided for @errCancelled.
   ///
   /// In en, this message translates to:

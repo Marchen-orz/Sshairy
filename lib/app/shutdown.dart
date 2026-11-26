@@ -99,6 +99,7 @@ class _ShutdownGuardState extends ConsumerState<ShutdownGuard> {
             ref.read(hostTrustProvider).saved,
             ref.read(settingsProvider.notifier).saved,
             ref.read(snippetsProvider.notifier).saved,
+            ref.read(localProfilesProvider.notifier).saved,
             ref.read(workspaceProvider.notifier).saved,
             // ignore: deprecated_member_use, provider.exist is not in riverpod 3.5.0 yet
             if (ref.exists(aiConfigurationProvider)) ref.read(aiConfigurationProvider.notifier).saved,

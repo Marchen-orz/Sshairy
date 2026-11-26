@@ -502,6 +502,20 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     );
   }
 
+  KeywordHighlighter? _highlighter;
+  String? _highlighterWords;
+
+  /// Kept while the custom words stay the same, so its row cache survives rebuilds.
+  KeywordHighlighter? _keywords(Settings settings) {
+    if (!settings.get(SettingKeys.keywordHighlight)) return null;
+    final words = settings.get(SettingKeys.highlightKeywords) ?? '';
+    if (_highlighter == null || words != _highlighterWords) {
+      _highlighter = KeywordHighlighter(custom: words);
+      _highlighterWords = words;
+    }
+    return _highlighter;
+  }
+
   void _closeSearch() {
     setState(() => _searching = false);
     _controller.clearSearchHighlights();
@@ -516,7 +530,7 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
     final settings = ref.watch(settingsProvider);
     final copyOnSelect = settings.get(SettingKeys.copyOnSelect);
     final palette = TerminalPalette.of(Theme.of(context));
-    final contrast = _terminalContrast(palette);
+    final contrast = _terminalPaint(palette, _keywords(settings));
     final imageOpacity =
         ref.watch(backgroundImagesProvider)[BackgroundSlot.terminal] ??
         settings.get<double>(SettingKeys.terminalBackgroundOpacity);

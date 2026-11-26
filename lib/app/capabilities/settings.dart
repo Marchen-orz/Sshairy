@@ -82,6 +82,8 @@ Map<String, Object?> settingDescription(SettingDef<Object?> d, AppLocalizations 
     'scrollback' => l.scrollback,
     'cursorShape' => l.cursorShape,
     'copyOnSelect' => l.copyOnSelect,
+    'keywordHighlight' => l.keywordHighlight,
+    'highlightKeywords' => l.highlightKeywords,
     'rightClick' => l.rightClick,
     'aiTextStyle' => l.aiTextStyle,
     'aiCompletionDelay' => l.aiCompletionDelay,

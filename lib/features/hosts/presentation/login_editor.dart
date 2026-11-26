@@ -14,7 +14,7 @@ import '../domain/host_library.dart';
 import 'form_parts.dart';
 import 'keys_panel.dart';
 
-enum _AuthMode { password, key, keyPassword }
+enum _AuthMode { password, key, keyPassword, agent }
 
 /// Username and the way to authenticate it: shared by hosts, groups, defaults and identities. Host passwords are
 /// edited separately in the host form; passphrases are asked for when needed.
@@ -34,12 +34,14 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
   late var _mode = switch (widget.initial?.policy) {
     final p? when p.usesKey && p.usesPassword => _AuthMode.keyPassword,
     final p? when p.usesKey => _AuthMode.key,
+    final p? when p.usesAgent => _AuthMode.agent,
     _ => _AuthMode.password,
   };
 
   /// An imported key's ID, or null for a key file.
   late String? _keyId = widget.initial?.policy.keyId;
   late var _interactive = widget.initial?.policy.allowInteractive ?? true;
+  late var _forwardAgent = widget.initial?.policy.forwardAgent ?? false;
 
   @override
   void dispose() {
@@ -50,7 +52,7 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
 
   /// What the fields describe; the caller validates the form first.
   Login get value {
-    final useKey = _mode != _AuthMode.password;
+    final useKey = _mode == _AuthMode.key || _mode == _AuthMode.keyPassword;
     return (
       username: _username.text.trim(),
       policy: AuthPolicy(
@@ -58,10 +60,12 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
           _AuthMode.password => const [AuthKind.password],
           _AuthMode.key => const [AuthKind.key],
           _AuthMode.keyPassword => const [AuthKind.key, AuthKind.password],
+          _AuthMode.agent => const [AuthKind.agent],
         },
         keyId: useKey ? _keyId : null,
         keyPath: useKey && _keyId == null ? unquoteWindowsPath(_keyPath.text.trim()) : null,
         allowInteractive: _interactive,
+        forwardAgent: _forwardAgent,
       ),
     );
   }
@@ -89,10 +93,11 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
             AppOption(_AuthMode.password, l.password),
             AppOption(_AuthMode.key, l.privateKey),
             AppOption(_AuthMode.keyPassword, l.keyThenPassword),
+            AppOption(_AuthMode.agent, l.sshAgent),
           ],
           onChanged: enabled ? (v) => setState(() => _mode = v) : null,
         ),
-        if (_mode != _AuthMode.password) ...[
+        if (_mode == _AuthMode.key || _mode == _AuthMode.keyPassword) ...[
           formGap,
           FileDropZone(
             enabled: enabled,
@@ -143,6 +148,11 @@ class LoginEditorState extends ConsumerState<LoginEditor> {
           title: l.allowInteractive,
           value: _interactive,
           onChanged: enabled ? (v) => setState(() => _interactive = v) : null,
+        ),
+        AppToggleRow(
+          title: l.forwardAgent,
+          value: _forwardAgent,
+          onChanged: enabled ? (v) => setState(() => _forwardAgent = v) : null,
         ),
       ],
     );

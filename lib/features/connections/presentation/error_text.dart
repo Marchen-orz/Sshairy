@@ -5,6 +5,7 @@ String connectErrorText(AppLocalizations l, ConnectError? e) => switch (e?.kind)
   ConnectFailure.auth => e!.detail == proxyAuthDetail ? l.errProxyAuth : l.errAuth,
   ConnectFailure.hostKeyRejected => l.errHostKeyRejected,
   ConnectFailure.keyFile => l.errKeyFile(e!.detail),
+  ConnectFailure.agent => e!.detail.isEmpty ? l.errAgentEmpty : l.errAgent(e.detail),
   ConnectFailure.cancelled => l.errCancelled,
   ConnectFailure.route => switch (e!.detail) {
     routeLoop => l.errRouteLoop,

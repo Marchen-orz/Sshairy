@@ -17,6 +17,7 @@ import '../domain/prompts.dart';
 import '../domain/transport.dart';
 import 'attempt_prompts.dart';
 import 'sftp_fs.dart';
+import 'ssh_agent.dart';
 import 'ssh_exec.dart';
 import 'proxy.dart';
 import 'tunnel.dart';
@@ -208,7 +209,11 @@ class SshDialer {
     final remember = <SecretRef, Secret>{};
     // Methods are offered in dartssh2's fixed order: key, then password, then keyboard-interactive.
     final policy = host.policy;
-    final identities = policy.usesKey ? await _loadKey(host, policy, prompts, remember) : null;
+    final List<SSHIdentity>? identities = policy.usesKey
+        ? await _loadKey(host, policy, prompts, remember)
+        : policy.usesAgent
+        ? await _agentKeys(policy)
+        : null;
     final savedPassword = policy.usesPassword && !host.transient ? await _secrets.read(host.passwordRef) : null;
     var rejected = false, cancelled = false, passwordUsed = false;
 
@@ -313,6 +318,7 @@ class SshDialer {
       },
       onPasswordRequest: password,
       onUserInfoRequest: policy.allowInteractive ? challenge : null,
+      agentHandler: policy.forwardAgent ? ForwardedAgent(SystemAgent.locate()) : null,
     );
     cancel.whenCancelled.then((_) {
       client.close();
@@ -335,6 +341,23 @@ class SshDialer {
       if (cancelled) throw const ConnectError(ConnectFailure.cancelled);
       if (e is SSHAuthFailError) throw const ConnectError(ConnectFailure.auth);
       throw ConnectError(ConnectFailure.network, '$e');
+    }
+  }
+
+  /// The system agent's keys. Without a password to fall back on, an agent that is missing or holds no key fails
+  /// here with a reason instead of as a bare authentication failure.
+  Future<List<SSHIdentity>> _agentKeys(AuthPolicy policy) async {
+    try {
+      final agent = SystemAgent.locate();
+      if (agent == null) throw const ConnectError(ConnectFailure.agent, 'SSH_AUTH_SOCK');
+      final keys = await agent.identities();
+      if (keys.isEmpty && !policy.usesPassword) throw const ConnectError(ConnectFailure.agent);
+      return keys;
+    } on ConnectError {
+      rethrow;
+    } on Object catch (e) {
+      if (policy.usesPassword) return const [];
+      throw ConnectError(ConnectFailure.agent, '$e');
     }
   }
 

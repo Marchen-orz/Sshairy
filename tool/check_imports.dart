@@ -33,6 +33,7 @@ const adapters = {
     'lib/features/hosts/adapters/',
     'lib/features/connections/adapters/',
     'lib/features/settings/adapters/',
+    'lib/features/terminal/adapters/folder_picker.dart',
   ],
 };
 

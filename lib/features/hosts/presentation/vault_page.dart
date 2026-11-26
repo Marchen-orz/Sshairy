@@ -26,11 +26,36 @@ import 'move_hosts_dialog.dart';
 
 const _gridTile = 320.0, _gridRow = 64.0;
 
+/// A saved local terminal as the vault shows it; the terminal feature owns the data (docs/UI.md §3).
+class VaultLocal {
+  const VaultLocal({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.matches,
+    required this.onOpen,
+    required this.editor,
+    required this.onDelete,
+  });
+
+  final String id, title, subtitle;
+  final bool Function(String query) matches;
+  final VoidCallback onOpen;
+  final WidgetBuilder editor;
+  final Future<void> Function() onDelete;
+}
+
 class VaultPage extends ConsumerStatefulWidget {
-  const VaultPage({super.key, required this.active, required this.onConnect});
+  const VaultPage({super.key, required this.active, required this.onConnect, this.locals = const [], this.localForm});
 
   final bool active;
   final void Function(Host host) onConnect;
+
+  /// Shown before the hosts while no group is picked.
+  final List<VaultLocal> locals;
+
+  /// The form a new entry switches to for a local terminal.
+  final WidgetBuilder? localForm;
 
   @override
   ConsumerState<VaultPage> createState() => _VaultPageState();
@@ -88,7 +113,52 @@ class _VaultPageState extends ConsumerState<VaultPage> {
 
   HostsNotifier get _hosts => ref.read(hostsProvider.notifier);
 
-  void _edit([Host? host]) => showSideDrawer<void>(context, (_) => HostForm(host: host, group: _group));
+  void _edit([Host? host]) => showSideDrawer<void>(
+    context,
+    (_) => HostForm(host: host, group: _group, localForm: host == null ? widget.localForm : null),
+  );
+
+  List<(String, VoidCallback)> _localActions(VaultLocal local) {
+    final l = AppLocalizations.of(context);
+    return [(l.edit, () => showSideDrawer<void>(context, local.editor)), (l.delete, () => _deleteLocal(local))];
+  }
+
+  Future<void> _localMenu(VaultLocal local, Offset position) async {
+    final l = AppLocalizations.of(context);
+    final run = await showAppMenu<VoidCallback>(
+      context: context,
+      anchor: anchorAt(position),
+      items: [
+        for (final (label, action) in _localActions(local))
+          AppMenuItem(value: action, label: label, destructive: label == l.delete),
+      ],
+    );
+    run?.call();
+  }
+
+  Future<void> _deleteLocal(VaultLocal local) async {
+    final l = AppLocalizations.of(context);
+    final ok = await showAppDialog<bool>(
+      context: context,
+      builder: (context) => AppDialog(
+        content: Text(l.deleteHost(local.title)),
+        actions: [
+          TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l.delete),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await local.onDelete();
+    } on Object {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l.errSave)));
+    }
+  }
 
   Future<void> _delete(List<HostId> ids) async {
     final l = AppLocalizations.of(context);
@@ -281,11 +351,13 @@ class _VaultPageState extends ConsumerState<VaultPage> {
     run?.call();
   }
 
-  void _submit(List<Host> matches, Host? quick) {
+  void _submit(List<Host> matches, List<VaultLocal> locals, Host? quick) {
     if (quick != null) {
       widget.onConnect(quick);
-    } else if (matches.length == 1) {
+    } else if (matches.length == 1 && locals.isEmpty) {
       widget.onConnect(matches.single);
+    } else if (matches.isEmpty && locals.length == 1) {
+      locals.single.onOpen();
     }
   }
 
@@ -305,15 +377,40 @@ class _VaultPageState extends ConsumerState<VaultPage> {
       hosts.where((h) => inGroup(h, _group) && hostMatches(h, query)),
       recent: order == HostOrder.recent,
     );
+    final locals = _group.isEmpty
+        ? [
+            for (final local in widget.locals)
+              if (local.matches(query)) local,
+          ]
+        : <VaultLocal>[];
     final quick = query.isEmpty ? null : parseQuickConnect(_search.text);
     final visibleIds = {for (final host in matches) host.id};
     _selected.retainAll(visibleIds);
     if (!visibleIds.contains(_anchor)) _anchor = null;
 
+    Widget localTile(VaultLocal local) => _VaultTile(
+      key: ValueKey('local-${local.id}'),
+      title: local.title,
+      subtitle: local.subtitle,
+      icon: Icons.terminal,
+      list: view == HostView.list,
+      selected: false,
+      onSelect: () {},
+      onToggle: () {},
+      onSelectAll: () {},
+      onClear: () {},
+      onConnect: local.onOpen,
+      onSecondaryTap: (position) => _localMenu(local, position),
+      actions: () => _localActions(local),
+    );
+
     Widget tile(Host h) {
-      return _HostTile(
+      return _VaultTile(
         key: ValueKey(h.id),
-        host: h,
+        title: h.title,
+        subtitle: h.target,
+        detail: [if (h.group.isNotEmpty) h.group, ...h.tags.map((t) => '#$t')].join('  '),
+        pinned: h.pinned,
         list: view == HostView.list,
         selected: _selected.contains(h.id),
         onSelect: () => _selectClick(h, matches),
@@ -343,7 +440,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                   autofocus: true,
                   decoration: InputDecoration(hintText: l.searchHint, prefixIcon: const Icon(Icons.search, size: 16)),
                   onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) => _submit(matches, quick),
+                  onSubmitted: (_) => _submit(matches, locals, quick),
                 ),
               ),
               const SizedBox(width: Space.sm),
@@ -427,7 +524,7 @@ class _VaultPageState extends ConsumerState<VaultPage> {
             const SizedBox(height: Space.md),
           ],
           Expanded(
-            child: matches.isEmpty
+            child: matches.isEmpty && locals.isEmpty
                 ? (query.isEmpty
                       ? BrandEmptyState(
                           active: widget.active,
@@ -452,10 +549,29 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       final list = view == HostView.list;
                       final contentWidth = constraints.maxWidth - ScrollGutterScope.gapOf(context);
                       // Fixed row extents give the hosts' height exactly; the watermark only fills space they leave.
-                      final rows = list
-                          ? matches.length
-                          : (matches.length / (contentWidth / (_gridTile + Space.sm)).ceil()).ceil();
-                      final used = list ? rows * (WorkspaceSize.listRow + Space.xs) : rows * (_gridRow + Space.sm);
+                      final columns = list ? 1 : (contentWidth / (_gridTile + Space.sm)).ceil();
+                      int rows(int count) => (count / columns).ceil();
+                      final both = locals.isNotEmpty && matches.isNotEmpty;
+                      final used =
+                          (rows(locals.length) + rows(matches.length)) *
+                              (list ? WorkspaceSize.listRow + Space.xs : _gridRow + Space.sm) +
+                          (both ? Space.md : 0);
+                      Widget section(int count, Widget Function(int) item) => list
+                          ? SliverList.separated(
+                              itemCount: count,
+                              separatorBuilder: (_, _) => const SizedBox(height: Space.xs),
+                              itemBuilder: (context, i) => item(i),
+                            )
+                          : SliverGrid.builder(
+                              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: _gridTile,
+                                mainAxisExtent: _gridRow,
+                                crossAxisSpacing: Space.sm,
+                                mainAxisSpacing: Space.sm,
+                              ),
+                              itemCount: count,
+                              itemBuilder: (context, i) => item(i),
+                            );
                       final spare =
                           constraints.maxHeight - used >= BrandWatermark.height + Space.xl + Space.lg &&
                           contentWidth >= BrandWatermark.width * 3;
@@ -468,22 +584,14 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                               bottom: Space.lg,
                               child: BrandWatermark(active: widget.active),
                             ),
-                          list
-                              ? ListView.separated(
-                                  itemCount: matches.length,
-                                  separatorBuilder: (_, _) => const SizedBox(height: Space.xs),
-                                  itemBuilder: (context, i) => tile(matches[i]),
-                                )
-                              : GridView.builder(
-                                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                                    maxCrossAxisExtent: _gridTile,
-                                    mainAxisExtent: _gridRow,
-                                    crossAxisSpacing: Space.sm,
-                                    mainAxisSpacing: Space.sm,
-                                  ),
-                                  itemCount: matches.length,
-                                  itemBuilder: (context, i) => tile(matches[i]),
-                                ),
+                          CustomScrollView(
+                            slivers: [
+                              // Local terminals keep a block of their own above the hosts.
+                              if (locals.isNotEmpty) section(locals.length, (i) => localTile(locals[i])),
+                              if (both) const SliverToBoxAdapter(child: SizedBox(height: Space.md)),
+                              if (matches.isNotEmpty) section(matches.length, (i) => tile(matches[i])),
+                            ],
+                          ),
                         ],
                       );
                     },
@@ -621,10 +729,14 @@ class _GroupOrderBar extends StatelessWidget {
   );
 }
 
-class _HostTile extends StatefulWidget {
-  const _HostTile({
+class _VaultTile extends StatefulWidget {
+  const _VaultTile({
     super.key,
-    required this.host,
+    required this.title,
+    required this.subtitle,
+    this.detail = '',
+    this.icon = Icons.dns_outlined,
+    this.pinned = false,
     required this.list,
     required this.selected,
     required this.onSelect,
@@ -636,19 +748,24 @@ class _HostTile extends StatefulWidget {
     required this.actions,
   });
 
-  final Host host;
+  final String title, subtitle;
 
-  /// A dense row with group and tags, instead of a card.
+  /// Group and tags in the list row.
+  final String detail;
+  final IconData icon;
+  final bool pinned;
+
+  /// A dense row with [detail], instead of a card.
   final bool list, selected;
   final VoidCallback onConnect, onSelect, onToggle, onSelectAll, onClear;
   final ValueChanged<Offset> onSecondaryTap;
   final List<(String, VoidCallback)> Function() actions;
 
   @override
-  State<_HostTile> createState() => _HostTileState();
+  State<_VaultTile> createState() => _VaultTileState();
 }
 
-class _HostTileState extends State<_HostTile> {
+class _VaultTileState extends State<_VaultTile> {
   final _focus = FocusNode();
   var _clicks = DoubleClick();
   var _hovered = false, _focused = false;
@@ -676,22 +793,21 @@ class _HostTileState extends State<_HostTile> {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
-    final host = widget.host;
     final name = Row(
       children: [
         Flexible(
           child: Tooltip(
-            message: host.title,
-            child: Text(host.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            message: widget.title,
+            child: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ),
-        if (host.pinned) ...[
+        if (widget.pinned) ...[
           const SizedBox(width: Space.xs),
           Icon(Icons.push_pin, size: 12, color: theme.colorScheme.primary),
         ],
       ],
     );
-    final target = Text(host.target, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted);
+    final target = Text(widget.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted);
     final avatar = Container(
       width: widget.list ? 24 : 32,
       height: widget.list ? 24 : 32,
@@ -699,7 +815,7 @@ class _HostTileState extends State<_HostTile> {
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(Radii.control),
       ),
-      child: Icon(Icons.dns_outlined, size: widget.list ? 14 : 16, color: theme.colorScheme.primary),
+      child: Icon(widget.icon, size: widget.list ? 14 : 16, color: theme.colorScheme.primary),
     );
     // Stays in the tree when hidden: an open menu would otherwise lose its selection when focus moves.
     final actions = AnimatedOpacity(
@@ -734,12 +850,7 @@ class _HostTileState extends State<_HostTile> {
               Expanded(flex: 3, child: target),
               Expanded(
                 flex: 3,
-                child: Text(
-                  [if (host.group.isNotEmpty) host.group, ...host.tags.map((t) => '#$t')].join('  '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: muted,
-                ),
+                child: Text(widget.detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
               ),
               actions,
             ],

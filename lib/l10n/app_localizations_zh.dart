@@ -426,6 +426,44 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get sshAgent => 'SSH Agent';
+
+  @override
+  String get forwardAgent => '转发 SSH Agent';
+
+  @override
+  String errAgent(String detail) {
+    return '无法使用 SSH Agent：$detail';
+  }
+
+  @override
+  String get errAgentEmpty => 'SSH Agent 中没有密钥';
+
+  @override
+  String get keywordHighlight => '关键词高亮';
+
+  @override
+  String get highlightKeywords => '自定义关键词';
+
+  @override
+  String get highlightKeywordsHint => '用逗号或空格分隔';
+
+  @override
+  String get localTerminal => '本地';
+
+  @override
+  String get localShell => 'Shell';
+
+  @override
+  String get startDirectory => '起始文件夹';
+
+  @override
+  String get chooseFolder => '选择文件夹';
+
+  @override
+  String get noLocalShells => '没有找到本地 Shell';
+
+  @override
   String get errCancelled => '已取消';
 
   @override

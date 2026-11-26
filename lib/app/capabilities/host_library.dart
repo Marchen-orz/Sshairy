@@ -180,6 +180,8 @@ Login inlineLogin(Ref ref, Args a, Login? base) {
     keyId: keyId,
     keyPath: keyPath,
     allowInteractive: a.optional<bool>('allowInteractive') ?? base?.policy.allowInteractive ?? true,
+    // Not offered to the agent: the user decides who may sign with their keys.
+    forwardAgent: base?.policy.forwardAgent ?? false,
   );
   try {
     policy.validate();

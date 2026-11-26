@@ -64,11 +64,19 @@ class TerminalSessions extends Notifier<Map<SessionId, TerminalSession>> {
     return session;
   }
 
-  TerminalSession openLocal(LocalShell shell, {SessionId? id, bool autoConnect = true}) {
+  TerminalSession openLocal(
+    LocalShell shell, {
+    SessionId? id,
+    bool autoConnect = true,
+    String? directory,
+    String? label,
+  }) {
     final session = TerminalSession.local(
       id ?? SessionId(newId()),
       shell,
       ref.read(localPtyProvider),
+      directory: directory,
+      label: label,
       autoConnect: autoConnect,
       scrollback: ref.read(settingsProvider).get(SettingKeys.scrollback),
       snippets: () => ref.read(terminalSnippetsProvider),

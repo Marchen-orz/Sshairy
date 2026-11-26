@@ -11,6 +11,7 @@ import '../features/forwarding/api.dart';
 import '../features/hosts/api.dart';
 import '../features/settings/api.dart';
 import '../features/snippets/api.dart';
+import '../features/terminal/api.dart';
 import '../features/workspace/api.dart';
 import '../foundation/data_dir.dart';
 import '../foundation/diagnostics.dart';
@@ -34,6 +35,11 @@ final configurationCheckProvider = Provider<ConfigurationIssue?>((ref) {
     (name: 'hosts.json', load: () => ref.read(hostsProvider), reset: () => ref.invalidate(hostsProvider)),
     (name: 'trust.json', load: () => ref.read(hostTrustProvider), reset: () => ref.invalidate(hostTrustProvider)),
     (name: 'snippets.json', load: () => ref.read(snippetsProvider), reset: () => ref.invalidate(snippetsProvider)),
+    (
+      name: 'local_terminals.json',
+      load: () => ref.read(localProfilesProvider),
+      reset: () => ref.invalidate(localProfilesProvider),
+    ),
     (name: 'forwards.json', load: () => ref.read(forwardsProvider), reset: () => ref.invalidate(forwardsProvider)),
     (name: 'transfers.json', load: () => ref.read(transfersProvider), reset: () => ref.invalidate(transfersProvider)),
     (name: 'edits.json', load: () => ref.read(editsProvider), reset: () => ref.invalidate(editsProvider)),

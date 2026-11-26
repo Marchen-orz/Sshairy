@@ -454,6 +454,44 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get sshAgent => 'SSH Agent';
+
+  @override
+  String get forwardAgent => 'Forward SSH Agent';
+
+  @override
+  String errAgent(String detail) {
+    return 'Cannot use the SSH agent: $detail';
+  }
+
+  @override
+  String get errAgentEmpty => 'The SSH agent holds no keys';
+
+  @override
+  String get keywordHighlight => 'Highlight keywords';
+
+  @override
+  String get highlightKeywords => 'Custom keywords';
+
+  @override
+  String get highlightKeywordsHint => 'Separated by commas or spaces';
+
+  @override
+  String get localTerminal => 'Local';
+
+  @override
+  String get localShell => 'Shell';
+
+  @override
+  String get startDirectory => 'Start in folder';
+
+  @override
+  String get chooseFolder => 'Choose folder';
+
+  @override
+  String get noLocalShells => 'No local shell was found';
+
+  @override
   String get errCancelled => 'Cancelled';
 
   @override

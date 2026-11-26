@@ -332,6 +332,10 @@ abstract final class SettingKeys {
   static const scrollback = IntSetting('scrollback', 2000, 500, 20000, apply: ApplyMode.newSessions);
   static const cursorShape = EnumSetting('cursorShape', CursorShape.block, CursorShape.values);
   static const copyOnSelect = BoolSetting('copyOnSelect', false);
+  static const keywordHighlight = BoolSetting('keywordHighlight', true);
+
+  /// Words marked beside the built-in ones, separated by commas or spaces.
+  static const highlightKeywords = OptionalStringSetting('highlightKeywords', maxLength: 1024);
   static const rightClick = EnumSetting('rightClick', RightClick.menu, RightClick.values);
 
   /// Guards against pasting commands that run at once; not the agent's to turn off.
@@ -460,6 +464,8 @@ abstract final class SettingKeys {
     scrollback,
     cursorShape,
     copyOnSelect,
+    keywordHighlight,
+    highlightKeywords,
     rightClick,
     confirmPaste,
     aiTextStyle,

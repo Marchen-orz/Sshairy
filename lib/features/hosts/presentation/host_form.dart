@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../design/controls.dart';
 import '../../../design/form_field.dart';
 import '../../../design/theme.dart';
 import '../../../foundation/ids.dart';
@@ -14,9 +15,12 @@ import 'connection_editor.dart';
 import 'form_parts.dart';
 
 class HostForm extends ConsumerStatefulWidget {
-  const HostForm({super.key, this.host, this.group = ''});
+  const HostForm({super.key, this.host, this.group = '', this.localForm});
 
   final Host? host;
+
+  /// A new entry can switch to this form and save a local terminal instead.
+  final WidgetBuilder? localForm;
 
   /// Where a new host goes: the group the vault is showing.
   final String group;
@@ -47,6 +51,7 @@ class _HostFormState extends ConsumerState<HostForm> {
   bool _hasPassword = false;
   bool _removePassword = false;
   bool _showPassword = false;
+  bool _local = false;
 
   @override
   void initState() {
@@ -243,7 +248,7 @@ class _HostFormState extends ConsumerState<HostForm> {
     final library = ref.watch(hostLibraryProvider);
     final old = _seed;
     final path = normalizeGroup(_group.text);
-    return FloatingLabelFields(
+    final form = FloatingLabelFields(
       child: Form(
         key: _form,
         child: Column(
@@ -311,6 +316,23 @@ class _HostFormState extends ConsumerState<HostForm> {
           ],
         ),
       ),
+    );
+    final localForm = widget.localForm;
+    if (widget.host != null || localForm == null) return form;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: Space.sm),
+          child: AppSegmented<bool>(
+            segments: {false: 'SSH', true: l.localTerminal},
+            selected: _local,
+            onChanged: (local) => setState(() => _local = local),
+          ),
+        ),
+        const SizedBox(height: Space.sm),
+        Expanded(child: _local ? localForm(context) : form),
+      ],
     );
   }
 

@@ -13,5 +13,12 @@ abstract interface class LocalPty {
 }
 
 abstract interface class LocalPtyFactory {
-  Future<LocalPty> start(LocalShell shell, {required int cols, required int rows, CancellationToken? cancel});
+  /// Starts in [directory], or the user's home directory when it is null.
+  Future<LocalPty> start(
+    LocalShell shell, {
+    required int cols,
+    required int rows,
+    String? directory,
+    CancellationToken? cancel,
+  });
 }

@@ -33,7 +33,8 @@ abstract interface class ConnectPrompts {
   Future<SecretAnswer?> secret(SecretRequest request);
 }
 
-enum ConnectFailure { network, auth, hostKeyRejected, keyFile, cancelled, route }
+/// [agent] carries the reason the system agent could not be used; an empty detail means it holds no key.
+enum ConnectFailure { network, auth, hostKeyRejected, keyFile, cancelled, route, agent }
 
 /// [ConnectError.detail] for [ConnectFailure.auth] when the proxy, not the server, refused.
 const proxyAuthDetail = 'proxy';

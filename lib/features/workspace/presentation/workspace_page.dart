@@ -689,7 +689,24 @@ class _WorkspacePageState extends ConsumerState<WorkspacePage> {
           visible: vault,
           animate: animatePages,
           backdrop: backdrop,
-          child: VaultPage(active: vault, onConnect: _workspace.openHost),
+          child: VaultPage(
+            active: vault,
+            onConnect: _workspace.openHost,
+            locals: [
+              for (final local in ref.watch(localProfilesProvider))
+                VaultLocal(
+                  id: local.id,
+                  title: local.label,
+                  subtitle: local.directory.isEmpty ? local.shell.name : local.directory,
+                  matches: local.matches,
+                  onOpen: () =>
+                      _workspace.openLocal(local.shell, directory: local.target.directory, label: local.label),
+                  editor: (_) => LocalProfileForm(profile: local),
+                  onDelete: () => ref.read(localProfilesProvider.notifier).delete(local.id),
+                ),
+            ],
+            localForm: isDesktopPlatform ? (_) => const LocalProfileForm() : null,
+          ),
         ),
       ),
       if (_filesBuilt)
@@ -938,44 +955,44 @@ class _PaneHeader extends StatelessWidget {
           ),
           child: ListenableBuilder(
             listenable: session,
-            builder: (context, _) => Row(
-              children: [
-                SizedBox.square(dimension: 14, child: Center(child: SessionStatusIcon(session.status))),
-                const SizedBox(width: Space.sm),
-                // Expanded keeps the close button at the pane edge even when the title is short.
-                Expanded(
-                  child: Tooltip(
-                    message: session.sshHost?.label.isNotEmpty == true
-                        ? '${session.sshHost!.label}  ${session.targetLabel}'
-                        : session.targetLabel,
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          if (session.sshHost case final host? when host.label.isNotEmpty)
-                            TextSpan(text: '${host.label}  '),
-                          TextSpan(
-                            text: session.targetLabel,
-                            style: session.isLocal ? null : TextStyle(color: scheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: focused ? scheme.onSurface : scheme.onSurfaceVariant,
+            builder: (context, _) {
+              final note = session.sshHost?.label ?? session.localLabel ?? '';
+              return Row(
+                children: [
+                  SizedBox.square(dimension: 14, child: Center(child: SessionStatusIcon(session.status))),
+                  const SizedBox(width: Space.sm),
+                  // Expanded keeps the close button at the pane edge even when the title is short.
+                  Expanded(
+                    child: Tooltip(
+                      message: note.isNotEmpty ? '$note  ${session.targetLabel}' : session.targetLabel,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            if (note.isNotEmpty) TextSpan(text: '$note  '),
+                            TextSpan(
+                              text: session.targetLabel,
+                              style: session.isLocal && note.isEmpty ? null : TextStyle(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: focused ? scheme.onSurface : scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                IconButton(
-                  tooltip: AppLocalizations.of(context).closePane,
-                  onPressed: onClose,
-                  constraints: const BoxConstraints.tightFor(width: 22, height: 22),
-                  style: IconButton.styleFrom(minimumSize: const Size(22, 22), padding: EdgeInsets.zero),
-                  icon: const Icon(Icons.close, size: 13),
-                ),
-              ],
-            ),
+                  IconButton(
+                    tooltip: AppLocalizations.of(context).closePane,
+                    onPressed: onClose,
+                    constraints: const BoxConstraints.tightFor(width: 22, height: 22),
+                    style: IconButton.styleFrom(minimumSize: const Size(22, 22), padding: EdgeInsets.zero),
+                    icon: const Icon(Icons.close, size: 13),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
