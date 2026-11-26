@@ -21,6 +21,7 @@ import '../../connections/api.dart';
 import '../../hosts/api.dart';
 import '../../settings/api.dart';
 import '../adapters/desktop.dart';
+import '../application/bookmarks.dart';
 import '../application/browser.dart';
 import '../application/edits.dart';
 import '../application/file_ops.dart';
@@ -461,6 +462,7 @@ class _FilePaneState extends ConsumerState<FilePane> {
                 ),
               ),
               icon(l.refresh, Icons.refresh, ready ? b.refresh : null),
+              if (_bookmarkKey case final key?) _bookmarkMenu(key, ready),
               AppMenuButton<VoidCallback>(
                 tooltip: l.more,
                 enabled: ready,
@@ -490,6 +492,31 @@ class _FilePaneState extends ConsumerState<FilePane> {
           ),
         );
       },
+    );
+  }
+
+  /// Bookmarks belong to a saved host or this computer; a phone's folders have no stable owner to keep them under.
+  String? get _bookmarkKey => b.local ? Bookmarks.local : b.host?.id.value;
+
+  Widget _bookmarkMenu(String key, bool ready) {
+    final paths = ref.watch(bookmarksProvider)[key] ?? const [];
+    final marked = paths.contains(b.path);
+    final bookmarks = ref.read(bookmarksProvider.notifier);
+    return AppMenuButton<VoidCallback>(
+      tooltip: l.bookmarks,
+      enabled: ready,
+      icon: Icon(marked ? Icons.bookmark : Icons.bookmark_border, size: 16),
+      onSelected: (run) => run(),
+      items: () => [
+        AppMenuItem(
+          value: () => unawaited(bookmarks.toggle(key, b.path)),
+          label: marked ? l.removeBookmark : l.addBookmark,
+          icon: marked ? Icons.bookmark_remove_outlined : Icons.bookmark_add_outlined,
+          enabled: marked || paths.length < Bookmarks.maxPerHost,
+        ),
+        if (paths.isNotEmpty) const AppMenuDivider(),
+        for (final path in paths) AppMenuItem(value: () => b.go(path), label: path, checked: path == b.path),
+      ],
     );
   }
 

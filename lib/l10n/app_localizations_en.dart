@@ -1113,6 +1113,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get filter => 'Filter';
 
   @override
+  String get bookmarks => 'Bookmarks';
+
+  @override
+  String get addBookmark => 'Bookmark this folder';
+
+  @override
+  String get removeBookmark => 'Remove bookmark';
+
+  @override
   String get editPath => 'Edit path';
 
   @override

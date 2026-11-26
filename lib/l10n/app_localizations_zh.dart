@@ -1062,6 +1062,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get filter => '筛选';
 
   @override
+  String get bookmarks => '书签';
+
+  @override
+  String get addBookmark => '收藏当前目录';
+
+  @override
+  String get removeBookmark => '移除书签';
+
+  @override
   String get editPath => '编辑路径';
 
   @override
