@@ -671,13 +671,33 @@ class _FilePaneState extends ConsumerState<FilePane> {
                               onTap: () => _tap(e),
                               onSecondaryTap: (p) => _menu(p, e),
                             );
+                            if (widget.other == null) return row;
+                            final targets = _targets(e);
+                            void onStart() {
+                              if (!b.selected.contains(e.name)) b.select(e.name);
+                            }
+
+                            final touch = switch (theme.platform) {
+                              TargetPlatform.android || TargetPlatform.iOS => true,
+                              _ => false,
+                            };
+                            if (touch) {
+                              return LongPressDraggable<FileDrag>(
+                                data: FileDrag(b, targets),
+                                dragAnchorStrategy: pointerDragAnchorStrategy,
+                                onDragStarted: () {
+                                  unawaited(HapticFeedback.selectionClick());
+                                  onStart();
+                                },
+                                feedback: _DragFeedback(targets),
+                                child: row,
+                              );
+                            }
                             return Draggable<FileDrag>(
-                              data: FileDrag(b, _targets(e)),
+                              data: FileDrag(b, targets),
                               dragAnchorStrategy: pointerDragAnchorStrategy,
-                              onDragStarted: () {
-                                if (!b.selected.contains(e.name)) b.select(e.name);
-                              },
-                              feedback: _DragFeedback(_targets(e)),
+                              onDragStarted: onStart,
+                              feedback: _DragFeedback(targets),
                               child: row,
                             );
                           },
