@@ -273,6 +273,14 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   TransportLease? _lease;
   TerminalOutput? _outputQueue;
   CancellationToken? _connecting;
+
+  /// The current shell's raw input, for answers that are not the user's typing.
+  void Function(Uint8List)? _shellInput;
+
+  /// Written after cancelling a ZMODEM transfer; the pane sets it in the user's language.
+  String? zmodemNotice;
+  var _zmodemTail = '';
+  DateTime? _zmodemCancelled;
   var _closed = false;
   var _shellEnded = true;
   final _insertions = <CancellationToken>{};
@@ -783,6 +791,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       }
 
       shell.done.then((_) => ended(), onError: (Object _) => ended());
+      _shellInput = shell.write;
       _terminal.onOutput = (data) {
         if (data.isEmpty) return;
         _forwardTerminalInput(data, shell.write);
@@ -873,6 +882,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
         _dismissInsertions();
       }
 
+      _shellInput = pty.write;
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
         _forwardTerminalInput(data, pty.write);
@@ -940,6 +950,7 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       }
 
       shell.done.then((_) => ended(), onError: (Object _) => ended());
+      _shellInput = shell.write;
       _terminal.onOutput = (data) {
         if (data.isEmpty || _shellEnded) return;
         _forwardTerminalInput(data, shell.write);
@@ -997,6 +1008,8 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
   }
 
   void _output(String data) {
+    final zmodem = _zmodemStarted(data);
+    if (zmodem) data = '$data\r\n\x1b[33m${zmodemNotice ?? 'ZMODEM'}\x1b[0m\r\n';
     if (_mirrorOut.hasListener && data.isNotEmpty) {
       _mirrorOut.add(Uint8List.fromList(utf8.encode(data)));
     }
@@ -1020,6 +1033,26 @@ class TerminalSession extends ChangeNotifier implements TerminalContextReader, T
       unread = true;
       notifyListeners();
     }
+  }
+
+  static final _zmodemHeader = RegExp('\\*\\*\x18B0[01]');
+  static final _zmodemAbort = Uint8List.fromList([...List.filled(8, 0x18), ...List.filled(8, 0x08)]);
+
+  /// `sz`/`rz` wait forever for a ZMODEM peer we do not have yet; cancel them (docs/MODULES.md §3).
+  bool _zmodemStarted(String data) {
+    final seen = _zmodemTail + data;
+    _zmodemTail = seen.length > 6 ? seen.substring(seen.length - 6) : seen;
+    if (!_zmodemHeader.hasMatch(seen)) return false;
+    _zmodemTail = '';
+    final now = DateTime.now(), last = _zmodemCancelled;
+    if (last != null && now.difference(last) < const Duration(seconds: 2)) return false;
+    _zmodemCancelled = now;
+    try {
+      _shellInput?.call(_zmodemAbort);
+    } on Object {
+      // The shell is gone; nothing is waiting any more.
+    }
+    return true;
   }
 
   /// Enter may have run a `cd`: look once the shell has had time, and again for a slow one.

@@ -1071,6 +1071,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get removeBookmark => '移除书签';
 
   @override
+  String get zmodemUnsupported => '暂不支持 ZMODEM（sz/rz），已取消本次传输，请改用文件面板。';
+
+  @override
   String get editPath => '编辑路径';
 
   @override

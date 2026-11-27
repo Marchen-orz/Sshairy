@@ -1122,6 +1122,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get removeBookmark => 'Remove bookmark';
 
   @override
+  String get zmodemUnsupported =>
+      'ZMODEM (sz/rz) is not supported yet, so the transfer was cancelled. Use the file panel instead.';
+
+  @override
   String get editPath => 'Edit path';
 
   @override

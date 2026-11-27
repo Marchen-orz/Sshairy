@@ -361,6 +361,7 @@
   "bookmarks": "Bookmarks",
   "addBookmark": "Bookmark this folder",
   "removeBookmark": "Remove bookmark",
+  "zmodemUnsupported": "ZMODEM (sz/rz) is not supported yet, so the transfer was cancelled. Use the file panel instead.",
   "editPath": "Edit path",
   "newFolder": "New folder",
   "hiddenFiles": "Show hidden files",

@@ -120,8 +120,15 @@ class _TerminalPaneState extends ConsumerState<TerminalPane> with WidgetsBinding
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _session.zmodemNotice = AppLocalizations.of(context).zmodemUnsupported;
+  }
+
+  @override
   void didUpdateWidget(TerminalPane old) {
     super.didUpdateWidget(old);
+    _session.zmodemNotice = AppLocalizations.of(context).zmodemUnsupported;
     _scheduleImeRect();
     _scheduleCandidateTranslations();
     if (!widget.active || !widget.visible) {

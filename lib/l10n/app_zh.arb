@@ -345,6 +345,7 @@
   "bookmarks": "书签",
   "addBookmark": "收藏当前目录",
   "removeBookmark": "移除书签",
+  "zmodemUnsupported": "暂不支持 ZMODEM（sz/rz），已取消本次传输，请改用文件面板。",
   "editPath": "编辑路径",
   "newFolder": "新建文件夹",
   "hiddenFiles": "显示隐藏文件",

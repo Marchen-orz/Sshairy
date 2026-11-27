@@ -2090,6 +2090,12 @@ abstract class AppLocalizations {
   /// **'Remove bookmark'**
   String get removeBookmark;
 
+  /// No description provided for @zmodemUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'ZMODEM (sz/rz) is not supported yet, so the transfer was cancelled. Use the file panel instead.'**
+  String get zmodemUnsupported;
+
   /// No description provided for @editPath.
   ///
   /// In en, this message translates to:
