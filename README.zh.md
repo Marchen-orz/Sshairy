@@ -4,7 +4,7 @@
 
 [使用场景](#使用场景) · [功能](#功能) · [Airy](#airy) · [手机互联](#手机互联) · [主题](#主题) · [性能](#性能) · [初衷](#初衷) · [获取](#获取) · [English](README.md)
 
-![预览版](https://img.shields.io/badge/preview-0.3.1-2E6EF7?style=flat-square&labelColor=1F3A5F)
+![预览版](https://img.shields.io/badge/preview-0.3.2-2E6EF7?style=flat-square&labelColor=1F3A5F)
 ![平台](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-2E6EF7?style=flat-square&labelColor=1F3A5F)
 [![Flutter](https://img.shields.io/badge/Flutter-native-5AB6FF?style=flat-square&labelColor=1F3A5F)](https://flutter.dev)
 ![AI](https://img.shields.io/badge/AI-Airy-3CC9A7?style=flat-square&labelColor=1F3A5F)

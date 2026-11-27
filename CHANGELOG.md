@@ -1,44 +1,32 @@
-# Sshairy 0.3.1
+# Sshairy 0.3.2
 
 <!-- zh -->
-本版本为平板带来接近电脑的终端布局，手机可使用电脑本地终端，并修复 Windows 上已保存凭据可能被清空的问题。
+本版本加入 ssh-agent 登录与转发、终端关键词高亮和可保存的本地终端，补上目录书签与设置内快照恢复，并修复 `sz`/`rz` 卡死的问题。
 
-## 安全与稳定
+## 连接与终端
 
-- 修复 Windows 上安全存储文件被杀毒或同步软件短暂占用后，下次保存会清空全部已保存密码和密钥的问题。现在读取或解密失败会报错并保留原文件，写入先落到临时文件再替换；已有凭据无需迁移（`23ebbe3`）
-- Airy 运行中切换权限模式后，后续步骤立即按新模式授权，已弹出的审批照常处理（`c162e48`、`e4d0362`）
-- 修复早期版本安装的 MCP 技能被当作外部配置，无法启用或移除的问题（`37f71c9`、`b563cf4`）
-- 修复 Windows 窗口最小化再恢复后，监控侧栏滑出又滑入并丢失状态的问题（`a720c77`、`4218a36`）
+- 登录方式新增「SSH Agent」，使用系统 ssh-agent 中已加载的密钥（Windows OpenSSH 或 `SSH_AUTH_SOCK`）；可按登录开启「转发 SSH Agent」，只转发列出公钥和签名请求（`f0f7c56`）
+- 终端关键词高亮：错误、警告、成功及自定义关键词着色，在设置中开关并填写自定义关键词（`f0f7c56`）
+- 新建主机可切到「本地」，保存指定 shell 和起始文件夹的本地终端；主机库在 SSH 主机上方单独列出，并可折叠两个区块（`f0f7c56`、`0f22c93`）
+- 运行 `sz`/`rz` 不再卡死：检测到 ZMODEM 传输时自动取消，并提示改用文件面板。完整的 `sz`/`rz` 支持已列入计划（`2e18838`，#5）
+- 调整内置 ANSI 配色，文字在彩色底上更清楚（`fbfabe0`，#4）
 
-## 平板
+## 文件与设置
 
-- Android 和 iOS 平板改用触屏界面，宽屏下列表分为两栏（`adb6a64`、`8e3eb68`）
-- 平板终端提供与电脑相似的标签栏，监控、Airy/片段和文件面板停靠在终端旁（`8e3eb68`、`3e333b8`）
-- 文件面板默认停靠在终端下方，也可放到左侧或右侧，并按设备记住；各面板可拖动分隔线调整大小（`3e333b8`）
+- 文件列表单击立即选中，同一行快速点两下打开，不再有约 300 ms 等待（`0faed1a`）
+- 每台主机可收藏常用目录：文件工具栏的书签按钮收藏或移除当前目录，并列出该主机的书签（`fcc16d2`）
+- 设置「关于 → 数据目录」可将主机、本地终端、片段和设置恢复到较早的快照，恢复前保留当前文件（`7993549`）
 
-## 手机与电脑互联
+## MCP
 
-- 手机可打开电脑本地终端，也可镜像电脑上已打开的本地终端标签（`b939678`）
-- 手机启动或回到前台时自动连接最近使用的电脑，断线重连期间显示提示（`b939678`）
-- 互联终端合并连续输出，减少卡顿，按键回显不增加延迟（`b939678`）
-- 手机可经已配对的电脑下载 Android 更新，安装前校验 SHA-256、包名、版本码和签名；电脑发现手机版本较旧时会询问是否推送（`edf9d12`）
-- 重新设计电脑端互联面板：服务状态卡、带有效期倒计时的配对二维码，每台手机一张卡片，权限点按即可切换（`cb423fc`、`efd8cfa`、`ca566d1`）
-- 重新设计手机互联页：扫码和已连接的电脑放在顶部卡片，常用操作做成快捷方块，列表用图标和状态标签区分（`cb423fc`、`efd8cfa`、`a536b34`）
-- 互联设置修改后自动保存（`c9a6fdc`）
+- 一键接入 Antigravity（`agy` CLI 与 IDE 共用配置和 Skill），并使用新的拱形图标（`eb21f7a`、`e8515a8`）
+- MCP 会话可设置空闲超时，过期后客户端可重新建立会话（`c9c7f6b`，#4）
 
-## 终端与文件
+## 手机与平板
 
-- 本地终端支持命令、路径和 AI 补全（`28a7961`）
-- 从终端菜单复制链接后显示「已复制」提示（`c9a6fdc`）
-- 可将私钥文件拖入密钥列表或导入窗口；读取失败时显示系统给出的原因（`a52e269`）
-- 拖入的文件只由最上层的区域接收：拖到本地终端会按当前 shell 插入带引号的路径，拖到 SSH 终端会询问是否上传到当前目录（`a52e269`）
-
-## 设置与更新
-
-- AI、翻译和 MCP 设置修改后自动保存（`baa80de`）
-- 更新提示只列出比当前版本新的发布（`339ecee`）
-- Windows 更新改为「重启并更新」，先退出 Sshairy 再启动安装包（`339ecee`）
-- Android 启动图标改用全幅渐变背景（`133d434`、`6b0e9d5`）
+- Android 更新改由电脑先下载匹配手机架构的安装包并校验，显示进度后再推送到手机（`59798c1`）
+- 手机会话列表和平板标签条的长按菜单新增「关闭其他标签」（`1c51b4e`）
+- 页面切换、底部面板、会话胶囊、触控键栏等加入过渡动画；「我的」页可选关闭、轻动效或全部动效（`57d488e`）
 
 ## 下载
 
@@ -47,48 +35,36 @@
 - Linux x64 提供 AppImage 和 deb
 - Android 8.0 及以上可选择 `arm64-v8a`、`armeabi-v7a` 或 `x86_64` APK，沿用预览版签名，可直接覆盖安装
 
-[查看自 v0.3.0 起的全部提交](https://github.com/Marchen-orz/sshairy/compare/v0.3.0...v0.3.1)
+[查看自 v0.3.1 起的全部提交](https://github.com/Marchen-orz/sshairy/compare/v0.3.1...v0.3.2)
 <!-- /zh -->
 
 <!-- en -->
-This release brings a desktop-like terminal layout to tablets, lets phones use the computer's local terminals, and fixes a Windows issue that could wipe saved credentials.
+This release adds ssh-agent sign-in and forwarding, terminal keyword highlighting, and saved local terminals, brings folder bookmarks and snapshot restore in settings, and stops `sz`/`rz` from hanging.
 
-## Security and stability
+## Connections and terminal
 
-- Fix saved passwords and keys on Windows being wiped by the next save after antivirus or sync software briefly locked the secure storage file. A failed read or decryption now reports an error and leaves the file untouched, and writes go through a temporary file. Existing credentials need no migration (`23ebbe3`)
-- Permission mode changes during a running Airy task now apply to the following steps, while approvals already on screen are handled as before (`c162e48`, `e4d0362`)
-- Fix MCP skills installed by earlier versions being treated as foreign configuration that could not be enabled or removed (`37f71c9`, `b563cf4`)
-- Fix the monitor sidebar sliding out and back in and losing its state after the Windows window was minimized and restored (`a720c77`, `4218a36`)
+- Sign in with "SSH Agent" to use keys loaded in the system ssh-agent (Windows OpenSSH or `SSH_AUTH_SOCK`); "Forward SSH Agent" can be turned on per login and passes only key listing and signing requests (`f0f7c56`)
+- Terminal keyword highlighting tints errors, warnings, successes, and your own keywords; turn it on and add keywords in settings (`f0f7c56`)
+- Switch New host to "Local" to save a local terminal with a shell and starting folder; the vault lists them above SSH hosts, and both sections collapse (`f0f7c56`, `0f22c93`)
+- Running `sz`/`rz` no longer hangs: a ZMODEM transfer is cancelled automatically with a pointer to the files panel. Full `sz`/`rz` support is planned (`2e18838`, #5)
+- Built-in ANSI colors keep text readable on colored backgrounds (`fbfabe0`, #4)
 
-## Tablets
+## Files and settings
 
-- Android and iOS tablets use the touch interface, with two-column lists on wide screens (`adb6a64`, `8e3eb68`)
-- The tablet terminal has a desktop-style tab bar, with the monitor, Airy/snippets, and files panels docked beside it (`8e3eb68`, `3e333b8`)
-- The files panel docks below the terminal by default, can move to the left or right, and is remembered per device; drag the dividers to resize each panel (`3e333b8`)
+- A click selects a file row at once and a quick second click on the same row opens it, without the 300 ms wait (`0faed1a`)
+- Bookmark folders per host: the bookmark button in the files toolbar adds or removes the current folder and lists that host's bookmarks (`fcc16d2`)
+- Settings > About > Data folder restores hosts, local terminals, snippets, or settings to an earlier snapshot, keeping a copy of the current file (`7993549`)
 
-## Device Link
+## MCP
 
-- Open the computer's local terminals from the phone, or mirror local terminal tabs already open on the computer (`b939678`)
-- The phone connects to the most recently used computer on launch or resume, and shows a notice while reconnecting (`b939678`)
-- Link terminals coalesce bursts of output to reduce stutter without adding keystroke echo latency (`b939678`)
-- Download Android updates through a paired computer, verified by SHA-256, package name, version code, and signer before installing; the computer offers to push an update when the phone is out of date (`edf9d12`)
-- Redesign the desktop Link panel with a service status card, a pairing QR code with an expiry countdown, and one card per phone whose permissions toggle with a tap (`cb423fc`, `efd8cfa`, `ca566d1`)
-- Redesign the mobile Link page with scanning or the connected computer in a top card, shortcut tiles for common actions, and lists marked by icons and status tags (`cb423fc`, `efd8cfa`, `a536b34`)
-- Link settings save as you change them (`c9a6fdc`)
+- One-click Antigravity setup (the `agy` CLI and IDE share the configuration and Skill), with a new arch icon (`eb21f7a`, `e8515a8`)
+- MCP sessions expire after a configurable idle time, and clients can open a new session afterwards (`c9c7f6b`, #4)
 
-## Terminal and files
+## Phones and tablets
 
-- Local terminals get command, path, and AI completion (`28a7961`)
-- Copying a link from the terminal menu shows a "Copied" notice (`c9a6fdc`)
-- Drop a private key file onto the keys list or the import dialog; a failed read shows the system's reason (`a52e269`)
-- Only the topmost zone takes a dropped file: a local terminal inserts the path quoted for its shell, and an SSH terminal offers to upload to its current directory (`a52e269`)
-
-## Settings and updates
-
-- AI, translation, and MCP settings save as you change them (`baa80de`)
-- The update prompt lists only releases newer than the installed version (`339ecee`)
-- Windows updates use "Restart and update", which quits Sshairy before launching the installer (`339ecee`)
-- The Android launcher icon uses a full-bleed gradient background (`133d434`, `6b0e9d5`)
+- The computer downloads the Android update matching the phone's ABI, verifies it, and shows progress before pushing it to the phone (`59798c1`)
+- "Close other tabs" in the long-press menu of the phone session list and the tablet tab bar (`1c51b4e`)
+- Transitions for page changes, bottom sheets, the session pill, the touch key bar, and more; choose Off, Light, or Full motion on the Me page (`57d488e`)
 
 ## Downloads
 
@@ -97,5 +73,5 @@ This release brings a desktop-like terminal layout to tablets, lets phones use t
 - Linux x64 has an AppImage and a deb
 - Android 8.0 and later has separate `arm64-v8a`, `armeabi-v7a`, and `x86_64` APKs signed with the existing preview certificate, so they install over earlier versions
 
-[View all commits since v0.3.0](https://github.com/Marchen-orz/sshairy/compare/v0.3.0...v0.3.1)
+[View all commits since v0.3.1](https://github.com/Marchen-orz/sshairy/compare/v0.3.1...v0.3.2)
 <!-- /en -->
