@@ -1,0 +1,49 @@
+# Sshairy
+
+> Lightweight SSH. Powered by AI. A native, open-source (MIT) SSH client for Windows, macOS, Linux and Android, built with Dart and Flutter — no Chromium, no WebView, single native process.
+
+Sshairy combines tabbed & split SSH terminals, dual-pane SFTP, local/remote/dynamic port forwarding, agentless SSH server monitoring, built-in AI assistant (**Airy** with 42 tools + inline terminal tasks + ghost-text completion + one-click command fixes), **MCP / Skill** integration for external AI coding agents, and **Device Link** (end-to-end encrypted desktop-to-phone mirroring, proxy connections, file transfer, config sync and remote approvals).
+
+- Website (English): https://sshairy.marchen.top/
+- Website (简体中文): https://sshairy.marchen.top/zh/
+- Interactive Use Cases (EN): https://sshairy.marchen.top/cases.html
+- Interactive Use Cases (ZH): https://sshairy.marchen.top/zh/cases.html
+- Full AI Reference: https://sshairy.marchen.top/llms-full.txt
+- Source Code (MIT): https://github.com/Marchen-orz/sshairy
+- Releases: https://github.com/Marchen-orz/sshairy/releases
+
+## Key Facts
+
+- **Name**: Sshairy (SSH + Airy)
+- **Category**: Lightweight native cross-platform SSH client, SFTP client, AI terminal, MCP server for SSH
+- **Platforms**: Windows x64 (installer & portable EXE), macOS Universal (Apple silicon & Intel DMG/ZIP, early build), Linux x64 (AppImage & .deb, early build), Android 8.0+ (`arm64-v8a`, `armeabi-v7a`, `x86_64` APK preview); iOS pending
+- **Tech Stack**: Dart & Flutter (native AOT, single process, no Electron, no Chromium, no WebView)
+- **License**: MIT License, free and open-source
+- **Measured Performance (Windows baseline vs. 9 popular SSH clients)**:
+  - Startup time: **0.62 s** (median of 5 warm launches; ~4x faster than Netcatty's 2.60 s, ~12x faster than FinalShell's 7.55 s, ~15x faster than Termius's 9.74 s)
+  - Idle memory: **131.3 MiB** whole-process-tree USS (~71% less than Netcatty's 446.8 MiB, vs. Tabby 480.8 MiB, Wave Terminal 500.2 MiB, Termius 1115.3 MiB)
+  - Download size: **27.2 MiB** (97.4 MiB unpacked, including 1,453 bundled shell completion specs)
+  - Process count: **1** native app process
+
+## Core Capabilities
+
+- **SSH & Local Terminals**: Host vault with groups, tags, pins, search, three-state inheritance, password/key/ssh-agent authentication, Ed25519 key generation, jump hosts, SOCKS5/HTTP proxies, OpenSSH config import, draggable splits, saved local shells, keyword highlighting, and layout restoration.
+- **SFTP & File Workflow**: Dual-pane SFTP browser, folder bookmarks per host, transfer queues, resumable single-file transfers, conflict handling, and external editor integration with conflict checks.
+- **Agentless Server Monitoring**: Live CPU, memory, disk, network and process monitoring over the existing SSH session with nothing to install on remote servers.
+- **Port Forwarding & Completions**: Local (L), remote (R) and dynamic (D) SSH tunnels, saved command snippets, 1,453 static Fig shell completion specs, and AI ghost-text completion.
+- **Airy (Built-in AI)**: Bring-your-own-model (Anthropic Messages, OpenAI Chat Completions, OpenAI Responses). Includes sidebar Agent (42 tools), inline multi-step terminal tasks (`✦` lines), ghost-text completion & next-command prediction, and one-click failed-command fixes. Four permission modes: Observe, Confirm (default), Auto confirm, Full auto.
+- **MCP / Skill Integration**: Exposes the same 42 SSH/SFTP/workspace/forwarding tools to **Claude Code**, **Codex**, **Zcode**, **DeepSeek Harness**, and **Antigravity** (`agy` CLI & IDE) with per-client setup, approval modes (Host confirmation, Model review, Automatic within scope) and audit logs.
+- **Device Link (Desktop ↔ Phone)**: QR pairing or LAN discovery over an end-to-end encrypted channel. Supports live terminal mirroring, pending-tab wakeup, desktop-proxied SSH connections, two-way file & clipboard sharing, config/credential sync (passwords require desktop confirmation), and remote Airy/MCP approval from Android.
+
+## Documentation & Pages
+
+- [English Landing Page](https://sshairy.marchen.top/): Overview, interactive UI tour, Airy demo, Device Link preview, 6 themes, 10-client benchmark table, downloads.
+- [Chinese Landing Page (中文官网)](https://sshairy.marchen.top/zh/): 简体中文完整介绍、交互导览、性能实测对比与下载。
+- [Use Cases (English)](https://sshairy.marchen.top/cases.html): Five interactive walkthroughs — inline AI tasks, one-click fixes & ghost completion, phone approvals, QR pairing & config sync, desktop-to-phone session handoff.
+- [使用案例 (简体中文)](https://sshairy.marchen.top/zh/cases.html): 五个实时交互演示（行内 AI 任务、一键修复与灰字补全、手机远程审批、扫码配对与配置同步、桌面与手机会话接力）。
+- [Full Technical & Comparison Reference](https://sshairy.marchen.top/llms-full.txt): Detailed feature matrix, full 10-client benchmark table, security model, MCP details, and bilingual FAQ.
+- [Privacy Policy (English)](https://sshairy.marchen.top/privacy.html): Local-first data handling, OS-backed credential storage, zero telemetry, Android permissions and website storage.
+- [隐私政策 (简体中文)](https://sshairy.marchen.top/zh/privacy.html): 本地优先存储、系统安全凭据库、零遥测、Android 权限与官网说明。
+- [README (English)](https://github.com/Marchen-orz/sshairy/blob/main/README.md): Repository overview, screenshots, build instructions.
+- [README (简体中文)](https://github.com/Marchen-orz/sshairy/blob/main/README.zh.md): 中文仓库说明与源码构建指南。
+- [Changelog](https://github.com/Marchen-orz/sshairy/blob/main/CHANGELOG.md): Release notes by version.

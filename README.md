@@ -2,7 +2,7 @@
 
 <img src="media/cover.png" alt="Sshairy. Lightweight SSH. Powered by AI. 0.62 s to open, 131 MiB at idle, 27 MiB to download, one process." width="100%">
 
-[Use cases](#use-cases) · [Features](#features) · [Airy](#airy) · [Device Link](#device-link) · [Themes](#themes) · [Performance](#performance) · [Why](#why) · [Get Sshairy](#get-sshairy) · [中文](README.zh.md)
+[Website](https://sshairy.marchen.top/) · [Use cases](#use-cases) · [Features](#features) · [Airy](#airy) · [Device Link](#device-link) · [Themes](#themes) · [Performance](#performance) · [Why](#why) · [Get Sshairy](#get-sshairy) · [中文](README.zh.md)
 
 ![Preview](https://img.shields.io/badge/preview-0.3.2-2E6EF7?style=flat-square&labelColor=1F3A5F)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-2E6EF7?style=flat-square&labelColor=1F3A5F)

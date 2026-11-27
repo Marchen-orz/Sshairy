@@ -52,7 +52,7 @@
       copy: 'Copy', copied: 'Copied', or: '# or macos, linux',
       docsH: 'Docs.', read: 'Read', soon: 'Coming soon',
       docs: [['Getting started', 'Install, add your first host and open a session.'], ['Build from source', 'Toolchain, commands and Windows packaging.'], ['Use cases', 'Five interactive walkthroughs of Airy and Device Link.'], ['Guides', 'Airy, permissions, themes and shortcuts.']],
-      foot: 'Lightweight SSH. Powered by AI.', scheme: 'Dark mode', rel: 'Releases', issues: 'Issues', buddy: 'Next theme',
+      foot: 'Lightweight SSH. Powered by AI.', scheme: 'Dark mode', rel: 'Releases', issues: 'Issues', privacy: 'Privacy', buddy: 'Next theme',
     },
     zh: {
       title: 'Sshairy · 轻量 SSH，AI 加持',
@@ -101,17 +101,22 @@
       copy: '复制', copied: '已复制', or: '# 或 macos、linux',
       docsH: '文档', read: '阅读', soon: '即将补充',
       docs: [['快速开始', '安装、添加第一台主机、打开会话'], ['从源码构建', '工具链、命令与 Windows 打包'], ['使用案例', 'Airy 与手机互联的五个交互演示'], ['使用指南', 'Airy、权限、主题与快捷键']],
-      foot: '轻量 SSH，AI 加持', scheme: '深色模式', rel: '发布', issues: '问题反馈', buddy: '换个主题',
+      foot: '轻量 SSH，AI 加持', scheme: '深色模式', rel: '发布', issues: '问题反馈', privacy: '隐私政策', buddy: '换个主题',
     },
   };
-  const DOC_LINKS = ['#readme', 'blob/main/README.md#get-sshairy', 'cases.html', null];
+  const DOC_LINKS = {
+    en: ['#readme', 'blob/main/README.md#get-sshairy', 'cases.html', null],
+    zh: ['blob/main/README.zh.md', 'blob/main/README.zh.md#%E8%8E%B7%E5%8F%96', 'cases.html', null],
+  };
 
   const root = document.documentElement;
+  const BASE = root.dataset.root || '';
+  const ASSETS = BASE + 'assets';
   const $ = (sel, el = document) => el.querySelector(sel), $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const store = (key, value) => { try { if (value === undefined) return localStorage.getItem(key); localStorage.setItem(key, value); } catch { return null; } };
   const link = (path) => REPO + (!path ? '' : path[0] === '#' ? path : '/' + path);
-  let lang = store('lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
+  let lang = root.dataset.lang || store('lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   let theme = THEMES.includes(store('theme')) ? store('theme') : 'blue';
   const platform = navigator.userAgentData?.platform || navigator.platform || '';
   const os = /android/i.test(navigator.userAgent) ? 'android' : /mac/i.test(platform) ? 'mac' : /linux|x11/i.test(platform) ? 'linux' : 'win';
@@ -121,7 +126,7 @@
   // The newest release names the version, the arm64 APK and each platform's main package size in bytes.
   // Until GitHub answers, or when it cannot, the page uses the cached or built-in values.
   const PACKAGES = { win: '-windows-x64-setup.exe', mac: '-macos-universal.dmg', linux: '-linux-x64.AppImage', android: '-android-arm64-v8a.apk' };
-  let release = { version: '0.3.0', apk: '', sizes: { win: 23855510, mac: 57541986, linux: 24611320, android: 46951941 }, at: 0 };
+  let release = { version: '0.3.2', apk: '', sizes: { win: 23855510, mac: 57541986, linux: 24611320, android: 46951941 }, at: 0 };
   try { Object.assign(release, JSON.parse(store('release'))); } catch {}
   let tour = 0, mode = 1, dark = scheme === 'dark', toured = false, chatSeen = false, timers = [];
   root.classList.add('js');
@@ -166,7 +171,7 @@
     const look = { mode: dark ? 'dark' : 'light' };
     $('#tourWin').innerHTML = SshairyMock.scene(TOUR[tour], lang, look);
     $('#themeWin').innerHTML = SshairyMock.scene('hosts', lang, { ...look, h: 500 });
-    SshairyMock.paint(document);
+    SshairyMock.paint(document, ASSETS);
   }
 
   function setTheme(next) {
@@ -175,7 +180,7 @@
     store('theme', theme);
     press($('#dots'), (button) => button.dataset.theme === theme);
     press($('#pals'), (button) => button.dataset.theme === theme);
-    SshairyMock.paint(document);
+    SshairyMock.paint(document, ASSETS);
   }
 
   // The Airy panel plays its steps one by one; Approve once shows what happens next.
@@ -185,7 +190,7 @@
     const box = $('#chat');
     box.innerHTML = SshairyMock.part('airy', lang, { state: chatSeen ? state : 'idle' });
     $('#airyMascot').dataset.brand = state === 'done' ? 'success' : 'thinking-ai';
-    SshairyMock.paint($('#airy'));
+    SshairyMock.paint($('#airy'), ASSETS);
     $$('.sa-ok .sa-btn', box).forEach((button) => { button.tabIndex = 0; button.setAttribute('role', 'button'); });
     if (still) return;
     [...$('.sa-chat', box).children].slice(state === 'done' ? 4 : 0).forEach((step, i) => {
@@ -254,7 +259,7 @@
       return `<tr class="${name === 'Sshairy' ? 'me' : ''}"><td>${name}</td><td>${s.toFixed(2)} ${t.sec}</td><td>${find(d.memory, name).toFixed(1)} MiB</td><td>${size ? size.toFixed(1) + ' MiB' : '–'}</td></tr>`;
     }).join('')}</table>`;
     $('#docCards').innerHTML = t.docs.map(([title, text], i) => {
-      const to = DOC_LINKS[i];
+      const to = DOC_LINKS[lang][i];
       if (!to) return `<div class="doc" style="--i:${i}"><b>${title}</b><span>${text}</span><em>${t.soon}</em></div>`;
       const local = to.endsWith('.html');
       return `<a class="doc" style="--i:${i}" href="${local ? to : link(to)}"><b>${title}</b><span>${text}</span><em>${local ? t.watch : t.read} →</em></a>`;
@@ -269,12 +274,14 @@
     showRelease();
     $('#steps').innerHTML = `git clone ${REPO}.git\ncd sshairy\nflutter pub get\nflutter run -d windows  <span class="c">${t.or}</span>`;
     $('#copy').textContent = t.copy;
-    const video = $('#video'), film = `media/sshairy-${lang}.mp4`;
+    const video = $('#video'), film = `${BASE}media/sshairy-${lang}.mp4`;
     if (video.getAttribute('src') !== film) {
-      video.poster = `media/poster-${lang}.jpg`;
+      video.poster = `${BASE}media/poster-${lang}.jpg`;
       video.src = film;
     }
     $$('[data-href]').forEach((a) => (a.href = link(a.dataset.href)));
+    const priv = $('a[data-i="privacy"]');
+    if (priv) priv.href = lang === 'zh' ? (BASE ? 'privacy.html' : 'zh/privacy.html') : (BASE ? '../privacy.html' : 'privacy.html');
     SshairyCharts.mount(document, lang);
     windows();
     playChat('ask');
@@ -377,7 +384,7 @@
     const buddy = $('#buddy'), img = $('img', buddy);
     if (img.dataset.brand === entry.target.dataset.pose) return;
     img.dataset.brand = entry.target.dataset.pose;
-    SshairyMock.paint(buddy);
+    SshairyMock.paint(buddy, ASSETS);
     buddy.classList.remove('pop');
     void buddy.offsetWidth;
     buddy.classList.add('pop');

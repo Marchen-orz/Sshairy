@@ -2,7 +2,7 @@
 
 <img src="media/zh/cover.png" alt="Sshairy。轻量 SSH，AI 加持。0.62 秒启动，131 MiB 空闲内存，27 MiB 下载体积，单进程运行" width="100%">
 
-[使用场景](#使用场景) · [功能](#功能) · [Airy](#airy) · [手机互联](#手机互联) · [主题](#主题) · [性能](#性能) · [初衷](#初衷) · [获取](#获取) · [English](README.md)
+[官网](https://sshairy.marchen.top/zh/) · [使用场景](#使用场景) · [功能](#功能) · [Airy](#airy) · [手机互联](#手机互联) · [主题](#主题) · [性能](#性能) · [初衷](#初衷) · [获取](#获取) · [English](README.md)
 
 ![预览版](https://img.shields.io/badge/preview-0.3.2-2E6EF7?style=flat-square&labelColor=1F3A5F)
 ![平台](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android-2E6EF7?style=flat-square&labelColor=1F3A5F)

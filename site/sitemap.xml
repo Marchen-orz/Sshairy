@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://sshairy.marchen.top/</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sshairy.marchen.top/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://sshairy.marchen.top/zh/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sshairy.marchen.top/"/>
+  </url>
+  <url>
+    <loc>https://sshairy.marchen.top/zh/</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sshairy.marchen.top/"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://sshairy.marchen.top/zh/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sshairy.marchen.top/"/>
+  </url>
+  <url>
+    <loc>https://sshairy.marchen.top/cases.html</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sshairy.marchen.top/cases.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://sshairy.marchen.top/zh/cases.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sshairy.marchen.top/cases.html"/>
+  </url>
+  <url>
+    <loc>https://sshairy.marchen.top/zh/cases.html</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sshairy.marchen.top/cases.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://sshairy.marchen.top/zh/cases.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sshairy.marchen.top/cases.html"/>
+  </url>
+  <url>
+    <loc>https://sshairy.marchen.top/privacy.html</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sshairy.marchen.top/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://sshairy.marchen.top/zh/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sshairy.marchen.top/privacy.html"/>
+  </url>
+  <url>
+    <loc>https://sshairy.marchen.top/zh/privacy.html</loc>
+    <lastmod>2026-11-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://sshairy.marchen.top/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://sshairy.marchen.top/zh/privacy.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://sshairy.marchen.top/privacy.html"/>
+  </url>
+</urlset>

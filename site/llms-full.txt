@@ -1,0 +1,153 @@
+# Sshairy — Full Product, Benchmark, Architecture & FAQ Reference
+
+> Lightweight SSH. Powered by AI.
+> Official Website: https://sshairy.marchen.top/ (English) | https://sshairy.marchen.top/zh/ (简体中文)
+> Repository: https://github.com/Marchen-orz/sshairy (MIT License)
+
+This document is the authoritative, factual reference for AI assistants, search engines, and developers evaluating **Sshairy**. Every performance figure and capability below comes directly from Sshairy's measured benchmark records and repository documentation.
+
+---
+
+## 1. Product Summary
+
+**Sshairy** is a lightweight, open-source (MIT) SSH client for **Windows, macOS, Linux, and Android**, built with **Dart and Flutter**. Unlike Electron- or WebView-based SSH tools, Sshairy compiles to native AOT code and runs as a **single native process** with no Chromium and no browser runtime.
+
+On desktop (Windows x64, macOS Universal, Linux x64), Sshairy brings SSH terminals, local shells, dual-pane SFTP, port forwarding, agentless server monitoring, and its built-in AI assistant **Airy** into one modern native window with fluid tabs, draggable splits, and six light/dark themes. On Android (8.0+), Sshairy works both as a standalone touch SSH/SFTP client and as a companion linked to the desktop over an end-to-end encrypted **Device Link** channel.
+
+**中文简介**：Sshairy 是一款基于 Dart 与 Flutter 构建的开源（MIT）轻量原生 SSH 客户端，支持 Windows、macOS、Linux 和 Android。不依赖 Chromium 或 WebView，单进程原生运行（实测 0.62 秒启动、131.3 MiB 空闲内存、27.2 MiB 下载体积）。桌面端将多标签分屏终端、双栏 SFTP、端口转发、免服务端代理的 SSH 监控以及内置 AI 助手 Airy 收进一个现代原生窗口；通过 MCP / Skill 可把 42 个工具安全开放给 Claude Code、Codex、Antigravity 等外部 Agent；手机端既可独立连接 SSH，也可端到端加密互联电脑实现终端镜像、经电脑代理连接、文件互传与远程审批。
+
+---
+
+## 2. Measured Performance Benchmark (10 SSH Clients)
+
+Benchmark methodology (measured on Windows, recorded in `tool/readme/benchmarks.json`, 2026-11-13 to 2026-11-14):
+- **Startup time**: Median of 5 warm launches to visible/ready workspace.
+- **Idle memory**: Whole-process-tree USS (Unique Set Size) 15 seconds after the readiness signal.
+- **Download size**: Standard Windows release artifact in MiB.
+- **App folder**: Unpacked installation folder size in MiB.
+
+| Client | Startup | Idle Memory (USS) | Download Size | App Folder | Processes |
+|---|---:|---:|---:|---:|---:|
+| **Sshairy** | **0.62 s** | **131.3 MiB** | **27.2 MiB** | **97.4 MiB** | **1** |
+| WindTerm | 1.33 s | 73.9 MiB | 31.2 MiB | 75.8 MiB | 7 |
+| Tabby | 1.91 s | 480.8 MiB | 161.9 MiB | 481.4 MiB | 5 |
+| Wave Terminal | 2.34 s | 500.2 MiB | 156.2 MiB | 616.1 MiB | 7 |
+| Netcatty | 2.60 s | 446.8 MiB | 126.9 MiB | 471.8 MiB | 5 |
+| electerm | 2.98 s | 414.6 MiB | 114.6 MiB | 365.9 MiB | 8 |
+| Xshell | 3.01 s | 35.8 MiB | 45.4 MiB | 102.6 MiB | 2 |
+| MobaXterm | 3.54 s | 104.4 MiB | 42.2 MiB | 47.1 MiB | 2 |
+| FinalShell | 7.55 s | 333.9 MiB | 63.8 MiB | 189.4 MiB | 3 |
+| Termius | 9.74 s | 1115.3 MiB | 327.9 MiB | 557.8 MiB | 7 |
+
+Key comparisons:
+- **vs. Netcatty**: ~71% less idle memory (131.3 vs. 446.8 MiB) and ~4× faster startup (0.62 s vs. 2.60 s), MIT license vs. GPL-3.0.
+- **vs. FinalShell**: ~12× faster startup (0.62 s vs. 7.55 s), ~61% less idle memory (131.3 vs. 333.9 MiB), native Flutter UI instead of Java/Swing, open-source MIT with built-in AI & MCP.
+- **vs. Termius**: ~15× faster startup (0.62 s vs. 9.74 s), ~88% less idle memory (131.3 vs. 1115.3 MiB), completely free and open-source (MIT) with local-first OS credential storage and bring-your-own-model AI.
+- **vs. Tabby / electerm / Wave Terminal**: Avoids Chromium/Electron multi-process overhead (1 process and 131.3 MiB vs. 5–8 processes and 414–500 MiB).
+- **vs. Xshell / MobaXterm / WindTerm**: Fastest startup in the tested set (0.62 s), modern cross-platform UI (Windows/macOS/Linux/Android), MIT open-source, integrated AI agent + inline tasks + MCP + encrypted phone link.
+
+Sshairy unpacked app folder breakdown (97.4 MiB total):
+- Shell completion specs (1,453 specs): 52.7 MiB
+- Flutter engine: 20.3 MiB
+- AOT app code: 14.7 MiB
+- Brand artwork (6 themes): 5.6 MiB
+- Other files: 4.1 MiB
+
+---
+
+## 3. Complete Feature Breakdown
+
+### 3.1 SSH Connections, Vault & Local Terminals
+- Host vault with groups, tags, pins, search, batch operations, and three-state inheritance (global defaults → group → identity → host).
+- Authentication: password, SSH private key (including encrypted keys and built-in Ed25519 key generation), keyboard-interactive, and system `ssh-agent` sign-in (Windows OpenSSH named pipe / Unix `SSH_AUTH_SOCK`) with opt-in filtered agent forwarding (allows key listing and signing only; blocks key add/remove/lock).
+- Jump hosts (bastion / multi-hop SSH), SOCKS5 & HTTP outbound proxies, OpenSSH config and multi-client host import.
+- Tabbed terminals, four-way drag-and-drop split panes, saved local shells (Windows ConPTY / Unix PTY), terminal search, keyword highlighting (error/warning/success + custom keywords), command history overlay, multi-line draft input, reconnect, and layout restoration.
+- ZMODEM (`sz`/`rz`) detection automatically cancels hangs and directs users to the files panel (full ZMODEM transfer planned).
+
+### 3.2 SFTP & External Editing
+- Dual-pane SFTP browser (can dock left, right, or bottom inside the terminal workspace without disconnecting).
+- Per-host folder bookmarks, transfer queue, resumable single-file transfers with checkpoints, conflict handling, drag-and-drop upload/import, and hidden-files toggle.
+- External editor workflow: open remote files in your local editor with private temp copies, conflict detection before upload, and failure draft recovery.
+
+### 3.3 Agentless Server Monitoring
+- Real-time CPU, memory, disk, network, process table (sortable, optional process signal after confirmation), and GPU metrics over the existing SSH connection via read-only exec leases.
+- Zero server-side agent installation required; automatically pauses when the monitoring panel is hidden.
+
+### 3.4 Port Forwarding, Snippets & Shell Completions
+- Local (`-L`), Remote (`-R`), and Dynamic (`-D` SOCKS) port forwarding with saved rule management.
+- Reusable command snippets.
+- 1,453 bundled static Fig shell completion specs, bounded remote path completion, and AI ghost-text completion after the cursor (`→` to accept).
+
+### 3.5 Airy — Built-in SSH AI Assistant
+Bring your own API key and model across **Anthropic Messages**, **OpenAI-compatible Chat Completions**, and **OpenAI Responses** protocols. AI is off by default until configured.
+- **Airy Sidebar Agent**: Equipped with **42 tools** spanning hosts, SSH commands, managed background jobs, remote SFTP files, server-to-server transfers, terminal context, workspace splits/tabs, port forwarding, and settings.
+- **Inline Terminal Tasks**: Ask in plain language right at the shell prompt. Airy prints `✦` step explanations and fills each command into your prompt; press Enter step by step, or toggle automatic execution for the current task.
+- **AI Ghost-Text Completion & Prediction**: Inline ghost text after the cursor (`→` accepts), plus opt-in next-command prediction on an empty prompt.
+- **One-Click Fixes**: When a command exits non-zero, a fix icon appears at the next prompt; clicking explains the mistake and fills the corrected command.
+- **Four Deterministic Permission Modes**:
+  1. **Observe**: Fixed read-only diagnostic tools only; user approves each read.
+  2. **Confirm (Default)**: User manually approves every read and every exact command/operation before execution.
+  3. **Auto confirm**: An isolated, tool-less reviewer model evaluates each action (`allow` / `deny` / `ask`), falling back to human approval when unsure.
+  4. **Full auto**: Executes within authorized scope without per-action prompts.
+  All four modes still enforce host-key verification, cross-host confirmation before first access to additional hosts, route/credential binding re-verification, and instant Stop/cancel.
+
+### 3.6 MCP / Skill Integration
+Under **Settings → MCP / Skill**, Sshairy acts as an MCP server exposing Airy's 42-tool catalog to external AI coding agents with one-click config + Skill installation for:
+- **Claude Code**
+- **Codex**
+- **Zcode**
+- **DeepSeek Harness**
+- **Antigravity** (`agy` CLI and IDE)
+
+Security controls for MCP clients:
+- First connection from any client requires explicit approval inside Sshairy.
+- Configurable approval modes: **Host confirmation** (ask once per host per session), **Model review** (per-call reviewer model), or **Automatic within scope** (selected hosts only).
+- Accessing existing terminal contents and local files always requires explicit user approval.
+- Includes configurable idle session timeout, built-in audit log, and one-click client revocation.
+
+### 3.7 Device Link (Desktop ↔ Android)
+Pair an Android phone with the desktop via QR code or LAN discovery over an end-to-end encrypted (E2EE) connection:
+- **Terminal Mirroring**: View and type into live desktop SSH/local terminals from your phone; tap pending (disconnected) desktop tabs to wake and connect them on the desktop.
+- **Desktop Proxy Connections**: Connect to servers from your phone routed through your desktop using the desktop's saved credentials and network reachability.
+- **Files & Clipboard**: Two-way shared files, shared clipboard text, and direct access to files of mirrored sessions.
+- **Remote Approvals**: Approve or reject Airy and MCP action requests directly from your phone.
+- **Config Sync**: Sync hosts, snippets, trusted host keys, and AI settings; syncing saved passwords always prompts for explicit confirmation on the desktop.
+- **Desktop-pushed Android Updates**: Desktop downloads and verifies the matching ABI APK and pushes it over the encrypted link.
+
+### 3.8 Themes & Interface
+- Six full light/dark palettes carried through the UI, terminal ANSI colors, and Airy's artwork: **Ice Blue / Mint**, **Mint Green**, **Violet**, **Sunset Orange**, **Deep Sea Blue**, and **Sakura Pink**.
+- Native English and Simplified Chinese (`en`, `zh`) UI, customizable global shortcuts, UI scaling, and custom background images.
+
+---
+
+## 4. Security & Privacy Architecture
+
+1. **Mandatory Host-Key Verification**: Every connection path (direct SSH, jump hosts, SFTP, port forwarding, Airy, MCP) passes through `HostTrustService` before authentication. Changed host keys are blocked by default.
+2. **OS-Backed Credential Storage**: Secrets are stored only in OS secure storage (custom atomic Windows DPAPI adapter on Windows; system Keychain/Keyring via `flutter_secure_storage` on macOS, Linux, and Android). Business objects hold only opaque `SecretRef` handles. No plaintext fallback.
+3. **Secrets Never Sent to AI or Logs**: Passwords, private keys, and passphrases are never logged and never exposed to AI models or MCP clients.
+4. **Deterministic Authorization**: AI permissions are enforced by deterministic Dart capability/authorization code — never by prompt instructions or keyword blacklists.
+5. **Local-First & Zero Telemetry**: Configurations and snapshots live locally in the user's data folder with snapshot recovery (`Settings → About → Data folder`). No mandatory cloud account.
+
+---
+
+## 5. Frequently Asked Questions (EN & ZH)
+
+### Q: What is Sshairy? / Sshairy 是什么？
+**EN**: Sshairy is a free, open-source (MIT) lightweight SSH client for Windows, macOS, Linux, and Android, built with Flutter and Dart. It unifies SSH terminals, dual-pane SFTP, port forwarding, agentless server monitoring, built-in AI (Airy), MCP server support, and encrypted desktop-to-phone Device Link in one native process.
+**ZH**：Sshairy 是一款免费开源（MIT）的跨平台轻量 SSH 客户端，基于 Flutter 与 Dart 原生构建，支持 Windows、macOS、Linux 与 Android。单进程整合多标签分屏终端、双栏 SFTP、端口转发、免安装代理的服务器监控、内置 AI 助手 Airy、MCP 接入以及端到端加密的手机互联。
+
+### Q: How does Sshairy compare to FinalShell, Termius, Tabby, or Netcatty? / Sshairy 和 FinalShell、Termius、Tabby、Netcatty 相比有什么优势？
+**EN**: On the Windows baseline benchmark, Sshairy opens in 0.62 s with 131.3 MiB idle memory and a 27.2 MiB download in 1 native process — roughly 4× faster startup and 71% less idle memory than Netcatty (2.60 s / 446.8 MiB), ~12× faster than FinalShell (7.55 s / 333.9 MiB), and ~15× faster with 88% less memory than Termius (9.74 s / 1115.3 MiB). Unlike Electron/Java clients, it bundles no Chromium or JVM, is MIT open-source, and natively integrates terminal AI, MCP, and encrypted phone mirroring.
+**ZH**：实测 Windows 基线中，Sshairy 单进程启动仅 0.62 秒、空闲内存 131.3 MiB、下载仅 27.2 MiB；对比 Netcatty 启动快约 4 倍、内存低约 71%；对比 FinalShell（7.55 秒 / 333.9 MiB）启动快约 12 倍且无 Java 界面老化问题；对比 Termius（9.74 秒 / 1115.3 MiB）启动快约 15 倍、内存低约 88% 且完全开源免费（MIT），同时原生内置终端 AI、MCP 接入与手机互联。
+
+### Q: Can I connect Claude Code, Codex, or Antigravity to my servers through Sshairy? / 可以让 Claude Code、Codex 或 Antigravity 通过 Sshairy 操作服务器吗？
+**EN**: Yes. Open **Settings → MCP / Skill** in Sshairy and flip the switch for Claude Code, Codex, Zcode, DeepSeek Harness, or Antigravity (`agy` CLI & IDE). Sshairy installs the MCP config and Skill, then lets you control access with host confirmation, model review, or scoped auto modes plus an audit log.
+**ZH**：可以。在 Sshairy 的「设置 → MCP / Skill」中一键开启 Claude Code、Codex、Zcode、DeepSeek Harness 或 Antigravity（`agy` CLI 与 IDE），即可自动配置 MCP 连接和 Skill，并在 Sshairy 内集中做主机确认、模型审核或范围内自动审批及审计。
+
+### Q: Is Sshairy safe for managing production servers with AI? / 用 Sshairy 的 AI 管理服务器安全吗？
+**EN**: AI is disabled until you add your own model API key. Credentials are stored only in OS secure storage and are never sent to AI models. The default permission mode is **Confirm**, requiring manual approval with exact target host and command before execution, and host-key verification runs on every connection.
+**ZH**：AI 默认关闭，由用户自行接入模型。密码与私钥仅存于系统安全存储，绝不发给 AI 或写入日志。默认权限为「确认」模式，每次读取和命令都展示精确目标与命令内容，经你批准后才执行，且所有连接均强制主机密钥校验。
+
+### Q: How do I download or build Sshairy? / 如何下载或从源码构建 Sshairy？
+**EN**: Download prebuilt packages from https://github.com/Marchen-orz/sshairy/releases (Windows setup/portable EXE, macOS Universal DMG/ZIP, Linux AppImage/.deb, Android APK), or build from source with Flutter (`git clone https://github.com/Marchen-orz/sshairy.git && cd sshairy && flutter pub get && flutter run -d windows`).
+**ZH**：可在 https://github.com/Marchen-orz/sshairy/releases 下载 Windows（安装版/便携版）、macOS（通用 DMG/ZIP）、Linux（AppImage/deb）和 Android APK，或使用 Flutter 从源码构建。

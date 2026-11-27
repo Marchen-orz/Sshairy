@@ -9,7 +9,7 @@
       nTour: 'Tour', nLink: 'Link', nCases: 'Use cases', nPerf: 'Performance', nDocs: 'Docs', nGet: 'Download',
       heroH: 'Use <span class="k-grad">cases</span>.',
       heroP: 'Five live walkthroughs of Airy and Device Link.',
-      foot: 'Lightweight SSH. Powered by AI.', home: 'Home', rel: 'Releases', issues: 'Issues',
+      foot: 'Lightweight SSH. Powered by AI.', home: 'Home', rel: 'Releases', issues: 'Issues', privacy: 'Privacy',
       scheme: 'Dark mode', theme: 'Theme', buddy: 'Next theme',
       play: 'Play', pause: 'Pause', replay: 'Replay', scrub: 'Timeline',
       names: ['Ice Blue / Mint', 'Mint Green', 'Violet', 'Sunset Orange', 'Deep Sea Blue', 'Sakura Pink'],
@@ -27,7 +27,7 @@
       nTour: '导览', nLink: '互联', nCases: '使用案例', nPerf: '性能', nDocs: '文档', nGet: '下载',
       heroH: '使用<span class="k-grad">案例</span>',
       heroP: '五个实时演示，看 Airy 与手机互联如何配合',
-      foot: '轻量 SSH，AI 加持', home: '首页', rel: '发布', issues: '问题反馈',
+      foot: '轻量 SSH，AI 加持', home: '首页', rel: '发布', issues: '问题反馈', privacy: '隐私政策',
       scheme: '深色模式', theme: '主题', buddy: '换个主题',
       play: '播放', pause: '暂停', replay: '重播', scrub: '播放进度',
       names: ['冰蓝薄荷', '薄荷绿', '紫罗兰', '落日橙', '深海蓝', '樱花粉'],
@@ -51,11 +51,13 @@
   ];
 
   const root = document.documentElement;
+  const BASE = root.dataset.root || '';
+  const ASSETS = BASE + 'assets';
   const $ = (sel, el = document) => el.querySelector(sel), $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const store = (key, value) => { try { if (value === undefined) return localStorage.getItem(key); localStorage.setItem(key, value); } catch { return null; } };
   const link = (path) => REPO + (!path ? '' : path[0] === '#' ? path : '/' + path);
-  let lang = store('lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
+  let lang = root.dataset.lang || store('lang') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
   let theme = THEMES.includes(store('theme')) ? store('theme') : 'blue';
   const night = matchMedia('(prefers-color-scheme: dark)');
   let scheme = root.dataset.scheme === 'dark' ? 'dark' : 'light';
@@ -386,7 +388,7 @@
       rebuild() {
         inst.def = createDef(meta.id);
         inst.def.build(ui);
-        M.paint(section);
+        M.paint(section, ASSETS);
         inst.fit();
         inst.measure();
         inst.seek(inst.time);
@@ -424,7 +426,7 @@
     root.dataset.theme = theme;
     store('theme', theme);
     $$('#dots button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.theme === theme));
-    M.paint(document);
+    M.paint(document, ASSETS);
   }
 
   function render() {
@@ -442,6 +444,8 @@
     $('#buddy').setAttribute('aria-label', t.buddy);
     $('#jump').innerHTML = ORDER.map(({ id }) => `<a href="#${id}">${t.chips[id]}</a>`).join('');
     $$('[data-href]').forEach((a) => (a.href = link(a.dataset.href)));
+    const priv = $('a[data-i="privacy"]');
+    if (priv) priv.href = lang === 'zh' ? (BASE ? 'privacy.html' : 'zh/privacy.html') : (BASE ? '../privacy.html' : 'privacy.html');
     players.forEach((p) => {
       const [heading, desc] = t.cases[p.id];
       $('h2', p.section).textContent = heading;
@@ -451,7 +455,7 @@
       p.scrub.setAttribute('aria-label', t.scrub);
       p.rebuild();
     });
-    M.paint(document);
+    M.paint(document, ASSETS);
   }
 
   $('#dots').addEventListener('click', (event) => {
@@ -485,7 +489,7 @@
     const buddy = $('#buddy'), img = $('img', buddy);
     if (img.dataset.brand === entry.target.dataset.pose) return;
     img.dataset.brand = entry.target.dataset.pose;
-    M.paint(buddy);
+    M.paint(buddy, ASSETS);
     buddy.classList.remove('pop');
     void buddy.offsetWidth;
     buddy.classList.add('pop');

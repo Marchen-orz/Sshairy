@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="blue" data-root="../" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>隐私政策 · Sshairy</title>
+<meta name="description" content="Sshairy（Windows、macOS、Linux、Android）及官网 sshairy.marchen.top 的隐私政策。本地优先存储、系统安全凭据库、零遥测追踪、用户自主控制 AI 端点与端到端加密手机互联。">
+<meta name="robots" content="index,follow,max-snippet:-1">
+<meta name="author" content="Marchen">
+<link rel="canonical" href="https://sshairy.marchen.top/zh/privacy.html">
+<link rel="alternate" hreflang="en" href="https://sshairy.marchen.top/privacy.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://sshairy.marchen.top/zh/privacy.html">
+<link rel="alternate" hreflang="x-default" href="https://sshairy.marchen.top/privacy.html">
+<link rel="alternate" type="text/plain" href="https://sshairy.marchen.top/llms.txt" title="LLMs.txt">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sshairy">
+<meta property="og:url" content="https://sshairy.marchen.top/zh/privacy.html">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:title" content="隐私政策 · Sshairy">
+<meta property="og:description" content="Sshairy 坚持本地优先、零遥测、无云端账号，凭据仅存于系统安全存储，所有网络与 AI 通信完全由你控制。">
+<meta property="og:image" content="https://sshairy.marchen.top/media/poster-zh.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="隐私政策 · Sshairy">
+<meta name="twitter:description" content="Sshairy 轻量 SSH 客户端隐私政策：零遥测、系统安全凭据库、自备模型 AI 与端到端加密手机互联。">
+<meta name="twitter:image" content="https://sshairy.marchen.top/media/poster-zh.jpg">
+<meta name="theme-color" content="#F1F7FF">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": "https://sshairy.marchen.top/zh/privacy.html#page",
+  "name": "隐私政策 · Sshairy",
+  "url": "https://sshairy.marchen.top/zh/privacy.html",
+  "inLanguage": "zh-Hans",
+  "dateModified": "2026-11-27",
+  "description": "说明 Sshairy 如何处理本机数据、系统凭据存储、SSH 连接、可选 AI 端点、Android 权限及官网本地偏好。",
+  "isPartOf": {
+    "@id": "https://sshairy.marchen.top/zh/#website"
+  }
+}
+</script>
+<script>try{document.documentElement.dataset.scheme=localStorage.getItem('scheme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}</script>
+<link rel="icon" href="../assets/favicon.png">
+<link rel="stylesheet" href="../fonts.css">
+<link rel="stylesheet" href="../themes.css">
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="../site.css">
+<link rel="stylesheet" href="../privacy.css">
+</head>
+<body>
+<header class="nav">
+  <a class="brand" href="index.html"><img data-brand="wordmark" src="../assets/brand/blue/wordmark.webp" alt="Sshairy"></a>
+  <nav>
+    <a href="index.html#tour">导览</a>
+    <a href="index.html#airy">Airy</a>
+    <a href="index.html#link">互联</a>
+    <a href="index.html#performance">性能</a>
+    <a href="index.html#docs">文档</a>
+    <a href="cases.html">使用案例</a>
+  </nav>
+  <div class="dots" id="dots" role="group" aria-label="主题"></div>
+  <a class="lang" id="lang" href="../privacy.html" hreflang="en">EN</a>
+  <button class="lang" id="scheme" type="button" aria-label="深色模式"><svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></svg><svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <a class="gh" href="https://github.com/Marchen-orz/sshairy" aria-label="GitHub"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg></a>
+  <a class="btn" href="index.html#download">下载</a>
+</header>
+
+<main id="top">
+<section class="legal-hero">
+  <div class="air"></div>
+  <div class="wrap">
+    <h1>隐私<span class="k-grad">政策</span></h1>
+    <p class="lede">Sshairy 是一款本地优先、完全开源的 SSH 客户端。我们不设用户账号，不运营云同步服务器，也不集成任何统计埋点或广告 SDK。</p>
+    <p class="legal-meta">最后更新：2026 年 11 月 27 日 · 适用于 Sshairy（Windows、macOS、Linux、Android）及官网 sshairy.marchen.top</p>
+  </div>
+</section>
+
+<section class="legal-body">
+  <div class="wrap">
+    <article class="legal-card">
+      <div class="legal-summary">
+        <div class="legal-pill"><b>零遥测追踪</b><span>无使用统计、无崩溃自动上报、无广告 SDK，也没有开发者后端服务器。</span></div>
+        <div class="legal-pill"><b>系统安全存储</b><span>密码、私钥与 API Key 仅存于操作系统安全存储，无明文降级。</span></div>
+        <div class="legal-pill"><b>通信完全可控</b><span>所有网络请求仅发往你自行配置的服务器、模型端点或配对设备。</span></div>
+      </div>
+
+      <h2>1. 我们不收集的数据</h2>
+      <p>Sshairy 开发者不会收集、出售、出租或接收你的个人信息、SSH 主机配置、登录凭据、终端会话内容、传输文件或 AI 对话记录。使用 Sshairy 无需注册或登录任何账号，软件内不含任何第三方统计、遥测或广告组件。</p>
+
+      <h2>2. 仅存于你本机的数据</h2>
+      <ul>
+        <li><strong>配置与工作区数据：</strong>主机、分组、身份元信息、已知主机信任记录（known hosts）、命令片段、端口转发规则、布局、设置以及本地快照均以 JSON 文件保存在操作系统的应用数据目录中。</li>
+        <li><strong>敏感凭据：</strong>SSH 密码、私钥、私钥口令、AI / 翻译 API Key 以及手机互联的 Ed25519 设备私钥种子仅保存在系统安全存储（Windows DPAPI、macOS 钥匙串、Linux Secret Service、Android Keystore）中。业务配置文件只保留不透明引用（<code>SecretRef</code>），绝不明文降级保存。</li>
+        <li><strong>外部 MCP 客户端访问令牌（按需开启）：</strong>仅当你在「设置 → MCP / Skill」中主动开启 Claude Code、Codex、Zcode、DeepSeek Harness 或 Antigravity 时，Sshairy 会向该客户端的本地用户配置文件写入一个可随时作废的本机回环访问令牌；关闭开关后即删除并作废该令牌。</li>
+        <li><strong>诊断与审计日志：</strong>有界、脱敏的诊断日志和 MCP 审计记录仅存于本地，不记录密码、私钥、原始请求头或敏感凭据，也不会自动上传。</li>
+        <li><strong>临时文件：</strong>外部编辑器的私有临时副本及断点续传产生的 <code>.part</code> 文件仅存于用户私有或目标目录，并在完成后清理。</li>
+      </ul>
+
+      <h2>3. 网络通信与第三方服务</h2>
+      <p>Sshairy 仅在你主动配置或触发对应功能时发起网络请求：</p>
+      <ul>
+        <li><strong>SSH、SFTP 与端口转发：</strong>仅直连你配置的目标服务器、跳板机或代理；所有连接路径均在发送认证凭据前强制校验主机密钥。</li>
+        <li><strong>Airy AI 功能（默认关闭）：</strong>在用户配置并启用自己的 Anthropic 或 OpenAI 兼容模型前，不会发起任何 AI 请求。启用后，仅在你主动提问、发起行内任务或触发 AI 补全时，将所需的有界上下文、经批准的工具结果或手动附加的文件/图片（图片会重编码以清除元数据）直接发往你指定的模型服务商。SSH 密码、私钥等秘密绝不会发给 AI。你发往模型服务商的数据受该服务商的隐私政策约束。</li>
+        <li><strong>在线补全说明翻译（可选）：</strong>启用后仅发送随软件打包的公开命令规格说明文本和目标语言，绝不发送你的命令历史、主机名、路径或文件名。如在 MyMemory 服务中自行填写了可选邮箱，该邮箱仅随 MyMemory 请求的 <code>de</code> 参数发送。</li>
+        <li><strong>手机互联（Device Link，默认关闭）：</strong>开启后仅在局域网或你指定的直连地址之间通过端到端加密（X25519 + Ed25519 + XSalsa20-Poly1305）通信，不经过开发者中转服务器。可选的局域网发现广播仅包含协议版本、设备 ID、设备名称与端口，不含任何主机列表或凭据；同步已保存的服务器密码需在电脑端显式弹窗确认。</li>
+        <li><strong>版本更新检查：</strong>客户端（及本官网）可能访问公开的 GitHub Releases API（<code>api.github.com/repos/Marchen-orz/sshairy/releases/latest</code>）检查新版本，并在你选择更新时从 GitHub 下载官方安装包。</li>
+      </ul>
+
+      <h2>4. Android 端权限说明</h2>
+      <p>Sshairy Android 端遵循最小必要原则，仅在使用相关功能时按需申请权限：</p>
+      <ul>
+        <li><strong>网络与震动：</strong>用于 SSH/SFTP/AI 连接、可选的局域网电脑发现以及触控板和审批触觉反馈。</li>
+        <li><strong>相机（可选）：</strong>仅在点击「扫一扫配对电脑」时申请，仅在本地实时识别二维码内容，绝不保存或上传影像。</li>
+        <li><strong>通知与前台服务（可选）：</strong>仅在你开启活跃会话后台保活或手机远程审批提醒时申请。</li>
+        <li><strong>生物识别（可选）：</strong>仅在你主动开启应用锁时调用系统生物识别验证；生物特征完全由 Android 系统处理，应用无法读取或存储。</li>
+        <li><strong>存储 / 所有文件访问权限（可选）：</strong>仅在你主动选择浏览本机完整目录或与电脑/服务器双向互传本地文件夹时引导授权；未授权时仍可使用系统文件选择器上传。</li>
+        <li><strong>绝不申请：</strong>Sshairy 绝不申请定位、通讯录、电话状态、短信或广告设备标识符权限。</li>
+      </ul>
+
+      <h2>5. 官网（sshairy.marchen.top）</h2>
+      <p>本官网为纯静态页面，不使用 Cookie，无第三方统计与广告追踪脚本。仅在浏览器本地的 <code>localStorage</code> 中保存你的主题配色、深浅模式、语言偏好以及 GitHub 最新版本号与安装包体积的短期缓存（30 分钟），你可随时在浏览器中清除。</p>
+
+      <h2>6. 数据控制与删除</h2>
+      <p>由于全部数据均保存在你的本地设备上，你始终拥有完全控制权。你可以随时在应用内删除主机、凭据、AI 对话或已配对设备，在「设置 → 关于 → 数据目录」中管理或恢复本地快照，也可以通过卸载应用并清理本地数据目录与系统凭据条目来彻底删除所有数据。</p>
+
+      <h2>7. 开源审计与联系方式</h2>
+      <p>Sshairy 采用 MIT 许可证开源，所有数据与网络行为均可在 <a href="https://github.com/Marchen-orz/sshairy">github.com/Marchen-orz/sshairy</a> 公开查验。如有隐私或安全疑问，欢迎通过 <a href="https://github.com/Marchen-orz/sshairy/issues">GitHub Issues</a> 联系我们。</p>
+    </article>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <img class="nap" data-brand="sleeping" src="../assets/brand/blue/sleeping.webp" alt="">
+    <img class="word" data-brand="wordmark" src="../assets/brand/blue/wordmark.webp" alt="Sshairy">
+    <p>轻量 SSH，AI 加持</p>
+    <nav><a href="index.html">首页</a><a href="cases.html">使用案例</a><a href="privacy.html" aria-current="page">隐私政策</a><a href="https://github.com/Marchen-orz/sshairy">GitHub</a><a href="https://github.com/Marchen-orz/sshairy/releases">发布</a><a href="https://github.com/Marchen-orz/sshairy/issues">问题反馈</a></nav>
+  </div>
+</footer>
+
+<button id="buddy" type="button" aria-label="换个主题"><img data-brand="default" src="../assets/brand/blue/default.webp" alt=""></button>
+
+<script src="../privacy.js"></script>
+</body>
+</html>
