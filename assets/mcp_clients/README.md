@@ -6,6 +6,6 @@ These small SVGs were drawn independently for sshairy to identify MCP clients in
 - Codex: dark terminal prompt.
 - Zcode: blue Z tile.
 - DeepSeek Harness: blue whale.
-- Antigravity: rising arrow and orbit.
+- Antigravity: gradient arch with flared feet.
 
 Names and any associated marks identify the corresponding software; they do not imply affiliation or endorsement. Each tile's tooltip and semantics carry the client name. The SVGs are loaded only from bundled assets through `app/mcp/adapters/client_icon.dart`.
