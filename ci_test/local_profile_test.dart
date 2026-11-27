@@ -144,7 +144,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('PowerShell'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'api');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Start in folder'), '"$_folder"');
+    // Only Windows strips the quotes "Copy as path" adds; elsewhere they could be part of the name.
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Start in folder'),
+      Platform.isWindows ? '"$_folder"' : _folder,
+    );
     await tester.tap(find.text('Save'));
     for (var i = 0; i < 100 && find.text('Start in folder').evaluate().isNotEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
