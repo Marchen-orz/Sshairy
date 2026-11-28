@@ -3489,4 +3489,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get mobileSyncAiIncluded => '+ AI 配置';
+
+  @override
+  String get starPromptTitle => '喜欢 Sshairy 吗？';
+
+  @override
+  String get starPromptMessage => '你的 Star 是持续开发的最强动力，欢迎去 GitHub 点一颗星支持一下。';
+
+  @override
+  String get starPromptAction => '去点 Star';
+
+  @override
+  String get starPromptNever => '不再提醒';
 }

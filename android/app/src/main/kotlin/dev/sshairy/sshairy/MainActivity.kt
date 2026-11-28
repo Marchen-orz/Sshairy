@@ -32,6 +32,23 @@ class MainActivity : FlutterFragmentActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "openUrl" -> {
+                    val url = call.argument<String>("url")
+                    val uri = url?.let { Uri.parse(it) }
+                    if (uri == null || (uri.scheme != "https" && uri.scheme != "http") || uri.host.isNullOrEmpty()) {
+                        result.success(false)
+                    } else {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: Throwable) {
+                            result.success(false)
+                        }
+                    }
+                }
                 "updateAbis" -> result.success(Build.SUPPORTED_ABIS.toList())
                 "installUpdate" -> {
                     val path = call.argument<String>("path")

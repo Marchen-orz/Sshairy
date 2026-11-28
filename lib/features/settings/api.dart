@@ -6,6 +6,7 @@ export 'domain/translation_config.dart' show TranslationConfig, TranslationProvi
 export 'application/background_images.dart'
     show backgroundImagesProvider, backgroundImageStoreProvider, imageSetting, imageOpacitySetting;
 export 'presentation/background_image.dart' show BackgroundImageControls, BackgroundImageView;
+export 'presentation/star_prompt.dart' show StarPromptHost;
 export 'presentation/update_check.dart' show StartupUpdatePrompt, UpdateAvailableButton, UpdateCheckControl;
 export 'adapters/github_update_files.dart' show GithubUpdateFiles;
 export 'application/updates.dart'

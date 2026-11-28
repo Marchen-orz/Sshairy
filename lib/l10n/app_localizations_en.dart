@@ -3661,4 +3661,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mobileSyncAiIncluded => '+ AI config';
+
+  @override
+  String get starPromptTitle => 'Enjoying Sshairy?';
+
+  @override
+  String get starPromptMessage =>
+      'Your star on GitHub is the biggest motivation to keep improving Sshairy.';
+
+  @override
+  String get starPromptAction => 'Star on GitHub';
+
+  @override
+  String get starPromptNever => 'Don\'t remind me';
 }

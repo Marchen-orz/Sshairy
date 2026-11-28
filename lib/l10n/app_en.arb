@@ -1299,5 +1299,9 @@
   "mobileQuickConnect": "Quick connect",
   "mobileAllGroups": "All",
   "mobilePinned": "Pinned",
-  "mobileSyncAiIncluded": "+ AI config"
+  "mobileSyncAiIncluded": "+ AI config",
+  "starPromptTitle": "Enjoying Sshairy?",
+  "starPromptMessage": "Your star on GitHub is the biggest motivation to keep improving Sshairy.",
+  "starPromptAction": "Star on GitHub",
+  "starPromptNever": "Don't remind me"
 }

@@ -6613,6 +6613,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'+ AI config'**
   String get mobileSyncAiIncluded;
+
+  /// No description provided for @starPromptTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enjoying Sshairy?'**
+  String get starPromptTitle;
+
+  /// No description provided for @starPromptMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Your star on GitHub is the biggest motivation to keep improving Sshairy.'**
+  String get starPromptMessage;
+
+  /// No description provided for @starPromptAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Star on GitHub'**
+  String get starPromptAction;
+
+  /// No description provided for @starPromptNever.
+  ///
+  /// In en, this message translates to:
+  /// **'Don\'t remind me'**
+  String get starPromptNever;
 }
 
 class _AppLocalizationsDelegate

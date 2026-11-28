@@ -111,6 +111,19 @@ abstract final class MobilePlatform {
     }
   }
 
+  static Future<bool> openUrl(String url) async {
+    if (!isAndroidPlatform) return false;
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http') || uri.host.isEmpty) return false;
+    try {
+      return await _channel.invokeMethod<bool>('openUrl', {'url': uri.toString()}) ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   /// Opens the Android system "All files access" toggle (API 30+) or requests legacy storage permission.
   static Future<bool> requestAllFilesAccess() async {
     if (!isAndroidPlatform) return true;

@@ -1126,5 +1126,9 @@
   "mobileQuickConnect": "快速连接",
   "mobileAllGroups": "全部",
   "mobilePinned": "置顶",
-  "mobileSyncAiIncluded": "+ AI 配置"
+  "mobileSyncAiIncluded": "+ AI 配置",
+  "starPromptTitle": "喜欢 Sshairy 吗？",
+  "starPromptMessage": "你的 Star 是持续开发的最强动力，欢迎去 GitHub 点一颗星支持一下。",
+  "starPromptAction": "去点 Star",
+  "starPromptNever": "不再提醒"
 }
